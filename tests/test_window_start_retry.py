@@ -229,6 +229,68 @@ async def test_a_car_that_finished_is_not_sent_the_start_again(hass: HomeAssista
     assert controller.window_start_retry["last"]["result"] == "finished"
 
 
+def _windows(*spans: tuple[float, float]) -> dict[str, Any]:
+    """Periods as (start, end) in minutes from now (a window opens 30 s in)."""
+    origin = dt_util.utcnow() + timedelta(seconds=30)
+    periods = [
+        {"start": (origin + timedelta(minutes=a)).isoformat(), "end": (origin + timedelta(minutes=b)).isoformat()}
+        for a, b in spans
+    ]
+    return {"start": periods[0]["start"], "end": periods[-1]["end"], "amps": 10, "periods": periods}
+
+
+def _easee(hass: HomeAssistant, status: str) -> None:
+    hass.states.async_set(EASEE_STATUS, status, {"config_authorizationRequired": False})
+
+
+async def test_a_car_that_finished_by_itself_is_not_resumed_at_the_next_windows(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """SN-7PME: an Easee charged the car full and said `completed`; each later window sent `resume` again."""
+    controller = await _shaped_charger(hass, "easee")
+    _easee(hass, "awaiting_start")
+    commands = _easee_commands(hass)
+    await install_schedule(controller, _windows((0, 30), (60, 90), (120, 150)))
+    await _after(hass, freezer, 31)
+    assert commands[-1] == "resume"
+    _easee(hass, "charging")
+    await _walk(hass, freezer, 600)
+    _easee(hass, "completed")  # the car is full
+    await hass.async_block_till_done()
+    await _walk(hass, freezer, 9000, step=60)
+    assert commands.count("resume") == 1, commands
+
+
+async def test_a_charger_that_reads_finished_after_our_stop_is_started_at_the_next_window(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """A charger whose stop reads as finished (Zaptec's `connected_finished`): that is SpotNav's stop, not the car."""
+    controller = await _shaped_charger(hass, "easee")
+    _easee(hass, "awaiting_start")
+    commands = _easee_commands(hass)
+    await install_schedule(controller, _windows((0, 30), (60, 90)))
+    await _after(hass, freezer, 31)
+    _easee(hass, "charging")
+    await _walk(hass, freezer, 30 * 60 + 30)
+    assert commands[-1] == "pause", "the first window's end"
+    await _after(hass, freezer, 20)
+    _easee(hass, "completed")
+    await hass.async_block_till_done()
+    await _walk(hass, freezer, 31 * 60)
+    assert commands.count("resume") == 2, commands
+
+
+async def test_a_new_plan_does_not_pause_an_empty_charger(hass: HomeAssistant, freezer: Any) -> None:
+    """SN-7PME 12:04: a price update's new plan paused a `disconnected` Easee."""
+    controller = await _shaped_charger(hass, "easee")
+    _easee(hass, "disconnected")
+    await hass.async_block_till_done()
+    commands = _easee_commands(hass)
+    await install_schedule(controller, _windows((60, 90)))
+    await _after(hass, freezer, 5)
+    assert commands == []
+
+
 async def test_an_unplugged_car_ends_the_retries(hass: HomeAssistant, freezer: Any) -> None:
     controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})

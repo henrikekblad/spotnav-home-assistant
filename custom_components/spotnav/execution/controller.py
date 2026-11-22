@@ -368,6 +368,9 @@ STOP_ACK_S: Final = 120.0
 #: a charger that has ended the transaction rejects a second stop. Shorter than the retry of a stop that did not go
 #: out (`STOP_RETRY_S`) and the person's hold's gap (`PERSON_HOLD_STOP_GAP_S`), so neither changes.
 STOP_SETTLE_S: Final = 15.0
+#: A charger turning to "the car finished" this long after a stop of ours (with no charge or start since) is that stop
+#: landing (a Zaptec's `connected_finished`), not the car ending the charge (`_observe_finished`).
+FINISHED_AFTER_STOP_S: Final = 300.0
 #: An automatic stop that went out is looked at again this long after (`_async_stop_check_callback`): a charger still
 #: charging then, never seen off since and with no start of ours after the stop, did not take it (an OCPP charger right
 #: after Home Assistant's restart: its integration does not know the transaction yet, and takes the stop as done with
@@ -942,6 +945,9 @@ class ChargingController:
         # When the last stop went out, while it settles (`_stop_settling`): cleared by a start of ours sent after it
         # and by the charger seen charging again after it was seen not to. `_seen_charging` is the last report.
         self._stop_settle_since: datetime | None = None
+        # Whether the charger's "the car finished" (`charger_connection.FINISHED`) came without a stop of ours behind
+        # it, as seen when it began (`_observe_finished`); `None` while it does not say so, or since a restart.
+        self._finished_by_car: bool | None = None
         self._seen_charging: bool | None = None
         # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
         self._stop_settled = False
@@ -1634,6 +1640,7 @@ class ChargingController:
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
+        self._observe_finished()
         self._top_off_tick()
         self._observe_own_stop()
         # The hold's memory before the report: the core decides the report at once.
@@ -1727,6 +1734,25 @@ class ChargingController:
         is bounded by the charging time between them (`planning/auto_controller.advance_register`)."""
         self._tick_charge_clock()
         return self._charge_clock_s
+
+    def _observe_finished(self) -> None:
+        """Whether the car finished the charge itself: the charger turning to `FINISHED` while no stop of ours settles.
+        Kept while it says so, also through a stop of ours sent later (a window's end: an Easee stays `completed`)."""
+        if self.adapter.connection()[0] != CONNECTION_FINISHED:
+            self._finished_by_car = None
+        elif self._finished_by_car is None:
+            since = self._stop_settle_since
+            ours = self._stop_in_flight or (
+                since is not None and 0 <= (dt_util.utcnow() - since).total_seconds() < FINISHED_AFTER_STOP_S
+            )
+            self._finished_by_car = not ours
+
+    def _car_finished(self) -> bool:
+        """The charger says the car finished and no stop of SpotNav's made it so (`_observe_finished`; since a restart,
+        the restored `_own_stop` says)."""
+        if self.adapter.connection()[0] != CONNECTION_FINISHED:
+            return False
+        return self._finished_by_car if self._finished_by_car is not None else not self._own_stop
 
     def _observe_connection(self) -> None:
         """Notice a plug-in or an unplug: a change between two connection states the charger reported.
@@ -5902,6 +5928,7 @@ class ChargingController:
             facts = self._core_facts(
                 lambda: {
                     "charging": self.charging,
+                    "connected": self.adapter.vehicle_connected(),
                     "handed_off": self._core_handed_off(),
                     **self._core_hold_facts(),
                 },
@@ -6944,6 +6971,8 @@ class ChargingController:
             "open_window_start": open_start,
             "control_on": self._control_on,
             "connected": self.adapter.vehicle_connected(),
+            # A charger that says the car finished, with no stop of SpotNav's behind it: the car ended the charge.
+            "finished": self._car_finished(),
             "start_pending": self._core_start_pending(),
             **self._core_hold_facts(),
         }

@@ -558,6 +558,10 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in
             # inside the window starts it.
             return s, ()
+        if event.finished:
+            # The car finished the charge itself (full) and is still plugged in: a start does not change that, as the
+            # window start's retry already says (`_start_retry_refused`).
+            return s, ()
         if s.owner in WINDOW_START_SPARED:
             # A charge started by hand is not the plan's to take over (its end would stop it).
             return s, ()
@@ -634,6 +638,10 @@ def _rearm(session: ChargeSession, event: Rearm, now: datetime) -> Decision:
         or event.handed_off
     )
     if spared:
+        return session, ()
+    if event.connected is False and not event.charging:
+        # No car at the charger: nothing to stop (a new plan's install after a price update would pause an empty
+        # charger). The plug-in decides the car's charge.
         return session, ()
     return _stop(session, REASON_REARM, was_on=event.charging)
 
