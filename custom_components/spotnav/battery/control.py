@@ -357,6 +357,10 @@ def _accept_applies(control: BrandControl | None) -> bool:
     itself charge from the grid there (`hold_charges_without`) stays under the HA-down cap with it."""
     return control is not None and not (control.slow or control.fixed_charge)
 
+#: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
+RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
+
+
 class BatteryControl:
     """One site's battery and export-limit write path (see the module)."""
 
@@ -2039,12 +2043,12 @@ class BatteryControl:
             rule = self._cap_rule(options, cap, False, self._learned(now))
             # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
             if caps is None and gate.charge_by_phases(self.report()):
-                return 0.0, rule  # the charge was shown only per phase: the balanced one is never run
+                return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run
             fixed = self._fixed_charge_kw()
             if fixed is not None and (not math.isfinite(fixed) or (cap is not None and fixed > cap)):
-                return 0.0, rule  # a plant that charges at its own rate: as planned or not at all
+                return 0.0, RULE_NO_GRID_CHARGE  # a plant that charges at its own rate: as planned or not at all
             if cap is not None and cap < gate.MIN_RATE_KW:
-                return 0.0, rule  # under the least rate control commands it does self-consumption
+                return 0.0, RULE_NO_GRID_CHARGE  # under the least rate control commands it does self-consumption
             return cap, rule
         except Exception:  # noqa: BLE001 - an unknown cap allows no grid charge
             _LOGGER.debug("plan_grid_charge_cap: ignored failure (no grid charge is planned)", exc_info=True)

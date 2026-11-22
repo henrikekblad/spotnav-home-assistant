@@ -531,8 +531,8 @@ def _solve(
 
 
 def _grid_charge_kwh(decisions: Sequence[Any]) -> float:
-    """The energy a plan charges from the grid: its grid-charge slots' battery power beyond the sun's surplus is not
-    split here, the whole of a grid-charge slot counts (the same measure for the capped and the uncapped plan)."""
+    """The energy (kWh) a plan charges in its grid-charge slots, the sun's part of it included (the same measure for
+    the capped and the uncapped plan, so their difference is what the cap held back)."""
     return sum(max(0.0, d.battery_kw) * (d.end - d.start).total_seconds() / 3600.0 for d in decisions
                if d.action == ACTION_GRID_CHARGE)
 
@@ -1255,7 +1255,7 @@ class BatteryPlanShadow:
 
     def _grid_cap_key(self, now: datetime) -> float | None:
         """The grid charge cap as the plan's trigger sees it, in steps (`GRID_CAP_STEP_KW`). A cap that falls, or that
-        crosses 0 or no cap, makes a new plan at once (the plan in force charges more than control now allows); a
+        reaches 0 or goes from no cap to a number, makes a new plan at once (the plan in force charges more than control now allows); a
         rise only counts after `GRID_CAP_RISE_S`, so the load-balancing steps of a charging car do not plan again
         every minute (the plan is on the safe side meanwhile)."""
         cap = self._grid_cap(now)[0]
@@ -1268,8 +1268,8 @@ class BatteryPlanShadow:
         if key == before:
             return key
         low, high = (math.inf if before is None else before), (math.inf if key is None else key)
-        edge = key is None or before is None or key == 0 or before == 0
-        if high < low or edge or (now - since).total_seconds() >= GRID_CAP_RISE_S:
+        # Tightening is at once: a fall, to 0, or from no cap to a number. Loosening waits like any rise.
+        if high < low or (now - since).total_seconds() >= GRID_CAP_RISE_S:
             self._cap_seen = (key, now)
             return key
         return before

@@ -231,8 +231,10 @@ class PlanSlot:
     battery plan never moves it), `solar_kw` the mean production. `buy` is the import price with every fee SpotNav
     adds, `sell` what an exported kWh earns. `import_cap_kw` (the fuse less its margin, or the import target) and
     `export_cap_kw` bound the grid; `None` is no bound. `grid_charge_cap_kw` is the most the battery may be charged
-    from the grid (the HA-down cap control obeys, `gate.grid_charge_cap_kw`): the sun's surplus is charged on top of
-    it, never held back; `None` is no bound (the plant's own import limit guards the fuse), 0 no grid charge.
+    from the grid (the HA-down cap control obeys, `gate.grid_charge_cap_kw`), as the battery's total charge power as
+    control commands it (the sun's surplus included): a cap not above the surplus leaves the surplus alone, which is a
+    hold. The sun's own charge is never held back. `None` is no bound (the plant's own import limit guards the fuse),
+    0 no grid charge.
 
     `soft_cap_kw` and `peak_price` are the hour's soft ceiling under a demand charge (`planning/demand_cost.py`): a
     day's highest import above `soft_cap_kw` costs `peak_price` (minor per kW above it) on top of the energy, once a

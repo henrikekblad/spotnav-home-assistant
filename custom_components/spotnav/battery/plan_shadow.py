@@ -530,7 +530,8 @@ def explain(plan: BatteryPlan, slots: Sequence[PlanSlot]) -> list[list[dict[str,
         if (
             decision.action == ACTION_GRID_CHARGE
             and slot.grid_charge_cap_kw is not None
-            and decision.battery_kw >= max(0.0, -slot.net_kw) + slot.grid_charge_cap_kw - IDLE_KW / 10
+            and slot.grid_charge_cap_kw > max(0.0, -slot.net_kw) + IDLE_KW / 10
+            and decision.battery_kw >= slot.grid_charge_cap_kw - IDLE_KW / 10
             and slot.grid_charge_cap_kw < battery.max_charge_kw - IDLE_KW / 10
         ):
             # Charged as much from the grid as the fuse allows (what control would run), not as much as it wanted.

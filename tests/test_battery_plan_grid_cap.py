@@ -274,7 +274,8 @@ def _control(cap: float | None, *, caps: Any = None, per_phase_only: bool = Fals
 def test_the_plans_cap_is_zero_where_control_runs_no_grid_charge(kwargs: dict[str, Any], expected: float | None) -> None:
     cap, rule = BatteryControl.plan_grid_charge_cap(_control(**kwargs), NOW)  # type: ignore[arg-type]
 
-    assert cap == expected and rule == "learned"
+    assert cap == expected
+    assert rule == ("no_grid_charge" if expected == 0.0 else "learned")
 
 
 # ---- when a changed cap plans again ----------------------------------------------------------------------------------
@@ -297,9 +298,29 @@ def test_a_falling_cap_plans_again_at_once_and_a_rise_waits_a_quarter_of_an_hour
     assert _keyed((3.0, 0), (2.0, 1), (2.5, 2), (3.0, 3), (3.0, 20)) == [3.0, 2.0, 2.0, 2.0, 3.0]
 
 
-def test_a_cap_crossing_zero_or_no_cap_plans_again_at_once() -> None:
-    assert _keyed((0.0, 0), (2.0, 1), (0.0, 2), (None, 3), (2.0, 4)) == [0.0, 2.0, 0.0, None, 2.0]
+def test_only_a_tightening_cap_plans_again_at_once() -> None:
+    # To 0 and from no cap to a number are tightening (at once); 0 to a number and a number to no cap are loosening.
+    assert _keyed((None, 0), (2.0, 1), (0.0, 2), (2.0, 3), (None, 4), (None, 30)) == [None, 2.0, 0.0, 0.0, 0.0, None]
 
 
 def test_a_cap_within_the_same_step_is_the_same_key() -> None:
     assert _keyed((3.1, 0), (3.4, 1), (3.0, 2)) == [3.0, 3.0, 3.0]
+
+
+def test_a_kept_grid_charge_the_cap_leaves_nothing_of_is_a_hold() -> None:
+    from custom_components.spotnav.battery.plan_model import ACTION_HOLD
+
+    for cap, label in ((0.0, ACTION_HOLD), (3.0, ACTION_GRID_CHARGE)):
+        slots, _ = build_slots(MIDNIGHT, _prices(), _house(), None, [], None, TZ, grid_charge_cap_kw=cap)
+        request = PlanRequest(slots=slots, battery=BATTERY, soc_now_pct=10, end_value=0)
+        result = plan_battery(request, keep=(ACTION_GRID_CHARGE, 4.0), keep_min_gain=1e9)
+        assert result.kept is True
+        assert result.plan.decisions[0].action == label
+        assert result.plan.decisions[0].battery_kw == pytest.approx(0.0 if cap == 0.0 else 3.0)
+
+
+def test_the_capped_reason_needs_a_cap_above_the_surplus() -> None:
+    slots, result = _plan(2.0)
+    assert any(r["code"] == REASON_GRID_CHARGE_CAPPED for slot in explain(result, slots) for r in slot)
+    slots, result = _plan(0.0)
+    assert not any(r["code"] == REASON_GRID_CHARGE_CAPPED for slot in explain(result, slots) for r in slot)

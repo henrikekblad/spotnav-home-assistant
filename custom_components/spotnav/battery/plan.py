@@ -254,6 +254,18 @@ def _apply(
     return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
 
 
+def _kept_action(slot: PlanSlot, action: str, power: float) -> str:
+    """The action a kept first slot runs: a grid charge the slot's grid charge cap leaves nothing of (its power is the
+    sun's surplus alone) is a hold, as control would run it."""
+    if (
+        action == ACTION_GRID_CHARGE
+        and slot.grid_charge_cap_kw is not None
+        and power <= max(0.0, -slot.net_kw) + _SAME_KW
+    ):
+        return ACTION_HOLD
+    return action
+
+
 def run_slot(
     slot: PlanSlot, battery: BatteryParams, soc_kwh: float, action: str, power_kw: float, cycle_cost: float = 0.0
 ) -> SlotDecision:
@@ -425,6 +437,7 @@ def _forward(
         if index == 0 and first is not None:
             action, charge_kw = first
             power = action_power(slot, battery, soc, action, charge_kw)
+            action = _kept_action(slot, action, power)
             outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
         else:
             reserve = None if reserves is None else reserves[index]
@@ -669,6 +682,7 @@ def _plan_peaks(
             if index == 0 and first is not None:
                 action, charge_kw = first
                 power = action_power(slot, battery, soc, action, charge_kw)
+                action = _kept_action(slot, action, power)
                 outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
                 charge, _new = _raise(slot, peak, outcome.grid_kw)
                 outcome = outcome._replace(peak=charge)

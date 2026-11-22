@@ -1094,12 +1094,13 @@ async def test_the_plan_takes_the_cap_a_real_control_obeys_without_touching_the_
     now = dt_util.now()
     control = controller.battery_control
     options = control.options()
-    if control.executor is not None:
-        def _no_use_phases(*_args: Any, **_kwargs: Any) -> None:
-            raise AssertionError("the planner must not change the executor")
+    assert control.executor is not None, "the guard below needs the executor"
 
-        monkeypatch.setattr(control.executor, "use_phases", _no_use_phases)
-    phased = control.executor is not None and control.executor.control.phased
+    def _no_use_phases(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("the planner must not change the executor")
+
+    monkeypatch.setattr(control.executor, "use_phases", _no_use_phases)
+    phased = control.executor.control.phased
     expected, _caps = control._charge_limits(now, options, phased=phased)
     if expected is not None and expected < gate.MIN_RATE_KW:
         expected = 0.0
@@ -1140,3 +1141,16 @@ async def test_a_plan_is_made_under_the_cap_and_a_changed_cap_changes_the_trigge
     await shadow.async_plan(now, TRIGGER_INPUTS)
     assert seen == [2.0, 0.0] and shadow.grid_cap["rule"] == "conservative"
     assert shadow.inputs["grid_charge_cap"] == shadow.grid_cap
+
+
+async def test_the_get_plan_answer_has_the_battery_lane_and_what_the_cap_held_back(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.api.plan import _battery
+
+    _entry, controller = await _site(hass)
+    controller.battery_shadow.tick(dt_util.now())
+    await hass.async_block_till_done()
+    lane = _battery(controller)
+    assert lane is not None and lane.id == controller.battery_shadow.facts.battery_entity_id
+    assert lane.grid_held_kwh is None
+    controller.battery_shadow.plan.grid_cap = {"cap_kw": 0.0, "rule": "conservative", "held_kwh": 1.5, "held_from": None}
+    assert _battery(controller).grid_held_kwh == 1.5
