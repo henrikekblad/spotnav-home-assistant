@@ -260,7 +260,8 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
     case "waterHeater":
       return pick(
         t("heat.settings.waterHeater"),
-        [none, ...choices.water_heater.map(option)],
+        // One switch is never both: the hot-water boost's pulse would switch a water heater off.
+        [none, ...choices.water_heater.filter((choice) => choice.entity_id !== config.hot_water_entity).map(option)],
         config.water_heater?.entity_id ?? null,
         (value) => input.write({ water_heater: value === null ? null : { entity_id: value } }),
         t("heat.settings.waterHeaterHelp"),
@@ -279,7 +280,13 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       );
     }
     case "hotWater":
-      return pick(t("heat.settings.hotWater"), [none, ...choices.hot_water.map(option)], config.hot_water_entity, (value) => input.write({ hot_water_entity: value }), t("heat.settings.hotWaterHelp"));
+      return pick(
+        t("heat.settings.hotWater"),
+        [none, ...choices.hot_water.filter((choice) => choice.entity_id !== config.water_heater?.entity_id).map(option)],
+        config.hot_water_entity,
+        (value) => input.write({ hot_water_entity: value }),
+        t("heat.settings.hotWaterHelp"),
+      );
     case "zones": {
       const kindWord = (kind: string | undefined): string => t(kind === "air" ? "heat.zone.air" : "heat.zone.floor");
       return {
