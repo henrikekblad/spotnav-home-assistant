@@ -37,6 +37,10 @@ class Entry:
     #: `None` while the read-back is pending, then whether the write was seen.
     read_back: bool | None = None
     ended: datetime | None = None
+    #: A pulse's switch read off just before SpotNav turned it on: only then may SpotNav turn it off again after the
+    #: pulse (`HotWater._pulse_left_on`, `HotWater.async_start`). An entry kept before this was known reads `False`:
+    #: a switch found on is a load SpotNav must never switch off.
+    found_off: bool = False
 
     def stored(self) -> dict[str, Any]:
         return {
@@ -46,6 +50,7 @@ class Entry:
             "source": self.source,
             "read_back": self.read_back,
             "ended": None if self.ended is None else self.ended.isoformat(),
+            "found_off": self.found_off,
         }
 
     @classmethod
@@ -63,6 +68,7 @@ class Entry:
                 source,
                 read_back if isinstance(read_back, bool) else None,
                 None if ended is None else datetime.fromisoformat(ended),
+                raw.get("found_off") is True,
             )
         except (AttributeError, KeyError, TypeError, ValueError):
             return None

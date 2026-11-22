@@ -117,6 +117,10 @@ SHUTDOWN_WAIT_S: Final = 10.0
 #: A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` is opened.
 PULSE_LEFT_ON: Final = timedelta(minutes=1)
 PULSE_WATCH: Final = timedelta(hours=2)
+#: ...and only when its "on" began this soon after the pulse: a switch turned on by hand later is left alone.
+PULSE_LANDED: Final = timedelta(minutes=10)
+#: The ledger's value for a pulse SpotNav did not send: its switch did not read off before it.
+NOT_WRITTEN: Final = "not_written"
 
 
 def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date, key: str = "live") -> float:
@@ -279,7 +283,8 @@ class HotWater:
 
     async def async_start(self) -> None:
         """At the start: a pulse switch SpotNav has pulsed that reads on was left on (Home Assistant stopped within
-        the pulse): opened, so the pump's hot-water input is never held."""
+        the pulse): opened, so the pump's hot-water input is never held. Only when SpotNav's last pulse on it found it
+        off (`Entry.found_off`): a switch that was on before is a load, never SpotNav's to turn off."""
         try:
             route = self.route()
             if route is None or route.kind != "pulse" or route.domain not in ("switch", "input_boolean"):
@@ -287,7 +292,8 @@ class HotWater:
             state = self.hass.states.get(route.entity_id)
             if state is None or state.state != "on":
                 return
-            if not any(entry.entity_id == route.entity_id for entry in self.ledger.entries):
+            last = self._last_pulse(route)
+            if last is None or not last.found_off:
                 return
             _LOGGER.info("SpotNav hot water: %s was left on after a pulse; turning it off", route.entity_id)
             await _async_service(self.hass, route.domain, "turn_off", {"entity_id": route.entity_id})
@@ -933,20 +939,30 @@ class HotWater:
     def _pulse_left_on(self, now: datetime, config: HeatConfig) -> None:
         """A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` (a turn-on
         that landed after it was given up on, an off that failed): opened, at each look until it reads off, so the
-        pump's hot-water input is never held (`async_start` does the same at the start)."""
+        pump's hot-water input is never held (`async_start` does the same at the start). Only a switch SpotNav's own
+        pulse turned on from off (`Entry.found_off`), whose "on" began within `PULSE_LANDED` of that pulse: a switch
+        found on, or turned on by hand later, may power a load (a water heater picked here by mistake) and is never
+        turned off."""
         route = self.route(config)
         if route is None or route.kind != "pulse" or route.domain not in ("switch", "input_boolean"):
             return
         state = self.hass.states.get(route.entity_id)
         if state is None or state.state != "on" or now - state.last_changed < PULSE_LEFT_ON:
             return
-        last = next((entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id), None)
-        if last is None or now - last.at > PULSE_WATCH:
+        last = self._last_pulse(route)
+        if last is None or not last.found_off or now - last.at > PULSE_WATCH or state.last_changed - last.at > PULSE_LANDED:
             return
         _LOGGER.info("SpotNav hot water: %s still on after a pulse; turning it off", route.entity_id)
         call = (route.domain, "turn_off", {"entity_id": route.entity_id})
         self._side = self.hass.async_create_background_task(
             self._async_call_quietly(call), f"spotnav hot water pulse off {self.shadow.site.entry_id}"
+        )
+
+    def _last_pulse(self, route: Route) -> Entry | None:
+        """The last pulse actually sent on the route (a pulse not written, `NOT_WRITTEN`, changed nothing)."""
+        return next(
+            (entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id and entry.value != NOT_WRITTEN),
+            None,
         )
 
     async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> bool:
@@ -1259,12 +1275,28 @@ class HotWater:
         """Start the boost through the route, kept in the ledger first; whether it was read back (`None`: a pulse,
         read back later by the meter)."""
         call = start_call(route, self._options(route))
-        entry = self.ledger.add(Entry(route.entity_id, "start" if call is None else str(call[2].get("option", call[2].get("value", call[1]))), now, source))
+        pulse = call is not None and route.kind == "pulse" and call[0] in ("switch", "input_boolean")
+        found = self.hass.states.get(route.entity_id) if pulse else None
+        found_off = found is not None and found.state == "off"
+        if pulse and not found_off:
+            # A pulse is on, then off. A pulse switch that does not read off is no idle pulse input: a run is already
+            # asked for (held by hand or by the pump's own logic), or it powers a load (a water heater's contactor
+            # picked as the hot-water input). Nothing is written, so the pulse's off can never switch a load off.
+            # Kept as a write not taken: the button shows failed, a planned boost is tried once more, then the day
+            # ends (`_planned_outcome`), as for any start that does not come through.
+            _LOGGER.warning(
+                "SpotNav hot water: %s reads %s, not off; no pulse sent (a pulse input is off between runs)",
+                route.entity_id, None if found is None else found.state,
+            )
+            self.ledger.add(Entry(route.entity_id, NOT_WRITTEN, now, source, read_back=False))
+            return False
+        entry = self.ledger.add(
+            Entry(route.entity_id, "start" if call is None else str(call[2].get("option", call[2].get("value", call[1]))), now, source, found_off=found_off)
+        )
         if call is None:
             self.ledger.update(entry, read_back=False)
             return False
         domain, service, data = call
-        pulse = route.kind == "pulse" and domain in ("switch", "input_boolean")
         try:
             try:
                 await _async_service(self.hass, domain, service, data)
