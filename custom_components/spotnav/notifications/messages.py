@@ -169,11 +169,19 @@ def does_not_fit_text(
 
 
 def does_not_fit_choice_text(
-    language: str, code: str, *, kwh: float | None = None, peak_kw: float | None = None, cost: Money | None = None
+    language: str,
+    code: str,
+    *,
+    kwh: float | None = None,
+    peak_kw: float | None = None,
+    cost: Money | None = None,
+    time: str | None = None,
 ) -> str:
-    """A "does not fit" choice's button, as the card words it: "Take what fits (≈ 12 kWh)", "Allow the peak (≈ 12 kW,
-    ≈ 105 kr)" (whole kWh, kW and money; a figure not known is left out)."""
+    """A "does not fit" choice's button, as the card words it: "Take what fits (≈ 12 kWh)", "Later departure
+    (14:00)", "Allow the peak (≈ 12 kW, ≈ 105 kr)" (whole kWh, kW and money; a figure not known is left out)."""
     text = table(language, NAMESPACE)
+    if code == "later":
+        return text["does_not_fit.later"].format(time=time or "")
     if code == "takes_what_fits":
         if kwh is None:
             return text["does_not_fit.take"]

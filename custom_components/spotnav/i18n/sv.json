@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "Bilen blir inte klar till avresan under månadens topp på {target} kW (effektmål {set} kW) – {kwh} kWh saknas.",
     "does_not_fit.take": "Ta det som ryms",
     "does_not_fit.take.kwh": "Ta det som ryms (≈ {kwh} kWh)",
+    "does_not_fit.later": "Senare avresa ({time})",
     "does_not_fit.peak": "Tillåt toppen",
     "does_not_fit.peak.kw": "Tillåt toppen (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Tillåt toppen (≈ {kw} kW, ≈ {cost})"

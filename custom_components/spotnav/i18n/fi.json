@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "Auto ei ole valmis lähtöön kuukauden {target} kW:n huipulla (tehotavoite {set} kW) – {kwh} kWh puuttuu.",
     "does_not_fit.take": "Ota mikä mahtuu",
     "does_not_fit.take.kwh": "Ota mikä mahtuu (≈ {kwh} kWh)",
+    "does_not_fit.later": "Myöhempi lähtö ({time})",
     "does_not_fit.peak": "Salli huippu",
     "does_not_fit.peak.kw": "Salli huippu (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Salli huippu (≈ {kw} kW, ≈ {cost})"

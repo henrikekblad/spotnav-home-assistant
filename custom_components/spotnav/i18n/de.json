@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "Das Auto wird unter der Spitze des Monats von {target} kW (Bezugsziel {set} kW) bis zur Abfahrt nicht fertig – es fehlen {kwh} kWh.",
     "does_not_fit.take": "Nehmen, was passt",
     "does_not_fit.take.kwh": "Nehmen, was passt (≈ {kwh} kWh)",
+    "does_not_fit.later": "Spätere Abfahrt ({time})",
     "does_not_fit.peak": "Spitze zulassen",
     "does_not_fit.peak.kw": "Spitze zulassen (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Spitze zulassen (≈ {kw} kW, ≈ {cost})"

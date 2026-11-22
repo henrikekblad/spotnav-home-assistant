@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "Bilen bliver ikke klar til afgangen under månedens top på {target} kW (effektmål {set} kW) – der mangler {kwh} kWh.",
     "does_not_fit.take": "Tag det, der kan nås",
     "does_not_fit.take.kwh": "Tag det, der kan nås (≈ {kwh} kWh)",
+    "does_not_fit.later": "Senere afgang ({time})",
     "does_not_fit.peak": "Tillad toppen",
     "does_not_fit.peak.kw": "Tillad toppen (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Tillad toppen (≈ {kw} kW, ≈ {cost})"

@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "De auto is niet klaar voor vertrek onder de piek van de maand van {target} kW (afnamedoel {set} kW) – er ontbreekt {kwh} kWh.",
     "does_not_fit.take": "Neem wat past",
     "does_not_fit.take.kwh": "Neem wat past (≈ {kwh} kWh)",
+    "does_not_fit.later": "Later vertrek ({time})",
     "does_not_fit.peak": "Piek toestaan",
     "does_not_fit.peak.kw": "Piek toestaan (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Piek toestaan (≈ {kw} kW, ≈ {cost})"

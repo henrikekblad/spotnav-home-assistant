@@ -67,9 +67,11 @@ block of `site/does_not_fit.py` from the site on each recompute) is told as `pla
 its place: the same tag, so it replaces one told before, and no `plan_at_risk` while it is on the phones or waits for
 the morning. It says which ceiling and what is short ("The car will not be ready by 07:00 under the 6.0 kW import
 target – 4 kWh short.", or "under the month's peak of 7.5 kW (import target 6.0 kW)") and carries the person's choices for this departure as buttons: "Take what fits (≈ 12 kWh)"
-(`SiteCapacityController.async_take_what_fits`) and "Allow the peak (≈ 12 kW, ≈ 105 kr)" (the one-period release,
-`SiteCapacityController.async_release_import_target`). "Later departure" has no button: it is the departure's editor,
-which a tap on the notice opens with the dashboard. A press is the person's choice; one for a departure that is no
+(`SiteCapacityController.async_take_what_fits`), "Later departure (14:00)" where a later whole hour fits under the
+same ceiling within the prices held (`SiteCapacityController.async_later_departure`: this departure alone moved to
+the time told; without one there is no button, the departure's editor is the way, which a tap on the notice opens
+with the dashboard) and "Allow the peak (≈ 12 kW, ≈ 105 kr)" (the one-period release,
+`SiteCapacityController.async_release_import_target`). A press is the person's choice; one for a departure that is no
 longer the plan's is refused.
 
 * **Once per departure**, never again for it (also not when it grows, comes back or Home Assistant restarts: the
@@ -120,7 +122,7 @@ from ..execution.charger_events import (
 from ..execution.controller import ChargingController
 from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
-from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_TAKES_WHAT_FITS
+from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_LATER, CHOICE_TAKES_WHAT_FITS
 from ..sessions.store import SessionStore
 from ..vehicles.guest import is_guest
 from ..const import DOMAIN
@@ -146,6 +148,9 @@ REPEAT_S: Final = 15 * 60.0
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
 #: The action id prefix of the "does not fit" notice's "Take what fits" button (for this departure only).
 TAKE_WHAT_FITS_ACTION: Final = "SPOTNAV_TAKE_WHAT_FITS_"
+#: The action id prefix of the "does not fit" notice's "Later departure (14:00)" button (this departure moved to the
+#: time told, for this departure only): `<prefix><charger>_<departure epoch>_<later epoch>`.
+LATER_DEPARTURE_ACTION: Final = "SPOTNAV_LATER_DEPARTURE_"
 #: No "does not fit" notice is sent from this local time ...
 QUIET_FROM: Final = time(22, 0)
 #: ... to this one: one that arises in the night is told at this time, if it still stands and its departure is later.
@@ -1002,22 +1007,37 @@ class ChargerNotifier:
         # The departure it was told for rides with the press: one for a departure no longer the plan's is refused.
         stamp = _epoch(departure)
         prefixes = {CHOICE_TAKES_WHAT_FITS: TAKE_WHAT_FITS_ACTION, CHOICE_ACCEPT_PEAK: TARGET_RELEASE_ACTION}
-        actions = [
-            {
-                "action": f"{prefixes[choice['code']]}{self._entry_id}_{stamp}",
-                "title": does_not_fit_choice_text(
-                    language,
-                    choice["code"],
-                    kwh=choice.get("kwh"),
-                    peak_kw=choice.get("peak_kw"),
-                    cost=None
-                    if choice.get("cost") is None or currency is None
-                    else Money(int(round(choice["cost"])), currency),
-                ),
-            }
-            for choice in block.get("choices") or []
-            if choice.get("code") in prefixes
-        ]
+        actions = []
+        for choice in block.get("choices") or []:
+            code = choice.get("code")
+            if code == CHOICE_LATER:
+                # Only with the time it moves to: without one the departure's editor is the way, which a tap opens.
+                later = _instant(choice.get("departure"))
+                if later is None:
+                    continue
+                actions.append(
+                    {
+                        "action": f"{LATER_DEPARTURE_ACTION}{self._entry_id}_{stamp}_{_epoch(later)}",
+                        "title": does_not_fit_choice_text(language, code, time=_local_time(later)),
+                    }
+                )
+                continue
+            if code not in prefixes:
+                continue
+            actions.append(
+                {
+                    "action": f"{prefixes[code]}{self._entry_id}_{stamp}",
+                    "title": does_not_fit_choice_text(
+                        language,
+                        code,
+                        kwh=choice.get("kwh"),
+                        peak_kw=choice.get("peak_kw"),
+                        cost=None
+                        if choice.get("cost") is None or currency is None
+                        else Money(int(round(choice["cost"])), currency),
+                    ),
+                }
+            )
         url = notifications.url or DEFAULT_URL
         payload = {
             "title": title,
@@ -1063,20 +1083,22 @@ class ChargerNotifier:
     @callback
     def _on_action(self, event: Any) -> None:
         """A phone's button on the "does not fit" notice: "Allow the peak" sets the import target aside for this
-        charge until its departure, "Take what fits" holds that departure under it; either for the departure told."""
+        charge until its departure, "Take what fits" holds that departure under it, "Later departure (14:00)" moves
+        it to the time told; each for the departure told."""
         action = event.data.get("action")
         if not isinstance(action, str):
             return
         prefixes = {
             f"{TARGET_RELEASE_ACTION}{self._entry_id}_": CHOICE_ACCEPT_PEAK,
             f"{TAKE_WHAT_FITS_ACTION}{self._entry_id}_": CHOICE_TAKES_WHAT_FITS,
+            f"{LATER_DEPARTURE_ACTION}{self._entry_id}_": CHOICE_LATER,
         }
         prefix = next((prefix for prefix in prefixes if action.startswith(prefix)), None)
         if prefix is None:
             return
         choice = prefixes[prefix]
-        stamp = action.removeprefix(prefix)
-        if not stamp.isdigit():
+        stamps = action.removeprefix(prefix).split("_")
+        if len(stamps) != (2 if choice == CHOICE_LATER else 1) or not all(stamp.isdigit() for stamp in stamps):
             return
         from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
 
@@ -1084,9 +1106,11 @@ class ChargerNotifier:
         if site is None:
             return
         if choice == CHOICE_ACCEPT_PEAK:
-            site.async_release_import_target(self._entry_id, for_departure=int(stamp), source="phone")
+            site.async_release_import_target(self._entry_id, for_departure=int(stamps[0]), source="phone")
+        elif choice == CHOICE_LATER:
+            site.async_later_departure(self._entry_id, for_departure=int(stamps[0]), to=int(stamps[1]), source="phone")
         else:
-            site.async_take_what_fits(self._entry_id, for_departure=int(stamp), source="phone")
+            site.async_take_what_fits(self._entry_id, for_departure=int(stamps[0]), source="phone")
 
     # ------------------------------------------------------------------ which car is plugged in?
 

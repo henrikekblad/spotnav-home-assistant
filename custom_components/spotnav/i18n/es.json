@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "El coche no estará listo para la salida con el pico del mes de {target} kW (objetivo de consumo {set} kW): faltan {kwh} kWh.",
     "does_not_fit.take": "Cargar lo que cabe",
     "does_not_fit.take.kwh": "Cargar lo que cabe (≈ {kwh} kWh)",
+    "does_not_fit.later": "Salida más tarde ({time})",
     "does_not_fit.peak": "Permitir el pico",
     "does_not_fit.peak.kw": "Permitir el pico (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Permitir el pico (≈ {kw} kW, ≈ {cost})"

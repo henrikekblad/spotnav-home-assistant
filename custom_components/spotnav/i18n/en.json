@@ -39,6 +39,7 @@
     "import_target.at_risk.peak": "The car will not be ready by the departure under the month's peak of {target} kW (import target {set} kW) – {kwh} kWh short.",
     "does_not_fit.take": "Take what fits",
     "does_not_fit.take.kwh": "Take what fits (≈ {kwh} kWh)",
+    "does_not_fit.later": "Later departure ({time})",
     "does_not_fit.peak": "Allow the peak",
     "does_not_fit.peak.kw": "Allow the peak (≈ {kw} kW)",
     "does_not_fit.peak.cost": "Allow the peak (≈ {kw} kW, ≈ {cost})"
