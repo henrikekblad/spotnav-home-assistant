@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.spotnav import time_zones
+from custom_components.spotnav.const import CONF_HEAT
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
@@ -398,6 +399,40 @@ async def test_a_heat_pumps_outdoor_sensor_is_preferred_over_the_weather_and_sho
     hass.states.async_set("sensor.current_outd_temp_bt1", "unavailable")
     assert forecast.outdoor_c() == 4.0
     assert forecast.diagnostics()["outdoor"]["source"] == OUTDOOR_WEATHER
+
+
+async def test_the_heat_settings_outdoor_sensor_comes_before_the_one_found(hass: HomeAssistant, freezer) -> None:
+    """A sensor chosen in the heat settings is read first (an air-to-air pump's outdoor unit is no outdoor sensor for
+    the house); one that does not read falls back to the found sensor, then the weather entity."""
+    weather(hass, 4.0)
+    er.async_get(hass).async_get_or_create("sensor", "melcloud", "abc-outside_temperature", suggested_object_id="ac_outside")
+    hass.states.async_set("sensor.ac_outside", "12.0", {"unit_of_measurement": "°C"})
+    hass.states.async_set("sensor.ute_klimat_temperature", "1.5", {"unit_of_measurement": "°C"})
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    forecast = controller.house_forecast
+    assert forecast.outdoor_c() == 12.0  # no heat setting: the found sensor, as before
+
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_HEAT: {"outdoor_sensor": "sensor.ute_klimat_temperature"}}
+    )
+    assert forecast.outdoor_c() == 1.5
+    assert forecast.outdoor_entity_id == "sensor.ute_klimat_temperature"
+    assert forecast.history_marker() == "sensor:sensor.ute_klimat_temperature"
+
+    hass.states.async_set("sensor.ute_klimat_temperature", "unavailable")
+    assert forecast.outdoor_c() == 12.0
+    assert forecast.outdoor_entity_id == "sensor.ac_outside"
+    hass.states.async_set("sensor.ac_outside", "unavailable")
+    assert forecast.outdoor_c() == 4.0
+    assert forecast.outdoor_source == OUTDOOR_WEATHER
+
+    # A weather entity chosen in the heat settings is read as a weather entity.
+    hass.states.async_set("weather.smhi_home", "cloudy", {"temperature": -2.0, "temperature_unit": "°C"})
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_HEAT: {"outdoor_sensor": "weather.smhi_home"}})
+    assert forecast.outdoor_c() == -2.0
+    assert forecast.outdoor_source == OUTDOOR_WEATHER
+    assert forecast.history_marker() == "weather:weather.smhi_home"
 
 
 async def test_the_forecast_temperatures_are_moved_onto_the_heat_pump_sensors_scale(hass: HomeAssistant, freezer) -> None:

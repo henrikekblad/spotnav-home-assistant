@@ -831,6 +831,7 @@ class SiteCapacityController:
             heat_setting=self._heat_meter_setting,
             heat_zones=self._heat_zones,
             heat_moved=self._heat_moved_meters,
+            outdoor_setting=self._heat_outdoor_sensor,
         )
         # A broken statistic hour of a heat zone stays out of the heat split's learning.
         self.house_forecast.heat.cap_kw = self._main_fuse_kw
@@ -5639,6 +5640,13 @@ class SiteCapacityController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         raw = None if entry is None else entry.data.get(CONF_HEAT)
         return tuple(zone.entity_id for zone in read_heat_config(raw).zones)
+
+    def _heat_outdoor_sensor(self) -> str | None:
+        """The outdoor sensor chosen in the heat settings (`heat/config.py`; `None`: the house forecast's own), read
+        from the entry: it is written without a reload."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        raw = None if entry is None else entry.data.get(CONF_HEAT)
+        return read_heat_config(raw).outdoor_sensor
 
     def _heat_moved_meters(self) -> tuple[str, ...]:
         """The Energy dashboard devices the household moved to heat in the house pie (`CONF_METER_BELONGS`)."""
