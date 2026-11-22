@@ -4,6 +4,10 @@
 site controller it belongs to (`SiteCapacityController._hold_to_import_target`). It keeps no state of its own: what it
 works out (the hour's budget, the shares, the chargers it lowered, paused or locked, the risks and set-asides) is kept
 on the site controller, which the diagnostics, the status and the plans read.
+
+Each pass also runs the site's shed order on the same projection (`site/shed_order.py`, `_shed`): the water heater
+before the car and heat after it. What the water heater is about to give is counted ahead in the cars' budget
+(`ShedOrder.credit_w`), never above the fuse's ceiling; without a budget every step is put back.
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
+import logging
 import math
 from typing import Any
 
@@ -39,6 +44,7 @@ from .import_target import (
     TargetMember,
 )
 from .regulator import RegulatorDecision
+from .shed_order import combine, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
 from .site_capacity import allocation_order, ChargerRequest, PhaseName, PHASES
 from .site_capacity_controller import (
     _current_write_lock,
@@ -57,6 +63,8 @@ from .site_capacity_controller import (
     TARGET_STATE_OFF,
     TargetRisk,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ImportTargetHold:
@@ -110,6 +118,7 @@ class ImportTargetHold:
                 self._site._target_released.clear()
                 self._site._save_released()
             self._site._target_last_cap.clear()
+            self._shed(dt_util.utcnow(), None, [])
             return decisions
         now = dt_util.utcnow()
         # The target lifted to the month's free level where a demand-charge part counts the running hour: only ever
@@ -122,11 +131,13 @@ class ImportTargetHold:
             self._site._note_target_state(TARGET_NOT_APPLIED_OUTSIDE_LEVEL)
             self._site._target_risk = {}
             self._site._tell_target_risk()
+            self._shed(now, None, [])
             return decisions
         budget, reason = self._import_target_budget(self._site._target_effective.kw, now)
         self._site._target_not_applied = reason
         self._site._note_target_state(TARGET_STATE_APPLIED if reason is None else reason)
         if budget is None:
+            self._shed(now, None, [])
             return decisions
         self._site._target_budget = budget
         # A pause and a held current hold to the end of their hour only.
@@ -198,6 +209,13 @@ class ImportTargetHold:
                 self._target_member(request, decisions.get(request.charger_entry_id), budget, released)
                 for request in ordered
             ]
+            shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
+        credit_w = self._shed(now, budget, members)
+        if credit_w > 0:
+            # The water heater's pause counted ahead: the cars take only what remains after it (`site/shed_order.py`).
+            ceiling_w = max(0.0, self._site._import_ceiling_w())
+            budget = replace(budget, allowed_w=min(max(0.0, budget.rate_w - budget.house_w + credit_w), ceiling_w))
+            self._site._target_budget = budget
             shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
         self._site._target_shares = shares
         self._site._target_write_wait = {member.charger_entry_id: member.write_wait_s for member in members}
@@ -306,6 +324,48 @@ class ImportTargetHold:
                     # Lowered, but not as far as its share: the floor stopped it (`floor_limited`).
                     self._site._target_floor_limited.add(charger_entry_id)
         return held
+
+    def _shed(self, now: datetime, budget: HourBudget | None, members: Sequence[TargetMember]) -> float:
+        """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held, every
+        step put back. The water heater's give counted ahead for the cars (W). A failure puts every step back and
+        counts nothing: the hold goes on as without it."""
+        order: ShedOrder = self._site.shed_order
+        before = {load: step.live for load, step in order.steps.items()}
+        try:
+            if budget is None:
+                order.update(now, None, {})
+                credit_w = 0.0
+            else:
+                credit_w = order.update(now, _projection(budget, members), self._offers())
+        except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
+            if not getattr(self, "_shed_failed_logged", False):
+                self._shed_failed_logged = True
+                _LOGGER.exception("SpotNav site %s: the shed order failed; every step is put back", self._site.entry_id)
+            order.clear(now, "error")
+            credit_w = 0.0
+        after = {load: step.live for load, step in order.steps.items()}
+        if before != after:
+            # A step taken or put back: the loads' controls look at once rather than at their next look.
+            for name in ("water_heater_control", "heat_control", "zones_control"):
+                part = getattr(self._site, name, None)
+                if part is not None:
+                    part.request_look()
+        return credit_w
+
+    def _offers(self) -> dict[str, Offer | None]:
+        """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`)."""
+        heater_control = getattr(self._site, "water_heater_control", None)
+        heat_control = getattr(self._site, "heat_control", None)
+        zones_control = getattr(self._site, "zones_control", None)
+        return {
+            LOAD_WATER_HEATER: None if heater_control is None else heater_control.shed_offer(),
+            LOAD_HEAT: combine(
+                [
+                    None if heat_control is None else heat_control.offer,
+                    *(() if zones_control is None else zones_control.offers.values()),
+                ]
+            ),
+        }
 
     def _effective_import_target(self, set_kw: float, now: datetime) -> EffectiveTarget:
         """The import target lifted to the month's free level for the running hour (`effective_target`), from the
@@ -564,3 +624,23 @@ class ImportTargetHold:
             battery_discharge_w=battery_discharge_w,
             fuse_margin_a={phase: result.measured_margin_a.get(phase) for phase in phases},
         )
+
+
+def _projection(budget: HourBudget, members: Sequence[TargetMember]) -> Projection:
+    """The hold's period as the shed order reads it: its budget, and what the cars want (`share_budget`'s members): the
+    ones it may hold at what they would draw (a charge paused for the rest of the period wants nothing in it), the
+    others at what they draw."""
+    held = sum(
+        member_w(member.phases, member.wants_a) for member in members if member.holdable and not member.paused_this_hour
+    )
+    unheld = sum(member_w(member.phases, member.wants_a) for member in members if not member.holdable)
+    return Projection(
+        period_start=budget.hour_start,
+        period_end=budget.hour_end,
+        period_s=budget.period_s,
+        remaining_s=budget.remaining_s,
+        rate_w=budget.rate_w,
+        house_w=budget.house_w,
+        cars_held_w=held,
+        cars_unheld_w=unheld,
+    )
