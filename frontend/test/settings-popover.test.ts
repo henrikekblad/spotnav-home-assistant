@@ -359,7 +359,7 @@ describe("the popover from the house card", () => {
     const order = [...support.children].map((child) =>
       (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
     );
-    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "download_debug", "p", "send_debug", "disconnect_phones"]);
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "download_debug", "p", "send_debug", "disconnect_phones", "sponsor", "p"]);
   });
 
   it("shows the battery's line, checklist and report, and turns the switch off", async () => {

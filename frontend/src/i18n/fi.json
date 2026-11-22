@@ -150,6 +150,8 @@
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "settings.about.open": "Tietoja kortista",
   "settings.docs": "Ohjeet",
+  "support.sponsor.label": "Tue SpotNav-projektia",
+  "support.sponsor.help": "SpotNav on ilmainen ja avointa lähdekoodia. Sen pitäminen toimivana uusien latureiden, akkujen ja Home Assistant -versioiden kanssa vie paljon aikaa ja resursseja. Jos SpotNav säästää rahojasi, tuki GitHub Sponsorsin kautta auttaa työtä jatkumaan.",
   "header.settings": "Asetukset",
   "header.history": "Lataushistoria",
   "history.title": "Lataushistoria",

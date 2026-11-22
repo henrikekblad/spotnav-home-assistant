@@ -150,6 +150,8 @@
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "settings.about.open": "Om kortet",
   "settings.docs": "Dokumentation",
+  "support.sponsor.label": "Stöd SpotNav-projektet",
+  "support.sponsor.help": "SpotNav är gratis och öppen källkod. Att hålla det igång med nya laddare, batterier och versioner av Home Assistant tar mycket tid och resurser. Om SpotNav sparar pengar åt dig hjälper ett bidrag via GitHub Sponsors arbetet att fortsätta.",
   "header.settings": "Inställningar",
   "header.history": "Laddhistorik",
   "history.title": "Laddhistorik",

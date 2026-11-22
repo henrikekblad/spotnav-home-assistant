@@ -150,6 +150,8 @@
   "issue.unknown": "The backend reported something this card does not know yet.",
   "settings.about.open": "About this card",
   "settings.docs": "Documentation",
+  "support.sponsor.label": "Support the SpotNav project",
+  "support.sponsor.help": "SpotNav is free and open source. Keeping it working with new chargers, batteries and Home Assistant releases takes a lot of time and resources. If SpotNav saves you money, a contribution through GitHub Sponsors helps the work continue.",
   "header.settings": "Settings",
   "header.history": "Charge history",
   "history.title": "Charge history",
