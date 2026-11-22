@@ -462,6 +462,21 @@ async def test_a_moment_out_of_completed_after_the_try_does_not_give_another(has
     assert commands.count("resume") == 2, f"the first window's start and one try: {commands}"
 
 
+async def test_a_try_that_did_not_go_out_is_not_spent(hass: HomeAssistant, freezer: Any) -> None:
+    """The second window's resume fails (the charger's service errs): the third window still tries."""
+    controller, _commands = await _completed_after_charging(hass, freezer, _windows((0, 30), (60, 90), (120, 150)))
+    attempts: list[str] = []
+
+    async def failing_once(call: ServiceCall) -> None:
+        attempts.append(call.data["action_command"])
+        if call.data["action_command"] == "resume" and attempts.count("resume") == 1:
+            raise HomeAssistantError("cloud error")
+
+    hass.services.async_register("easee", "action_command", failing_once)
+    await _walk(hass, freezer, 140 * 60, step=60)
+    assert attempts.count("resume") == 2, attempts
+
+
 async def test_a_stale_car_cloud_unplugged_does_not_spare_the_stop(hass: HomeAssistant, freezer: Any) -> None:
     """Only the charger's own "no vehicle" spares a new plan's stop: the car's plug sensor standing in for a charger
     that says nothing may be a stale cloud reading."""

@@ -1800,10 +1800,10 @@ class ChargingController:
         return not (level is not None and tried is not None and level <= tried - SOC_DROP_PCT)
 
     def _note_finished_try(self) -> None:
-        """A window's start goes out to a car that finished by itself: the one try for this plan."""
-        if self._car_finished():
-            self._finished_tried = self._finished_key()
-            self._finished_tried_soc = self._finished_soc()
+        """A window's start went out to a car that finished by itself (read before the start): the one try for this
+        plan."""
+        self._finished_tried = self._finished_key()
+        self._finished_tried_soc = self._finished_soc()
 
     def _observe_connection(self) -> None:
         """Notice a plug-in or an unplug: a change between two connection states the charger reported.
@@ -6075,9 +6075,11 @@ class ChargingController:
             outcome = CommandOutcome(False)
             # Armed before the command: a start that raises is decided again too.
             self._arm_start_retry()
-            self._note_finished_try()
+            finished = self._car_finished()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._core_start_outcome(executed)
+            if executed and finished:
+                self._note_finished_try()
             if not executed and not self._start_held_back and not self._charger_ready():
                 # Not sent: the charger's integration has not loaded. Decided again once it has.
                 self._owe("the window's start")
