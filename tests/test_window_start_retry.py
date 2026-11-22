@@ -477,6 +477,20 @@ async def test_a_try_that_did_not_go_out_is_not_spent(hass: HomeAssistant, freez
     assert attempts.count("resume") == 2, attempts
 
 
+async def test_the_same_departure_written_another_way_is_the_same_plan(hass: HomeAssistant) -> None:
+    from dataclasses import replace as dc_replace
+
+    controller = await _shaped_charger(hass, "easee")
+    await install_schedule(controller, _windows((60, 90)))
+    plan = controller.plan
+    controller.plan = dc_replace(plan, departure="2026-11-23T07:00:00+01:00")
+    first = controller._finished_key()  # noqa: SLF001
+    controller.plan = dc_replace(plan, departure="2026-11-23T06:00:00.000000+00:00")
+    assert controller._finished_key() == first  # noqa: SLF001
+    controller.plan = dc_replace(plan, departure="2026-11-23T07:00:00+00:00")
+    assert controller._finished_key() != first  # noqa: SLF001
+
+
 async def test_a_stale_car_cloud_unplugged_does_not_spare_the_stop(hass: HomeAssistant, freezer: Any) -> None:
     """Only the charger's own "no vehicle" spares a new plan's stop: the car's plug sensor standing in for a charger
     that says nothing may be a stale cloud reading."""

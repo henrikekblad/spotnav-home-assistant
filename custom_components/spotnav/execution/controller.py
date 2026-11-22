@@ -19,7 +19,7 @@ import math
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, AsyncContextManager, Final, Literal, Protocol, TYPE_CHECKING
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -1777,7 +1777,13 @@ class ChargingController:
         plan = self.plan
         if plan is None:
             return None
-        return (plan.vehicle_id, plan.target_soc_percent, plan.to_vehicle_limit, plan.departure)
+        departure = None
+        if plan.departure:
+            try:
+                departure = _parse_datetime(plan.departure).astimezone(UTC)
+            except ValueError:
+                departure = plan.departure
+        return (plan.vehicle_id, plan.target_soc_percent, plan.to_vehicle_limit, departure)
 
     def _finished_soc(self) -> float | None:
         plan = self.plan
