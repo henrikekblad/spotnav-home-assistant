@@ -236,3 +236,18 @@ def test_a_level_passed_inside_a_quarter_hour_ends_the_window_where_it_was_passe
 
     assert any(window.end.minute % 15 or window.end.second for window in learner.windows)
     assert all(window.efficiency == pytest.approx(0.84, abs=0.005) for window in learner.windows)
+
+
+def test_a_stored_point_or_window_without_an_offset_is_not_taken() -> None:
+    """The pre-release review (2026-11-22): a store edited by hand must never hand a naive datetime to code that
+    compares it with an aware one."""
+    from custom_components.spotnav.battery.round_trip import Point, Window
+
+    point = {"at": "2026-11-01T00:00:00", "soc": 50, "meter_in": 1.0, "meter_out": 1.0}
+    assert Point.from_dict(point) is None
+    assert Point.from_dict({**point, "at": "2026-11-01T00:00:00+00:00"}) is not None
+    window = {"start": "2026-11-01T00:00:00+00:00", "end": "2026-11-01T08:00:00", "charged_kwh": 10.0,
+              "discharged_kwh": 9.0, "efficiency": 0.9, "source": SOURCE_METERS}
+    assert Window.from_dict(window) is None
+    assert Window.from_dict({**window, "start": "2026-11-01T00:00:00"}) is None
+    assert Window.from_dict({**window, "end": "2026-11-01T08:00:00+00:00"}) is not None
