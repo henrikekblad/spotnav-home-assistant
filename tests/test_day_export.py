@@ -371,6 +371,7 @@ async def test_the_debug_bundle_carries_the_last_three_days(hass: HomeAssistant,
     assert [record["date"] for record in records] == ["2026-09-22", "2026-09-21", "2026-09-20"]
     assert records[0]["counts"]["quarters"] == 96 and records[0]["battery_review"]["date"] == "2026-09-22"
     assert "chargers" not in records[0]
+    assert records[0]["spotnav_version"] and records[0]["spotnav_version"] == bundle["versions"]["spotnav"]
     assert "solar_statistics" not in records[0]["settings"]["last_plan_inputs"]
     text = json.dumps(records)
     assert "latitude" not in text and "longitude" not in text

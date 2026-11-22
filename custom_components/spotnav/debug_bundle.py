@@ -328,8 +328,12 @@ async def _related_integrations(
     return result
 
 
-async def _versions(hass: HomeAssistant) -> dict[str, Any]:
+async def _spotnav_version(hass: HomeAssistant) -> str | None:
     integration = await async_get_integration(hass, DOMAIN)
+    return integration.version.string if integration.version is not None else None
+
+
+async def _versions(hass: HomeAssistant) -> dict[str, Any]:
     digest = await hass.async_add_executor_job(read_bundle_digest)
     installation_type: str | None = None
     try:
@@ -337,7 +341,7 @@ async def _versions(hass: HomeAssistant) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         _LOGGER.debug("Could not read the installation type", exc_info=True)
     return {
-        "spotnav": integration.version.string if integration.version is not None else None,
+        "spotnav": await _spotnav_version(hass),
         "card_bundle_hash": digest,
         # The hash in the URL browsers load the card from: differs from the file's after an update
         # Home Assistant has not been restarted for.
@@ -576,7 +580,9 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         day_records: Any = []
         if controller is not None:
             try:
-                day_records = bundle_days(hass, entry, controller, dt_util.utcnow())
+                day_records = bundle_days(
+                    hass, entry, controller, dt_util.utcnow(), version=await _spotnav_version(hass)
+                )
             except Exception as err:  # noqa: BLE001 - the days kept must not cost the whole bundle
                 _LOGGER.warning("The debug bundle could not read a site's day records: %s", type(err).__name__)
                 day_records = {"available": False, "reason": "read_failed"}
