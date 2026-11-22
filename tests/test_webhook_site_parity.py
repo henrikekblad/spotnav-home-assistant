@@ -25,6 +25,7 @@ from custom_components.spotnav.api.house import websocket_get_house
 from custom_components.spotnav.api.house_history import websocket_get_house_history
 from custom_components.spotnav.api.house_loads import websocket_get_house_loads
 from custom_components.spotnav.api.house_now import websocket_get_house_now
+from custom_components.spotnav.api.plan import websocket_get_plan
 from custom_components.spotnav.api.sessions import websocket_get_sessions
 from custom_components.spotnav.api.grid_tariff import without_power_level
 from custom_components.spotnav.api.site_view import websocket_get_site_settings_view
@@ -94,6 +95,7 @@ READS: tuple[tuple[str, Any, dict[str, Any], bool], ...] = (
     ("get_house_loads", websocket_get_house_loads, {"period": "day", "date": DAY, "kind": "house"}, True),
     ("get_heat", websocket_get_heat, {}, False),
     ("get_heat_history", websocket_get_heat_history, {"period": "month", "date": DAY}, True),
+    ("get_plan", websocket_get_plan, {}, False),
     ("battery_control", websocket_battery_control, {}, True),
 )
 
@@ -170,7 +172,7 @@ async def test_refusals_carry_the_commands_own_codes(hass: HomeAssistant, freeze
     _pinned("get_house_history_invalid_date.json", body)
     assert await hass.config_entries.async_unload(site.entry_id)
     await hass.async_block_till_done()
-    for action in ("get_house", "get_house_now", "get_heat", "get_site_settings_view", "battery_control"):
+    for action in ("get_house", "get_house_now", "get_heat", "get_plan", "get_site_settings_view", "battery_control"):
         status, body = await post(client, HOOK, {"action": action})
         assert status == 400 and body["error"] == "spotnav_no_site", (action, body)
 
