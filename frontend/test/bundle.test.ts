@@ -5,7 +5,7 @@
 // messages on the wire, and trips over `fetch`, `XMLHttpRequest`, `EventSource` and storage if the
 // card ever reaches for them; `api.test.ts` pins the messages themselves.
 
-import { DOCS_URL } from "../src/support-section";
+import { DOCS_URL, SPONSOR_URL } from "../src/support-section";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -168,6 +168,8 @@ describe("the asset's only absolute URLs", () => {
       "https://spotnav.sensnology.se/docs/home-assistant/heat-pumps#the-heat-card",
       // Support's documentation link (a new tab).
       DOCS_URL,
+      // Support's "Support the SpotNav project" (a new tab).
+      SPONSOR_URL,
       // The battery plan's page on the wear and the margin, linked under the battery's mode (a new tab).
       PLAN_DOCS_URL,
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).

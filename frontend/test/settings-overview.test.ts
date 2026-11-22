@@ -301,9 +301,9 @@ describe("Download debug info", () => {
     // The actions are rows with a chevron, as every other row of Settings; the debug file's line under its row.
     const actions = support?.querySelectorAll<HTMLElement>("[data-row]") ?? [];
     expect(Array.from(actions).map((row) => row.dataset["row"])).toEqual([
-      "automations", "beta", "hardware_test", "docs", "about", "download_debug", "send_debug", "disconnect_phones",
+      "automations", "beta", "hardware_test", "docs", "about", "download_debug", "send_debug", "disconnect_phones", "sponsor",
     ]);
-    expect(Array.from(actions).slice(3).map((row) => label(row.querySelector("button")))).toEqual([
+    expect(Array.from(actions).slice(3, -1).map((row) => label(row.querySelector("button")))).toEqual([
       translate("en", "settings.docs"),
       translate("en", "settings.about.open"),
       translate("en", "debug.download"),
@@ -311,6 +311,19 @@ describe("Download debug info", () => {
       translate("en", "phones.disconnect.open"),
     ]);
     expect(support?.querySelector("[data-help='download_debug']")?.textContent).toBe(translate("en", "debug.intro"));
+    // Last, for everyone: "Support the SpotNav project" with the sponsor heart, to GitHub Sponsors in a new tab.
+    const sponsor = support!.querySelector<HTMLElement>("[data-row='sponsor']")!;
+    expect(sponsor.textContent).toBe(translate("en", "support.sponsor.label"));
+    expect(sponsor.querySelector(`.${VISUAL_CLASSES.settingRowLabel} svg.${VISUAL_CLASSES.sponsorHeart}`)).not.toBeNull();
+    expect(support?.querySelector("[data-help='sponsor']")?.textContent).toBe(translate("en", "support.sponsor.help"));
+    const opened: unknown[][] = [];
+    const open = vi.spyOn(window, "open").mockImplementation((...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    });
+    sponsor.querySelector<HTMLButtonElement>("[data-sponsor='open']")!.click();
+    expect(opened).toEqual([["https://github.com/sponsors/henrikekblad", "_blank", "noopener,noreferrer"]]);
+    open.mockRestore();
 
     // A reader who is not an administrator is shown only what they may change: Display, and no Support.
     const reader = await mounted(fixture("start_idle"), false);
@@ -340,7 +353,7 @@ describe("Download debug info", () => {
     const order = [...support.children].map((child) =>
       (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
     );
-    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "about", "download_debug", "p", "send_debug", "disconnect_phones"]);
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "about", "download_debug", "p", "send_debug", "disconnect_phones", "sponsor", "p"]);
     row?.querySelector<HTMLButtonElement>("[data-edit='beta']")?.click();
     await settle();
     expect(shadow(admin.element).querySelector("[data-beta='box'] [data-beta-field='on']")).not.toBeNull();

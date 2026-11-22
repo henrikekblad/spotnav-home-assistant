@@ -150,6 +150,8 @@
   "issue.unknown": "Das Backend hat etwas gemeldet, das diese Karte noch nicht kennt.",
   "settings.about.open": "Über diese Karte",
   "settings.docs": "Dokumentation",
+  "support.sponsor.label": "SpotNav-Projekt unterstützen",
+  "support.sponsor.help": "SpotNav ist kostenlos und Open Source. Es mit neuen Ladestationen, Batterien und Home-Assistant-Versionen am Laufen zu halten, kostet viel Zeit und Ressourcen. Wenn SpotNav Ihnen Geld spart, hilft ein Beitrag über GitHub Sponsors, die Arbeit fortzusetzen.",
   "header.settings": "Einstellungen",
   "header.history": "Ladeverlauf",
   "history.title": "Ladeverlauf",

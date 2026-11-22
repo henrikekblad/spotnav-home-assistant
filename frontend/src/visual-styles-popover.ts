@@ -55,6 +55,13 @@ export const POPOVER_STYLES = `\
     color: var(--secondary-text-color, #727272);
     overflow-wrap: break-word;
   }
+  /* GitHub Sponsors' heart before "Support the SpotNav project", in its pink in both themes. */
+  .${VISUAL_CLASSES.sponsorHeart} {
+    flex: none;
+    vertical-align: -2px;
+    margin-right: 6px;
+    color: #db61a2;
+  }
   .${VISUAL_CLASSES.settingRowValue} {
     flex: 1 1 auto;
     min-width: 0;

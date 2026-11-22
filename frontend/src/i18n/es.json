@@ -150,6 +150,8 @@
   "issue.unknown": "El backend ha informado de algo que esta tarjeta todavía no conoce.",
   "settings.about.open": "Acerca de esta tarjeta",
   "settings.docs": "Documentación",
+  "support.sponsor.label": "Apoya el proyecto SpotNav",
+  "support.sponsor.help": "SpotNav es gratuito y de código abierto. Mantenerlo funcionando con nuevos cargadores, baterías y versiones de Home Assistant lleva mucho tiempo y recursos. Si SpotNav te ahorra dinero, una aportación a través de GitHub Sponsors ayuda a que el trabajo continúe.",
   "header.settings": "Ajustes",
   "header.history": "Historial de carga",
   "history.title": "Historial de carga",
