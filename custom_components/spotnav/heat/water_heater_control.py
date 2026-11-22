@@ -662,7 +662,10 @@ class WaterHeaterControl:
             elif late:
                 if self.meter_seen is not None:
                     self._log(now, "meter_not_cut", sensor=self.power_sensor)
-                    _LOGGER.info("SpotNav water heater: %s did not fall when %s was turned off; not trusted", self.power_sensor, switch)
+                    _LOGGER.info(
+                        "SpotNav water heater: %s did not fall when %s was turned off; not trusted",
+                        self.power_sensor, switch,
+                    )
                 self.meter_seen = None
                 self._meter_watch = None
             return

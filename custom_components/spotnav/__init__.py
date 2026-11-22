@@ -203,7 +203,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     data = domain_data(hass)
     # SpotNav's own words (`i18n/<lang>.json`), read once off the event loop.
     await async_load_texts(hass)
-    # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
+    # Keep SpotNav's own recent log records for the debug bundle. The SpotNav logger reports INFO at least whatever
+    # level it is set to, and hands records to Home Assistant's log only at the level the person set (`log_buffer.py`).
     data.log_buffer = attach_log_buffer()
     # Its warnings of the last 24 hours are kept across restarts (`log_buffer.py`).
     await data.log_buffer.async_attach_store(hass)

@@ -203,6 +203,15 @@ async def test_the_notice_offers_the_later_departure_and_its_press_moves_it(hass
         )
         await hass.async_block_till_done()
         assert controller.later_departure_for(charger) is None
+        # The pre-release review (2026-11-22): a time other than the one the risk holds, or one that cannot be read
+        # (it overflowed), is not taken.
+        for to in (int(later.timestamp()) + 3600, int(later.timestamp()) + 86400 * 365, 10**30):
+            hass.bus.async_fire(
+                "mobile_app_notification_action", {"action": f"SPOTNAV_LATER_DEPARTURE_{charger}_{stamp}_{to}"}
+            )
+            await hass.async_block_till_done()
+            assert controller.later_departure_for(charger) is None, to
+        assert controller.async_later_departure(charger, for_departure=stamp, to=10**30) == ERROR_NO_LATER_DEPARTURE
         # The press moves this departure to the time told.
         hass.bus.async_fire("mobile_app_notification_action", {"action": actions[1]["action"]})
         await hass.async_block_till_done()
@@ -214,3 +223,25 @@ def test_the_buttons_word_in_swedish_with_avresa() -> None:
 
     assert does_not_fit_choice_text("sv", "later", time="14:00") == "Senare avresa (14:00)"
     assert does_not_fit_choice_text("en", "later", time="14:00") == "Later departure (14:00)"
+
+
+async def test_a_plan_made_again_in_the_background_that_fails_is_logged(hass: HomeAssistant, caplog) -> None:
+    """The pre-release review (2026-11-22): `_replan`'s recalculation was fire-and-forget, its failure lost."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from custom_components.spotnav.site import site_capacity_controller as module
+
+    async def fails() -> None:
+        raise RuntimeError("no prices")
+
+    recomputes: list[bool] = []
+    site = SimpleNamespace(hass=hass, entry_id="site_1", _recompute=lambda: recomputes.append(True))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(module, "preview_for", lambda _hass, _id: SimpleNamespace(async_recalculate=fails))
+        SiteCapacityController._replan(site, "charger_1")  # type: ignore[arg-type]
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert recomputes == [True]
+    failed = [record for record in caplog.records if "could not be made again" in record.getMessage()]
+    assert len(failed) == 1 and failed[0].exc_info is not None and "charger_1" in failed[0].getMessage()

@@ -1359,7 +1359,7 @@ async def test_active_control_logs_the_write_once_and_not_again(hass: HomeAssist
     logged once and then silent.
     """
     caplog.set_level(
-        logging.INFO, logger="custom_components.spotnav.site.site_capacity_controller"
+        logging.DEBUG, logger="custom_components.spotnav.site.site_capacity_controller"
     )
     site_entry, _charger_entry, _configure_calls = await _active_control_setup(
         hass, entry_id="log_write"
@@ -1395,11 +1395,12 @@ async def test_active_control_logs_the_write_once_and_not_again(hass: HomeAssist
 async def test_active_control_logs_a_held_decision_with_the_check_that_stopped_it(
     hass: HomeAssistant, caplog
 ) -> None:
-    """A held decision leaves no trace in Recorder, so the log names which check stopped it."""
+    """A held decision leaves no trace in Recorder, so the log names which check stopped it (at debug: it is in the
+    decision record too, and a new proposal can come at each look)."""
     site_entry, charger, configure_calls = await _active_control_setup(hass, entry_id="log_hold")
     controller = controller_of(hass, site_entry.entry_id)
     caplog.set_level(
-        logging.INFO, logger="custom_components.spotnav.site.site_capacity_controller"
+        logging.DEBUG, logger="custom_components.spotnav.site.site_capacity_controller"
     )
 
     # The decision was taken while its phase imported; by write time it exports. It is asserted directly because a state change would trigger a recompute replacing it.
@@ -1430,7 +1431,7 @@ async def test_active_control_logs_a_held_decision_for_an_uncommandable_charger(
     """A charger that never opted into the write path is never written a current: with no overload it is kept as it
     is, and that is visible in the log."""
     caplog.set_level(
-        logging.INFO, logger="custom_components.spotnav.site.site_capacity_controller"
+        logging.DEBUG, logger="custom_components.spotnav.site.site_capacity_controller"
     )
     _site_entry, _charger_entry, configure_calls = await _active_control_setup(
         hass, entry_id="log_not_commandable", current_control=""

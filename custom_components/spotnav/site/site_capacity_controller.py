@@ -17,6 +17,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any, cast, Literal
 
 from homeassistant.config_entries import ConfigEntryState
@@ -340,6 +341,18 @@ RELEASED_UNTIL_UNPLUG = "until_unplug"
 #: given: one given at 11:59 lasts to the next day's noon.
 RELEASED_UNTIL_UNPLUG_LATEST_HOUR = 12
 RELEASED_UNTIL_UNPLUG_LEAST = timedelta(hours=6)
+
+
+def _log_replan_failure(site_entry_id: str, charger_entry_id: str, task: asyncio.Task[Any]) -> None:
+    """A plan made again in the background (`_replan`) that failed: logged, not lost with the task."""
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        _LOGGER.warning(
+            "SpotNav site %s: the plan of charger %s could not be made again", site_entry_id, charger_entry_id,
+            exc_info=(type(error), error, error.__traceback__),
+        )
 
 
 def _aware_instant(value: str) -> datetime | None:
@@ -1686,11 +1699,10 @@ class SiteCapacityController:
         previous_setpoint: int | None = None,
         yield_verdict: YieldVerdict | None = None,
     ) -> None:
-        """Log one INFO line per charger per change, not per pass.
+        """Log one line per charger per change, not per pass: a write at INFO, a held decision at DEBUG.
 
-        The signature is the whole logged content, so an identical outcome is logged once. Held
-        decisions are logged too, since they leave no other trace; `detail` names the check that
-        stopped it.
+        The signature is the whole logged content, so an identical outcome is logged once. Every decision is also
+        kept in the decision record (`_record_decision`); `detail` names the check that stopped a held one.
         """
         signature: tuple[Any, ...] = (
             outcome,
@@ -1729,7 +1741,9 @@ class SiteCapacityController:
                 decision.limiting_phase,
             )
             return
-        _LOGGER.info(
+        # A held decision is in the decision record already (`_record_decision`), and its proposal changes with every
+        # reading, so a new signature can come at each look: debug, not info.
+        _LOGGER.debug(
             "SpotNav site %s active control: charger %s held at %s, would have written "
             "%sA -- stopped_by=%s%s reason=%s",
             self.entry_id,
@@ -3668,7 +3682,8 @@ class SiteCapacityController:
         )
         if on_charger is None:
             return None
-        _LOGGER.info(
+        # It may come again at the next look while the charger keeps drawing above what is written: debug.
+        _LOGGER.debug(
             "SpotNav site %s active control: charger %s reads %.1fA, above the %sA written to it; "
             "the overload is lowered from what it draws",
             self.entry_id,
@@ -5858,7 +5873,8 @@ class SiteCapacityController:
         (`later_departure_for`). Ends at the later departure, an unplug or another departure set; kept across a
         restart. The error's code, else `None`: `spotnav_no_import_target`, `spotnav_no_departure`,
         `spotnav_stale_departure` (`for_departure` is not the plan's departure any more), `spotnav_no_later_departure`
-        (nothing later fits within the prices held, or `to` is not after the departure)."""
+        (nothing later fits within the prices held, or `to` is not the later departure the risk holds now, or cannot
+        be read)."""
         if self._hold_set_kw() is None:
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
             return ERROR_NO_IMPORT_TARGET
@@ -5872,15 +5888,26 @@ class SiteCapacityController:
         if for_departure is not None and for_departure != int(departure.timestamp()):
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_STALE_DEPARTURE)
             return ERROR_STALE_DEPARTURE
-        if to is not None:
-            later: datetime | None = datetime.fromtimestamp(to, tz=dt_util.UTC)
-        else:
-            risk = self._target_risk.get(charger_entry_id)
-            later = (
-                None
-                if risk is None or risk.departure != plan.departure or risk.later_departure is None
-                else _aware_instant(risk.later_departure)
-            )
+        risk = self._target_risk.get(charger_entry_id)
+        later = (
+            None
+            if risk is None or risk.departure != plan.departure or risk.later_departure is None
+            else _aware_instant(risk.later_departure)
+        )
+        if to is not None and later is not None:
+            # A phone's button: only the later departure it was told, and the one the risk still holds. A time that
+            # cannot be read, or any other time, is not taken.
+            try:
+                told: datetime | None = datetime.fromtimestamp(to, tz=dt_util.UTC)
+            except (OverflowError, ValueError, OSError):
+                _LOGGER.debug("SpotNav site %s: a later departure's time %r cannot be read", self.entry_id, to)
+                told = None
+            if told is None or int(told.timestamp()) != int(later.timestamp()):
+                _LOGGER.debug(
+                    "SpotNav site %s: the later departure told (%r) is not the one held now (%s); not taken",
+                    self.entry_id, to, later.isoformat(),
+                )
+                later = None
         if later is None or later <= departure:
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_LATER_DEPARTURE)
             return ERROR_NO_LATER_DEPARTURE
@@ -5921,7 +5948,10 @@ class SiteCapacityController:
         """The charger's plan made again (its departure moved, or moved back), then the site's recompute."""
         preview = preview_for(self.hass, charger_entry_id)
         if preview is not None:
-            self.hass.async_create_task(preview.async_recalculate(), eager_start=False)
+            task = self.hass.async_create_background_task(
+                preview.async_recalculate(), f"spotnav replan {charger_entry_id}", eager_start=False
+            )
+            task.add_done_callback(partial(_log_replan_failure, self.entry_id, charger_entry_id))
         self._recompute()
 
     def _tell_target_risk(self) -> None:

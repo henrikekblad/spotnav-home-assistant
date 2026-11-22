@@ -82,7 +82,7 @@ once, at the next look, whatever kind it is (it no longer reads stopped).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Coroutine, Mapping
 import contextlib
 from datetime import datetime
 import logging
@@ -208,6 +208,8 @@ class ChargerTestHold:
         #: back leaves them to this hold's own release.
         self._taken: set[str] = set()
         self._park_task: asyncio.Task[None] | None = None
+        #: The background work running now (taking out, setting back, stops), cancelled at the unload.
+        self._tasks: set[asyncio.Task[Any]] = set()
         self._restore_lock = asyncio.Lock()
         self._retry_cancel: Callable[[], None] | None = None
         self._tries = 0
@@ -216,6 +218,23 @@ class ChargerTestHold:
         self._store: Store[dict[str, Any]] | None = (
             None if hass is None else Store(hass, STORE_VERSION, store_key(site.entry_id))
         )
+
+    def _spawn(self, coro: Coroutine[Any, Any, None], name: str) -> asyncio.Task[None]:
+        """Run `coro` as a background task of the site's entry (not awaited by Home Assistant's start-up: a switch
+        may take a minute to answer), kept here and cancelled at the unload (`async_close`). The unload's own setting
+        back is awaited by `hardware_test.py`, and what is not set back stays in the store for the next start."""
+        hass = self._site.hass
+        full = f"{DOMAIN} {name} {self._site.entry_id}"
+        entry = None
+        with contextlib.suppress(Exception):
+            entry = hass.config_entries.async_get_entry(self._site.entry_id)
+        if entry is not None:
+            task = entry.async_create_background_task(hass, coro, full)
+        else:
+            task = hass.async_create_background_task(coro, full)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
 
     # ---- state
 
@@ -345,7 +364,7 @@ class ChargerTestHold:
             station_availability_entity(self._site.hass, self._controller(charger_entry_id))
             for charger_entry_id in self._charger_ids()
         ):
-            self._park_task = self._site.hass.async_create_task(self._async_take_out_of_service())
+            self._park_task = self._spawn(self._async_take_out_of_service(), "hardware test take out of service")
 
     def release(self) -> list[str]:
         """End the hold at once; the chargers whose start it refused (for `async_rearm_refused`). Never raises."""
@@ -403,7 +422,7 @@ class ChargerTestHold:
                 "SpotNav site %s: a hardware test was cut short with an OCPP charger out of service; it is set back "
                 "to operative now", self._site.entry_id,
             )
-            self._site.hass.async_create_task(self.async_restore_availability())
+            self._spawn(self.async_restore_availability(), "hardware test set back")
 
     async def _async_save(self) -> None:
         if self._store is not None:
@@ -527,9 +546,12 @@ class ChargerTestHold:
                     if state is not None and state.state == "off":
                         # Read and off: the person can turn it on (the only case told in Repairs).
                         actionable.append(entity_id)
-                    _LOGGER.warning(
+                    # Told once, at the first failure; the retries log at debug until the one error at
+                    # `RESTORE_TRIES` (and the Repairs issue from `ISSUE_AFTER_TRIES`).
+                    _LOGGER.log(
+                        logging.WARNING if self._tries == 0 else logging.DEBUG,
                         "SpotNav site %s: OCPP charger %s could not be set back to operative after the hardware test "
-                        "(%s)", self._site.entry_id, charger_entry_id, err,
+                        "(%s); tried again", self._site.entry_id, charger_entry_id, err,
                     )
                     continue
                 self._parked.pop(entity_id, None)
@@ -615,7 +637,7 @@ class ChargerTestHold:
     def _retry(self, _now: datetime) -> None:
         self._retry_cancel = None
         if not self._closed:
-            self._site.hass.async_create_task(self.async_restore_availability())
+            self._spawn(self.async_restore_availability(), "hardware test set back")
 
     @property
     def unavailable_kept(self) -> list[str]:
@@ -623,14 +645,19 @@ class ChargerTestHold:
         return sorted(self._parked)
 
     async def async_close(self) -> None:
-        """The site unloads: no more retries; what is still to be set back stays in the store for the next start."""
+        """The site unloads: no more retries, and the background work still running is cancelled (the unload's own
+        setting back has run before, awaited, from `hardware_test.py`); what is still to be set back stays in the store
+        for the next start."""
         self._closed = True
         cancel, self._retry_cancel = self._retry_cancel, None
         if cancel is not None:
             cancel()
-        task, self._park_task = self._park_task, None
-        if task is not None and not task.done():
+        self._park_task = None
+        tasks = [task for task in self._tasks if not task.done()]
+        self._tasks.clear()
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
@@ -701,7 +728,7 @@ class ChargerTestHold:
                     "SpotNav site %s: charger %s began charging during the hardware test; stopping it",
                     self._site.entry_id, charger_entry_id,
                 )
-            self._site.hass.async_create_task(self._async_stop(charger_entry_id, controller))
+            self._spawn(self._async_stop(charger_entry_id, controller), "hardware test stop")
 
     async def _async_stop(self, charger_entry_id: str, controller: Any) -> None:
         if not self.active:
