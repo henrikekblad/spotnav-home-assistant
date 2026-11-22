@@ -33,8 +33,10 @@ members say what the cars want (`cars_held_w`, the ones the hold may lower or pa
    (`raise_lock_s`: the hour's last 10, a quarter's last 2.5): there the car is held as before, and what the credit
    let through the hold's budget takes back from the cars on its own (it is in the period's import so far). During
    the enter delay nothing is counted: the car is held as before for that minute; but where the hold would pause a
-   car for the rest of the period (`Projection.car_pause_due`), the heater's step is taken at once, without the
-   delay: a few minutes' pause of the heater is cheaper than a car paused for the hour.
+   car for the rest of the period (`Projection.car_pause_due`: the heater's give would keep it above its minimum,
+   not a slow or switch-only charger, seen for `import_target_hold.PAUSE_DUE_S` in a row, the car held at its minimum
+   meanwhile once a period), the heater's step is taken at once, without the delay: a few minutes' pause of the
+   heater is cheaper than a car paused for the hour.
 3. **Car**: the hold as before (lower, pause; `share_budget`), unchanged. With the water heater's give counted it
    takes only what remains. In the projection a car counts at what its plan needs now (the plan's own rate in its
    running window, where it has one), never more than the fuse would give it: a car charging faster than its plan

@@ -93,6 +93,68 @@ async def test_a_car_the_hold_would_pause_keeps_charging_and_the_water_heater_pa
             assert world.hour_kw(hour) <= 6.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
 
 
+async def test_one_spike_neither_sheds_the_heater_nor_pauses_the_car(hass: HomeAssistant, monkeypatch) -> None:
+    """An 8 kW target, the house 1 kW plus a 1.5 kW heater, the car held; a kettle for one pass would leave the car
+    under its minimum: the car is held at its minimum for that pass, and neither it nor the heater pauses."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "spike", target_kw=8.0)
+        controller = world.halo.controller
+        base = world.house_a
+        on = {"value": True}
+
+        def offer() -> Offer:
+            return Offer(live=True, ready=True, give_w=1500.0 if on["value"] else 0.0, drawing=on["value"], held=not on["value"])
+
+        controller.water_heater_control.shed_offer = offer
+        world.house_a = base + 1500.0 / (3 * _V)
+        # The order rests after the start; the car starts once it may act.
+        await world.run(16)
+        await _charging(world)
+        await world.run(5)
+        # The hour's unused budget lets it draw 10 A (about 6.9 kW); a 3.5 kW kettle leaves it under its minimum, the
+        # heater's 1.5 kW would not.
+        assert world.car_a == 10.0
+        world.house_a = base + 5000.0 / (3 * _V)
+        await world.step()
+        # The pause was due, and deferred for the confirmation.
+        assert getattr(controller, "_shed_pause_deferred", None) is not None
+        world.house_a = base + 1500.0 / (3 * _V)
+        await world.run(5)
+        assert world.turn_offs == 0
+        assert controller.shed_order.steps == {}
+        assert controller.shed_order.until(LOAD_WATER_HEATER, dt_util.utcnow()) is None
+
+
+def test_the_car_pause_due_skips_slow_and_switch_only_chargers_and_needs_the_heater_to_help() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.site.import_target import HourBudget, TargetMember, TargetShare
+    from custom_components.spotnav.site.import_target_hold import ImportTargetHold, PAUSE_DUE_S
+
+    budget = HourBudget(
+        target_kw=6.0, hour_start=_HOUR, hour_end=_HOUR + H, so_far_kwh=0.0, hour_kw=0.0, remaining_s=3000.0,
+        house_w=4000.0, rate_w=5880.0, allowed_w=1880.0, house_over=False, hold_kw=5.88,
+    )
+    heater = Offer(True, True, 3000.0)
+    car = TargetMember(charger_entry_id="car", phases=3, min_a=6.0, wants_a=16.0)
+    paused = {"car": TargetShare("paused", 0.0, 0.0)}
+
+    def hold() -> ImportTargetHold:
+        return ImportTargetHold(SimpleNamespace(_import_ceiling_w=lambda: float("inf")))  # type: ignore[arg-type]
+
+    one = hold()
+    assert one._car_pause_due(_HOUR, budget, [car], paused, heater) == (False, {"car"})  # noqa: SLF001
+    later = _HOUR + timedelta(seconds=PAUSE_DUE_S)
+    assert one._car_pause_due(later, budget, [car], paused, heater) == (True, set())  # noqa: SLF001
+    # A heater too small to keep the car above its minimum: no reason.
+    assert hold()._car_pause_due(_HOUR, budget, [car], paused, Offer(True, True, 500.0)) == (False, set())  # noqa: SLF001
+    # Paused for its slow writes, or a switch-only charger: not the heater's to help.
+    slow = {"car": TargetShare("paused", 0.0, 0.0, "slow_charger")}
+    assert hold()._car_pause_due(_HOUR, budget, [car], slow, heater) == (False, set())  # noqa: SLF001
+    switched = replace(car, switch_only=True)
+    assert hold()._car_pause_due(_HOUR, budget, [switched], paused, heater) == (False, set())  # noqa: SLF001
+
+
 async def test_a_passing_loss_of_the_budget_keeps_the_heater_paused_and_load_balancing_off_ends_it(
     hass: HomeAssistant, monkeypatch
 ) -> None:

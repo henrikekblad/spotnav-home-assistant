@@ -17,7 +17,7 @@ from dataclasses import replace
 from datetime import datetime
 import logging
 import math
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.util import dt as dt_util
 
@@ -26,7 +26,9 @@ from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..planning.auto_settings import IF_NOT_READY_RELEASE
 from ..runtime import controller_for, preview_for
 from .import_target import (
+    ACTION_HELD,
     ACTION_PAUSED,
+    PAUSE_SLOW_CHARGER,
     battery_discharge_shares_w,
     departure_at_risk,
     departure_shortfall_kwh,
@@ -42,6 +44,7 @@ from .import_target import (
     RISK_LEAVE_KWH,
     share_budget,
     TargetMember,
+    TargetShare,
 )
 from .regulator import RegulatorDecision
 from .shed_order import combine, END_OFF, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
@@ -65,6 +68,10 @@ from .site_capacity_controller import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+#: How long the shares must pause a car the water heater's pause would keep charging before the heater goes at once
+#: (s): a spike is no reason, and the regulator's 60 s dwell is still ahead of the car's pause.
+PAUSE_DUE_S: Final = 15.0
 
 
 class ImportTargetHold:
@@ -211,16 +218,16 @@ class ImportTargetHold:
                 for request in ordered
             ]
             shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
-        # A car the shares pause for the rest of the period (not paused already): the water heater goes first, now.
-        car_pause_due = any(
-            shares.get(member.charger_entry_id) is not None
-            and shares[member.charger_entry_id].action == ACTION_PAUSED
-            and member.holdable
-            and not member.paused_this_hour
-            and member.wants_a > 0
-            for member in members
-        )
-        credit_w = self._shed(now, budget, members, car_pause_due=car_pause_due)
+        # A car the shares pause for the rest of the period: the water heater goes first, now (`_car_pause_due`).
+        offers = self._offers()
+        car_pause_due, deferred = self._car_pause_due(now, budget, members, shares, offers.get(LOAD_WATER_HEATER))
+        credit_w = self._shed(now, budget, members, car_pause_due=car_pause_due, offers=offers)
+        if deferred and credit_w <= 0:
+            # While it is being confirmed, the car is held at its minimum rather than paused for the hour (at most
+            # `PAUSE_DUE_S`, once a period): the few watt-hours it carries the budget takes back from the period.
+            for member in members:
+                if member.charger_entry_id in deferred:
+                    shares[member.charger_entry_id] = TargetShare(ACTION_HELD, member.min_a, member.min_a)
         if credit_w > 0:
             # The water heater's pause counted ahead: the cars take only what remains after it (`site/shed_order.py`).
             ceiling_w = max(0.0, self._site._import_ceiling_w())
@@ -343,6 +350,7 @@ class ImportTargetHold:
         *,
         lasting: bool = False,
         car_pause_due: bool = False,
+        offers: dict[str, Offer | None] | None = None,
     ) -> float:
         """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held now,
         for good (`lasting`: no target or power level, outside the level's hours, load balancing off: every step put
@@ -362,7 +370,7 @@ class ImportTargetHold:
                 projection = replace(
                     _projection(budget, members, self._planned_w(members, now)), car_pause_due=car_pause_due
                 )
-                credit_w = order.update(now, projection, self._offers())
+                credit_w = order.update(now, projection, self._offers() if offers is None else offers)
         except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
             if not getattr(self, "_shed_failed_logged", False):
                 self._shed_failed_logged = True
@@ -382,6 +390,55 @@ class ImportTargetHold:
                 if part is not None:
                     part.request_look()
         return credit_w
+
+    def _car_pause_due(
+        self,
+        now: datetime,
+        budget: HourBudget,
+        members: Sequence[TargetMember],
+        shares: Mapping[str, Any],
+        heater: Offer | None,
+    ) -> tuple[bool, set[str]]:
+        """`(due, deferred)`: whether the hold would pause a car for the rest of the period that the water heater's
+        pause would keep charging: a holdable charger (not switch-only, not paused already) whose share pauses it, not
+        for its slow writes (`PAUSE_SLOW_CHARGER`), and which the shares made with the heater's give added do not
+        pause. Due only once that has held `PAUSE_DUE_S` in a row (a kettle's spike is no reason); meanwhile, once a
+        period, those chargers' pause is deferred (`deferred`: held at their minimum instead), so the pause the
+        confirmation is about is not written before it ends."""
+        due = False
+        paused: set[str] = set()
+        if heater is not None and heater.live and heater.useful:
+            paused = {
+                member.charger_entry_id
+                for member in members
+                if member.holdable
+                and not member.switch_only
+                and not member.paused_this_hour
+                and member.wants_a > 0
+                and (share := shares.get(member.charger_entry_id)) is not None
+                and share.action == ACTION_PAUSED
+                and share.reason != PAUSE_SLOW_CHARGER
+            }
+            if paused:
+                ceiling_w = max(0.0, self._site._import_ceiling_w())
+                allowed_w = min(max(0.0, budget.rate_w - budget.house_w + heater.give_w), ceiling_w)
+                with_heater = share_budget(allowed_w, members, remaining_s=budget.remaining_s)
+                paused = {charger for charger in paused if charger in with_heater and with_heater[charger].action != ACTION_PAUSED}
+                due = bool(paused)
+        since = getattr(self._site, "_shed_pause_due_since", None)
+        since = (since or now) if due else None
+        self._site._shed_pause_due_since = since
+        if since is None:
+            return False, set()
+        if (now - since).total_seconds() >= PAUSE_DUE_S:
+            return True, set()
+        # Being confirmed: deferred once per period.
+        deferring = getattr(self._site, "_shed_pause_deferred", None)
+        if deferring is not None and deferring != (budget.hour_start, since):
+            if deferring[0] == budget.hour_start:
+                return False, set()
+        self._site._shed_pause_deferred = (budget.hour_start, since)
+        return False, paused
 
     def _planned_w(self, members: Sequence[TargetMember], now: datetime) -> dict[str, float]:
         """Per holdable charger with a plan of SpotNav's whose window runs now: what the plan needs now (W, its own
