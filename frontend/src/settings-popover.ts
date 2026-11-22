@@ -82,7 +82,7 @@ import {
   type SectionHost,
 } from "./price-section";
 import { settingsErrorKey } from "./settings";
-import { setupSection, type SetupRowId, setupRowsOf } from "./setup-checklist";
+import { setupSettingsSection, type SetupRowId, setupRowsOf } from "./setup-checklist";
 import {
   decodeBatteryControl,
   decodeSiteList,
@@ -1508,24 +1508,17 @@ export class SettingsPopover {
       return null;
     }
     const doc = this.input.doc;
-    const wrap = element(doc, "section", C.settingsSection);
-    wrap.dataset["section"] = "setup";
-    wrap.append(sectionHeading(doc, "setup", translate(this.language, "setup.heading")));
-    wrap.append(
-      setupSection(doc, {
-        language: this.language,
-        rows,
-        openPlan: () => undefined,
-        openSetting: (section, edit) => this.openSettingAt(section, edit),
-        forecastChoosable: (view.site?.solar_forecast.choices.length ?? 0) > 0,
-        navigate: (path) => this.navigate(path),
-        openExternal: (url) => doc.defaultView?.open(url, "_blank", "noopener"),
-        heading: false,
-        dismiss: (id: SetupRowId) => void this.dismiss(id),
-        writeSiteOption: (field, value) => void this.writeSiteOption(view.site_id, field, value),
-      }),
-    );
-    return wrap;
+    return setupSettingsSection(doc, {
+      language: this.language,
+      rows,
+      openPlan: () => undefined,
+      openSetting: (section, edit) => this.openSettingAt(section, edit),
+      forecastChoosable: (view.site?.solar_forecast.choices.length ?? 0) > 0,
+      navigate: (path) => this.navigate(path),
+      openExternal: (url) => doc.defaultView?.open(url, "_blank", "noopener"),
+      dismiss: (id: SetupRowId) => void this.dismiss(id),
+      writeSiteOption: (field, value) => void this.writeSiteOption(view.site_id, field, value),
+    });
   }
 
   /** Scroll to a section and open the editor of one of its rows. */
