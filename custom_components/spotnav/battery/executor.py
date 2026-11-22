@@ -2354,7 +2354,8 @@ class Executor:
                 and self.control.role(name).method != "button"
             )
             due = state.watchdog_at is None or (now - state.watchdog_at).total_seconds() >= RENEW_ON_CHANGE_GAP_S
-            renew = unchanged if due else ()
+            # Within the gap, a renewal the timer already owed (and `watchdog_at` records as done) is kept.
+            renew = unchanged if due else tuple(name for name in state.renew if name in unchanged)
             watchdog_at = state.watchdog_at if unchanged and not due else now
             self.state = replace(
                 state, action=action, rate_kw=rate,

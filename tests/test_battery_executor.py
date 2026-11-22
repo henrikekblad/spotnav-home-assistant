@@ -5,7 +5,7 @@ a change by someone else, no effect, a restart)."""
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from hypothesis import assume, example, given, settings, strategies as st
@@ -1799,3 +1799,29 @@ def test_a_change_soon_after_the_last_keeps_its_renewal_time() -> None:
     assert renewed_at is not None and (now - renewed_at).total_seconds() < RENEW_ON_CHANGE_GAP_S
     run(executor, battery, now, 1, "discharge_house")
     assert executor.state.renew == () and executor.state.watchdog_at == renewed_at
+
+
+def test_a_renewal_owed_when_the_action_changes_within_the_gap_is_still_written() -> None:
+    """The re-review (2026-11-22): the shared timer fires in the look where a grid charge's rate falls (the lower
+    rate is written first, the renewal owed after it), and the action changes to a hold in the next look. The renewal
+    owed must survive the change, or the timeout goes unwritten for about `WATCHDOG_S`."""
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now = T0
+    times: list[datetime] = []
+
+    def go(looks: int, action: str, rate: float = 0.0) -> None:
+        nonlocal now
+        for _ in range(looks):
+            start = now
+            now, results = run(executor, battery, now, 1, action, rate)
+            times.extend(start for role, _value in written(results) if role == "command_timeout")
+
+    go(6, "grid_charge", 3.0)
+    go(_looks(WATCHDOG_RENEW_S) - 7, "grid_charge", 3.0)
+    go(1, "grid_charge", 1.5)  # the timer fires here, with the rate's fall written first
+    go(1, "hold")
+    go(_looks(WATCHDOG_S), "hold")
+    assert executor.state.phase == "active"
+    gaps = [(later - earlier).total_seconds() for earlier, later in zip(times, [*times[1:], now], strict=True)]
+    assert max(gaps) <= WATCHDOG_RENEW_S + 60, gaps
