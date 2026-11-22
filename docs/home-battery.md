@@ -172,6 +172,16 @@ Assistant by default). SpotNav has no control for FoxESS and writes nothing to i
 discharge, work mode and charge periods stay yours. Read from the integration's source and not yet tested on a
 battery: [tell us](supported.md) how yours reads.
 
+**Read only: Solis (hybrid inverters such as the S6-EH3P).** SpotNav reads these through the Solis Modbus integration
+(`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor (*Overdischarge SOC*, the on-grid one)
+and the grid meter. The ratings are the BMS's charge and discharge current limits times the BMS's voltage, an estimate;
+the size is learnt (the integration's *Battery Rated Capacity* is a setting in Ah, not the bank the BMS reports). SpotNav
+counts the battery as running itself only in the *Storage Mode* "Self-Use" with neither *RC Force Battery Charge* nor
+*RC Force Battery Discharge* on; with the integration's read-only (essential-only) option those entities are missing and
+SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not read. SpotNav has no control for Solis and
+writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
+integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
 the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.
