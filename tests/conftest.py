@@ -64,7 +64,7 @@ def no_start_wait(request, monkeypatch):
         return
     from custom_components.spotnav.battery.runtime import BatteryShadow
 
-    monkeypatch.setattr(BatteryShadow, "start_wait", lambda self, now: False)
+    monkeypatch.setattr(BatteryShadow, "start_wait", lambda self: False)
 
 
 @pytest.fixture(autouse=True)

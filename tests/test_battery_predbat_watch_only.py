@@ -65,7 +65,6 @@ async def test_the_verdict_follows_predbat_s_own_switches_at_the_next_look(
 ) -> None:
     site, controller = await _site(hass)
     shadow = controller.battery_shadow
-    shadow._wait_from = dt_util.now() - timedelta(hours=1)  # the start-up wait has passed
     caplog.set_level(logging.INFO, logger="custom_components.spotnav.battery.runtime")
     now = dt_util.now()
 
@@ -100,17 +99,26 @@ async def test_the_verdict_follows_predbat_s_own_switches_at_the_next_look(
 
 
 @pytest.mark.start_wait
-async def test_in_the_start_up_wait_a_read_only_switch_not_loaded_yet_counts_as_controlling(hass: HomeAssistant) -> None:
+async def test_in_the_start_up_wait_a_read_only_switch_not_loaded_yet_counts_as_controlling(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery import runtime
+
+    clock = [1000.0]
+    monkeypatch.setattr(runtime, "_monotonic", lambda _hass: clock[0])
     _site_entry, controller = await _site(hass)
     shadow = controller.battery_shadow
     now = dt_util.now()
-    shadow._wait_from = now
+    hass.data.pop(runtime._RUN_START_KEY, None)
+    shadow._begin_wait()
     _predbat(hass, None, None)
     shadow.tick(now)
     assert shadow.outside.verdict.reason == "planner:predbat"
     # Its read-only switch loads a minute later: the verdict ends only after the wait (the wait holds it).
     _predbat(hass, "on")
+    clock[0] += 60
     shadow.tick(now + timedelta(minutes=1))
     assert shadow.outside.verdict.active
+    clock[0] += 600
     shadow.tick(now + timedelta(minutes=11))
     assert not shadow.outside.verdict.active

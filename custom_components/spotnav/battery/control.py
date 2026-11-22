@@ -857,7 +857,7 @@ class BatteryControl:
         ):
             self._log([{"at": now.isoformat(), "kind": "trial_ended", "reason": trial.action}])
             self.trial = trial = None
-        if self._start_wait(now):
+        if self._start_wait():
             await self._async_start_wait_look(now, options)
             return
         # The battery.
@@ -897,13 +897,13 @@ class BatteryControl:
         self._note_stopped(now)
         await self._async_save()
 
-    def _start_wait(self, now: datetime | None = None) -> bool:
+    def _start_wait(self) -> bool:
         """Whether the start-up wait runs (`runtime.START_GRACE`): right after a start a battery planner may not show
         its states yet, so neither the write path nor the verification starts; only hand-backs are written. Without
         the site's battery shadow (never in a running site) there is none to wait for."""
         battery_shadow = getattr(self.site, "battery_shadow", None)
         start_wait = getattr(battery_shadow, "start_wait", None)
-        return bool(start_wait(now or dt_util.now())) if callable(start_wait) else False
+        return bool(start_wait()) if callable(start_wait) else False
 
     async def _async_start_wait_look(self, now: datetime, options: gate.Options) -> None:
         """A look during the start-up wait: whatever is held is handed back, nothing else is written."""
@@ -1590,7 +1590,7 @@ class BatteryControl:
                     await self._async_until_handed_back("trial_stopped")
                 await self._async_look(now)
             return {"stopped": trial is not None}
-        if self._start_wait(now):
+        if self._start_wait():
             # The start-up wait (`runtime.START_GRACE`): a planner may not be back yet.
             raise TrialRefused("starting")
         if not options.enabled:
@@ -2524,7 +2524,7 @@ class BatteryControl:
 
     def _gated(self, inputs: ExecInputs, allowed: bool) -> tuple[ExecInputs, bool]:
         """A step the options no longer allow, or one during the start-up wait, becomes a hand-back."""
-        if allowed and self._start_wait(inputs.now):
+        if allowed and self._start_wait():
             return replace(
                 inputs, stopping=inputs.stopping or "start_wait", action=None, rate_kw=0.0, slot_end=None
             ), False

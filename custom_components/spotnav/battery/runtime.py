@@ -72,8 +72,18 @@ TICK_S: Final = 10.0
 #: kept from before the restart holds), and SpotNav's write path and its verification do not start (only hand-backs are
 #: written). A battery planner outside Home Assistant's own start publishes its states only once it runs again:
 #: Predbat (AppDaemon or its add-on) was seen five minutes after a restart, and its cycle is five minutes. Ten minutes
-#: is twice what was seen; until then two controllers could otherwise write the same battery.
+#: is twice what was seen; until then two controllers could otherwise write the same battery. Measured on Home
+#: Assistant's loop clock (`_monotonic`), so a step of the wall clock (NTP) neither ends it early nor stretches it. A
+#: reload of SpotNav's site in a Home Assistant run that has been up longer than this skips it: a planner's states do
+#: not vanish when SpotNav reloads (`_RUN_START_KEY`).
 START_GRACE: Final = timedelta(minutes=10)
+#: `hass.data` key: the loop-clock time the first battery wait of this Home Assistant run began (gone at a restart).
+_RUN_START_KEY: Final = f"{DOMAIN}_battery_run_start"
+
+
+def _monotonic(hass: HomeAssistant) -> float:
+    """Seconds on Home Assistant's loop clock: monotonic, so a wall-clock step moves no wait. Tests replace it."""
+    return hass.loop.time()
 #: The book's section that keeps the outside-control watch.
 SECTION_OUTSIDE: Final = "outside_control"
 #: The book's section that keeps the export-limit rule's shadow (`export_curtail.CurtailShadow`).
@@ -318,9 +328,9 @@ class BatteryShadow:
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
         self.curtail_sell: float | None = None
         self.curtail_brand: str | None = None
-        #: When the start-up wait began counting (`START_GRACE`): the later of SpotNav's start and Home Assistant's
-        #: fully started; `None` before both.
-        self._wait_from: datetime | None = None
+        #: When the start-up wait began counting (`START_GRACE`), on the loop clock (`_monotonic`): the later of
+        #: SpotNav's start and Home Assistant's fully started; `None` before both.
+        self._wait_from: float | None = None
         self._unsub_started: Callable[[], None] | None = None
         #: Whether a planner was last seen watched, not controlling (`watched_planner`), for its log line on a change.
         self._planner_watched: bool | None = None
@@ -334,22 +344,29 @@ class BatteryShadow:
         path to merge with the plan's slot."""
         return requested_action(self._hold) == ACTION_HOLD
 
-    def start_wait(self, now: datetime) -> bool:
+    def start_wait(self) -> bool:
         """Whether the start-up wait (`START_GRACE`) still runs: before Home Assistant has fully started and SpotNav's
-        site has started, and for `START_GRACE` after the later of the two."""
-        return self._wait_from is None or now < self._wait_from + START_GRACE
+        site has started, and for `START_GRACE` after the later of the two (on the loop clock)."""
+        return self._wait_from is None or _monotonic(self.hass) - self._wait_from < START_GRACE.total_seconds()
+
+    def _begin_wait(self) -> None:
+        """The wait counts from now; on a reload in a Home Assistant run up longer than `START_GRACE` it is skipped."""
+        now = _monotonic(self.hass)
+        grace = START_GRACE.total_seconds()
+        run_start = self.hass.data.setdefault(_RUN_START_KEY, now)
+        self._wait_from = now - grace if now - run_start >= grace else now
 
     @callback
     def _ha_started(self, _hass: HomeAssistant | None = None) -> None:
         self._unsub_started = None
-        self._wait_from = dt_util.now()
+        self._begin_wait()
 
     async def async_start(self) -> None:
         """Load the book, restore a hold a restart found (in shadow: log it), then look every `TICK_S`."""
         now = dt_util.now()
         # The start-up wait counts from now, or from Home Assistant's fully started when that comes later.
         if self.hass.state is CoreState.running:
-            self._wait_from = now
+            self._begin_wait()
         else:
             self._unsub_started = async_at_started(self.hass, self._ha_started)
         try:
@@ -398,6 +415,9 @@ class BatteryShadow:
         self.plan.halt()
 
     async def async_shutdown(self) -> None:
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -490,7 +510,7 @@ class BatteryShadow:
                 integrations=frozenset(self.hass.config_entries.async_domains()),
                 planner=external_planner(self.hass),
                 spotnav_acting=self.spotnav_acting(),
-                starting=self.start_wait(inputs.now),
+                starting=self.start_wait(),
             )
         )
         for event in events:
