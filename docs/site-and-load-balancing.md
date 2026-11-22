@@ -730,6 +730,49 @@ charger draws on would turn from import to export (so the current the fuse carri
   charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the
   departures at risk and those set aside, and its recent holds, pauses and releases.
 
+### The shed order under the ceiling
+
+When the running hour (or quarter hour, where the tariff counts quarters) is heading over the ceiling the import
+target holds (the target or the power level, lifted to the month's peak, less its margin), the loads give way in
+one fixed order, and come back in the reverse one:
+
+**home battery → water heater → car → heat** (put back: heat, car, water heater, battery)
+
+There is no setting for the order in this version. It is judged on the import target's own projection of the hour,
+never on a second one, and it acts only below that ceiling: the main fuse keeps its own, faster protection and is
+never this order's. The power tariff's soft ceiling is shadow only and sheds nothing.
+
+1. **Home battery.** Nothing new: a battery covering the house already lowers what the grid reads, so its help always
+   counts first. The steps below go on only while the hour stays over after it (its floor, its power limit, or no
+   battery).
+2. **Water heater** (a [plain water heater on a switch](hot-water.md#a-plain-water-heater-on-a-switch) with **Control
+   the water heater** on): paused to the end of the hour once the hour has stayed over for a minute, only in one of
+   its cheap windows and only where the window's time left still covers what the heater needs in it. Every
+   [hard rule](hot-water.md#a-plain-water-heater-on-a-switch) wins: full heat every 20 hours, never off 8 hours, on
+   without a plan or a reading, the day's switchings. It is never paused once 16 hours have passed since its last full
+   heat (or none is known), never in the unmetered night window, and only on a meter SpotNav trusts: what it gives
+   is what that meter reads the element drawing now, so a heater without a trusted meter is never shed. Where the
+   hold would otherwise pause the car for the rest of the hour, the water heater is paused at once instead: a few
+   minutes' pause of the heater is cheaper than a car paused for the hour. Its draw is then counted as gone for the
+   car (for at most a few minutes, until the meter shows it), never in the hour's last ten minutes.
+3. **Car.** The import target's hold as above, unchanged: it now takes only what is left after the water heater.
+4. **Heat.** One step lower (the relay or SG Ready contact, the heating curve offset, the controlled zones 1 °C) once
+   the hour is over even with the cars paused, through the heat control's own rules: at least 45 minutes, at most 3
+   hours in a row and 6 hours a day, never in a cold room or at −15 °C or colder. Only where
+   [heat control](heat-pumps.md#spotnavs-own-heat-control-relay-off-by-default) is on.
+
+A step is put back after five minutes with the hour under by half a kW counting what the load would take again, the
+heat before the water heater. A step that ended is not taken again in the same hour, nor within 15 minutes; nothing
+is shed for 15 minutes after a start. A load SpotNav only watches (control off) takes the same steps as *would* only:
+shown, never written. Without the import target's budget (no target or power level, outside the level's hours, load
+balancing off) every step is put back at once.
+
+Nothing new is sent to the phones: the [does-not-fit notice](#holding-the-chargers-under-the-import-target) remains
+the ask for the car. The heat card and the house card's [Plan tab](house-card.md#plan) say what is held ("Water
+heater paused for the ceiling until 15:00", "Controlling: lowering the heat for the ceiling until 15:30"). The site's
+diagnostics carry a `shed_order` block (the steps, the projection, what was blocked and a log), and the site's change
+log has each step taken and put back.
+
 ## A switched load (water heater), in shadow
 
 In the site's options (**Next: switched load (water heater)**) you can name one load on a switch, its rated

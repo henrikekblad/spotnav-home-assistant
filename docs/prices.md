@@ -227,7 +227,7 @@ separate export meter, or where it already has a figure.
 ### A demand charge
 
 Some network operators charge per kW of the month's highest hourly mean of import (a demand charge, *effektavgift*)
-on top of the energy fees. SpotNav does not price it into a plan; it measures it on the site's meter and shows it,
+on top of the energy fees. The plans in force do not price it yet (the 3.0 betas do so in [shadow](#a-power-level-and-the-demand-charge-in-shadow-30-beta)); SpotNav measures it on the site's meter and shows it,
 so you can compare it with your operator's figures. In the card's Settings the price section has one row,
 *Demand charge: None*, until you add a part. A demand charge has up to three parts, each with:
 
@@ -238,7 +238,7 @@ so you can compare it with your operator's figures. In the card's Settings the p
   hour sets no peak, as on the bill.
 - **Peaks per month**: the highest hour, or the mean of the 3 or 5 highest hours, each on a different day.
 - **Price per kW** in November to March and in April to October, in the area's currency. Either may stay empty;
-  nothing is priced with it yet, it is shown beside the part.
+  no plan in force is priced with it yet, it is shown beside the part (and used by the shadow below).
 
 Linköping's alternative tariff (Tekniska verken) is two parts with one peak each: every day 06-23 all year at
 45 / 23 kr/kW, and every day 23-06 all year at 12 / 8 kr/kW. Göteborg Energi's standard tariff is one part: all
@@ -258,6 +258,32 @@ site was not measuring: an hour with more than ten minutes without a reading is 
 
 The month day by day is in the charge history's [Power view](card.md#power): each day's highest hour, with the
 days that hold each part's counted peak outlined and numbered, and a tapped day's hours.
+
+### A power level, and the demand charge in shadow (3.0 beta)
+
+Some grid companies sell a **power level** (Göteborg Energi's *tidsindelad* tariff, for one): an hourly mean you stay
+under in its hours, which you may exceed a few times a year before you are moved to another tariff. Add it in the
+price section beside the demand charge (**Power level**). SpotNav holds the chargers under it in its hours, as it
+holds them under an [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target), never
+plans above it, and counts its exceedances over the last 12 months ("Exceedances: 1 of 3 in the last 12 months");
+allowing the peak for a charge says which exceedance it would be.
+
+In the 3.0 betas the demand charge's price is also worked into a **soft ceiling** for the plans, in **shadow** only:
+SpotNav works out what it would do and logs it, and holds nothing back for it.
+
+* **The home battery**: each night the battery plan's demand variant is reviewed against the plan in force.
+* **The car** (since 3.0.0b3): the cars' charges for the rest of the month are predicted from their weekday habits
+  (the charge history's last four weeks, to each charger's daily departure) and counted in the day peaks beside the
+  house forecast. After each plan of a car SpotNav plans it once more under the soft ceiling, less the house and the
+  other cars, and where that misses the departure, with the least raise of the ceiling that is ready in time. Both
+  plans are costed against the ceiling, and the shadow plan is kept in the diagnostics' plan watch and the site's
+  change log. It is made again only when the plan or its ceiling moved.
+
+The shadow ceiling is never a "does not fit" and is never shed for: only an import target or a power level does
+that. A part can also carry its grid company's peak rules as data (a quarter-hour peak period, a least billed kW, a
+price step above a kW, and a power level counted on quarter hours): where a tariff counts quarter hours, the import
+target holds the running quarter hour instead of the hour. The card does not edit these rules; it keeps them as
+they are stored.
 
 ## How the integration uses the prices
 

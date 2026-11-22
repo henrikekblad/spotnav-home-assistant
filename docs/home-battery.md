@@ -257,7 +257,10 @@ on a battery whose one power target both charges and discharges by its sign (Sol
 step too, since only that step shows which sign charges. A failed step leaves control off, with one line
 saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
 on again runs the check again. The result is kept per firmware and integration version: after a firmware update
-(or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening.
+(or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening. The
+firmware is the integration's firmware entity, or, where the brand has none or it reads nothing, the software version
+of the battery's device (SolaX Modbus keeps its firmware registers internal and has only that), so control never waits
+on a firmware it cannot read.
 
 **What control does.** It follows the battery plan's running quarter hour, and holds the battery when the car
 charges from the grid in a quarter hour the plan leaves to the battery. Every write is read back; every command's

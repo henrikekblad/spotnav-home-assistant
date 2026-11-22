@@ -37,7 +37,7 @@ brand's integration offers:
 | Victron (GX, the HACS Victron MQTT) | Runs when the battery's BMS reports its limits | The size is the BMS's installed Ah times the system voltage, the ratings its allowed charge and discharge current times the voltage; the plan says it is an estimate. A battery without a CAN-bus BMS (lead-acid, a plain shunt) gives no ratings and so no plan. |
 | Victron (community Modbus integration) | Runs when the BMS reports its limits | The size is the Dynamic ESS "battery capacity" where it is filled in, else the capacity register times the voltage. |
 | GoodWe | Runs once the size is learnt | The integration reads the level and the BMS's current limits but not the battery's size; SpotNav learns it (below). |
-| SolaX Modbus | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
+| SolaX Modbus | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). The size is the integration's *Battery Install Capacity* (GEN3) or *Battery System Installed Capacity* (GEN4 to GEN6), both disabled in Home Assistant by default: enable the one your inverter has, or the size is learnt. |
 | Enphase | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
 | Sofar (the Sofar plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read, for all battery inputs together. Read from the integration's source, not yet tested on a battery. |
 | Growatt (the Growatt plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read: the SPH and SPA storage inverters and the TL-XH, TL3-XH and WIT hybrids. The off-grid SPF is not read. Not yet tested on a battery. |

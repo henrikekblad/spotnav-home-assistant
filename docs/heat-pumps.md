@@ -61,12 +61,13 @@ heating (no control path it steers yet), the dial shows the wanted temperature w
 are left out, and one line points at **Settings → Heating → Control**; the setback, night and offset settings are left
 out until there is a path SpotNav steers.
 
-![The heat card's Now tab: the dial, Home or Away and the next twelve hours](images/heat-card-now.png)
+![The heat card's Now tab: the dial, Home or Away and the next 24 hours](images/heat-card-now.png)
 
 * **Now**: the dial for the wanted temperature with its band, the coldest room and the outdoor temperature, **Home**
-  or **Away**, what SpotNav would do (or does) and what the relay does, a thin strip of **the plan's next twelve
+  or **Away**, what SpotNav would do (or does) and what the relay does, a thin strip of **the plan's next 24
   hours** (a cell an hour: a lowering, a pre-heat or raise, the cooler night, hot water as a dot) with the same in
-  words under it, and today's heat, hot water and cost. The strip ends at midnight until tomorrow's prices are in.
+  words under it, and today's heat, hot water and cost. The strip rolls across midnight: tomorrow's hours are there
+  before tomorrow's prices are in, planned normal unless a fixed rule (the cooler night, away) covers them.
   The sensors, the zones and how the pump is controlled are in the gear's settings.
   **Away** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
   return time, then warms it up. The gear's **Setback when away** sets those degrees, 1 to 6
@@ -153,7 +154,8 @@ to stop, and small enough that the thermostat keeps the room within a degree if 
   or off: an air-to-air pump in summer is left alone), reading its temperature. SpotNav never changes the mode, the
   fan or a preset.
 * **A check** on the first write: it must show on the thermostat within 90 seconds, and where the zone heats (its
-  power sensor draws, or it says it is heating) the heating must stop within 10 minutes of the first lowering. A
+  power sensor draws, or it says it is heating) the heating must stop within 10 minutes of the first lowering, seen
+  on two readings in a row. A meter that falls while the thermostat still says it is heating is not taken as proof. A
   failed check says so under the zone's switch; turn it off and on to try again.
 * **Someone else's change wins.** A setpoint changed by hand (or the mode changed) while SpotNav holds one: SpotNav
   writes nothing back, takes the new value as yours and leaves the zone until tomorrow.
@@ -207,7 +209,10 @@ again after checking the wiring.
 **The rules** (fixed, no settings):
 
 * SpotNav lowers only where its plan lowers (the expensive hours, the hours the import target or the fuse is tight, or
-  while the house is too warm: below), and each lowering lasts at least **45 minutes** (no quarter-hour blips), at most **3 hours in a row**, with at least
+  while the house is too warm: below), or where the site's
+  [shed order](site-and-load-balancing.md#the-shed-order-under-the-ceiling) asks for one step while the hour is
+  heading over the import target or power level even with the cars paused ("Controlling: lowering the heat for the
+  ceiling until 15:30"; the controlled zones 1 °C). That step keeps every rule here, and each lowering lasts at least **45 minutes** (no quarter-hour blips), at most **3 hours in a row**, with at least
   **1 hour** of normal heat between lowerings and at most **6 hours a day**.
 * **Too warm indoors lowers too, whatever the price.** When the coldest counted room (its offset counted) has been
   above the comfort band (the wanted temperature plus half a degree) for **an hour**, the plan lowers the running hour

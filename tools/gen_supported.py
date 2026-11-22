@@ -733,7 +733,9 @@ OVERVIEW: tuple[Overview, ...] = (
         "`solax_modbus`, HACS (wills106/homeassistant-solax-modbus), its SolaX plugin",
         keys=("solax_modbus/solax",),
         adapter="solax",
-        note="Remote control ends by itself when it is no longer renewed. One Modbus client at a time.",
+        note="Remote control ends by itself when it is no longer renewed. One Modbus client at a time. The size is "
+        "*Battery Install Capacity* (GEN3) or *Battery System Installed Capacity* (GEN4 to GEN6), disabled by default: "
+        "enable it, or the size is learnt. The firmware is the inverter's software version.",
     ),
     Overview(
         "Sofar (HYD hybrids, KTL-X)",
