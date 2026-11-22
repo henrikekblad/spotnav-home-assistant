@@ -1,6 +1,6 @@
 // "Get started": what is still left to set up for this charger (the dashboard's `setup` block), shown to an
 // administrator in the card's attention line, the "What needs attention" dialog and at the top of Settings (with the
-// site's price, battery and heat rows the backend adds), and for a site in the shared settings popover
+// site's battery and heat rows the backend adds), and for a site in the shared settings popover
 // (`get_site_settings_view`'s `setup`, with the site's own rows: charger, price, battery, heat). Each row says what is
 // missing and has one button to the place where it is done; an optional row can also be answered "Not needed",
 // which the integration keeps for the whole installation. The backend decides which rows are left; the words
