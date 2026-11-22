@@ -1703,6 +1703,7 @@
   "battery.waiting.headroom": "Elle attend plus de marge sous le fusible principal.",
   "battery.waiting.staleData": "Elle attend des mesures récentes.",
   "battery.waiting.busy": "Elle attend que le pilotage de la batterie soit libre.",
+  "battery.waiting.startWait": "Attend quelques minutes après un démarrage avant que SpotNav ne pilote la batterie.",
   "battery.need.noBatteryControl": "SpotNav ne sait pas encore piloter les batteries de cette marque.",
   "battery.need.firmwareUnknown": "Activez le capteur de micrologiciel de la batterie dans Home Assistant.",
   "battery.need.controlNotFound": "La commande {role} de la batterie est introuvable dans Home Assistant.",

@@ -177,6 +177,7 @@ const WAITING_KEYS: Record<string, TranslationKey> = {
   headroom_too_small: "battery.waiting.headroom",
   stale_data: "battery.waiting.staleData",
   executor_busy: "battery.waiting.busy",
+  start_wait: "battery.waiting.startWait",
 };
 
 const MODE_KEYS: Record<string, TranslationKey> = {

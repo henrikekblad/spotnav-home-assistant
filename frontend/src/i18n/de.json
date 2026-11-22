@@ -1703,6 +1703,7 @@
   "battery.waiting.headroom": "Sie wartet auf mehr Luft unter der Hauptsicherung.",
   "battery.waiting.staleData": "Sie wartet auf frische Messwerte.",
   "battery.waiting.busy": "Sie wartet, solange die Speichersteuerung beschäftigt ist.",
+  "battery.waiting.startWait": "Wartet nach einem Start einige Minuten, bevor SpotNav die Batterie steuert.",
   "battery.need.noBatteryControl": "SpotNav kann Speicher dieser Marke noch nicht steuern.",
   "battery.need.firmwareUnknown": "Aktiviere den Firmware-Sensor des Speichers in Home Assistant.",
   "battery.need.controlNotFound": "Die Steuerung {role} des Speichers fehlt in Home Assistant.",

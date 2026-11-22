@@ -1703,6 +1703,7 @@
   "battery.waiting.headroom": "Se odottaa lisää tilaa pääsulakkeen alle.",
   "battery.waiting.staleData": "Se odottaa tuoreita lukemia.",
   "battery.waiting.busy": "Se odottaa, kun akun ohjaus on varattu.",
+  "battery.waiting.startWait": "Odottaa käynnistyksen jälkeen muutaman minuutin ennen kuin SpotNav ohjaa akkua.",
   "battery.need.noBatteryControl": "SpotNav ei vielä osaa ohjata tämän merkin akkuja.",
   "battery.need.firmwareUnknown": "Ota akun laiteohjelmistoanturi käyttöön Home Assistantissa.",
   "battery.need.controlNotFound": "Akun ohjausta {role} ei löydy Home Assistantista.",

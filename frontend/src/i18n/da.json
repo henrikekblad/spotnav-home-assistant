@@ -1703,6 +1703,7 @@
   "battery.waiting.headroom": "Den venter på mere plads under hovedsikringen.",
   "battery.waiting.staleData": "Den venter på friske målinger.",
   "battery.waiting.busy": "Den venter, mens batteristyringen er optaget.",
+  "battery.waiting.startWait": "Venter et par minutter efter start, før SpotNav styrer batteriet.",
   "battery.need.noBatteryControl": "SpotNav kan ikke styre batterier af dette mærke endnu.",
   "battery.need.firmwareUnknown": "Aktivér batteriets firmwaresensor i Home Assistant.",
   "battery.need.controlNotFound": "Batteriets styring {role} findes ikke i Home Assistant.",

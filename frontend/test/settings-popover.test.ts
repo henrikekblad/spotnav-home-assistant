@@ -106,6 +106,9 @@ describe("the battery's words", () => {
     expect(batteryLine("sv", "waiting:car_charging")).toBe(
       "Väntar på ett lämpligt tillfälle för kontrollen. Den väntar tills bilen slutar ladda.",
     );
+    expect(batteryLine("sv", "waiting:start_wait")).toBe(
+      "Väntar på ett lämpligt tillfälle för kontrollen. Väntar några minuter efter start innan SpotNav styr batteriet.",
+    );
     expect(batteryLine("sv", "failed:hold:ignored")).toBe(
       "Kontrollen misslyckades: ”Hålla” fungerade inte. Slå av och på igen för att kontrollera på nytt.",
     );
