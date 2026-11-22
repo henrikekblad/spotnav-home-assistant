@@ -292,6 +292,8 @@ class Adapter:
     manufacturer: str | tuple[str, ...] | None = None
     #: The plant's maximum output (kW), when it can be lower than the battery's rating.
     plant_max: Match | None = None
+    #: The `plant_max` entity's attribute that holds it, in W, instead of its state (Solis: `device_limit`).
+    plant_max_attribute: str | None = None
     #: Where the battery's own floor is kept (see the module).
     reserves: tuple[ReserveSource, ...] = ()
     #: The plant's AC power on phases A, B and C, and the factor that makes it positive for output (see the module).
@@ -728,6 +730,12 @@ SOLIS: Final = Adapter(
         ModeRule(_key("43135_2", "switch"), frozenset({"off"}), "remote force discharge", required=False),
     ),
     reserves=(ReserveSource(_key("solis_modbus_inverter_overdischarge_soc", "number", "sensor")),),
+    # The inverter's rated output, from the model chosen in the integration's setup: the advisory `device_limit` (W)
+    # of the battery discharge limit power number (43131, `sensors/solis_number_sensor.py` lines 89-102 and
+    # `solis_base_sensor.py` `_inverter_rating_max`, v4.5.0). The BMS's current limit can read far above it (a cold
+    # Dyness at 100 A x 367 V is 37 kW beside a 15 kW inverter). Absent with "essential sensors only".
+    plant_max=_key("solis_modbus_inverter_battery_discharge_limit_power", "number"),
+    plant_max_attribute="device_limit",
 )
 
 ADAPTERS: Final[tuple[Adapter, ...]] = (

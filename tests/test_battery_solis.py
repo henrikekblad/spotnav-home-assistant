@@ -137,3 +137,34 @@ def test_solis_has_no_control() -> None:
     assert all(control.brand != "solis" for control in (*commands.CONTROLS, *commands.EXPORT_CONTROLS))
     facts = _facts("solis")
     assert facts.hold is None and facts.grid_charge is None
+
+
+def test_solis_ratings_are_capped_by_the_inverter_rating_the_integration_states() -> None:
+    """A cold Dyness lets 100 A at 367 V (37 kW) beside a 15 kW inverter: the inverter's rated output, the advisory
+    `device_limit` (W) of the battery discharge limit power number, is the plant's maximum."""
+    from custom_components.spotnav.battery.facts import EntityFact
+
+    brand = BRANDS["solis"]
+    entities = _entities(brand, **{
+        "sensor.solis_s6_eh3p_battery_discharge_current_limitation_bms": {"state": "100"},
+        "sensor.solis_s6_eh3p_battery_voltage_bms": {"state": "366.8"},
+    })
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+    number = EntityFact(
+        entity_id="number.solis_s6_eh3p_battery_discharge_limit_power", platform=brand["platform"],
+        unique_id=f"{SERIAL}solis_modbus_inverter_battery_discharge_limit_power", device_id="inverter",
+        config_entry_id="entry", state="1500", unit="W",
+        attributes={"device_limit": 15000, "device_limit_source": "inverter_rating"},
+    )
+    uncapped = battery_facts(battery, entities, manufacturer=brand["manufacturer"], power_kw=-1.0)
+    capped = battery_facts(battery, [*entities, number], manufacturer=brand["manufacturer"], power_kw=-1.0)
+
+    assert uncapped.rated_discharge_kw == pytest.approx(36.68) and uncapped.plant_max_kw is None
+    assert capped.plant_max_kw == pytest.approx(15.0)
+    assert capped.sources["plant_max"] == "number.solis_s6_eh3p_battery_discharge_limit_power"
+    assert capped.max_discharge_kw == pytest.approx(15.0)
+    # Without the attribute (an older integration, "essential sensors only") nothing caps it.
+    from dataclasses import replace
+
+    bare = replace(number, attributes={})
+    assert battery_facts(battery, [*entities, bare], manufacturer=brand["manufacturer"], power_kw=-1.0).plant_max_kw is None
