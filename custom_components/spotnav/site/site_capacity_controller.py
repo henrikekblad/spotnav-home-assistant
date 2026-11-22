@@ -105,6 +105,7 @@ from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
 from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
+from .does_not_fit import site_does_not_fit
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
     IF_NOT_READY_HOLD,
@@ -5807,29 +5808,35 @@ class SiteCapacityController:
         return None
 
     def _tell_target_risk(self) -> None:
-        """Give each charger's notifier the departure the target makes it miss, or none (`ChargerNotifier.
-        import_target_risk`): told once, and taken off the phones once it is met again."""
+        """Give each charger's notifier its "does not fit" block where the plan asks the person, or none
+        (`ChargerNotifier.does_not_fit`): told once per departure in the daytime, and taken off the phones once it
+        fits again or a choice is made."""
         for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
             data = charger_data(self.hass, charger_entry_id)
             notifier = None if data is None else data.notifier
+            if notifier is None:
+                continue
             risk = self._target_risk.get(charger_entry_id)
-            if notifier is not None:
-                # Told only where the plan asks; `hold` and `release` are said in the status alone.
-                told = risk if risk is not None and risk.choice == IF_NOT_READY_ASK else None
-                outcome = notifier.import_target_risk(told)
-                if outcome is not None:
-                    # What the phones were told, for the change log: told, told again (grown) or taken off (with
-                    # the departure and shortfall last told).
-                    if told is not None:
-                        self._target_noticed[charger_entry_id] = (told.departure, told.missing_kwh)
-                    departure, missing_kwh = (
-                        self._target_noticed.pop(charger_entry_id, (None, None))
-                        if told is None
-                        else (told.departure, told.missing_kwh)
-                    )
-                    self._log_target(
-                        charger_entry_id, f"notice_{outcome}", departure=departure, missing_kwh=missing_kwh
-                    )
+            # Asked only where the plan asks; `hold` and `release` (the person's lasting answer, or a choice for this
+            # departure) are said in the status alone.
+            told = risk if risk is not None and risk.choice == IF_NOT_READY_ASK else None
+            block = None
+            if told is not None:
+                try:
+                    block = site_does_not_fit(self, charger_entry_id)
+                except Exception:  # noqa: BLE001 - the phones keep what they were told; the hold goes on
+                    _LOGGER.debug("SpotNav site %s: the does-not-fit block could not be made", self.entry_id, exc_info=True)
+                    continue
+            outcome = notifier.does_not_fit(block, recheck=self._tell_target_risk)
+            if outcome is not None:
+                # What the phones were told, for the change log: told, or taken off (with the departure and shortfall
+                # last told).
+                if outcome == "told" and told is not None:
+                    self._target_noticed[charger_entry_id] = (told.departure, told.missing_kwh)
+                    departure, missing_kwh = told.departure, told.missing_kwh
+                else:
+                    departure, missing_kwh = self._target_noticed.pop(charger_entry_id, (None, None))
+                self._log_target(charger_entry_id, f"notice_{outcome}", departure=departure, missing_kwh=missing_kwh)
 
     # -- a person sets the import target aside until a charge's departure
 

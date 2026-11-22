@@ -62,13 +62,25 @@ The question of which car is plugged in (`vehicle_identify`) is asked by the cha
 gives, counted against `HOURLY_LIMIT` but not `REPEAT_S` (there is at most one per plug-in). Once answered it is
 replaced on every phone that got it (`retire_vehicle_question`) or cleared (`clear_vehicle_question`).
 
-The site's import target making a plan miss its departure (`import_target_risk`, from the site on each recompute) is
-told as `plan_at_risk` is, under its choice and in its place: the same tag, so it replaces one told before, and no
-`plan_at_risk` while it stands. It says how much is missing and carries one button, "Release the import target for this charge", which sets the
-target aside for that charge until its departure (`SiteCapacityController.async_release_import_target`). It is told
-once per departure, again only when the shortfall grows clearly (`TARGET_RISK_GROWTH_KWH`, and by half), and taken
-off the phones once the departure can be met again (or the target is set aside). Not kept across a restart: a restart
-may tell it once more.
+A planned charge that does not fit under the ceiling by its departure, where the plan asks (`does_not_fit`, the
+block of `site/does_not_fit.py` from the site on each recompute) is told as `plan_at_risk` is, under its choice and in
+its place: the same tag, so it replaces one told before, and no `plan_at_risk` while it is on the phones or waits for
+the morning. It says what is needed and what fits ("Does not fit under the ceiling: 16 kWh by 07:00 – 12 kWh fit in
+time.") and carries the person's choices for this departure as buttons: "Take what fits (≈ 12 kWh)"
+(`SiteCapacityController.async_take_what_fits`) and "Allow the peak (≈ 12 kW, ≈ 105 kr)" (the one-period release,
+`SiteCapacityController.async_release_import_target`). "Later departure" has no button: it is the departure's editor,
+which a tap on the notice opens with the dashboard. A press is the person's choice; one for a departure that is no
+longer the plan's is refused.
+
+* **Once per departure**, never again for it (also not when it grows, comes back or Home Assistant restarts: the
+  departure told is kept with the told plan).
+* **Not at night** (`QUIET_FROM` to `QUIET_UNTIL`, 22:00–07:00 local): a person decides while awake. One that arises
+  in the night is told at 07:00 if it still stands and its departure is after 07:00; else never, and the person's
+  lasting `if_not_ready` decides as it would unanswered.
+* **Taken off the phones** once it no longer stands: the charge fits again, a choice was made (here, in the card or
+  in the app), another departure is planned, or the target is gone.
+
+The block is any flexible load's (plan step 3c's evening notice reuses it): `chosen` `None` and choices to offer.
 
 No notice about the plan is told while a person's Stop holds (the core's person intent, `held_off_by_person`): no
 `plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place) and no `plan_stopped`, but
@@ -87,7 +99,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, Callable, Final
 
 from homeassistant.core import callback, CALLBACK_TYPE, HomeAssistant
@@ -108,11 +120,12 @@ from ..execution.charger_events import (
 from ..execution.controller import ChargingController
 from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
+from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_TAKES_WHAT_FITS
 from ..sessions.store import SessionStore
 from ..vehicles.guest import is_guest
 from ..const import DOMAIN
 from ..texts import language_of
-from .messages import compose, EVENT_TEST, identify_text, import_target_release_text, import_target_text, Money
+from .messages import compose, does_not_fit_choice_text, does_not_fit_text, EVENT_TEST, identify_text, Money
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
@@ -121,16 +134,22 @@ _LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION: Final = 1
 #: 2: the record also keeps a plan's pending judgement, the `plan_at_risk` told and the open window's `plan_stopped`
-#: judgement; each optional, so a version 1 record reads as it is.
-_STORE_MINOR_VERSION: Final = 2
+#: judgement; 3: the "does not fit" notice's departure told and its phones. Each optional, so an older record reads as
+#: it is.
+_STORE_MINOR_VERSION: Final = 3
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.notified_plan"
 
 #: The same event for the same charger is not sent again within this long.
 REPEAT_S: Final = 15 * 60.0
-#: How much more (kWh, and at least half as much again) a told import-target shortfall must grow to be told again.
-TARGET_RISK_GROWTH_KWH: Final = 1.0
-#: The action id prefix of the import target's "Release the import target for this charge" button.
+#: The action id prefix of the "does not fit" notice's "Allow the peak" button (the import target set aside for this
+#: charge until its departure).
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
+#: The action id prefix of the "does not fit" notice's "Take what fits" button (for this departure only).
+TAKE_WHAT_FITS_ACTION: Final = "SPOTNAV_TAKE_WHAT_FITS_"
+#: No "does not fit" notice is sent from this local time ...
+QUIET_FROM: Final = time(22, 0)
+#: ... to this one: one that arises in the night is told at this time, if it still stands and its departure is later.
+QUIET_UNTIL: Final = time(7, 0)
 #: The event Home Assistant's companion app fires when a notification's button is pressed.
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
 #: At most this many notifications per charger in an hour, whatever they are (a limit of its own, apart from the
@@ -175,6 +194,23 @@ _TRACKED: Final = (
 
 def _local_time(moment: datetime | None) -> str | None:
     return None if moment is None else dt_util.as_local(moment).strftime("%H:%M")
+
+
+def is_quiet(moment: datetime) -> bool:
+    """Whether `moment` is in the night's quiet hours (`QUIET_FROM` to `QUIET_UNTIL`, local)."""
+    local = dt_util.as_local(moment).time()
+    return local >= QUIET_FROM or local < QUIET_UNTIL
+
+
+def quiet_end(moment: datetime) -> datetime:
+    """The first `QUIET_UNTIL` (local wall clock, also across a DST change) after `moment`."""
+    local = dt_util.as_local(moment)
+    end = local.replace(hour=QUIET_UNTIL.hour, minute=QUIET_UNTIL.minute, second=0, microsecond=0)
+    if end <= local:
+        end = (local + timedelta(days=1)).replace(
+            hour=QUIET_UNTIL.hour, minute=QUIET_UNTIL.minute, second=0, microsecond=0
+        )
+    return dt_util.as_utc(end)
 
 
 def plan_fingerprint(plan: Any) -> str | None:
@@ -355,11 +391,17 @@ class ChargerNotifier:
         self._at_risk_told: dict[str, Any] | None = None
         # The open window's `plan_stopped` judgement as last stored (`UnexpectedStopDetector.window_state`).
         self._stop_state: dict[str, Any] | None = None
-        # The import target's shortfall told (`import_target_risk`): its departure and kWh, and the phones it went to.
-        self._target_told: tuple[str, float] | None = None
-        self._target_phones: tuple[str, ...] = ()
-        # The app's wake-up for it (its own limits), once per told shortfall; and a `plan_at_risk` held back behind it.
-        self._target_pushed: tuple[str, float] | None = None
+        # The "does not fit" notice (`does_not_fit`): the departure last told (never told again; kept with the told
+        # plan), the phones it is on now (kept too, to take it off after a restart), the block that asks now, whether
+        # it waits for the morning, the timer that tells it then and who to ask for the block again at that time.
+        self._fit_told: str | None = None
+        self._fit_phones: tuple[str, ...] = ()
+        self._fit_asking: dict[str, Any] | None = None
+        self._fit_quiet = False
+        self._fit_timer: CALLBACK_TYPE | None = None
+        self._fit_timer_at: datetime | None = None
+        self._fit_recheck: Callable[[], None] | None = None
+        # A `plan_at_risk` held back behind the "does not fit" notice.
         self._at_risk_behind_target: dict[str, Any] | None = None
 
     async def async_load(self) -> None:
@@ -398,6 +440,12 @@ class ChargerNotifier:
             self._at_risk_told = dict(told)
         self._stops.restore(raw.get("stop"))
         self._stop_state = self._stops.window_state
+        fit = raw.get("does_not_fit")
+        if isinstance(fit, dict) and isinstance(fit.get("departure"), str):
+            self._fit_told = fit["departure"]
+            phones = fit.get("phones")
+            if isinstance(phones, list):
+                self._fit_phones = tuple(phone for phone in phones if isinstance(phone, str))
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -442,6 +490,8 @@ class ChargerNotifier:
             record["at_risk_told"] = self._at_risk_told
         if self._stop_state is not None:
             record["stop"] = self._stop_state
+        if self._fit_told is not None:
+            record["does_not_fit"] = {"departure": self._fit_told, "phones": list(self._fit_phones)}
         self._hass.async_create_task(self._plan_store.async_save(record), eager_start=True)
 
     @callback
@@ -463,6 +513,7 @@ class ChargerNotifier:
         self._unsubscribe.clear()
         self._cancel_recheck()
         self._arm_plan_timer(None)
+        self._arm_fit_timer(None)
 
     @callback
     def _on_snapshot(self, snapshot: AutoSnapshot) -> None:
@@ -491,9 +542,9 @@ class ChargerNotifier:
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk not told under a person's Stop", self._entry_id)
                     self._at_risk_under_stop = attributes
                     continue
-                if self._target_told is not None:
-                    # The import target's own shortfall is told in its place (`import_target_risk`); kept, and told
-                    # once that notice is taken down while the plan still cannot be met.
+                if self._fit_holds_back():
+                    # The "does not fit" notice is told in its place (`does_not_fit`); kept, and told once that
+                    # notice is taken down while the plan still cannot be met.
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk told as the import target's", self._entry_id)
                     self._at_risk_behind_target = attributes
                     continue
@@ -525,7 +576,7 @@ class ChargerNotifier:
                 auto_back
                 and facts.at_risk
                 and not away
-                and self._target_told is None
+                and not self._fit_holds_back()
                 and not self._at_risk_told_for(owed, now)
             ):
                 self._mark_at_risk_told(owed, now)
@@ -862,63 +913,104 @@ class ChargerNotifier:
             },
         }
 
-    # ------------------------------------------------------------------ the import target's shortfall
+    # ------------------------------------------------------------------ a charge that does not fit
 
-    def import_target_risk(self, risk: Any | None) -> str | None:
-        """The site's word on this charger (`SiteCapacityController._hold_to_import_target`): the departure the
-        import target makes the plan miss and by how much (`TargetRisk`), or `None` (see the module). Answers what the
-        phones were told for the site's change log: `told`, `retold` (the shortfall grew), `cleared`, or `None`."""
+    def _fit_holds_back(self) -> bool:
+        """Whether `plan_at_risk` is held back: the "does not fit" notice is on the phones, or waits for the morning."""
+        return bool(self._fit_phones) or self._fit_quiet
+
+    def does_not_fit(self, block: dict[str, Any] | None, recheck: Callable[[], None] | None = None) -> str | None:
+        """The charge's "does not fit" block (`site/does_not_fit.py`) where the plan asks the person, else `None` (it
+        fits, a choice was made, or the lasting `if_not_ready` answers). `recheck` gives the block again (at 07:00 for
+        one that arose in the night). Answers what the phones were told for the site's change log: `told`, `cleared`,
+        or `None` (see the module)."""
         now = dt_util.utcnow()
-        told = self._target_told
-        if risk is None:
-            self._target_pushed = None
-            if told is not None:
-                self._target_told = None
-                self.clear_vehicle_question(self._at_risk_tag(), self._target_phones)
-                self._target_phones = ()
-                behind = self._at_risk_behind_target
-                if behind is not None and self._at_risk_now:
-                    # The plan still cannot be met for reasons of its own: told now, as it was not before.
-                    self._mark_at_risk_told(behind, now)
-                    self._maybe_send(EVENT_PLAN_AT_RISK, behind, now)
-                self._at_risk_behind_target = None
-                return "cleared"
+        asking = block if block is not None and block.get("chosen") is None and block.get("choices") else None
+        departure = None if asking is None else asking.get("departure")
+        self._fit_asking = asking
+        self._fit_recheck = recheck
+        outcome: str | None = None
+        if self._fit_phones and (asking is None or departure != self._fit_told):
+            # It no longer stands (or stands for another departure): taken off the phones.
+            self.clear_vehicle_question(self._at_risk_tag(), self._fit_phones)
+            self._fit_phones = ()
+            self._save_plan()
+            outcome = "cleared"
+        moment = _instant(departure)
+        if asking is None or moment is None or moment <= now:
+            self._arm_fit_timer(None)
+            was_quiet, self._fit_quiet = self._fit_quiet, False
+            behind = self._at_risk_behind_target
             self._at_risk_behind_target = None
-            return None
-        if told is not None and told[0] == risk.departure:
-            grown = risk.missing_kwh - told[1]
-            if grown < max(TARGET_RISK_GROWTH_KWH, told[1] / 2):
-                return None
-        if self._connected is False:
-            return None  # nothing is charged with no car there
-        if self._person_stop_holds():
-            return None  # nothing about the plan is told under a person's Stop
-        if self._push is not None and self._target_pushed != (risk.departure, risk.missing_kwh):
-            self._target_pushed = (risk.departure, risk.missing_kwh)
-            self._push.async_event(EVENT_PLAN_AT_RISK, now)
+            if (outcome is not None or was_quiet) and behind is not None and self._at_risk_now:
+                # The plan still cannot be met for reasons of its own: told now, as it was not before.
+                self._mark_at_risk_told(behind, now)
+                self._maybe_send(EVENT_PLAN_AT_RISK, behind, now)
+            return outcome
+        if departure == self._fit_told:
+            return outcome  # once per departure
+        if self._connected is False or self._person_stop_holds():
+            # Nothing is charged with no car there; nothing about the plan is told under a person's Stop.
+            self._fit_quiet = False
+            self._arm_fit_timer(None)
+            return outcome
+        if is_quiet(now):
+            # Not in the night: at 07:00 if it still stands then and its departure is later; else never.
+            due = quiet_end(now)
+            self._fit_quiet = True
+            self._arm_fit_timer(due if moment > due else None)
+            return outcome
+        self._fit_quiet = False
+        self._arm_fit_timer(None)
+        return "told" if self._tell_fit(asking, moment, now) else outcome
+
+    def _tell_fit(self, block: dict[str, Any], departure: datetime, now: datetime) -> bool:
+        """Tell the "does not fit" notice to the paired app and the chosen phones; whether either heard it."""
+        pushed = self._push is not None and self._push.async_event(EVENT_PLAN_AT_RISK, now)
         notifications = self._store.settings(self._entry_id).notifications
-        if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
-            return None
-        targets = tuple(
-            target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
-        )
+        targets: tuple[str, ...] = ()
+        if notifications.wants(EVENT_PLAN_AT_RISK) and self._within_hourly_limit(now):
+            targets = tuple(
+                target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
+            )
+        if not targets and not pushed:
+            return False
+        # Told for this departure from here on, whatever else happens to it.
+        self._fit_told = block["departure"]
+        self._fit_phones = targets
+        self._save_plan()
         if not targets:
-            return None
-        retold = told is not None and told[0] == risk.departure
-        # Told from here on (not before: a notice the phones never got is no reason to keep `plan_at_risk` back).
-        self._target_told = (risk.departure, risk.missing_kwh)
+            return True
         self._sent_times.append(now)
         self._last_sent[EVENT_PLAN_AT_RISK] = now
         language = language_of(self._hass.config.language)
-        departure = dt_util.parse_datetime(risk.departure)
-        title, message = import_target_text(
+        currency = self._currency()
+        title, message = does_not_fit_text(
             self._name(),
             language,
             time=_local_time(departure),
-            target_kw=risk.target_kw,
-            kwh=risk.missing_kwh,
-            set_kw=risk.set_kw,
+            short_kwh=block.get("short_kwh"),
+            fits_kwh=block.get("deliverable_kwh"),
         )
+        # The departure it was told for rides with the press: one for a departure no longer the plan's is refused.
+        stamp = _epoch(departure)
+        prefixes = {CHOICE_TAKES_WHAT_FITS: TAKE_WHAT_FITS_ACTION, CHOICE_ACCEPT_PEAK: TARGET_RELEASE_ACTION}
+        actions = [
+            {
+                "action": f"{prefixes[choice['code']]}{self._entry_id}_{stamp}",
+                "title": does_not_fit_choice_text(
+                    language,
+                    choice["code"],
+                    kwh=choice.get("kwh"),
+                    peak_kw=choice.get("peak_kw"),
+                    cost=None
+                    if choice.get("cost") is None or currency is None
+                    else Money(int(round(choice["cost"])), currency),
+                ),
+            }
+            for choice in block.get("choices") or []
+            if choice.get("code") in prefixes
+        ]
         url = notifications.url or DEFAULT_URL
         payload = {
             "title": title,
@@ -929,39 +1021,65 @@ class ChargerNotifier:
                 "tag": self._at_risk_tag(),
                 "group": "spotnav",
                 "channel": "SpotNav",
-                # The departure it was told for rides with the press: one for a departure no longer the plan's is
-                # refused (`SiteCapacityController.async_release_import_target`), a restart or a new plan whatever.
-                "actions": [
-                    {
-                        "action": f"{TARGET_RELEASE_ACTION}{self._entry_id}_{_epoch(departure)}",
-                        "title": import_target_release_text(language),
-                    }
-                ],
+                "actions": actions,
             },
         }
-        self._target_phones = targets
         for target in targets:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
-        return "retold" if retold else "told"
+        return True
+
+    def _arm_fit_timer(self, due: datetime | None) -> None:
+        if due == self._fit_timer_at:
+            return
+        if self._fit_timer is not None:
+            self._fit_timer()
+        self._fit_timer = None
+        self._fit_timer_at = due
+        if due is None:
+            return
+
+        @callback
+        def _fire(_now: datetime) -> None:
+            self._fit_timer = None
+            self._fit_timer_at = None
+            if self._fit_recheck is not None:
+                # The block as it stands now (the site tells it, and logs what was told).
+                self._fit_recheck()
+            else:
+                self.does_not_fit(self._fit_asking)
+
+        self._fit_timer = async_track_point_in_utc_time(self._hass, _fire, due)
 
     def _at_risk_tag(self) -> str:
         return f"spotnav_{self._entry_id}_{EVENT_PLAN_AT_RISK}"
 
     @callback
     def _on_action(self, event: Any) -> None:
-        """A phone's "Release the import target for this charge": the target is set aside for this charger's charge until its departure."""
+        """A phone's button on the "does not fit" notice: "Allow the peak" sets the import target aside for this
+        charge until its departure, "Take what fits" holds that departure under it; either for the departure told."""
         action = event.data.get("action")
-        prefix = f"{TARGET_RELEASE_ACTION}{self._entry_id}_"
-        if not isinstance(action, str) or not action.startswith(prefix):
+        if not isinstance(action, str):
             return
+        prefixes = {
+            f"{TARGET_RELEASE_ACTION}{self._entry_id}_": CHOICE_ACCEPT_PEAK,
+            f"{TAKE_WHAT_FITS_ACTION}{self._entry_id}_": CHOICE_TAKES_WHAT_FITS,
+        }
+        prefix = next((prefix for prefix in prefixes if action.startswith(prefix)), None)
+        if prefix is None:
+            return
+        choice = prefixes[prefix]
         stamp = action.removeprefix(prefix)
         if not stamp.isdigit():
             return
         from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
 
         site = site_controller_for_charger(self._hass, self._entry_id)
-        if site is not None:
+        if site is None:
+            return
+        if choice == CHOICE_ACCEPT_PEAK:
             site.async_release_import_target(self._entry_id, for_departure=int(stamp), source="phone")
+        else:
+            site.async_take_what_fits(self._entry_id, for_departure=int(stamp), source="phone")
 
     # ------------------------------------------------------------------ which car is plugged in?
 

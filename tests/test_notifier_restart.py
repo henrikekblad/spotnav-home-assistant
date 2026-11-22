@@ -372,4 +372,4 @@ async def test_a_record_an_earlier_release_stored_reads_as_it_is(
     assert made.notifier.plan_notice == {"seq": 3, "at": at(12).isoformat()}
     await made.install(night())
     await _go_to(made, at(14, 10))
-    assert hass_storage[key]["minor_version"] == 2
+    assert hass_storage[key]["minor_version"] == 3
