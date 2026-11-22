@@ -87,7 +87,7 @@ def with_states(site: Any, loads: list[FlexibleLoad]) -> list[FlexibleLoad]:
         if step is not None and (not step.live or not load.controlled):
             # Watched: what it would do.
             reason = REASON_CEILING
-        elif step is not None and _held(site, load):
+        elif step is not None and step.taken and _held(site, load):
             state, reason = STATE_PAUSED, REASON_CEILING
         elif shed is not None and shed in blocked and load.controlled:
             state, reason = STATE_BLOCKED, blocked[shed]

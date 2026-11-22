@@ -235,7 +235,7 @@ def test_the_flexible_loads_say_paused_for_the_ceiling_blocked_or_would() -> Non
 
     order = ShedOrder()
     start = _HOUR
-    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, start, start + H, 3000.0, start)
+    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, start, start + H, 3000.0, start, taken=True)
     order.blocked[LOAD_HEAT] = "room_cold"
     site = SimpleNamespace(
         shed_order=order,
@@ -279,3 +279,30 @@ def test_a_car_counts_at_what_its_plan_needs_not_at_what_the_fuse_would_give() -
     assert _projection(budget, [car], {"garage": 3700.0}).excess_w < 0
     # A plan asking more than the fuse gives counts at the fuse's.
     assert _projection(budget, [car], {"garage": 20000.0}).cars_held_w == 16.0 * 3 * _V
+
+
+def test_the_plan_view_shows_only_what_the_controls_hold() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api.plan import _shed
+    from custom_components.spotnav.site.shed_order import ShedOrder
+
+    order = ShedOrder()
+    start = _HOUR
+    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, start, start + H, 1500.0, start)
+    order.steps[LOAD_HEAT] = Step(LOAD_HEAT, True, start, start + H, 1500.0, start, taken=True)
+    controller = SimpleNamespace(
+        shed_order=order, water_heater_control=SimpleNamespace(held_off=False), heat_control=SimpleNamespace(held=False)
+    )
+    # Steps not held by their controls: nothing shown.
+    assert _shed(controller, LOAD_WATER_HEATER) is None
+    assert _shed(controller, LOAD_HEAT) is None
+    order.steps[LOAD_WATER_HEATER].taken = True
+    controller.water_heater_control.held_off = True
+    controller.heat_control.held = True
+    assert _shed(controller, LOAD_WATER_HEATER) == (start, start + H)
+    assert _shed(controller, LOAD_HEAT) == (start, start + H)
+    # A watched load's step is shown as would.
+    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, start, start + H, 1500.0, start, taken=True)
+    controller.water_heater_control.held_off = False
+    assert _shed(controller, LOAD_WATER_HEATER) == (start, start + H)

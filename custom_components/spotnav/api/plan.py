@@ -211,10 +211,23 @@ def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[
 
 
 def _shed(controller: Any, load: str) -> tuple[datetime, datetime] | None:
-    """The shed order's step for a load (`site/shed_order.py`), live or would: `(since, until)`, `None` without one."""
+    """The shed order's step for a load (`site/shed_order.py`): `(since, until)`; a live one only once its control
+    holds it (the water heater off, the pump lowered), never from the step's existence alone; a `would` one (the
+    lane says would). `None` without one."""
     order = getattr(controller, "shed_order", None)
     step = None if order is None else order.step(load)
-    return None if step is None else (step.since, step.until)
+    if step is None:
+        return None
+    if step.live:
+        if load == LOAD_WATER_HEATER:
+            part = getattr(controller, "water_heater_control", None)
+            held = bool(part is not None and part.held_off)
+        else:
+            part = getattr(controller, "heat_control", None)
+            held = bool(part is not None and part.held)
+        if not (step.taken and held):
+            return None
+    return (step.since, step.until)
 
 
 def _soft(controller: Any) -> dict[datetime, float]:
