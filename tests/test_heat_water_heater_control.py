@@ -453,16 +453,35 @@ async def test_no_pause_where_the_window_left_would_not_cover_the_need(hass: Hom
     assert heater._until_max(moment + 2 * MIN) == moment + 2 * MIN  # noqa: SLF001
 
 
-async def test_the_meter_is_read_from_its_text_state(hass: HomeAssistant, freezer, monkeypatch) -> None:
-    """Home Assistant keeps a sensor's state as text: the element's power reads from it (in W or kW)."""
+async def test_the_meter_is_read_from_its_power_sensor_beside_an_energy_one(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """A Shelly 1PM or a plug has both a power (W) and an energy (kWh) sensor: the power one is read, from its text
+    state, in its unit; a unit Home Assistant does not know is no reading."""
     from custom_components.spotnav.site import heat_zones
+    from custom_components.spotnav.site.heat_zones import DeviceSensor
 
     _site_, heater, _switch, _now = await _site(hass, freezer)
-    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", []))
-    monkeypatch.setattr(heat_zones, "pick_zone_sensor", lambda _sensors: (POWER, "power"))
+    sensors = [
+        DeviceSensor("sensor.vvb_energy", "energy", "kWh", "total_increasing"),
+        DeviceSensor(POWER, "power", "W", "measurement"),
+    ]
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", sensors))
     hass.states.async_set(POWER, "2950.5", {"unit_of_measurement": "W"})
     assert heater._power(HEATER) == (POWER, 2950.5)  # noqa: SLF001
     hass.states.async_set(POWER, "2.9", {"unit_of_measurement": "kW"})
     assert heater._power(HEATER) == (POWER, 2900.0)  # noqa: SLF001
+    hass.states.async_set(POWER, "2900", {"unit_of_measurement": "VA"})
+    assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001
     hass.states.async_set(POWER, "unavailable")
+    assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001
+
+
+async def test_a_frozen_reading_is_no_reading(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.site import heat_zones
+    from custom_components.spotnav.site.heat_zones import DeviceSensor, POWER_STALE_S
+
+    _site_, heater, _switch, _now = await _site(hass, freezer)
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", [DeviceSensor(POWER, "power", "W", "measurement")]))
+    hass.states.async_set(POWER, "3000", {"unit_of_measurement": "W"})
+    assert heater._power(HEATER) == (POWER, 3000.0)  # noqa: SLF001
+    freezer.tick(timedelta(seconds=POWER_STALE_S + 60))
     assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001

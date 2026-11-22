@@ -59,7 +59,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..core.parse import aware_instant, finite_number, number_from_state
+from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
 from ..site.shed_order import LOAD_HEAT, REASON_CEILING, Offer
 from .automations import SteeringAutomation, steering_automations
@@ -776,22 +776,16 @@ class ZonesControl:
     # ---- the check's effect
 
     def _zone_power_w(self, entity_id: str) -> float | None:
-        from ..site.heat_meter import KIND_POWER  # noqa: PLC0415
-        from ..site.heat_zones import device_sensors, pick_zone_sensor  # noqa: PLC0415
+        """The zone's power now (W) from the power sensor on its device (`heat_zones.pick_power_sensor`, an energy
+        sensor beside it notwithstanding; `read_power_w`); `None` without one or a fresh reading."""
+        from ..site.heat_zones import device_sensors, pick_power_sensor, read_power_w  # noqa: PLC0415
 
         try:
             _device, sensors = device_sensors(self.hass, entity_id)
         except Exception:  # noqa: BLE001 - no power to judge by
             return None
-        picked = pick_zone_sensor(sensors)
-        if picked is None or picked[1] != KIND_POWER:
-            return None
-        state = self.hass.states.get(picked[0])
-        value = None if state is None else number_from_state(state.state)
-        if value is None:
-            return None
-        unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
-        return value * 1000.0 if unit == "kW" else value
+        picked = pick_power_sensor(sensors)
+        return None if picked is None else read_power_w(self.hass, picked)
 
     def _effect_start(self, zone: ZoneState, read: float | None, value: float, now: datetime) -> dict[str, Any] | None:
         """What the first lowering's effect is judged by: the zone's power or its `hvac_action`, where it heats now and

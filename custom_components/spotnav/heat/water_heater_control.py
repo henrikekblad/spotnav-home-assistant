@@ -48,7 +48,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..core.parse import aware_instant, finite_number, number_from_state
+from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
 from ..site.shed_order import LOAD_WATER_HEATER, Offer
 from .automations import SteeringAutomation, steering_automations
@@ -280,23 +280,18 @@ class WaterHeaterControl:
         return state.state == "on"
 
     def _power(self, entity_id: str) -> tuple[str | None, float | None]:
-        """The power sensor on the switch's device and its reading (W); `(None, None)` without one."""
-        from ..site.heat_meter import KIND_POWER  # noqa: PLC0415
-        from ..site.heat_zones import device_sensors, pick_zone_sensor  # noqa: PLC0415
+        """The power sensor on the switch's device and its reading (W, `heat_zones.read_power_w`: its unit converted,
+        none for one that has not reported for a while); `(None, None)` without one."""
+        from ..site.heat_zones import device_sensors, pick_power_sensor, read_power_w  # noqa: PLC0415
 
         try:
             _device, sensors = device_sensors(self.hass, entity_id)
         except Exception:  # noqa: BLE001 - unmetered
             return None, None
-        picked = pick_zone_sensor(sensors)
-        if picked is None or picked[1] != KIND_POWER:
+        picked = pick_power_sensor(sensors)
+        if picked is None:
             return None, None
-        state = self.hass.states.get(picked[0])
-        value = None if state is None or state.state in ("unavailable", "unknown") else number_from_state(state.state)
-        if value is None:
-            return picked[0], None
-        unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
-        return picked[0], value * 1000.0 if unit == "kW" else value
+        return picked, read_power_w(self.hass, picked)
 
     def _tank(self, sensor: str | None) -> float | None:
         if sensor is None:
@@ -541,13 +536,10 @@ class WaterHeaterControl:
         reads off, without a trusted meter or without a reading (never a learnt figure: the hold counts it as freed)."""
         if read is not True or not self.metered or self.power_sensor is None:
             return 0.0
-        state = self.hass.states.get(self.power_sensor)
-        if state is None or state.state in ("unavailable", "unknown"):
-            return 0.0
-        value = number_from_state(state.state)
-        if value is None:
-            return 0.0
-        return max(0.0, value * 1000.0 if state.attributes.get("unit_of_measurement") == "kW" else value)
+        from ..site.heat_zones import read_power_w  # noqa: PLC0415
+
+        value = read_power_w(self.hass, self.power_sensor)
+        return 0.0 if value is None else max(0.0, value)
 
     def _until_max(self, now: datetime) -> datetime | None:
         """The latest a pause may last and still leave the cheap window running now the time its remaining need takes
