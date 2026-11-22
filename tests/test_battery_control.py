@@ -1416,7 +1416,8 @@ async def test_the_ha_down_acceptance_is_offered_only_where_the_ha_down_cap_bind
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
     _field_tested(monkeypatch)
-    _per_phase_plant(hass)
+    # An Output Type the per-phase hold does not act with: no safe way past the cap here, so the risk is offered.
+    _per_phase_plant(hass, output_type="l1_l2_l3")
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     await control._async_read_sources(dt_util.now())
     cap = control.status()["grid_charge_cap"]
@@ -1436,6 +1437,11 @@ async def test_the_ha_down_acceptance_is_offered_only_where_the_ha_down_cap_bind
     _options(hass, site, enabled=False)
     assert control.status()["grid_charge_cap"]["ha_down"]["offered"] is False
     _options(hass, site, enabled=True)
+    # The per-phase hold is a way here (L1/L2/L3/N): the risk is not offered, before the limit is set or said to act
+    # (an acceptance already given still shows on the card, which draws an accepted one whatever the offer says).
+    _per_phase_plant(hass)
+    _accept_ha_down(hass, site, False)
+    assert control.status()["grid_charge_cap"]["ha_down"]["offered"] is False
     # The plant's own limit held per phase guards the fuse: no cap of this kind, the acceptance ignored, no offer.
     _import_limit(hass, "12.4")
     _options(hass, site, import_limit_acts=True)
@@ -2305,3 +2311,87 @@ async def test_a_field_tested_recipe_or_a_beta_tester_leaves_shadow_only_off_by_
     assert control.options().shadow_only is True
     monkeypatch.setattr(control_module, "learning_gate_open", lambda _hass, _site: True)
     assert control.options().shadow_only is False, "a beta tester's site"
+
+
+async def _tap_site(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], margin_a: float):
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    hass.config_entries.async_update_entry(site, data={**site.data, "safety_margin_a": margin_a})
+    _field_tested(monkeypatch)
+    _per_phase_plant(hass)
+    monkeypatch.setattr(control_module, "IMPORT_LIMIT_READ_BACK_S", 0.05)
+    monkeypatch.setattr(control_module, "IMPORT_LIMIT_READ_BACK_STEP_S", 0.01)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    await control._async_read_sources(dt_util.now())
+    return site, control
+
+
+def _number_service(hass: HomeAssistant, *, echo: bool = True) -> list[float]:
+    """A `number.set_value` that records its values and, with `echo`, sets the entity's state as the plant reads it."""
+    written: list[float] = []
+
+    async def set_value(call) -> None:
+        if call.data["entity_id"] != IMPORT_LIMIT:
+            return  # the control's own writes once it runs (the charge power), not the import limit
+        written.append(call.data["value"])
+        if echo:
+            state = hass.states.get(call.data["entity_id"])
+            hass.states.async_set(call.data["entity_id"], str(call.data["value"]), state.attributes)
+
+    hass.services.async_register("number", "set_value", set_value)
+    return written
+
+
+@pytest.mark.parametrize(("margin_a", "start", "target"), [(1.0, "13.8", 13.1), (0.0, None, 13.8)])
+async def test_the_tap_lowers_the_plant_s_import_limit_reads_it_back_and_then_says_it_acts(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any],
+    margin_a: float, start: str | None, target: float,
+) -> None:
+    """The site's own margin sets the value (3 x (20 - margin) A x 231 V, rounded down); an unset limit is set too."""
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, margin_a)
+    _import_limit(hass, start if start is not None else "unknown")
+    written = _number_service(hass)
+    assert control.import_limit_target_kw() == target
+    assert await control.async_set_import_limit() is None
+    assert written == [target]
+    assert control.options().import_limit_acts is True
+    assert control._import_limit_phase_refusal() is None
+    cap = control.status()["grid_charge_cap"]
+    assert cap["rule"] == "import_limit" and cap["import_limit"]["per_phase"]["holds"] is True
+
+
+async def test_the_tap_never_raises_a_limit_already_low_enough(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 0.0)
+    _import_limit(hass, "8.0")
+    written = _number_service(hass)
+    assert await control.async_set_import_limit() is None
+    assert written == [], "a lower limit stays as it is"
+    assert control.options().import_limit_acts is True
+
+
+async def test_the_tap_says_it_acts_only_once_the_value_reads_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _import_limit(hass, "13.8")
+    written = _number_service(hass, echo=False)
+    assert await control.async_set_import_limit() == "not_read_back"
+    assert written == [13.1]
+    assert control.options().import_limit_acts is False
+
+
+async def test_the_tap_refuses_where_the_per_phase_hold_is_no_way(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _per_phase_plant(hass, output_type="l1_l2_l3")
+    _import_limit(hass, "13.8")
+    written = _number_service(hass)
+    assert await control.async_set_import_limit() == "output_type_not_supported"
+    assert written == [] and control.options().import_limit_acts is False
+    # A limit that is not in kW is not guessed at.
+    _per_phase_plant(hass)
+    hass.states.async_set(IMPORT_LIMIT, "13800", {"unit_of_measurement": "W"})
+    assert await control.async_set_import_limit() == "unit_unknown"
+    assert written == []
