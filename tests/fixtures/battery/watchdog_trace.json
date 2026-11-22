@@ -915,6 +915,34 @@
      },
      {
       "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "command_timeout"
+     },
+     {
+      "at": "2026-11-14T02:34:40+01:00",
       "entity_id": "number.solaredge_charge_limit",
       "kind": "write",
       "reason": "charge_limit",
@@ -935,18 +963,13 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:34:40+01:00",
+      "at": "2026-11-14T02:34:50+01:00",
       "entity_id": "number.solaredge_charge_limit",
       "kind": "confirmed",
       "read": "5000",
       "reason": "charge_limit"
      }
     ],
-    "ops": [],
-    "persist_first": false
-   },
-   {
-    "events": [],
     "ops": [],
     "persist_first": false
    },

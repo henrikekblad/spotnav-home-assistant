@@ -2314,11 +2314,21 @@ class Executor:
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
+            target = self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind)
+            # The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
+            # timeout) is written again with the new command: with an action change every quarter hour it would
+            # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
+            # a button, pressed once per target (SolaX's trigger sends the whole new command).
+            renew = () if self._fast_renewal() else tuple(
+                name for name in self.control.watchdog_roles
+                if name in target and state.target.get(name) == target[name]
+                and self.control.role(name).method != "button"
+            )
             self.state = replace(
                 state, action=action, rate_kw=rate,
-                target=self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind),
+                target=target,
                 house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
-                sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
+                sent=(), renew=renew, rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
                 lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
                 phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.

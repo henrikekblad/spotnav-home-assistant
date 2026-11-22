@@ -19,6 +19,7 @@ from custom_components.spotnav.battery.commands import (
     SOLAREDGE_CONTROL,
     SOLAX_CONTROL,
     WATCHDOG_RENEW_S,
+    WATCHDOG_S,
     control_for,
     huawei_forcible,
     service_call,
@@ -1707,3 +1708,25 @@ def test_a_restore_write_pending_across_a_restart_ends_once_the_role_needs_no_wr
     _now, _ = run(again, battery, later, _HAND_BACK_LOOKS, "grid_charge", 4.0, headroom_a=0.5)
     _ended(again)
     assert not again.state.holds_snapshot
+
+
+def test_solaredge_s_timeout_is_written_again_well_inside_it_when_the_action_changes_every_quarter_hour() -> None:
+    """A plan of 15-minute slots may change the action at every quarter. Each change writes the new command mode,
+    but the timeout itself, unchanged, would not be, and the renewal counts from the change: the timeout register
+    would then never be written again after the start. Whatever restarts the inverter's timer (the timeout's write
+    or the command's), it must be written again well before `WATCHDOG_S` runs out."""
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now = T0
+    times: list[float] = []
+    quarter = _looks(WATCHDOG_RENEW_S) - 1
+    for n in range(10):
+        start = now
+        now, results = run(executor, battery, now, quarter, ("hold", "discharge_house")[n % 2])
+        for index, result in enumerate(results):
+            if any(op.role == "command_timeout" for op in result.ops):
+                times.append((start - T0).total_seconds() + index * TICK.total_seconds())
+        assert executor.state.phase == "active"
+    gaps = [later - earlier for earlier, later in zip([0.0, *times], [*times, (now - T0).total_seconds()], strict=True)]
+    assert max(gaps) <= WATCHDOG_RENEW_S + 60, gaps
+    assert max(gaps) < WATCHDOG_S / 2 + 60

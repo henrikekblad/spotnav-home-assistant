@@ -75,8 +75,10 @@ The entity keys, options and services below were checked against each integratio
   only while the storage control mode is already Remote Control (`select.py` `StorageControlMode`, option 4): the
   command mode (`storage_command_mode`, `const.py` `STORAGE_MODE`), the charge and discharge limits (W) and the
   command timeout (s, at most 86400), all available only in Remote Control (`number.py`). The timeout is the
-  watchdog: when SpotNav stops renewing the command the inverter falls back to its default mode by itself. A grid
-  charge needs an AC charge policy other than Disabled (`ac_charge_policy`).
+  watchdog: when SpotNav stops renewing the command the inverter falls back to its default mode by itself. It is
+  written as `WATCHDOG_S` (30 minutes) and written again, with the command mode, every `WATCHDOG_RENEW_S` (half of
+  it) and at every change of action, so it is renewed whether the inverter restarts its timer on the timeout's write
+  or on the command's. A grid charge needs an AC charge policy other than Disabled (`ac_charge_policy`).
 * **Huawei Solar**, `huawei_solar`, wlcrs `c754df504587cac15f8f9c5866e88013e64c67c4` (library huawei-solar 3.1.0):
   services `forcible_charge` / `forcible_discharge` (`device_id` of the battery, `power` W, `duration` minutes
   1-1440) and `stop_forcible_charge` (`services.py`), registered only with the installer password; read back from
