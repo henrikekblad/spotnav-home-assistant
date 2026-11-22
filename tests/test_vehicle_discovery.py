@@ -398,6 +398,54 @@ async def test_a_zero_charge_limit_is_not_a_charge_limit(hass: HomeAssistant) ->
     assert by_id[half_awake].target_soc_percent_max == 90.0
 
 
+async def test_an_ac_limit_reading_zero_never_hands_the_ceiling_to_the_dc_limit(hass: HomeAssistant) -> None:
+    """A Kia whose cloud sends its AC limit as 0 mid-charge (DC 80, car at 92) has no ceiling for that reading,
+    not the DC 80: the DC limit is never the car's while an AC limit entity exists, whatever it reads."""
+    device_id = _device(hass, unique_id="ev6", name="EV6")
+    _battery_percent(hass, device_id, percent="92")
+    _range_sensor(hass, device_id, km="400")
+    ac = _charge_limit(hass, device_id, object_id="ev6_ac_charging_limit", percent="0")
+    _charge_limit(hass, device_id, object_id="ev6_dc_charging_limit", percent="80")
+
+    (vehicle,) = discover_vehicles(hass)
+    assert vehicle.target_soc_percent_max is None
+    assert vehicle_charge_limit_entity_id(hass, device_id) is None
+    assert discover_ambiguous_charge_limits(hass) == []
+
+    # An unavailable state carries no attributes; the registry still knows the entity's range and unit.
+    er.async_get(hass).async_update_entity(
+        ac, capabilities={"min": 50, "max": 100, "step": 10, "mode": "slider"}, unit_of_measurement="%"
+    )
+    hass.states.async_set(ac, "unavailable", {})
+    assert discover_vehicles(hass)[0].target_soc_percent_max is None
+
+    hass.states.async_set(ac, "100", {"unit_of_measurement": "%", "min": 50, "max": 100})
+    assert discover_vehicles(hass)[0].target_soc_percent_max == 100.0
+    assert vehicle_charge_limit_entity_id(hass, device_id) == ac
+
+
+async def test_a_lowered_ac_limit_is_the_ceiling(hass: HomeAssistant) -> None:
+    """A valid AC limit is honoured as it is, lower than the DC one or not."""
+    device_id = _device(hass, unique_id="ev6_low", name="EV6")
+    _battery_percent(hass, device_id, percent="60")
+    _range_sensor(hass, device_id, km="300")
+    _charge_limit(hass, device_id, object_id="ev6_ac_charging_limit", percent="70")
+    _charge_limit(hass, device_id, object_id="ev6_dc_charging_limit", percent="80")
+
+    assert discover_vehicles(hass)[0].target_soc_percent_max == 70.0
+
+
+async def test_a_car_with_only_a_dc_limit_reads_it(hass: HomeAssistant) -> None:
+    """A DC limit is the ceiling on a car whose integration has no other limit entity."""
+    device_id = _device(hass, unique_id="dc_only", name="DC only")
+    _battery_percent(hass, device_id, percent="60")
+    _range_sensor(hass, device_id, km="300")
+    dc = _charge_limit(hass, device_id, object_id="dc_charging_limit", percent="80")
+
+    assert discover_vehicles(hass)[0].target_soc_percent_max == 80.0
+    assert vehicle_charge_limit_entity_id(hass, device_id) == dc
+
+
 async def test_capacity_is_detected_when_a_capacity_shaped_entity_exists(
     hass: HomeAssistant,
 ) -> None:

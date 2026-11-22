@@ -292,8 +292,11 @@ def vehicle_charge_limit_entity_id(hass: HomeAssistant, vehicle_id: object) -> s
             er.async_get(hass), domain_data(hass).decision_store, str(vehicle_id)
         ),
     )
-    # A read-only target sensor is a ceiling only: there is nothing to write to.
-    return resolution.entity_id if resolution.writable else None
+    # A read-only target sensor is a ceiling only, and a limit reading nothing now (asleep, a glitch) is
+    # not offered: there is nothing to write to.
+    if not resolution.writable or resolution.value is None:
+        return None
+    return resolution.entity_id
 
 
 def valid_charge_limit_entity_id(
@@ -742,10 +745,15 @@ def _has_soc_shape(
 
 @dataclass(frozen=True, slots=True)
 class _LimitCandidate:
-    """One charge-limit-shaped entity: a `number`, a percent `select`, or a read-only `sensor`."""
+    """One charge-limit-shaped entity: a `number`, a percent `select`, or a read-only `sensor`.
+
+    The shape decides which entity is the limit; `value` is its current reading, `None` when that
+    reading is not a limit (asleep, `0`, below the entity's own minimum), so a glitch leaves the
+    ceiling unknown instead of handing it to another entity.
+    """
 
     entity_id: str
-    value: float
+    value: float | None
     domain: str
     key: EntityKey
 
@@ -767,7 +775,7 @@ class _LimitResolution:
 def _charge_limit_candidates(
     entities: list[tuple[er.RegistryEntry, State]],
 ) -> list[_LimitCandidate]:
-    """Every live charge-limit-shaped entity on the device that is the car's, by entity id.
+    """Every charge-limit-shaped entity on the device that is the car's, by entity id, with or without a value.
 
     A limit the integration enforces itself (a soft limit it stores locally, with a companion
     `switch` of the same key, or its declared 15-95 range) is not the car's and is left out.
@@ -780,15 +788,18 @@ def _charge_limit_candidates(
     found: list[_LimitCandidate] = []
     for entry, state in entities:
         if entry.domain == "number":
-            value = _charge_limit_percent(state)
-            if value is None or _integration_enforced(entry, state, switch_keys):
+            limit_range = _charge_limit_range(entry, state)
+            if limit_range is None or _integration_enforced(entry, state, switch_keys):
                 continue
-            found.append(_LimitCandidate(entry.entity_id, value, "number", entity_key(entry)))
+            found.append(
+                _LimitCandidate(
+                    entry.entity_id, _charge_limit_value(state, limit_range), "number", entity_key(entry)
+                )
+            )
         elif entry.domain == "select":
-            value = _select_limit_percent(state)
             key = entity_key(entry)
-            if value is not None and key.contains_any(_LIMIT_POSITIVE_FRAGMENTS):
-                found.append(_LimitCandidate(entry.entity_id, value, "select", key))
+            if _is_select_limit(state) and key.contains_any(_LIMIT_POSITIVE_FRAGMENTS):
+                found.append(_LimitCandidate(entry.entity_id, _select_limit_percent(state), "select", key))
         elif entry.domain == "sensor":
             value = _target_sensor_percent(state)
             key = entity_key(entry)
@@ -802,15 +813,13 @@ def _integration_enforced(
 ) -> bool:
     if entry.translation_key and entry.translation_key in switch_keys:
         return True
-    minimum = _as_float(state.attributes.get("min"))
-    maximum = _as_float(state.attributes.get("max"))
-    return (minimum, maximum) == _INTEGRATION_LIMIT_RANGE
+    return _declared_range(entry, state) == _INTEGRATION_LIMIT_RANGE
 
 
 def _charge_limit_readings(
     entities: list[tuple[er.RegistryEntry, State]],
-) -> list[tuple[str, float]]:
-    """Every writable charge-limit candidate on this device, as (entity id, percent), by entity id."""
+) -> list[tuple[str, float | None]]:
+    """Every writable charge-limit candidate on this device, as (entity id, percent or `None`), by entity id."""
     return [
         (candidate.entity_id, candidate.value)
         for candidate in _charge_limit_candidates(entities)
@@ -827,15 +836,21 @@ def _is_dc(key: EntityKey) -> bool:
 
 
 def _pick_limit(candidates: list[_LimitCandidate]) -> list[_LimitCandidate]:
-    """Narrow same-kind candidates by key: the survivors (one means a decision)."""
+    """Narrow same-kind candidates by key, whatever their values: the survivors (one means a decision).
+
+    A DC limit is dropped whenever another limit survives, with or without a value: a car's AC limit
+    that glitches to `0` must leave the ceiling unknown, not hand it to the (lower) DC one. Only after
+    the keys, a tie keeps the candidates that report a value (an asleep second entity is no choice).
+    """
     left = [c for c in candidates if not _limit_demoted(c.key)]
     if len(left) > 1:
         keyed = [c for c in left if c.key.contains_any(_LIMIT_POSITIVE_FRAGMENTS)]
         left = keyed or left
-    if len(left) > 1:
-        left = [c for c in left if not _is_dc(c.key)] or left
+    left = [c for c in left if not _is_dc(c.key)] or left
     if len(left) > 1:
         left = [c for c in left if c.key.contains(_LIMIT_GLOBAL_FRAGMENT)] or left
+    if len(left) > 1:
+        left = [c for c in left if c.value is not None]
     return left
 
 
@@ -859,6 +874,10 @@ def _resolve_charge_limit(
         return _LimitResolution(writable[0].entity_id, writable[0].value, True)
     if len(writable) > 1:
         return _LimitResolution(ambiguous=sorted(c.entity_id for c in writable))
+    if any(c.writable for c in candidates):
+        # A writable limit that is the car's but reads nothing now: the ceiling is unknown for this
+        # reading rather than taken from a read-only sensor.
+        return _LimitResolution()
     sensors = [
         c for c in candidates if not c.writable and not _limit_demoted(c.key)
     ]
@@ -877,20 +896,35 @@ def _target_soc_percent_max(
     return _resolve_charge_limit(entities, confirmed_entity_id).value
 
 
-def _charge_limit_percent(state: State) -> float | None:
-    """One `number` entity's value, if shaped like a charge limit.
+def _declared_range(entry: er.RegistryEntry, state: State) -> tuple[float | None, float | None]:
+    """A `number`'s `(min, max)`: its state's attributes, else its registry capabilities (an unavailable
+    state carries no attributes)."""
+    capabilities = entry.capabilities or {}
+    minimum = state.attributes.get("min", capabilities.get("min"))
+    maximum = state.attributes.get("max", capabilities.get("max"))
+    return (_as_float(minimum), _as_float(maximum))
 
-    Needs a percent unit, `min`/`max` inside 0-100 with max at least
-    `_MIN_CHARGE_LIMIT_CEILING`, and a live value in range.
+
+def _charge_limit_range(entry: er.RegistryEntry, state: State) -> tuple[float, float] | None:
+    """A `number` entity's `(min, max)`, if shaped like a charge limit, whatever its current value.
+
+    Needs a percent unit and `min`/`max` inside 0-100 with max at least `_MIN_CHARGE_LIMIT_CEILING`.
     """
-    if not _is_percent_unit(state.attributes.get("unit_of_measurement")):
+    unit = state.attributes.get("unit_of_measurement", entry.unit_of_measurement)
+    if not _is_percent_unit(unit):
         return None
-    minimum = _as_float(state.attributes.get("min"))
-    maximum = _as_float(state.attributes.get("max"))
+    minimum, maximum = _declared_range(entry, state)
     if minimum is None or maximum is None or minimum < 0.0 or maximum > 100.0:
         return None
     if maximum <= minimum or maximum < _MIN_CHARGE_LIMIT_CEILING:
         return None
+    return (minimum, maximum)
+
+
+def _charge_limit_value(state: State, limit_range: tuple[float, float]) -> float | None:
+    """A charge-limit `number`'s current value, or `None` when it is not one: unavailable, outside the
+    entity's own range (a `0` from a car whose limit starts at 50), or zero."""
+    minimum, maximum = limit_range
     value = _as_float(state.state)
     if value is None or not minimum <= value <= maximum:
         return None
@@ -908,16 +942,21 @@ def select_option_percent(option: Any) -> float | None:
     return _as_float(option.strip().removesuffix("%").strip())
 
 
-def _select_limit_percent(state: State) -> float | None:
-    """A `select`'s current option, if every option is a percent in 50-100 (a limit picker)."""
+def _is_select_limit(state: State) -> bool:
+    """Whether a `select` is a limit picker: every option a percent in 50-100."""
     options = state.attributes.get("options")
     if not isinstance(options, (list, tuple)) or len(options) < 2:
-        return None
+        return False
     percents = [select_option_percent(option) for option in options]
     low, high = _SELECT_LIMIT_WINDOW
-    if any(p is None or not low <= p <= high for p in percents):
-        return None
-    return select_option_percent(state.state)
+    return all(p is not None and low <= p <= high for p in percents)
+
+
+def _select_limit_percent(state: State) -> float | None:
+    """A limit picker's current option as a percent, or `None` when it is not one of its percents."""
+    value = select_option_percent(state.state)
+    low, high = _SELECT_LIMIT_WINDOW
+    return value if value is not None and low <= value <= high else None
 
 
 def _target_sensor_percent(state: State) -> float | None:
@@ -984,7 +1023,7 @@ def _battery_capacity_kwh(entities: list[tuple[er.RegistryEntry, State]]) -> flo
 def _reading_entity_ids(
     soc_entity_id: str,
     range_entity_ids: list[str],
-    charge_limit_readings: list[tuple[str, float]],
+    charge_limit_readings: list[tuple[str, float | None]],
     capacity_readings: list[tuple[str, float]],
 ) -> tuple[str, ...]:
     """The sorted, deduplicated entities one vehicle's reading was taken from.
