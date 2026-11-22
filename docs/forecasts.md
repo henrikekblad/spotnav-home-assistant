@@ -33,8 +33,9 @@ hour; with solar only, until it has three days of that it uses the import less t
 
 It also uses, without any setting:
 
-* the **temperature**: the weather entity's hourly forecast (`weather.forecast_home`, else the only weather entity) and a
-  heat pump's own outdoor sensor where one is found. The forecast adjusts for a colder or warmer hour only when the
+* the **temperature**: the weather entity's hourly forecast (`weather.forecast_home`, else the only weather entity) and
+  the measured outdoor temperature: the outdoor sensor chosen in the heat settings where one is set and reads, else a
+  heat pump's own outdoor sensor where one is found, else the weather entity. The forecast adjusts for a colder or warmer hour only when the
   temperature really explains your load (an electrically heated house), and has at least a week of hours with a
   temperature; otherwise it leaves temperature out and the card says why.
 * **today so far**: once three hours of today are in, a day that runs higher or lower than expected moves the rest of today,
