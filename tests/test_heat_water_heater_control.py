@@ -282,33 +282,90 @@ async def test_the_heat_card_and_the_diagnostics_show_the_water_heater_and_a_con
     assert "zones" in diagnostics["control"]
 
 
-async def test_a_meter_is_trusted_only_once_it_has_seen_the_element(hass: HomeAssistant, freezer) -> None:
-    _site_, heater, _switch, now = await _site(hass, freezer)
-    # A contactor's coil: a few watts, never 500.
-    heater._power = lambda _entity: ("sensor.coil", 4.0)  # type: ignore[method-assign]  # noqa: SLF001
-    for hour in range(60):
-        await heater.async_look(now + hour * H)
+def _meter(heater: WaterHeaterControl, switch: Relay, on_w: float, off_w: float, sensor: str = "sensor.coil") -> None:
+    """The device's meter reads `on_w` while the switch is on and `off_w` while it is off."""
+    heater._power = lambda _entity: (sensor, on_w if switch.state == "on" else off_w)  # type: ignore[method-assign]  # noqa: SLF001
+
+
+async def _switch_off_and_on(heater: WaterHeaterControl, now: datetime) -> datetime:
+    """One of SpotNav's own offs (outside the windows) and the on that follows, each read back."""
+    await heater.async_look(now)
+    moment = _outside_windows(heater, now)
+    await heater.async_look(moment)
+    await heater.async_look(moment + MIN)
+    await heater.async_look(moment + 2 * MIN)
+    window = next(window for window in heater.rules.kept.windows if window.start > moment)
+    await heater.async_look(window.start)
+    await heater.async_look(window.start + MIN)
+    await heater.async_look(window.start + 2 * MIN)
+    return window.start + 2 * MIN
+
+
+async def test_a_meter_is_trusted_only_once_it_follows_spotnav_s_switching(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    # A contactor's coil: a few watts, never the element.
+    _meter(heater, switch, 4.0, 1.0)
+    later = await _switch_off_and_on(heater, now)
     status = heater.status()
     assert status is not None
     assert status["metered"] is False and status["meter_waiting"] is True and status["mode"] == "unmetered"
     assert heater.not_full() is False
-    assert heater.diagnostics()["meter_waiting"] is True
-    # The element is seen once: metered, and remembered through a restart.
+    # 2.5 kW seen once proves nothing.
     heater._power = lambda _entity: ("sensor.coil", 2500.0)  # type: ignore[method-assign]  # noqa: SLF001
-    await heater.async_look(now + 61 * H)
-    heater._power = lambda _entity: ("sensor.coil", 1.0)  # type: ignore[method-assign]  # noqa: SLF001
-    await heater.async_look(now + 62 * H)
-    assert heater.metered is True and heater.meter_waiting is False and heater.mode(heater.shadow.config()) == "metered"
+    await heater.async_look(later + H)
+    assert heater.metered is False
+    # The element's meter: SpotNav's off takes it from 2.5 kW to nothing. Trusted, and kept through a restart.
+    _meter(heater, switch, 2500.0, 1.0)
+    heater.rules.kept.last_full = later
+    later = await _switch_off_and_on(heater, later + H)
+    assert heater.metered is True and heater.mode(heater.shadow.config()) == "metered"
     kept = heater.stored()
     assert kept["meter_seen"] == {"entity": HEATER, "sensor": "sensor.coil"}
     heater.meter_seen = None
     heater.restore(kept)
     assert heater.meter_seen == {"entity": HEATER, "sensor": "sensor.coil"}
-    # Another meter has to show the element itself.
+    # Another meter has to follow SpotNav's switching itself.
     heater._power = lambda _entity: ("sensor.other", 1.0)  # type: ignore[method-assign]  # noqa: SLF001
-    await heater.async_look(now + 63 * H)
+    await heater.async_look(later + H)
     assert heater.metered is False and heater.meter_waiting is True and heater.meter_seen is None
 
+
+async def test_another_channel_s_meter_is_never_trusted_and_the_night_window_stays(hass: HomeAssistant, freezer) -> None:
+    """A two-channel device whose other channel draws 2.5 kW whatever this switch does: never trusted, so no full
+    heat is ever seen on it and the unmetered night window (the hard one) is kept."""
+    _site_, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    _meter(heater, switch, 2500.0, 2500.0)
+    later = await _switch_off_and_on(heater, now)
+    await _switch_off_and_on(heater, later + H)
+    assert heater.metered is False and heater.mode(heater.shadow.config()) == "unmetered"
+    assert any(window.reason == "full_heat" for window in heater.rules.kept.windows)
+
+
+async def test_a_trusted_meter_that_no_longer_follows_an_off_loses_the_trust(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    _meter(heater, switch, 2500.0, 1.0)
+    later = await _switch_off_and_on(heater, now)
+    assert heater.metered is True
+    # The meter now reads the element whatever the switch does (re-wired, another channel): the next off shows it.
+    _meter(heater, switch, 2500.0, 2500.0)
+    heater.rules.kept.last_full = later
+    moment = _outside_windows(heater, later + H)
+    for minute in range(0, 6):
+        await heater.async_look(moment + minute * MIN)
+    assert heater.metered is False and heater.meter_seen is None
+    assert any(entry["what"] == "meter_not_cut" for entry in heater.log)
+
+
+async def test_a_frozen_meter_is_never_trusted(hass: HomeAssistant, freezer) -> None:
+    """A meter that stopped reporting gives no reading (`read_power_w`): it cannot follow a switching."""
+    _site_, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    heater._power = lambda _entity: ("sensor.coil", None)  # type: ignore[method-assign]  # noqa: SLF001
+    await _switch_off_and_on(heater, now)
+    assert heater.metered is False and heater.meter_waiting is True
 
 def _in_cheap_window(heater: WaterHeaterControl) -> datetime:
     """Five minutes into the first cheap window of two hours or more (a pause to the hour's end leaves it time)."""

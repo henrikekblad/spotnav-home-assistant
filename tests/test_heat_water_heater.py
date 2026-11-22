@@ -9,7 +9,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from custom_components.spotnav.heat.water_heater import (
@@ -383,13 +383,20 @@ def simulate(
         )
         rules.gave_up(now, mode)
         hour = now.replace(minute=0, second=0, microsecond=0)
+        shed_until = hour + H if hour in shed_hours else None
+        if shed_until is not None:
+            # As the shell asks (`WaterHeaterControl._until_max`): only where the window left after the pause still
+            # takes its energy at the element's 3 kW; never where that is not known.
+            window = next((item for item in windows if item.covers(now)), None)
+            if window is None or window.kwh is None or window.end - shed_until < timedelta(hours=window.kwh / 3.0):
+                shed_until = None
         want = rules.want(
             now,
             mode=mode,
             windows=windows,
             plan_fresh=fresh,
             day=now.astimezone(ZONE).date().isoformat(),
-            shed_until=hour + H if hour in shed_hours else None,
+            shed_until=shed_until,
         )
         if want.on != switch_on:
             switch_on = want.on
@@ -550,6 +557,8 @@ def test_a_meter_on_a_contactor_coil_behaves_as_unmetered(seed: int, outages) ->
     mode=st.sampled_from([MODE_METERED, MODE_TANK, MODE_UNMETERED]),
     share=st.sampled_from([0.3, 0.7, 1.0]),
 )
+# Found without the window's need bound: full heat 24 h 4 min apart.
+@example(seed=3501, outages=[(740, 219, "plan"), (2189, 600, "meter")], mode=MODE_METERED, share=0.7)
 def test_the_hard_rules_hold_whatever_the_shed_order_pauses(seed: int, outages, mode: str, share: float) -> None:
     """The site's shed order pausing the heater for the ceiling in any share of the hours, every hour included: never
     off over eight hours, full heat within every 24 hours where it is seen, the unmetered night's five hours, and
