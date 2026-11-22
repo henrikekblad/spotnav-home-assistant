@@ -19,7 +19,7 @@ import math
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, AsyncContextManager, Final, Literal, Protocol, TYPE_CHECKING
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -69,7 +69,11 @@ from ..vehicles.ocpp_identity import (
     resolve_target,
     STATUS_CONNECTOR_KEY,
 )
-from .charger_connection import FINISHED as CONNECTION_FINISHED
+from .charger_connection import (
+    CHARGING as CONNECTION_CHARGING,
+    DISCONNECTED as CONNECTION_DISCONNECTED,
+    FINISHED as CONNECTION_FINISHED,
+)
 from .car_plug_fallback import CarPlugFallback, plan_vehicle, SOURCE_CAR_PLUG
 from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
@@ -160,6 +164,7 @@ from ..core.ownership import (
     PERSON_HOLD_MAX_STOPS,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_STOP_GAP_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_WINDOW_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
+    SOC_DROP_PCT,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -368,6 +373,9 @@ STOP_ACK_S: Final = 120.0
 #: a charger that has ended the transaction rejects a second stop. Shorter than the retry of a stop that did not go
 #: out (`STOP_RETRY_S`) and the person's hold's gap (`PERSON_HOLD_STOP_GAP_S`), so neither changes.
 STOP_SETTLE_S: Final = 15.0
+#: A charger turning to "the car finished" this long after a stop of ours (with no charge or start since) is that stop
+#: landing (a Zaptec's `connected_finished`), not the car ending the charge (`_observe_finished`).
+FINISHED_AFTER_STOP_S: Final = 300.0
 #: An automatic stop that went out is looked at again this long after (`_async_stop_check_callback`): a charger still
 #: charging then, never seen off since and with no start of ours after the stop, did not take it (an OCPP charger right
 #: after Home Assistant's restart: its integration does not know the transaction yet, and takes the stop as done with
@@ -942,6 +950,13 @@ class ChargingController:
         # When the last stop went out, while it settles (`_stop_settling`): cleared by a start of ours sent after it
         # and by the charger seen charging again after it was seen not to. `_seen_charging` is the last report.
         self._stop_settle_since: datetime | None = None
+        # Whether the charger's "the car finished" (`charger_connection.FINISHED`) came without a stop of ours behind
+        # it, as seen when it began (`_observe_finished`); `None` while it does not say so, or since a restart.
+        self._finished_by_car: bool | None = None
+        # The plan (`_finished_key`) a window's start was already tried for while the car had finished, and the car's
+        # level then: one try per plan, again when the car's level has dropped since (`_finished_repeat`).
+        self._finished_tried: tuple[Any, ...] | None = None
+        self._finished_tried_soc: float | None = None
         self._seen_charging: bool | None = None
         # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
         self._stop_settled = False
@@ -1634,6 +1649,7 @@ class ChargingController:
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
+        self._observe_finished()
         self._top_off_tick()
         self._observe_own_stop()
         # The hold's memory before the report: the core decides the report at once.
@@ -1727,6 +1743,73 @@ class ChargingController:
         is bounded by the charging time between them (`planning/auto_controller.advance_register`)."""
         self._tick_charge_clock()
         return self._charge_clock_s
+
+    def _observe_finished(self) -> None:
+        """Whether the car finished the charge itself: the charger turning to `FINISHED` while the charger's stopped
+        state is not SpotNav's own (`_own_stop`, kept across a restart; a stop on a slow cloud may land long after it was
+        sent) and no stop of ours is on its way or just went out. Kept while it says so, also through a stop of ours
+        sent later (a window's end: an Easee stays `completed`)."""
+        connection = self.adapter.connection()[0]
+        if connection in (CONNECTION_DISCONNECTED, CONNECTION_CHARGING) or self.charging:
+            # Unplugged, or a charge seen: the plan's one try is spent on something else now. A charger that only
+            # leaves its finished state for a moment after a try's start (an Easee's `awaiting_start`) keeps it.
+            self._finished_tried = self._finished_tried_soc = None
+        if connection != CONNECTION_FINISHED:
+            self._finished_by_car = None
+        elif self._finished_by_car is None:
+            since = self._stop_settle_since
+            ours = (
+                self._stop_in_flight
+                or self._own_stop
+                or (since is not None and 0 <= (dt_util.utcnow() - since).total_seconds() < FINISHED_AFTER_STOP_S)
+            )
+            self._finished_by_car = not ours
+
+    def _car_finished(self) -> bool:
+        """The charger says the car finished and no stop of SpotNav's made it so (`_observe_finished`)."""
+        if self.adapter.connection()[0] != CONNECTION_FINISHED:
+            return False
+        return self._finished_by_car if self._finished_by_car is not None else not self._own_stop
+
+    def _finished_key(self) -> tuple[Any, ...] | None:
+        """What makes a plan another one for a car that finished: its car, target, charge to the car's limit and
+        departure. A plan made again for the same (new prices) is the same."""
+        plan = self.plan
+        if plan is None:
+            return None
+        departure = None
+        if plan.departure:
+            try:
+                departure = _parse_datetime(plan.departure).astimezone(UTC)
+            except ValueError:
+                departure = plan.departure
+        return (plan.vehicle_id, plan.target_soc_percent, plan.to_vehicle_limit, departure)
+
+    def _finished_soc(self) -> float | None:
+        plan = self.plan
+        if plan is None or self._soc_reader is None:
+            return None
+        try:
+            reading = self._soc_reader(plan.vehicle_id)
+        except Exception:  # noqa: BLE001 - an unreadable car is a level not known
+            return None
+        return None if reading is None else reading.soc_percent
+
+    def _finished_repeat(self) -> bool:
+        """Whether a window's start would only repeat one already tried while the car had finished by itself: the
+        same plan (`_finished_key`; a raised target, another car or departure is a new one, tried once), and the car's
+        level not `SOC_DROP_PCT` below the one at that try (its need did not grow). A car the charger says finished may
+        have stopped at its own lower limit, or the charger's side may have ended it: one try per plan finds out."""
+        if not self._car_finished() or self._finished_tried is None or self._finished_tried != self._finished_key():
+            return False
+        level, tried = self._finished_soc(), self._finished_tried_soc
+        return not (level is not None and tried is not None and level <= tried - SOC_DROP_PCT)
+
+    def _note_finished_try(self) -> None:
+        """A window's start went out to a car that finished by itself (read before the start): the one try for this
+        plan."""
+        self._finished_tried = self._finished_key()
+        self._finished_tried_soc = self._finished_soc()
 
     def _observe_connection(self) -> None:
         """Notice a plug-in or an unplug: a change between two connection states the charger reported.
@@ -5902,6 +5985,8 @@ class ChargingController:
             facts = self._core_facts(
                 lambda: {
                     "charging": self.charging,
+                    # The charger's own word only: a car's cloud saying "unplugged" can be stale.
+                    "connected": self.adapter.charger_vehicle_connected(),
                     "handed_off": self._core_handed_off(),
                     **self._core_hold_facts(),
                 },
@@ -5996,8 +6081,11 @@ class ChargingController:
             outcome = CommandOutcome(False)
             # Armed before the command: a start that raises is decided again too.
             self._arm_start_retry()
+            finished = self._car_finished()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._core_start_outcome(executed)
+            if executed and finished:
+                self._note_finished_try()
             if not executed and not self._start_held_back and not self._charger_ready():
                 # Not sent: the charger's integration has not loaded. Decided again once it has.
                 self._owe("the window's start")
@@ -6944,6 +7032,8 @@ class ChargingController:
             "open_window_start": open_start,
             "control_on": self._control_on,
             "connected": self.adapter.vehicle_connected(),
+            # A charger that says the car finished, with no stop of SpotNav's behind it: the car ended the charge.
+            "finished": self._finished_repeat(),
             "start_pending": self._core_start_pending(),
             **self._core_hold_facts(),
         }

@@ -878,6 +878,24 @@ def test_a_rearm_stop_of_a_running_charge_holds_the_rest_of_the_plug_in() -> Non
     assert not session.held
 
 
+def test_a_rearm_with_no_car_at_the_charger_stops_nothing_that_does_not_charge() -> None:
+    """A new plan installed after a price update must not pause an empty charger (SN-7PME, a `disconnected` Easee)."""
+    _, commands = run(ChargeSession(owner="plan"), ev.Rearm(charging=False, connected=False))
+    assert kinds(commands) == []
+    _, commands = run(ChargeSession(owner="plan"), ev.Rearm(charging=True, connected=False))
+    assert kinds(commands) == ["stop"], "a charger that says it charges is stopped whatever it says of the car"
+    _, commands = run(ChargeSession(owner="plan"), ev.Rearm(charging=False, connected=None))
+    assert kinds(commands) == ["stop"], "a car not known gone: stopped as before"
+
+
+def test_a_window_start_sends_no_start_to_a_car_that_finished_by_itself() -> None:
+    """An Easee saying `completed` with a full car is not resumed at each window (SN-7PME)."""
+    _, commands = run(PLUGGED, ev.WindowStart(open_window_start=T0, finished=True))
+    assert kinds(commands) == []
+    _, commands = run(PLUGGED, ev.WindowStart(open_window_start=T0, finished=False))
+    assert kinds(commands) == ["start"]
+
+
 def test_a_rearm_past_the_last_window() -> None:
     session, commands = run(ChargeSession(owner="top_off"), ev.Rearm(past_last=True, top_off_resumes=True))
     assert session.owner == "top_off" and kinds(commands) == []

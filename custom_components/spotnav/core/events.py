@@ -110,6 +110,10 @@ class WindowStart(Event):
     car_level_full: bool = False
     control_on: bool = False
     connected: bool | None = None
+    #: The charger says the car finished (`charger_connection.FINISHED`: an Easee's `completed`) with no stop of
+    #: SpotNav's behind it, and a window's start of this same plan was already tried since with the car's level not
+    #: dropped: another start would only repeat it.
+    finished: bool = False
     start_pending: bool = False
     top_off: bool = False
     solar_holds: bool = False
@@ -151,6 +155,8 @@ class Rearm(Event):
     handed_off: bool = False
     control_on: bool = False
     charging: bool = False
+    #: What the charger says about a car now (`False`: none; a stop then has nothing to stop).
+    connected: bool | None = None
     solar_holds: bool = False
     plan_auto_owned: bool = True
 
