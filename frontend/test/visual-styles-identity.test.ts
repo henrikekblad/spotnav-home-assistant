@@ -43,8 +43,8 @@ describe("visual-styles exports are unchanged", () => {
   });
 });
 
-const LENGTH = 81858;
-const STYLES_HASH = "6edfdfbc0a78a0b031ef436020ecc7453519a21fc73d6c40548e84b357e40694";
+const LENGTH = 82077;
+const STYLES_HASH = "776ad48f3d28c2356f1a0db4b27927b7cd6e3a348b9d9b5a01b02cf50f6c34a6";
 const DATA_HASH = "810b314ac873bcb3ff87494cee883d7a74d7f01960bceb832c5c52c368c76af1";
 const FUNCTIONS_HASH = "5f72b60d9ace94f7d6785e0f611db9702d7801abb701f3d74622a0b15a31524d";
 const EXPORTS = [

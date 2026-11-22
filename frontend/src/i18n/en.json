@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "The site's measurement cannot be used right now.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "settings.about.open": "About this card",
+  "settings.docs": "Documentation",
   "header.settings": "Settings",
   "header.history": "Charge history",
   "history.title": "Charge history",

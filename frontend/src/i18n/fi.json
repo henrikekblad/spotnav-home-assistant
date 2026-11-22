@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "Kohteen mittausta ei voi käyttää juuri nyt.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "settings.about.open": "Tietoja kortista",
+  "settings.docs": "Ohjeet",
   "header.settings": "Asetukset",
   "header.history": "Lataushistoria",
   "history.title": "Lataushistoria",

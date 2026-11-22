@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "Anleggets måling kan ikke brukes akkurat nå.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "settings.about.open": "Om kortet",
+  "settings.docs": "Dokumentasjon",
   "header.settings": "Innstillinger",
   "header.history": "Ladehistorikk",
   "history.title": "Ladehistorikk",

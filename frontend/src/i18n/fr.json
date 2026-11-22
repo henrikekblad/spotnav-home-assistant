@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "La mesure du site ne peut pas être utilisée pour le moment.",
   "issue.unknown": "Le backend a signalé quelque chose que cette carte ne connaît pas encore.",
   "settings.about.open": "À propos de cette carte",
+  "settings.docs": "Documentation",
   "header.settings": "Paramètres",
   "header.history": "Historique de charge",
   "history.title": "Historique de charge",

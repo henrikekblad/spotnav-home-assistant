@@ -505,6 +505,13 @@ export const SETTINGS_FORM_STYLES = `
     color: var(--primary-text-color, #212121);
     cursor: pointer;
   }
+  /* A link drawn as a button (Support's documentation): the same box, no underline. */
+  a.spotnav-button {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    text-decoration: none;
+  }
   .spotnav-button:disabled {
     opacity: 0.55;
     cursor: default;

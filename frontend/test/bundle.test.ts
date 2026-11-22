@@ -5,6 +5,7 @@
 // messages on the wire, and trips over `fetch`, `XMLHttpRequest`, `EventSource` and storage if the
 // card ever reaches for them; `api.test.ts` pins the messages themselves.
 
+import { DOCS_URL } from "../src/support-section";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -61,9 +62,13 @@ describe("the committed asset", () => {
   it.each(FORBIDDEN)("does not mention %s", (needle) => {
     // The allowed mentions, all text or links a person follows, none a request: the app's Google Play address, whose
     // package name carries the company's name, the privacy policy "Send debug info" links, and the support address
-    // its failure sentence names.
+    // its failure sentence names, and the documentation pages on SpotNav's site (Support, the card picker, the
+    // battery plan's wear cost), each opened in a new tab.
     let rest = SOURCE;
-    for (const allowed of [APP_STORE_URL, PRIVACY_URL, "support@sensnology.se"]) {
+    for (const allowed of [APP_STORE_URL, PRIVACY_URL, "support@sensnology.se", PLAN_DOCS_URL,
+                           "https://spotnav.sensnology.se/docs/home-assistant/heat-pumps#the-heat-card",
+                           "https://spotnav.sensnology.se/docs/home-assistant/house-card",
+                           "https://spotnav.sensnology.se/docs/home-assistant/card", DOCS_URL]) {
       rest = rest.split(allowed).join("");
     }
     expect(rest).not.toContain(needle);
@@ -122,7 +127,7 @@ describe("loading the compiled asset", () => {
     expect(mine[0]?.name).toBe("SpotNav");
     expect(mine[0]?.description).toBe("Charging plan and electricity prices from SpotNav.");
     expect(mine[0]?.preview).toBe(true);
-    expect(mine[0]?.documentationURL).toBe("https://github.com/henrikekblad/spotnav-home-assistant");
+    expect(mine[0]?.documentationURL).toBe("https://spotnav.sensnology.se/docs/home-assistant/card");
 
     // A second evaluation: what a reload racing a cached resource does. No throw, no duplicate.
     await evaluate("again");
@@ -157,7 +162,12 @@ describe("the asset's only absolute URLs", () => {
       "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
       // The Zonneplan integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/fsaris/home-assistant-zonneplan-one",
-      "https://github.com/henrikekblad/spotnav-home-assistant",
+      // Home Assistant's card picker: each card's own page on SpotNav's site.
+      "https://spotnav.sensnology.se/docs/home-assistant/card",
+      "https://spotnav.sensnology.se/docs/home-assistant/house-card",
+      "https://spotnav.sensnology.se/docs/home-assistant/heat-pumps#the-heat-card",
+      // Support's documentation link (a new tab).
+      DOCS_URL,
       // The battery plan's page on the wear and the margin, linked under the battery's mode (a new tab).
       PLAN_DOCS_URL,
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).

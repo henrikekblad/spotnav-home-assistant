@@ -22,7 +22,7 @@ export const CARD_PICKER_ENTRY = {
   name: "SpotNav",
   description: "Charging plan and electricity prices from SpotNav.",
   preview: true,
-  documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
+  documentationURL: "https://spotnav.sensnology.se/docs/home-assistant/card",
 } as const;
 
 /** The house card's entry (SpotNav 3.0 preview): the house's load, the sun and the battery plan, in shadow. */
@@ -31,7 +31,7 @@ export const HOUSE_PICKER_ENTRY = {
   name: "SpotNav house",
   description: "The house's load forecast, the sun and the battery plan from SpotNav, in shadow.",
   preview: true,
-  documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
+  documentationURL: "https://spotnav.sensnology.se/docs/home-assistant/house-card",
 } as const;
 
 /** The heat card's entry (SpotNav 3.0 preview): the wanted temperature, home or away, and the day's heat, in shadow. */
@@ -40,7 +40,7 @@ export const HEAT_PICKER_ENTRY = {
   name: "SpotNav heating",
   description: "The wanted house temperature, home or away, and what SpotNav would do with the heat, in shadow.",
   preview: true,
-  documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
+  documentationURL: "https://spotnav.sensnology.se/docs/home-assistant/heat-pumps#the-heat-card",
 } as const;
 
 export function defineCard(): void {

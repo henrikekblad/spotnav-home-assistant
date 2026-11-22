@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "Die Messung des Standorts ist gerade nicht verwendbar.",
   "issue.unknown": "Das Backend hat etwas gemeldet, das diese Karte noch nicht kennt.",
   "settings.about.open": "Über diese Karte",
+  "settings.docs": "Dokumentation",
   "header.settings": "Einstellungen",
   "header.history": "Ladeverlauf",
   "history.title": "Ladeverlauf",
