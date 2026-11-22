@@ -364,6 +364,9 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             production={start: sun_kwh(start) for start in (current - timedelta(hours=h) for h in range(1, 20))},
             stored=stored_value(now),
             power_kw=-0.62,
+            round_trip=0.84,
+            round_trip_learned=True,
+            round_trip_series=(("2026-10-20", 0.851), ("2026-10-23", 0.838), ("2026-10-26", 0.842)),
         ),
         money=("SEK", "kr", "öre"),
         energy_flow=villa_flow(now),
@@ -465,6 +468,12 @@ def test_the_full_site_and_its_fixture() -> None:
     assert battery["estimates"] == ["min_soc_assumed"]
     # What the battery does now, for the card's header: its own control runs it (no action of SpotNav's), discharging.
     assert battery["now"] == {"action": None, "power_kw": -0.62}
+    # The round trip learnt from the battery's own meters, with each window's date for a chart later.
+    assert battery["round_trip"] == {
+        "pct": 84.0,
+        "learned": True,
+        "series": [["2026-10-20", 85.1], ["2026-10-23", 83.8], ["2026-10-26", 84.2]],
+    }
     days = view["days"]
     assert len(days) == 7 and days[0]["date"] > days[-1]["date"]
     assert all(day["house_mae"] is not None and day["plan_saving"] is not None for day in days)

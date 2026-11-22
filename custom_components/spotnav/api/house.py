@@ -187,6 +187,11 @@ def _battery(controller: Any) -> BatteryInputs | None:
         control=_control_state(controller),
         action_now=_action_now(controller),
         power_kw=facts.power_kw,
+        round_trip=plan.learned.round_trip_efficiency,
+        round_trip_learned=plan.learned.round_trip.efficiency is not None,
+        round_trip_series=tuple(
+            (window.end.date().isoformat(), window.efficiency) for window in plan.learned.round_trip.windows
+        ),
     )
 
 
