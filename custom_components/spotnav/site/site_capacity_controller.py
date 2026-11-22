@@ -17,6 +17,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any, cast, Literal
 
 from homeassistant.config_entries import ConfigEntryState
@@ -340,6 +341,18 @@ RELEASED_UNTIL_UNPLUG = "until_unplug"
 #: given: one given at 11:59 lasts to the next day's noon.
 RELEASED_UNTIL_UNPLUG_LATEST_HOUR = 12
 RELEASED_UNTIL_UNPLUG_LEAST = timedelta(hours=6)
+
+
+def _log_replan_failure(site_entry_id: str, charger_entry_id: str, task: asyncio.Task[Any]) -> None:
+    """A plan made again in the background (`_replan`) that failed: logged, not lost with the task."""
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        _LOGGER.warning(
+            "SpotNav site %s: the plan of charger %s could not be made again", site_entry_id, charger_entry_id,
+            exc_info=(type(error), error, error.__traceback__),
+        )
 
 
 def _aware_instant(value: str) -> datetime | None:
@@ -5935,7 +5948,10 @@ class SiteCapacityController:
         """The charger's plan made again (its departure moved, or moved back), then the site's recompute."""
         preview = preview_for(self.hass, charger_entry_id)
         if preview is not None:
-            self.hass.async_create_task(preview.async_recalculate(), eager_start=False)
+            task = self.hass.async_create_background_task(
+                preview.async_recalculate(), f"spotnav replan {charger_entry_id}", eager_start=False
+            )
+            task.add_done_callback(partial(_log_replan_failure, self.entry_id, charger_entry_id))
         self._recompute()
 
     def _tell_target_risk(self) -> None:
