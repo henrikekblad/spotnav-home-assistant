@@ -443,3 +443,12 @@ def test_nothing_is_taken_for_a_while_after_a_start() -> None:
     assert order.steps == {}
     _run(order, start + timedelta(seconds=REST_S), ENTER_S + 10, house=4000, held=6000)
     assert LOAD_WATER_HEATER in order.steps
+
+
+def test_no_credit_without_a_draw_the_meter_reads_now() -> None:
+    order = ShedOrder()
+    now, _ = _run(order, HOUR + timedelta(minutes=5), ENTER_S, house=4000, held=6000, offers={LOAD_WATER_HEATER: HEATER})
+    assert LOAD_WATER_HEATER in order.steps
+    # Its switch on, its meter lost: nothing counted.
+    lost = Offer(True, True, 0.0, drawing=True)
+    assert order.update(now, _projection(now, house=4000, held=6000), {LOAD_WATER_HEATER: lost}) == 0.0

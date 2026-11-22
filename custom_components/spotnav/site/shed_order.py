@@ -410,8 +410,9 @@ class ShedOrder:
         if elapsed > CREDIT_S + CREDIT_TAIL_S:
             return 0.0
         if heater.drawing:
+            # Only for a draw its meter reads now: never for power it may not be drawing.
             step.off_seen_at = None
-            return step.give_w if elapsed <= CREDIT_S else 0.0
+            return step.give_w if elapsed <= CREDIT_S and heater.give_w >= MIN_GIVE_W else 0.0
         # Read off: a slow meter may not show it yet; the tail ends once the house has fallen by half the give.
         step.off_seen_at = step.off_seen_at or now
         if (now - step.off_seen_at).total_seconds() > CREDIT_TAIL_S:
