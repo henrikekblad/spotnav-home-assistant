@@ -431,6 +431,21 @@ async def test_a_new_plan_does_not_pause_an_empty_charger(hass: HomeAssistant, f
     assert commands == []
 
 
+async def test_a_stale_car_cloud_unplugged_does_not_spare_the_stop(hass: HomeAssistant, freezer: Any) -> None:
+    """Only the charger's own "no vehicle" spares a new plan's stop: the car's plug sensor standing in for a charger
+    that says nothing may be a stale cloud reading."""
+    controller = await _shaped_charger(hass, "easee")
+    _easee(hass, "error")  # says nothing about the car
+    controller.adapter.connection_fallback = lambda: False  # the car's cloud: unplugged, long ago
+    await hass.async_block_till_done()
+    assert controller.adapter.vehicle_connected() is False
+    assert controller.adapter.charger_vehicle_connected() is None
+    commands = _easee_commands(hass)
+    await install_schedule(controller, _windows((60, 90)))
+    await _after(hass, freezer, 5)
+    assert commands == ["pause"]
+
+
 async def test_an_unplugged_car_ends_the_retries(hass: HomeAssistant, freezer: Any) -> None:
     controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})

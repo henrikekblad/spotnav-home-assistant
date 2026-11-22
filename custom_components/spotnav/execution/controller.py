@@ -5971,7 +5971,8 @@ class ChargingController:
             facts = self._core_facts(
                 lambda: {
                     "charging": self.charging,
-                    "connected": self.adapter.vehicle_connected(),
+                    # The charger's own word only: a car's cloud saying "unplugged" can be stale.
+                    "connected": self.adapter.charger_vehicle_connected(),
                     "handed_off": self._core_handed_off(),
                     **self._core_hold_facts(),
                 },
