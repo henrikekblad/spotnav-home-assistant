@@ -710,6 +710,10 @@ def test_a_grid_setpoint_found_selling_is_handed_back_as_the_gx_default_never_as
     now, results = _run(executor, plant, T0, 5, "grid_charge", 2.0)
     assert executor.state.restore_values["grid_setpoint"] == VICTRON_GRID_DEFAULT_W
     assert [role for role, _value in _written(results)] == ["charge_power", "grid_setpoint"]
+    # The replacement is said in the change log.
+    [replaced] = _events(results, "restore_replaced")
+    assert replaced["reason"] == "grid_setpoint" and replaced["found"] == "-2000"
+    assert replaced["restored_as"] == VICTRON_GRID_DEFAULT_W
     _now, results = _run(executor, plant, now, 5, "self_consume")
     assert _written(results) == [("grid_setpoint", VICTRON_GRID_DEFAULT_W), ("charge_power", -1.0)]
     # A hold does not touch the setpoint: it is left as found, not written to the default.
@@ -720,12 +724,19 @@ def test_a_grid_setpoint_found_selling_is_handed_back_as_the_gx_default_never_as
     _now, more = _run(executor, plant, now, 4, "self_consume")
     assert [role for role, _value in _written(results + more)] == ["discharge_power", "discharge_power"]
     assert plant.states["grid_setpoint"] == "-100"
-    # A positive one is the person's and is written back as found.
+    # A positive one, or a small negative bias against importing (down to `VICTRON_SALE_BELOW_W`), is the person's
+    # and is written back as found, with nothing to log.
+    for found in ("120", "-20", "-200"):
+        plant, executor = Plant(), Executor(VICTRON_CONTROL)
+        plant.states["grid_setpoint"] = found
+        now, results = _run(executor, plant, T0, 5, "grid_charge", 2.0)
+        assert not _events(results, "restore_replaced")
+        _now, results = _run(executor, plant, now, 5, "self_consume")
+        assert ("grid_setpoint", float(found)) in _written(results), found
     plant, executor = Plant(), Executor(VICTRON_CONTROL)
-    plant.states["grid_setpoint"] = "120"
-    now, _ = _run(executor, plant, T0, 5, "grid_charge", 2.0)
-    _now, results = _run(executor, plant, now, 5, "self_consume")
-    assert ("grid_setpoint", 120.0) in _written(results)
+    plant.states["grid_setpoint"] = "-210"
+    _run(executor, plant, T0, 5, "grid_charge", 2.0)
+    assert executor.state.restore_values["grid_setpoint"] == VICTRON_GRID_DEFAULT_W
 
 
 def test_the_ess_controls_are_found_on_another_device_of_the_battery_s_entry_but_never_guessed_between_two() -> None:

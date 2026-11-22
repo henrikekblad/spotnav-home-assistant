@@ -1045,9 +1045,9 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
             value = None if text is None else float(text)
         except ValueError:
             return None
-        if value is not None and role.negative_restored_as is not None and value < 0:
-            # A sale running when it was found is never the person's value (`Role.negative_restored_as`).
-            return role.negative_restored_as
+        if value is not None and role.restored_below is not None and value < role.restored_below[0]:
+            # A sale running when it was found is never the person's value (`Role.restored_below`).
+            return role.restored_below[1]
         return value
     return reading(role, state)
 
@@ -2186,6 +2186,7 @@ class Executor:
             return False, [_event(now, "not_started", why)]
         snapshot: dict[str, str] = {}
         restore_values: dict[str, Native] = {}
+        replaced: dict[str, dict[str, Any]] = {}
         entities: dict[str, str] = {}
         device_id: str | None = None
         for role in self.control.roles:
@@ -2201,6 +2202,10 @@ class Executor:
                 return False, [_event(now, "not_started", f"no_restore_value:{role.name}", read=read.state)]
             snapshot[role.name] = read.state or ""
             restore_values[role.name] = value
+            if role.restored_below is not None and value == role.restored_below[1] and _restore_value(
+                replace(role, restored_below=None), read.state, inputs.facts
+            ) != value:
+                replaced[role.name] = {"found": read.state, "restored_as": value}
         action = inputs.action
         assert action is not None
         house, behind = self._grid_terms(inputs, action, phases)
@@ -2220,7 +2225,10 @@ class Executor:
         )
         self._watch(inputs, action, rate)
         detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
-        return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
+        events = [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
+        # A value found that is handed back as something else (`Role.restored_below`): said in the change log.
+        events += [_event(now, "restore_replaced", name, **row) for name, row in replaced.items()]
+        return True, events
 
     def _grid_terms(
         self, inputs: ExecInputs, action: str, phases: Phases | None

@@ -247,9 +247,11 @@ The entity keys, options and services below were checked against each integratio
     (`grid_charge_phases` 1: the entities do not say how many phases the Multis are on). The page warns that
     2700 (this setpoint) is logged to VRM and wears the GX's flash when written repeatedly (Venus 3.50 added a
     volatile 2716, `/Overrides/Setpoint` on the hub4 service, whose life the page does not describe: not used), so
-    the setpoint is written only when the rate changes, never to follow the house. A grid setpoint found below 0 (a
-    sale running when the snapshot was taken) is handed back as the GX's default 50 W, never as found
-    (`Role.negative_restored_as`).
+    the setpoint is written only when the rate changes, never to follow the house. A grid setpoint found below
+    `VICTRON_SALE_BELOW_W` (a sale running when the snapshot was taken) is handed back as the GX's default 50 W, never
+    as found (`Role.restored_below`); a smaller negative bias (-20 W, so the house never imports) is the person's and
+    is handed back as found. While it reads below that and SpotNav holds no snapshot of it, the checklist says so
+    (`grid_setpoint_selling`): a hold or a discharge for the house does not write it, so the sale would go on.
   * **Mode 3** (`VICTRON_PHASES`, the charge per phase): select `system_ess_mode` (`/Settings/CGwacs/Hub4Mode`:
     `phase_compensation_enabled` 1, `phase_compensation_disabled` 2, `external_control` 3), numbers
     `vebus_ac_power_setpoint_l1..l3` (`/Hub4/L1..L3/AcPowerSetpoint` on the VE.Bus service, Modbus 37/40/41, W,
@@ -415,10 +417,11 @@ class Role:
     #: The entity may not exist on a plant of this brand (Tesla's grid-charging switch needs solar): when it is not
     #: found the role is left out of every state and nothing is missing.
     optional: bool = False
-    #: A number found below 0 is restored as this instead (in the entity's unit), `None`: as found. Victron's grid
-    #: setpoint below 0 is a sale running when the snapshot was taken (SpotNav's own left by a lost state, or another
-    #: tool's), never a value to put back for good: the GX would then sell the battery until someone noticed.
-    negative_restored_as: float | None = None
+    #: `(below, value)`: a number found below `below` is restored as `value` instead (in the entity's unit); `None`:
+    #: as found. Victron's grid setpoint far below 0 is a sale running when the snapshot was taken (SpotNav's own left
+    #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
+    #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
+    restored_below: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1424,11 +1427,13 @@ _VIC_DISCHARGE = Role(
     "discharge_power", "number", _key("system_ess_max_inverter_power_limit", "number"), scale=1000.0, step=50.0,
     tolerance=1.0,
 )
-#: The GX's own default grid setpoint (W), what a sale found at the snapshot is restored as.
+#: The GX's own default grid setpoint (W), what a sale found at the snapshot is restored as, and the setpoint (W)
+#: below which a found value is a sale, not a person's small bias against importing.
 VICTRON_GRID_DEFAULT_W: Final = 50.0
+VICTRON_SALE_BELOW_W: Final = -200.0
 _VIC_GRID = Role(
     "grid_setpoint", "number", _key("system_ac_power_set_point", "number"), scale=1000.0, step=10.0, tolerance=1.0,
-    negative_restored_as=VICTRON_GRID_DEFAULT_W,
+    restored_below=(VICTRON_SALE_BELOW_W, VICTRON_GRID_DEFAULT_W),
 )
 _VIC_MODE = Role("ess_mode", "select", _key("system_ess_mode", "select"))
 #: The two Hub4 flags are written off for a charge per phase and never handed back: outside external control the GX
