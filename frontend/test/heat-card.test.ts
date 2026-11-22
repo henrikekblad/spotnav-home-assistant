@@ -1057,7 +1057,7 @@ describe("the zones and the water heater SpotNav controls", () => {
       config: { ...value.config, hot_water_entity: pulse, water_heater: { entity_id: heater, control: false, tank_sensor: null } },
       choices: { ...value.choices!, hot_water: [choice(heater), choice(pulse)], water_heater: [choice(heater), choice(pulse)] },
     };
-    const offered = (key: string) =>
+    const offered = (key: "hotWater" | "waterHeater") =>
       [...heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: both, write: vi.fn() } as never, key, handlers as never)!.body.querySelectorAll<HTMLInputElement>("input[type='radio']")]
         .map((input) => input.value);
     expect(offered("hotWater")).toEqual(["", pulse]);
