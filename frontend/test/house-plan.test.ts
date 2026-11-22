@@ -189,7 +189,7 @@ describe("the Plan tab's folding sections", () => {
     words.button!.click();
     expect(words.button!.getAttribute("aria-expanded")).toBe("true");
     expect(words.content.hidden).toBe(false);
-    expect(saved.get("spotnav-house-card.plan.words")).toBe("open");
+    expect(saved.get(`spotnav-house-card.plan.words.${plan("car_only.json").site_id}`)).toBe("open");
     // A new drawing, as after the next update, keeps the choice; so does a new page reading it back.
     const again = planBody({ doc: document, language: "sv", plan: plan("car_only.json"), width: 360, store });
     expect(section(again, "words").content.hidden).toBe(false);

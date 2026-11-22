@@ -3,7 +3,7 @@
 //   * whether the heat card's day chart is folded away, per site;
 //   * the chart's time axis ("day" or "from_now"), one choice for every SpotNav card in this browser;
 //   * the unit prices are shown in ("minor" or "major"), likewise one choice for the whole browser;
-//   * whether the house card's Plan tab shows its "Per load" lanes and its plan in words, one choice each per browser.
+//   * whether the house card's Plan tab shows its "Per load" lanes and its plan in words, one choice each per site.
 //
 // The one place the card touches browser storage, and only for these per-viewer conveniences. Every
 // access is guarded: a private window, blocked site data or a storage that throws simply means nothing
@@ -155,22 +155,22 @@ export function writeChartSun(store: () => PreferenceStore | null, on: boolean):
 /** A part of the house card's Plan tab that folds away under its heading. */
 export type PlanSection = "lanes" | "words";
 
-export function planSectionKey(section: PlanSection): string {
-  return `spotnav-house-card.plan.${section}`;
+export function planSectionKey(section: PlanSection, siteId: string): string {
+  return `spotnav-house-card.plan.${section}.${siteId}`;
 }
 
 /** Whether this browser last opened the section; folded when nothing usable is stored or storage is unavailable. */
-export function readPlanSectionOpen(section: PlanSection, store: () => PreferenceStore | null = browserStore): boolean {
+export function readPlanSectionOpen(section: PlanSection, siteId: string, store: () => PreferenceStore | null = browserStore): boolean {
   try {
-    return (store()?.getItem(planSectionKey(section)) ?? null) === "open";
+    return (store()?.getItem(planSectionKey(section, siteId)) ?? null) === "open";
   } catch {
     return false;
   }
 }
 
-export function writePlanSectionOpen(section: PlanSection, open: boolean, store: () => PreferenceStore | null = browserStore): void {
+export function writePlanSectionOpen(section: PlanSection, siteId: string, open: boolean, store: () => PreferenceStore | null = browserStore): void {
   try {
-    store()?.setItem(planSectionKey(section), open ? "open" : "closed");
+    store()?.setItem(planSectionKey(section, siteId), open ? "open" : "closed");
   } catch {
     // Nothing is remembered in this browser; the choice holds on this page.
   }

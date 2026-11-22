@@ -4,7 +4,7 @@
 // month's peak), the stacked chart (the loads above zero, the sun and the battery's cover below, the net from the
 // grid as a line, the ceiling labelled, a price strip), a lane per load with one line of why, and the plan in words.
 // A load SpotNav only watches is drawn hatched and says "would": the view never claims an action that is not taken.
-// "Per load" and "In words" fold away under their headings, folded until this browser opens them; a car's "does not
+// "Per load" and "In words" fold away under their headings, folded until this browser opens them (per site); a car's "does not
 // fit" choice is never folded away: while one is there, "Per load" is open with a plain heading.
 // Read-only; every figure is the backend's. Built with `textContent` only.
 
@@ -335,7 +335,7 @@ export interface PlanRenderInput {
 }
 
 /** The sections opened or folded on this page, so a choice holds across redraws where nothing can be stored. */
-const pageOpen = new Map<PlanSection, boolean>();
+const pageOpen = new Map<string, boolean>();
 
 /**
  * A section's heading as a button that folds `content` away, with a chevron and, while folded, a hint of what is
@@ -353,7 +353,8 @@ function foldable(input: PlanRenderInput, section: PlanSection, title: string, h
     return [heading, wrap];
   }
   const store = input.store ?? browserStore;
-  const open = pageOpen.get(section) ?? readPlanSectionOpen(section, store);
+  const site = input.plan.site_id;
+  const open = pageOpen.get(`${section}.${site}`) ?? readPlanSectionOpen(section, site, store);
   const button = element(doc, "button", P.toggle) as HTMLButtonElement;
   button.type = "button";
   const hintNode = element(doc, "span", P.hint, ` · ${hint}`);
@@ -367,8 +368,8 @@ function foldable(input: PlanRenderInput, section: PlanSection, title: string, h
   button.addEventListener("click", () => {
     const next = button.getAttribute("aria-expanded") !== "true";
     show(next);
-    pageOpen.set(section, next);
-    writePlanSectionOpen(section, next, store);
+    pageOpen.set(`${section}.${site}`, next);
+    writePlanSectionOpen(section, site, next, store);
   });
   heading.append(button);
   return [heading, wrap];
