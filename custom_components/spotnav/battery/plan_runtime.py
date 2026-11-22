@@ -817,7 +817,8 @@ class BatteryPlanShadow:
         from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports the site
 
         quarter = bucket_start(now)
-        if quarter != self._quarter:
+        turned = quarter != self._quarter
+        if turned:
             self._quarter = quarter
             self._quarter_turned(now)
             price = next((p for p in self._prices if p.start <= quarter < p.end), None)
@@ -837,6 +838,24 @@ class BatteryPlanShadow:
             facts.power_kw,
             facts.soc_pct,
         )
+        if turned:
+            # After the reading above, which closed the quarter hour that just ended.
+            self._learn_round_trip(now, facts)
+
+    def _learn_round_trip(self, now: datetime, facts: BatteryFacts) -> None:
+        """The round trip from the battery's own meters (`round_trip.py`), at each quarter hour's turn."""
+        ratings = [kw for kw in (facts.rated_charge_kw, facts.rated_discharge_kw) if kw is not None and kw > 0]
+        before = self.learned.round_trip.efficiency
+        if self.learned.round_trip.observe(
+            now,
+            facts.soc_pct,
+            (facts.charged_total_kwh, facts.discharged_total_kwh),
+            self.actuals.buckets.values(),
+            max(ratings) if ratings else None,
+        ):
+            _LOGGER.debug("SpotNav battery plan: round trip %s", self.learned.round_trip.view()["windows"][-1:])
+        if self.learned.round_trip.efficiency != before:
+            _LOGGER.debug("SpotNav battery plan: the round trip is now %s", self.learned.round_trip.efficiency)
 
     def _controlled(self) -> bool:
         """Whether SpotNav controls the battery now (`BatteryControl.state` `on`); false where it cannot be read."""
@@ -1161,6 +1180,8 @@ class BatteryPlanShadow:
                 facts.capacity_kwh,
                 facts.rated_charge_kw,
                 facts.rated_discharge_kw,
+                # Learnt slowly (`round_trip.py`): a change is rare and worth a new plan.
+                facts.round_trip_efficiency,
                 tuple(windows),
                 self._cap(),
                 self._site_mode(),

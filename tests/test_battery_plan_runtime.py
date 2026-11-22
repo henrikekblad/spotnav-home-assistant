@@ -31,6 +31,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     BUCKET,
     EST_HOUSE_COUNTS_BATTERY,
     EST_MIN_SOC,
+    EST_ROUND_TRIP,
     EST_NO_SOLAR,
     KIND_BATTERY,
     NO_CAPACITY,
@@ -1057,3 +1058,26 @@ async def test_cold_cells_leave_the_plan_in_force_as_it_was_and_the_derate_and_p
     await shadow.async_plan(now, TRIGGER_INPUTS)
     assert len([item for item in logged if item[0] == "battery_preheat"]) == 1
     assert [call for call in calls if call.data.get("domain") not in ("system_log", "logger")] == []
+
+
+async def test_each_quarter_hour_feeds_the_round_trip_and_the_plan_uses_it_once_learnt(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site, controller, now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.plan
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    round_trip = plan.learned.round_trip
+    assert round_trip.anchor is not None and round_trip.anchor.soc == 44.6
+    diagnostics = (await async_get_config_entry_diagnostics(hass, site))["battery"]["plan"]
+    assert diagnostics["learned"]["round_trip"]["efficiency"] is None
+    assert diagnostics["inputs"]["battery"]["round_trip_efficiency"] == 0.90
+
+    round_trip.efficiency = 0.83
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 2))
+    await hass.async_block_till_done()
+
+    assert plan.inputs["battery"]["round_trip_efficiency"] == 0.83
+    assert EST_ROUND_TRIP not in plan.inputs["estimates"]
