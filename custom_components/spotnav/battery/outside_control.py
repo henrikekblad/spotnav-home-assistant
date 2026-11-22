@@ -26,7 +26,9 @@ The signals, each judged on what the shell hands over (`Observation`):
   activations do not mark: they are too short.
 
 The verdict (`verdict`) holds from the first signal; it ends `CLEAR_AFTER` after the last one (an integration's at
-once when it is gone). An administrator may end one found by the battery's settings or behaviour at once
+once when it is gone). During the start-up wait (`Observation.starting`, `runtime.START_GRACE`) none ends: a planner
+outside Home Assistant shows its states again only some minutes after a restart, and a verdict kept from before the
+restart must not end in between; its end after the wait is marked `after_start_wait`. An administrator may end one found by the battery's settings or behaviour at once
 ("Det var jag", `clear_by_person`): the changes counted so far are forgotten with it. Each stretch is one **occurrence**: its start and its end are each an event (`observe`),
 which the shell logs once at INFO; nothing is raised in Repairs, as nothing there is for the person to do. `told`
 marks an occurrence found by the battery's settings or behaviour (news); one from an integration or a planner the
@@ -98,6 +100,9 @@ class Observation:
     planner: str | None = None
     #: SpotNav's own write path acts on the battery now.
     spotnav_acting: bool = False
+    #: The start-up wait runs (`runtime.START_GRACE`): a planner or an integration may not be back yet, so no verdict
+    #: ends.
+    starting: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +145,8 @@ class OutsideControlWatch:
         self.verdict = Verdict()
         self.history: deque[dict[str, Any]] = deque(maxlen=HISTORY_MAX)
         self.counts: dict[str, int] = {}
+        #: A verdict that would have ended was held through the start-up wait (its end is then logged as such).
+        self._held_at_start = False
 
     # ---- one look
 
@@ -160,12 +167,19 @@ class OutsideControlWatch:
         hint = next((row.label for row in outside_integrations(obs.integrations) if row.strength == "hint"), None)
         events: list[dict[str, Any]] = []
         verdict = self.verdict
+        held, self._held_at_start = self._held_at_start, obs.starting and self._held_at_start
         if verdict.active:
             recent = self._last_signal is not None and now - self._last_signal < CLEAR_AFTER
-            if standing is None and not recent:
+            if standing is None and not recent and obs.starting:
+                # Right after a start a planner or an integration may not be back yet: the verdict holds.
+                self._held_at_start = True
+            elif standing is None and not recent:
                 # Nothing stands and the battery showed nothing for `CLEAR_AFTER` (a set-up integration that is
                 # gone ends it at once, unless the battery itself showed something lately).
-                events.append(self._end(now))
+                event = self._end(now)
+                if held:
+                    event["after_start_wait"] = True
+                events.append(event)
             elif standing is not None and _standing_reason(verdict.reason) and verdict.reason != standing[0]:
                 self.verdict = Verdict(True, standing[0], verdict.since, standing[1], verdict.told)
             return events

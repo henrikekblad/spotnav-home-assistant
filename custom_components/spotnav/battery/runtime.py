@@ -29,9 +29,10 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -66,6 +67,13 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 TICK_S: Final = 10.0
+#: The start-up wait: for this long after Home Assistant has fully started and SpotNav's site is set up (the later of
+#: the two), a planner or an integration that is not there yet does not end a standing outside-control verdict (one
+#: kept from before the restart holds), and SpotNav's write path and its verification do not start (only hand-backs are
+#: written). A battery planner outside Home Assistant's own start publishes its states only once it runs again:
+#: Predbat (AppDaemon or its add-on) was seen five minutes after a restart, and its cycle is five minutes. Ten minutes
+#: is twice what was seen; until then two controllers could otherwise write the same battery.
+START_GRACE: Final = timedelta(minutes=10)
 #: The book's section that keeps the outside-control watch.
 SECTION_OUTSIDE: Final = "outside_control"
 #: The book's section that keeps the export-limit rule's shadow (`export_curtail.CurtailShadow`).
@@ -276,6 +284,10 @@ class BatteryShadow:
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
         self.curtail_sell: float | None = None
         self.curtail_brand: str | None = None
+        #: When the start-up wait began counting (`START_GRACE`): the later of SpotNav's start and Home Assistant's
+        #: fully started; `None` before both.
+        self._wait_from: datetime | None = None
+        self._unsub_started: Callable[[], None] | None = None
 
     @property
     def _hold(self) -> HoldMemory:
@@ -286,9 +298,24 @@ class BatteryShadow:
         path to merge with the plan's slot."""
         return requested_action(self._hold) == ACTION_HOLD
 
+    def start_wait(self, now: datetime) -> bool:
+        """Whether the start-up wait (`START_GRACE`) still runs: before Home Assistant has fully started and SpotNav's
+        site has started, and for `START_GRACE` after the later of the two."""
+        return self._wait_from is None or now < self._wait_from + START_GRACE
+
+    @callback
+    def _ha_started(self, _hass: HomeAssistant | None = None) -> None:
+        self._unsub_started = None
+        self._wait_from = dt_util.now()
+
     async def async_start(self) -> None:
         """Load the book, restore a hold a restart found (in shadow: log it), then look every `TICK_S`."""
         now = dt_util.now()
+        # The start-up wait counts from now, or from Home Assistant's fully started when that comes later.
+        if self.hass.state is CoreState.running:
+            self._wait_from = now
+        else:
+            self._unsub_started = async_at_started(self.hass, self._ha_started)
         try:
             stored = await self._store.async_load()
         except Exception:  # noqa: BLE001 - a broken store starts an empty book
@@ -326,6 +353,9 @@ class BatteryShadow:
     @callback
     def halt(self) -> None:
         """The site shuts down: no tick and no plan solve from here (the book is saved by `async_shutdown`)."""
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -415,9 +445,17 @@ class BatteryShadow:
                 integrations=frozenset(self.hass.config_entries.async_domains()),
                 planner=external_planner(self.hass),
                 spotnav_acting=self.spotnav_acting(),
+                starting=self.start_wait(inputs.now),
             )
         )
         for event in events:
+            if event.get("after_start_wait"):
+                _LOGGER.info(
+                    "SpotNav battery: outside control ended after start-up wait (%s did not come back within %d "
+                    "minutes of the start)", event.get("source") or event.get("reason"),
+                    int(START_GRACE.total_seconds() // 60),
+                )
+                continue
             _LOGGER.info(
                 "SpotNav battery: something outside SpotNav %s the battery (%s%s); SpotNav only watches it",
                 "drives" if event["kind"] == "started" else "no longer drives",
