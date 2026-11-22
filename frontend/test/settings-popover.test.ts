@@ -410,27 +410,44 @@ describe("the popover from the house card", () => {
       options: { ...checking["options"], battery_control_enabled: true },
       grid_charge_cap: {
         ...checking["grid_charge_cap"],
-        import_limit: { ...checking["grid_charge_cap"]["import_limit"], per_phase: { max_kw: 13.16, holds: false, entity_id: null, ...phase } },
+        import_limit: { ...checking["grid_charge_cap"]["import_limit"], per_phase: { max_kw: 13.16, set_kw: 13.1, holds: false, entity_id: null, ...phase } },
       },
       ...more,
     });
-    // Not said to act: the button opens the site's own word and writes it.
-    const said = await mount({ battery: "checking.json", status: withPhase({ why: "not_said_to_act" }) });
-    let popover = await open(said.root);
+    // Not said to act, the limit (13.8 kW) higher than guards the fuse (13.16): one tap sets 13.1 kW and says it acts.
+    const high = await mount({ battery: "checking.json", status: withPhase({ why: "not_said_to_act" }) });
+    let popover = await open(high.root);
     let note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
-    expect(note.dataset["code"]).toBe("not_said_to_act");
-    expect(note.textContent).toContain("Slå på ”Importgränsen verkar” för att lita på den.");
+    expect(note.dataset["code"]).toBe("limit");
+    expect(note.textContent).toContain("men den står på 13,8 kW. Med högst 13,1 kW skyddar den huvudsäkringen");
     // The total rule's advice (far under the fuse) is not given beside it.
     expect(popover.querySelector("[data-import-limit]")).toBeNull();
-    note.querySelector<HTMLButtonElement>("button[data-action='import-limit-acts']")!.click();
-    const form = said.root.querySelector<HTMLFormElement>("form[data-value-editor]")!;
-    expect(form.textContent).toContain("högst 3 × (säkring − säkerhetsmarginal) × spänning");
-    form.querySelector<HTMLInputElement>("input[value='on']")!.click();
+    const setButton = note.querySelector<HTMLButtonElement>("button[data-action='import-limit-set']")!;
+    expect(setButton.textContent).toBe("Ställ in 13,1 kW…");
+    setButton.click();
+    let form = high.root.querySelector<HTMLFormElement>("form[data-battery-import-limit='set']")!;
+    expect(form.textContent).toContain("SpotNav sätter Sigenergys importgräns till 13,1 kW");
+    expect(form.textContent).toContain("SpotNav höjer aldrig gränsen.");
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
-    expect(said.messages.filter((message) => message["changes"] !== undefined)).toEqual([
-      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_import_limit_acts: true } },
+    expect(high.messages.filter((message) => message["set_import_limit"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", set_import_limit: true },
     ]);
+    high.element.remove();
+    // Not said to act, the limit already low enough: the tap only says it acts (same command, nothing to lower).
+    const low = withPhase({ why: "not_said_to_act", set_kw: null }) as Record<string, any>;
+    low["grid_charge_cap"]["import_limit"]["value_kw"] = 12.0;
+    const said = await mount({ battery: "checking.json", status: low });
+    popover = await open(said.root);
+    note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
+    expect(note.dataset["code"]).toBe("not_said_to_act");
+    expect(note.textContent).toContain("och den står redan lågt nog för din huvudsäkring");
+    note.querySelector<HTMLButtonElement>("button[data-action='import-limit-acts']")!.click();
+    form = said.root.querySelector<HTMLFormElement>("form[data-battery-import-limit='acts']")!;
+    expect(form.textContent).toMatch(/importgräns \(12(,0)? kW\)/);
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(said.messages.filter((message) => message["set_import_limit"] !== undefined)).toHaveLength(1);
     said.element.remove();
     // The phase switch off: Home Assistant's own dialog for the entity.
     const entityId = "switch.sigen_plant_independent_phase_power_control";

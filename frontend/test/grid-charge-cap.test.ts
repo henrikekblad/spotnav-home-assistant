@@ -192,7 +192,7 @@ describe("the grid charge cap block", () => {
     const limit = (phase: Record<string, unknown>, more: Record<string, unknown> = {}) => ({
       import_limit: {
         value_kw: 13.8, max_kw: 4.47, suggested_kw: 4.4, holds: false, why: null,
-        per_phase: { max_kw: 13.16, holds: false, why: null, entity_id: null, ...phase }, ...more,
+        per_phase: { max_kw: 13.16, set_kw: 13.1, holds: false, why: null, entity_id: null, ...phase }, ...more,
       },
     });
     const step = (language: "sv" | "en", cap: Record<string, unknown>, more = on(), allowed = ["grid_charge"]) =>
@@ -212,12 +212,23 @@ describe("the grid charge cap block", () => {
     });
 
     it("names the one step missing, in the order the rule checks them", () => {
+      // Not said to act with the limit (13.8 kW) above what guards (13.1): one step, set and say it acts.
       expect(step("sv", limit({ why: "not_said_to_act" }))).toEqual({
+        code: "limit",
+        entityId: null,
+        setKw: 13.1,
+        text: "Sigenergy kan hålla varje fas under anläggningens egen importgräns, men den står på 13,8 kW. Med högst"
+          + " 13,1 kW skyddar den huvudsäkringen även om Home Assistant stannar, och laddning från nätet hålls inte"
+          + " längre tillbaka.",
+      });
+      // Not said to act with the limit low enough: only saying it acts is left.
+      expect(step("sv", limit({ why: "not_said_to_act", set_kw: null }, { value_kw: 12.4 }))).toEqual({
         code: "not_said_to_act",
         entityId: null,
-        text: "Sigenergy kan hålla varje fas under anläggningens egen importgräns, så laddning från nätet behöver inte"
-          + " längre hållas tillbaka för att skydda säkringen om Home Assistant stannar. Slå på ”Importgränsen verkar”"
-          + " för att lita på den.",
+        setKw: null,
+        text: "Sigenergy kan hålla varje fas under anläggningens egen importgräns, och den står redan lågt nog för din"
+          + " huvudsäkring. Då behöver laddning från nätet inte hållas tillbaka för att skydda säkringen om Home"
+          + " Assistant stannar.",
       });
       const sensor = step("en", limit({ why: "grid_sensor_offline", entity_id: "sensor.sigen_plant_grid_sensor_status" }));
       expect(sensor?.entityId).toBe("sensor.sigen_plant_grid_sensor_status");
@@ -225,12 +236,13 @@ describe("the grid charge cap block", () => {
       expect(step("en", limit({ why: "output_type_unread" }))?.text).toContain("cannot read the plant's Output Type");
       expect(step("en", limit({ why: "phase_control_off" }))?.text).toContain("Independent phase power control is off");
       expect(step("sv", limit({}))?.text).toBe(
-        "Anläggningens importgräns står på 13,8 kW. Sänk den till högst 13,1 kW i Sigenergy-appen: då håller"
-          + " anläggningen varje fas under huvudsäkringen och laddning från nätet hålls inte längre tillbaka.",
+        "Sigenergy kan hålla varje fas under anläggningens egen importgräns, men den står på 13,8 kW. Med högst 13,1 kW"
+          + " skyddar den huvudsäkringen även om Home Assistant stannar, och laddning från nätet hålls inte längre"
+          + " tillbaka.",
       );
       expect(step("en", limit({}, { value_kw: null }))?.text).toBe(
-        "Set the plant's import limit to at most 13.1 kW in the Sigenergy app: then the plant holds each phase under the"
-          + " main fuse and grid charging is no longer held back.",
+        "Sigenergy can hold each phase under the plant's own import limit, but it is not set. At 13.1 kW or less it"
+          + " protects the main fuse even if Home Assistant stops, and grid charging is no longer held back.",
       );
     });
 
@@ -239,7 +251,7 @@ describe("the grid charge cap block", () => {
                          "plant_not_three_phase", "sources_unknown", "a_code_from_later"]) {
         expect(step("sv", limit({ why })), why).toBeNull();
       }
-      expect(step("sv", limit({ max_kw: null }))).toBeNull();
+      expect(step("sv", limit({ max_kw: null, set_kw: null }))).toBeNull();
       expect(step("sv", limit({ why: "not_said_to_act" }), on({ battery_control_enabled: false }))).toBeNull();
       expect(step("sv", limit({ why: "not_said_to_act" }), on(), ["hold"])).toBeNull();
       expect(step("sv", limit({ why: "phase_control_off" }, { holds: true }))).toBeNull();

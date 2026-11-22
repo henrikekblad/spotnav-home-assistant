@@ -26,6 +26,12 @@ that a fact the battery plan needs (its size, its floor) sits in a disabled enti
 same shape plus `needs`: `size`, `floor`; `null` when none is): SpotNav enables only those entities, never a control,
 and reloads their integration once. A failed reload is `spotnav_enable_failed`.
 
+`set_import_limit: true` (administrators only, never over the webhook) is the person's one tap on the per-phase
+import-limit line (`BatteryControl.async_set_import_limit`): SpotNav lowers the plant's own grid import limit to the most
+that keeps every phase under the fuse less the site's safety margin when it reads more or nothing (never raises it),
+reads it back, and then turns `battery_control_import_limit_acts` on. Any refusal is `spotnav_import_limit_not_set`
+(the reason is logged); nothing else is written. It runs before `changes`.
+
 `clear_outside_control: true` (administrators only, never over the webhook) is the person's "Det var jag – rensa":
 the outside-control verdict found by the battery's own settings or behaviour ends now, logged as cleared by a person
 (the diagnostics' `outside_control.history`), and the changes counted so far are forgotten. A verdict from an
@@ -62,6 +68,7 @@ ERROR_NO_SITE: Final = "spotnav_no_site"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 ERROR_ENABLE_FAILED: Final = "spotnav_enable_failed"
 ERROR_NOT_CLEARABLE: Final = "spotnav_not_clearable"
+ERROR_IMPORT_LIMIT_NOT_SET: Final = "spotnav_import_limit_not_set"
 
 
 def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> dict[str, Any]:
@@ -83,6 +90,7 @@ async def async_battery_control_answer(
     enable_entities: bool = False,
     enable_facts: bool = False,
     clear_outside_control: bool = False,
+    set_import_limit: bool = False,
 ) -> dict[str, Any]:
     """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
     writing `changes` when given. `over_webhook`: only `WEBHOOK_WRITABLE` may be named; another option is
@@ -97,6 +105,14 @@ async def async_battery_control_answer(
             return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
         if not control.clear_outside_control():
             return _answer(error=ERROR_NOT_CLEARABLE)
+    if set_import_limit:
+        # The person's tap on the import-limit line: never over the webhook, never without an administrator.
+        if over_webhook or not admin:
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        why = await control.async_set_import_limit()
+        if why is not None:
+            _LOGGER.warning("SpotNav battery: the plant's import limit was not set (%s)", why)
+            return _answer(control.status(), ERROR_IMPORT_LIMIT_NOT_SET)
     if enable_facts:
         # The person's confirm of the fact line: never over the webhook, never without an administrator.
         if over_webhook or not admin:
@@ -154,6 +170,7 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("enable_control_entities"): bool,
         vol.Optional("enable_fact_entities"): bool,
         vol.Optional("clear_outside_control"): bool,
+        vol.Optional("set_import_limit"): bool,
     }
 )
 @websocket_api.async_response
@@ -173,6 +190,7 @@ async def websocket_battery_control(
         enable_entities=msg.get("enable_control_entities") is True,
         enable_facts=msg.get("enable_fact_entities") is True,
         clear_outside_control=msg.get("clear_outside_control") is True,
+        set_import_limit=msg.get("set_import_limit") is True,
     )
     connection.send_result(msg["id"], answer)
 
