@@ -5765,12 +5765,15 @@ class SiteCapacityController:
         store = domain_data(self.hass).auto_store
         return IF_NOT_READY_ASK if store is None else store.settings(charger_entry_id).if_not_ready
 
-    def async_take_what_fits(self, charger_entry_id: str, *, source: str | None = None) -> str | None:
+    def async_take_what_fits(
+        self, charger_entry_id: str, *, for_departure: int | None = None, source: str | None = None
+    ) -> str | None:
         """A person's "Take what fits" for this charge (the card, the app): the plan's departure ahead is held as
         `if_not_ready` `hold` would hold it, for that departure only; the lasting `if_not_ready` is left as it is. Ends
         at the departure, an unplug or another departure (`_prune_released`); kept across a restart. The error's code,
         else `None`: `spotnav_no_import_target` (the site has neither a target nor a power level),
-        `spotnav_no_departure` (no plan's departure ahead)."""
+        `spotnav_no_departure` (no plan's departure ahead), `spotnav_stale_departure` (a phone's button told for a
+        departure, `for_departure` in epoch seconds, that is not the plan's any more)."""
         if self._hold_set_kw() is None:
             self._log_target(charger_entry_id, "takes_what_fits_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
             return ERROR_NO_IMPORT_TARGET
@@ -5780,6 +5783,9 @@ class SiteCapacityController:
             self._log_target(charger_entry_id, "takes_what_fits_refused", source=source, error=ERROR_NO_DEPARTURE)
             return ERROR_NO_DEPARTURE
         assert plan is not None
+        if for_departure is not None and for_departure != int(departure.timestamp()):
+            self._log_target(charger_entry_id, "takes_what_fits_refused", source=source, error=ERROR_STALE_DEPARTURE)
+            return ERROR_STALE_DEPARTURE
         _LOGGER.info(
             "SpotNav site %s: charger %s takes what fits under the import target until %s, as a person chose",
             self.entry_id,
