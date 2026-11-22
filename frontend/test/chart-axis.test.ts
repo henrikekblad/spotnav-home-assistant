@@ -326,15 +326,21 @@ describe("the axis preference", () => {
     window.localStorage.removeItem(CHART_AXIS_KEY);
   });
 
-  it("is Day when nothing, or nothing usable, is stored", () => {
+  it("is From now when nothing, or nothing usable, is stored", () => {
     const store = new MemoryStore();
-    expect(readChartAxis(() => store)).toBe("day");
+    expect(readChartAxis(() => store)).toBe("from_now");
     store.setItem(CHART_AXIS_KEY, "sideways");
+    expect(readChartAxis(() => store)).toBe("from_now");
+  });
+
+  it("keeps a stored Day as it is", () => {
+    const store = new MemoryStore();
+    store.setItem(CHART_AXIS_KEY, "day");
     expect(readChartAxis(() => store)).toBe("day");
   });
 
-  it("is Day when storage is unavailable or throws, and a write then reports it was not kept", () => {
-    expect(readChartAxis(() => null)).toBe("day");
+  it("is From now when storage is unavailable or throws, and a write then reports it was not kept", () => {
+    expect(readChartAxis(() => null)).toBe("from_now");
     const throwing: PreferenceStore = {
       getItem: () => {
         throw new Error("blocked");
@@ -343,7 +349,7 @@ describe("the axis preference", () => {
         throw new Error("blocked");
       },
     };
-    expect(readChartAxis(() => throwing)).toBe("day");
+    expect(readChartAxis(() => throwing)).toBe("from_now");
     expect(writeChartAxis(() => throwing, "from_now")).toBe(false);
     expect(writeChartAxis(() => null, "from_now")).toBe(false);
     expect(() => readChartAxis(() => {
