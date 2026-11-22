@@ -33,11 +33,14 @@
     "charged": "{kwh} ladattu",
     "planned": "{kwh} suunniteltu",
     "cost": "noin {cost}",
-    "import_target.at_risk.time": "Auto ei ole valmis klo {time} mennessä {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
-    "import_target.at_risk": "Auto ei ole valmis lähtöön {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
-    "import_target.release": "Ohita tehotavoite tämän latauksen ajaksi",
-    "import_target.at_risk.peak.time": "Auto ei ole valmis klo {time} mennessä kuukauden {target} kW:n huipulla (tehotavoite {set} kW) – {kwh} kWh puuttuu.",
-    "import_target.at_risk.peak": "Auto ei ole valmis lähtöön kuukauden {target} kW:n huipulla (tehotavoite {set} kW) – {kwh} kWh puuttuu."
+    "does_not_fit": "Ei mahdu katon alle: {need} kWh klo {time} mennessä – {fits} kWh ehtii.",
+    "does_not_fit.short.time": "Ei mahdu katon alle: {kwh} kWh puuttuu klo {time} mennessä.",
+    "does_not_fit.short": "Ei mahdu katon alle: {kwh} kWh puuttuu lähtöön mennessä.",
+    "does_not_fit.take": "Ota mikä mahtuu",
+    "does_not_fit.take.kwh": "Ota mikä mahtuu (≈ {kwh} kWh)",
+    "does_not_fit.peak": "Salli huippu",
+    "does_not_fit.peak.kw": "Salli huippu (≈ {kw} kW)",
+    "does_not_fit.peak.cost": "Salli huippu (≈ {kw} kW, ≈ {cost})"
   },
   "add_charger": {
     "hint": "Lisää latauslaite: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."

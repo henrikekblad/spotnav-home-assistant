@@ -33,11 +33,14 @@
     "charged": "{kwh} charged",
     "planned": "{kwh} planned",
     "cost": "about {cost}",
-    "import_target.at_risk.time": "The car will not be ready by {time} under the {target} kW import target – {kwh} kWh short.",
-    "import_target.at_risk": "The car will not be ready by the departure under the {target} kW import target – {kwh} kWh short.",
-    "import_target.release": "Release the import target for this charge",
-    "import_target.at_risk.peak.time": "The car will not be ready by {time} under the month's peak of {target} kW (import target {set} kW) – {kwh} kWh short.",
-    "import_target.at_risk.peak": "The car will not be ready by the departure under the month's peak of {target} kW (import target {set} kW) – {kwh} kWh short."
+    "does_not_fit": "Does not fit under the ceiling: {need} kWh by {time} – {fits} kWh fit in time.",
+    "does_not_fit.short.time": "Does not fit under the ceiling: {kwh} kWh short by {time}.",
+    "does_not_fit.short": "Does not fit under the ceiling: {kwh} kWh short by the departure.",
+    "does_not_fit.take": "Take what fits",
+    "does_not_fit.take.kwh": "Take what fits (≈ {kwh} kWh)",
+    "does_not_fit.peak": "Allow the peak",
+    "does_not_fit.peak.kw": "Allow the peak (≈ {kw} kW)",
+    "does_not_fit.peak.cost": "Allow the peak (≈ {kw} kW, ≈ {cost})"
   },
   "add_charger": {
     "hint": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."

@@ -33,11 +33,14 @@
     "charged": "{kwh} ladet",
     "planned": "{kwh} planlagt",
     "cost": "cirka {cost}",
-    "import_target.at_risk.time": "Bilen bliver ikke klar til kl. {time} under effektmålet på {target} kW – der mangler {kwh} kWh.",
-    "import_target.at_risk": "Bilen bliver ikke klar til afgangen under effektmålet på {target} kW – der mangler {kwh} kWh.",
-    "import_target.release": "Slip effektmålet for denne opladning",
-    "import_target.at_risk.peak.time": "Bilen bliver ikke klar til kl. {time} under månedens top på {target} kW (effektmål {set} kW) – der mangler {kwh} kWh.",
-    "import_target.at_risk.peak": "Bilen bliver ikke klar til afgangen under månedens top på {target} kW (effektmål {set} kW) – der mangler {kwh} kWh."
+    "does_not_fit": "Kan ikke nås under loftet: {need} kWh til {time} – {fits} kWh når det.",
+    "does_not_fit.short.time": "Kan ikke nås under loftet: {kwh} kWh mangler til {time}.",
+    "does_not_fit.short": "Kan ikke nås under loftet: {kwh} kWh mangler til afgangen.",
+    "does_not_fit.take": "Tag det, der kan nås",
+    "does_not_fit.take.kwh": "Tag det, der kan nås (≈ {kwh} kWh)",
+    "does_not_fit.peak": "Tillad toppen",
+    "does_not_fit.peak.kw": "Tillad toppen (≈ {kw} kW)",
+    "does_not_fit.peak.cost": "Tillad toppen (≈ {kw} kW, ≈ {cost})"
   },
   "add_charger": {
     "hint": "Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg."
