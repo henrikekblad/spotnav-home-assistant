@@ -134,7 +134,6 @@ from .plan_model import (
     ACTION_SELF_CONSUME,
     DEFAULT_CYCLE_COST,
     sell_margin_minor_per_kwh,
-    wear_minor_per_kwh,
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, plant_entity_id, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
@@ -1539,11 +1538,15 @@ class BatteryControl:
     # ---- the settings
 
     async def async_update_options(self, changes: dict[str, Any]) -> dict[str, Any]:
-        """Write some of the site's options (`gate.WRITABLE`: booleans, and the battery mode) to its entry, without a
-        reload; a changed mode re-plans at once (the comparison's \"in force\" row moves with it); act
+        """Write some of the site's options (`gate.WRITABLE`: booleans, the battery mode and the wear) to its entry,
+        without a reload (a wear of `None` removes the key: the currency's default); a changed mode or wear re-plans
+        at once (the comparison's \"in force\" row moves with it); act
         on them at once: turned off or back to shadow only, the plant is handed back before this returns; turned on,
         the next look starts the routine. Answers the status."""
-        unknown = [key for key, value in changes.items() if not gate.valid_change(key, value)]
+        wear_default = self.wear_default()
+        unknown = [
+            key for key, value in changes.items() if not gate.valid_change(key, value, wear_default=wear_default)
+        ]
         if unknown:
             raise ValueError(f"not a battery control option: {', '.join(sorted(unknown))}")
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
@@ -1556,10 +1559,13 @@ class BatteryControl:
             if changes.get(gate.CONF_ACCEPT_HA_DOWN) is True:
                 # Given for this setup: another main fuse or another brand clears it (`_ha_down_setup_look`).
                 stamped[gate.CONF_ACCEPT_HA_DOWN_SETUP] = gate.ha_down_setup(self._main_fuse_a(), self.facts.brand)
-            self.hass.config_entries.async_update_entry(entry, data={**entry.data, **stamped})
+            data = {**entry.data, **stamped}
+            if gate.CONF_WEAR in stamped and stamped[gate.CONF_WEAR] is None:
+                data.pop(gate.CONF_WEAR)
+            self.hass.config_entries.async_update_entry(entry, data=data)
             after = self.options()
             _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
-            if before.mode != after.mode:
+            if before.mode != after.mode or before.wear_minor_per_kwh != after.wear_minor_per_kwh:
                 self.site.battery_shadow.plan.mode_changed(dt_util.now())
             # The entry is written: nothing below may raise into the caller (the plant is handed back at the next
             # look if this hand-back fails).
@@ -2953,9 +2959,23 @@ class BatteryControl:
             "plan_costs": self._plan_costs(),
         }
 
+    def wear_default(self) -> float:
+        """The area currency's own wear per kWh each way (the SEK figure while no area or currency is known): what
+        bounds a written wear (`gate.valid_change`)."""
+        try:
+            from .plan_runtime import site_price_source_of  # noqa: PLC0415 - it imports this module
+
+            source = site_price_source_of(self.hass, self.site)
+            area = None if source is None else source.area
+            return gate.wear_default(None if area is None else area.currency)[0]
+        except Exception:  # noqa: BLE001 - a bound must never fail the write
+            self._look_failed("wear_default")
+            return DEFAULT_CYCLE_COST
+
     def _plan_costs(self) -> dict[str, Any] | None:
-        """The plan's two fixed figures in the site's currency (read-only for the card and the app): the wear per kWh
-        each way and Balanced's selling margin per kWh, in the minor unit; `None` while no price area is known."""
+        """The plan's two figures in the site's currency for the card and the app: the wear per kWh each way (the
+        site's own, `gate.CONF_WEAR`, else the currency's default, also sent as `wear_default_minor_per_kwh`) and
+        Balanced's selling margin per kWh, in the minor unit; `None` while no price area is known."""
         try:
             from .plan_runtime import site_price_source_of  # noqa: PLC0415 - it imports this module
 
@@ -2963,9 +2983,12 @@ class BatteryControl:
             area = None if source is None else source.area
             if area is None or not area.major_unit or not area.minor_unit:
                 return None
-            wear = wear_minor_per_kwh(area.currency)
+            entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+            wear, _unknown = gate.site_wear(self.site.config if entry is None else entry.data, area.currency)
+            default, _unknown = gate.wear_default(area.currency)
             return {
-                "wear_minor_per_kwh": DEFAULT_CYCLE_COST if wear is None else wear,
+                "wear_minor_per_kwh": wear,
+                "wear_default_minor_per_kwh": default,
                 "balanced_margin_minor_per_kwh": sell_margin_minor_per_kwh(area.currency),
                 "major_unit": area.major_unit,
                 "minor_unit": area.minor_unit,

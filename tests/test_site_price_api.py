@@ -321,7 +321,54 @@ async def test_the_battery_status_names_the_plans_two_fixed_costs_in_the_areas_m
     costs = (await ws_call(client, ask))["result"]["status"]["plan_costs"]
     assert costs == {
         "wear_minor_per_kwh": 15.0,
+        "wear_default_minor_per_kwh": 15.0,
         "balanced_margin_minor_per_kwh": 100.0,
         "major_unit": "kr",
         "minor_unit": "öre",
     }
+
+
+async def test_the_wear_is_the_sites_own_once_an_administrator_writes_it_and_null_is_the_default_again(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token
+) -> None:
+    site_id = await _home(hass, False)
+    await add_price(hass, entry_id="price_a")
+    client = await admin(hass, hass_ws_client)
+    ask = {"type": "spotnav/battery_control", "api_version": 1, "site_id": site_id}
+
+    async def write(value: Any) -> dict[str, Any]:
+        return (await ws_call(client, {**ask, "changes": {"battery_wear_minor_per_kwh": value}}))["result"]
+
+    answer = await write(22.5)
+    assert answer["ok"] is True
+    assert answer["status"]["options"]["battery_wear_minor_per_kwh"] == 22.5
+    costs = answer["status"]["plan_costs"]
+    assert costs["wear_minor_per_kwh"] == 22.5 and costs["wear_default_minor_per_kwh"] == 15.0
+    site = hass.config_entries.async_get_entry(site_id)
+    assert site.data["battery_wear_minor_per_kwh"] == 22.5
+    # Zero and ten times the currency's default are the bounds; past them, a boolean or a string is refused.
+    assert (await write(0))["ok"] is True
+    assert (await write(150))["ok"] is True
+    for bad in (150.01, -1, True, "20"):
+        refused = await write(bad)
+        assert refused["error"] == "spotnav_invalid_value", bad
+    assert site.data["battery_wear_minor_per_kwh"] == 150
+    answer = await write(None)
+    assert answer["ok"] is True and "battery_wear_minor_per_kwh" not in site.data
+    assert answer["status"]["options"]["battery_wear_minor_per_kwh"] is None
+    assert answer["status"]["plan_costs"]["wear_minor_per_kwh"] == 15.0
+    # Written with the mode in one call.
+    answer = (await ws_call(client, {**ask, "changes": {"battery_mode": "max_profit", "battery_wear_minor_per_kwh": 9}}))[
+        "result"
+    ]
+    assert answer["ok"] is True and site.data["battery_mode"] == "max_profit"
+    assert site.data["battery_wear_minor_per_kwh"] == 9
+    reader = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
+    denied = (await ws_call(reader, {**ask, "changes": {"battery_wear_minor_per_kwh": 12}}))["result"]
+    assert denied["error"] == "spotnav_not_admin" and site.data["battery_wear_minor_per_kwh"] == 9
+    from custom_components.spotnav.api.battery_control import async_battery_control_answer
+
+    hooked = await async_battery_control_answer(
+        hass, site, {"battery_wear_minor_per_kwh": 12}, admin=False, over_webhook=True
+    )
+    assert hooked["error"] == "spotnav_not_permitted_over_webhook" and site.data["battery_wear_minor_per_kwh"] == 9

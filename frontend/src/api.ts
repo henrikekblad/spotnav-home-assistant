@@ -915,10 +915,13 @@ export async function getSiteSettingsView(hass: HomeAssistantLike, target: SiteT
  * `enableFactEntities` is the person's confirm of the line that a fact the plan needs (the battery's size, its floor)
  * sits in a disabled entity: the backend enables only those (never a control) and reloads their integration once.
  */
+/** What `spotnav/battery_control` may write: the options' booleans, the mode, and the wear (`null`: the default). */
+export type BatteryChanges = Record<string, boolean | string | number | null>;
+
 export async function batteryControl(
   hass: HomeAssistantLike,
   target: SiteTarget,
-  changes: Record<string, boolean | string> | null = null,
+  changes: BatteryChanges | null = null,
   enableControlEntities = false,
   clearOutsideControl = false,
   enableFactEntities = false,

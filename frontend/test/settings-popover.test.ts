@@ -516,25 +516,42 @@ describe("the popover from the house card", () => {
     );
   });
 
-  it("offers the battery mode with a help line each, says what it does while control is off, and writes the choice", async () => {
-    const { root, messages } = await mount({ battery: "checking.json" });
+  const SEK_COSTS = {
+    wear_minor_per_kwh: 15,
+    wear_default_minor_per_kwh: 15,
+    balanced_margin_minor_per_kwh: 100,
+    major_unit: "kr",
+    minor_unit: "öre",
+  };
+
+  it("shows only the mode's row on the page; its dialog has the help, the wear, the margin, the link and the shadow note, and writes the choice", async () => {
+    const { root, messages } = await mount({ battery: "checking.json", status: { plan_costs: SEK_COSTS } });
     const popover = await open(root);
     const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
     const row = battery.querySelector("[data-row='battery_mode']")!;
     expect(row.textContent).toBe("LägeBalanserad");
-    expect(battery.querySelector("[data-help='battery_mode']")!.textContent).toBe(
-      "Laddar också från nätet när det är billigt och används när det är dyrt. Säljer bara när det är mycket lönsamt.",
-    );
-    expect(battery.querySelector("[data-battery-mode-shadow]")!.textContent).toBe(
-      "Medan SpotNav inte styr batteriet flyttar valet bara vilken rad som är markerad som vald i jämförelsen.",
-    );
+    expect(battery.querySelector("[data-help='battery_mode']")).toBeNull();
+    expect(battery.querySelector("[data-battery-mode-shadow]")).toBeNull();
+    expect(battery.querySelector("[data-plan-costs]")).toBeNull();
+    expect(battery.textContent).not.toContain("Slitage");
     battery.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
-    const form = root.querySelector<HTMLFormElement>("form[data-value-editor]")!;
+    const form = root.querySelector<HTMLFormElement>("form[data-value-editor='battery-mode']")!;
     expect(
       [...form.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => [radio.value, radio.checked]),
     ).toEqual([["self_consumption", false], ["balanced", true], ["max_profit", false]]);
     expect(form.textContent).toContain("Batteriet laddas av solen och täcker huset. Ingen handel med nätet.");
     expect(form.textContent).toContain("Som Balanserad, men säljer till nätet så fort det lönar sig, med slitaget inräknat.");
+    expect(form.textContent).toContain("Slitage (öre/kWh åt varje håll)");
+    expect(form.textContent).toContain("Vad det kostar i slitage att ladda och ladda ur en kWh. Standard 15 öre.");
+    const wear = form.querySelector<HTMLInputElement>("input[data-field='battery_wear']")!;
+    expect(wear.value).toBe("");
+    expect(form.querySelector("[data-plan-costs]")!.textContent).toBe("Balanserad säljer vid minst 1 kr/kWh netto Batteriplanen");
+    const link = form.querySelector<HTMLAnchorElement>("[data-plan-costs] a")!;
+    expect(link.target).toBe("_blank");
+    expect(link.href).toContain("battery-plan");
+    expect(form.querySelector("[data-battery-mode-shadow]")!.textContent).toBe(
+      "Medan SpotNav inte styr batteriet flyttar valet bara vilken rad som är markerad som vald i jämförelsen.",
+    );
     form.querySelector<HTMLInputElement>("input[value='max_profit']")!.click();
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
@@ -544,10 +561,68 @@ describe("the popover from the house card", () => {
     expect(root.querySelector("[data-row='battery_mode']")!.textContent).toContain("Max vinst");
   });
 
+  it("writes the mode and the wear together, only what changed, and Default writes null", async () => {
+    const { root, messages } = await mount({ battery: "checking.json", status: { plan_costs: SEK_COSTS } });
+    let popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
+    let form = root.querySelector<HTMLFormElement>("form[data-value-editor='battery-mode']")!;
+    form.querySelector<HTMLInputElement>("input[value='self_consumption']")!.click();
+    form.querySelector<HTMLInputElement>("input[data-field='battery_wear']")!.value = "22,5";
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    const written = (): unknown[] => messages.filter((message) => message["changes"] !== undefined).map((message) => message["changes"]);
+    expect(written()).toEqual([{ battery_mode: "self_consumption", battery_wear_minor_per_kwh: 22.5 }]);
+    popover = root.querySelector<HTMLElement>("[data-popover='site']")!;
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
+    form = root.querySelector<HTMLFormElement>("form[data-value-editor='battery-mode']")!;
+    const wear = form.querySelector<HTMLInputElement>("input[data-field='battery_wear']")!;
+    expect(wear.value).toBe("22,5");
+    // Too much: refused in the dialog, nothing written.
+    wear.value = "151";
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[role='alert']")!.textContent).toBe("Mellan 0 och 150.");
+    expect(written()).toHaveLength(1);
+    form.querySelector<HTMLButtonElement>("button[data-wear-default]")!.click();
+    expect(wear.value).toBe("");
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(written()).toEqual([
+      { battery_mode: "self_consumption", battery_wear_minor_per_kwh: 22.5 },
+      { battery_wear_minor_per_kwh: null },
+    ]);
+  });
+
+  it("names the wear in a euro area's cents with its default", async () => {
+    const eur = { wear_minor_per_kwh: 1.4, wear_default_minor_per_kwh: 1.4, balanced_margin_minor_per_kwh: 10, major_unit: "EUR", minor_unit: "cent" };
+    const { root } = await mount({ battery: "checking.json", status: { plan_costs: eur } });
+    const popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-value-editor='battery-mode']")!;
+    expect(form.textContent).toContain("Slitage (cent/kWh åt varje håll)");
+    expect(form.textContent).toContain("Standard 1,4 cent.");
+    expect(form.textContent).not.toContain("öre/");
+    expect(form.querySelector<HTMLInputElement>("input[data-field='battery_wear']")!.placeholder).toBe("1,4");
+  });
+
+  it("offers no wear field where Home Assistant cannot take one", async () => {
+    const older = { ...SEK_COSTS } as Record<string, unknown>;
+    delete older["wear_default_minor_per_kwh"];
+    const { root } = await mount({ battery: "checking.json", status: { plan_costs: older } });
+    const popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-value-editor='battery-mode']")!;
+    expect(form.querySelector("input[data-field='battery_wear']")).toBeNull();
+    expect(form.querySelector("[data-plan-costs]")!.textContent).toContain("Balanserad säljer vid minst 1 kr/kWh netto");
+  });
+
   it("has the mode's words and no sell row in every language", () => {
     for (const language of Object.keys(TRANSLATIONS) as Array<keyof typeof TRANSLATIONS>) {
       const words = TRANSLATIONS[language] as Record<string, string>;
-      const mode = ["battery.modeLabel", "battery.modeShadow", "battery.modeHelp.self_consumption", "battery.modeHelp.balanced", "battery.modeHelp.max_profit"].map((key) => words[key]);
+      const mode = [
+        "battery.modeLabel", "battery.modeShadow", "battery.modeHelp.self_consumption", "battery.modeHelp.balanced",
+        "battery.modeHelp.max_profit", "battery.planMargin", "battery.wear.label", "battery.wear.help", "battery.wear.default",
+      ].map((key) => words[key]);
       expect(mode.every((word) => typeof word === "string" && word.length > 3)).toBe(true);
       expect(new Set(mode).size).toBe(mode.length);
       expect(words["battery.sell"]).toBeUndefined();

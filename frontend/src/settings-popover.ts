@@ -34,6 +34,7 @@ import {
   updateSiteGridTariff,
   updateSitePrice,
   updateSiteSettingsBySite,
+  type BatteryChanges,
   type SiteTarget,
 } from "./api";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
@@ -102,6 +103,7 @@ import {
   multiEditor,
   numberEditor,
   onOffEditor,
+  choiceFieldset,
   sectionHeading,
   settingRow,
   shell,
@@ -114,6 +116,9 @@ import { element } from "./dom";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
 /** The docs page that explains the wear and the margin. */
+/** The most the wear may be set to, as a multiple of the currency's default (the backend's `gate.WEAR_MAX_FACTOR`). */
+const WEAR_MAX_FACTOR = 10;
+
 export const PLAN_DOCS_URL = "https://spotnav.sensnology.se/docs/home-assistant/battery-plan#the-wear-cost";
 
 export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
@@ -254,22 +259,61 @@ export function batteryLine(language: Language, line: string): string {
  * from there, whole when it is or from 10 up ("1 kr", "12 kr"), else two decimals ("1,40 kr"). */
 export function planMoney(language: Language, minor: number, costs: PlanCosts): string {
   if (Math.abs(minor) < 100 && minor !== 0) {
-    return `${formatFixed(language, minor, Number.isInteger(minor) ? 0 : 1)} ${costs.minor_unit}`;
+    return planMinor(language, minor, costs);
   }
   const major = minor / 100;
   return `${formatFixed(language, major, Number.isInteger(major) || Math.abs(major) >= 10 ? 0 : 2)} ${costs.major_unit}`;
 }
 
-/** The muted line under the battery's mode: the wear the plan counts and Balanced's selling margin; `null` from a
- * Home Assistant without them or a site with no price area. Fixed figures, not settings. */
-export function planCostsLine(language: Language, status: BatteryStatus): string | null {
+/** A per-kWh figure of the plan in the area's minor unit, whatever its size ("15 öre", "1,4 cent", "540 fillér"):
+ * whole when it is, else one decimal (two where the second is not zero). */
+export function planMinor(language: Language, minor: number, costs: PlanCosts): string {
+  return `${formatNumber(language, minor, Number.isInteger(minor) ? 0 : 2)} ${costs.minor_unit}`;
+}
+
+/** Balanced's selling margin as the mode dialog says it; `null` from a Home Assistant without it or a site with no
+ * price area. A fixed figure, not a setting. */
+export function planMarginLine(language: Language, status: BatteryStatus): string | null {
   const costs = status.plan_costs;
   return costs === null
     ? null
-    : translate(language, "battery.planCosts", {
-        wear: `${planMoney(language, costs.wear_minor_per_kwh, costs)}/kWh`,
+    : translate(language, "battery.planMargin", {
         margin: `${planMoney(language, costs.balanced_margin_minor_per_kwh, costs)}/kWh`,
       });
+}
+
+/** The wear field's label, in the area's minor unit ("Slitage (öre/kWh åt varje håll)"). */
+export function wearLabel(language: Language, costs: PlanCosts): string {
+  return translate(language, "battery.wear.label", { unit: `${costs.minor_unit}/kWh` });
+}
+
+/** The wear field's help line with the currency's default ("… Standard 15 öre."); `null` from a Home Assistant
+ * that cannot take a wear of the site's own. */
+export function wearHelp(language: Language, costs: PlanCosts): string | null {
+  const fallback = costs.wear_default_minor_per_kwh;
+  return fallback === null
+    ? null
+    : translate(language, "battery.wear.help", { default: planMinor(language, fallback, costs) });
+}
+
+/** What the wear field holds as the change to write: `null` for empty (the default), a figure from 0 to ten times the
+ * default, or the sentence that refuses it. */
+export function wearValue(language: Language, text: string, costs: PlanCosts): { value: number | null } | { error: string } {
+  const typed = text.trim().replace(/\s/g, "").replace(",", ".");
+  if (typed === "") {
+    return { value: null };
+  }
+  const number = Number(typed);
+  if (!Number.isFinite(number)) {
+    return { error: translate(language, "settings.error.number") };
+  }
+  const max = WEAR_MAX_FACTOR * (costs.wear_default_minor_per_kwh ?? costs.wear_minor_per_kwh);
+  if (number < 0 || number > max) {
+    return {
+      error: translate(language, "settings.error.range", { min: formatNumber(language, 0, 0), max: formatNumber(language, max, 2) }),
+    };
+  }
+  return { value: Math.round(number * 100) / 100 };
 }
 
 /** One `status.needs` code in words. */
@@ -602,7 +646,7 @@ export class SiteSections {
   // ---- battery
 
   async writeBattery(
-    changes: Record<string, boolean | string>,
+    changes: BatteryChanges,
     enableControlEntities = false,
     clearOutsideControl = false,
     enableFactEntities = false,
@@ -753,27 +797,97 @@ export class SiteSections {
     });
   }
 
-  /** The battery mode: one of three, each with its help line; Choose writes `battery_mode`. */
-  private openBatteryMode(title: string, current: string): void {
+  /**
+   * The battery mode: one of three, each with its help line; under them the wear per kWh each way (in the area's
+   * minor unit, empty or Default for the currency's own), Balanced's selling margin, the link to the battery plan's
+   * page and, while SpotNav does not control the battery, what the choice does meanwhile. Save writes what changed
+   * (`battery_mode`, `battery_wear_minor_per_kwh`) in one call.
+   */
+  private openBatteryMode(title: string, current: string, status: BatteryStatus): void {
     const { doc, idPrefix } = this.input;
     const language = this.language;
-    this.input.openEditor(title, (handlers) =>
-      singleEditor(
-        doc,
-        language,
-        {
-          options: MODES.map((mode) => ({
-            value: mode,
-            label: translate(language, `house.mode.${mode}` as TranslationKey),
-            help: translate(language, `battery.modeHelp.${mode}` as TranslationKey),
-          })),
-          selected: current,
-          idPrefix: `${idPrefix}-battery-mode`,
-        },
-        async (value) => (value === current ? null : await this.writeBattery({ battery_mode: value })),
-        handlers,
-      ),
-    );
+    this.input.openEditor(title, (handlers) => {
+      const editor = shell(doc, language, "battery-mode", handlers);
+      let chosen = current;
+      editor.body.append(
+        choiceFieldset(
+          doc,
+          {
+            options: MODES.map((mode) => ({
+              value: mode,
+              label: translate(language, `house.mode.${mode}` as TranslationKey),
+              help: translate(language, `battery.modeHelp.${mode}` as TranslationKey),
+            })),
+            selected: current,
+            idPrefix: `${idPrefix}-battery-mode`,
+          },
+          (value) => {
+            chosen = value;
+          },
+        ),
+      );
+      const costs = status.plan_costs;
+      const help = costs === null ? null : wearHelp(language, costs);
+      const own = status.options.battery_wear_minor_per_kwh;
+      let field: HTMLInputElement | null = null;
+      if (costs !== null && help !== null) {
+        const label = element(doc, "label", C.siteChoice, wearLabel(language, costs));
+        label.htmlFor = `${idPrefix}-battery-wear`;
+        editor.body.append(label);
+        const wear = doc.createElement("input");
+        wear.type = "text";
+        wear.inputMode = "decimal";
+        wear.className = C.settingsInput;
+        wear.id = `${idPrefix}-battery-wear`;
+        wear.dataset["field"] = "battery_wear";
+        wear.value = own === null ? "" : formatNumber(language, own, 2).replace(/\s/g, "");
+        wear.placeholder = formatNumber(language, costs.wear_default_minor_per_kwh ?? costs.wear_minor_per_kwh, 2);
+        field = wear;
+        const fallback = element(doc, "button", C.settingRowSuggestion, translate(language, "battery.wear.default")) as HTMLButtonElement;
+        fallback.type = "button";
+        fallback.dataset["wearDefault"] = "true";
+        fallback.addEventListener("click", () => {
+          wear.value = "";
+          wear.focus();
+        });
+        const line = element(doc, "div", C.settingsRow);
+        line.append(wear, element(doc, "span", C.settingsUnit, `${costs.minor_unit}/kWh`), fallback);
+        editor.body.append(line, element(doc, "p", C.entityHelp, help));
+      }
+      const margin = planMarginLine(language, status);
+      const words = element(doc, "p", C.settingRowHelp, margin === null ? "" : `${margin} `);
+      words.dataset["planCosts"] = "true";
+      const more = doc.createElement("a");
+      more.href = PLAN_DOCS_URL;
+      more.target = "_blank";
+      more.rel = "noopener noreferrer";
+      more.textContent = translate(language, "battery.planCostsDocs");
+      words.append(more);
+      editor.body.append(words);
+      if (status.state !== "on") {
+        // The mode counts even when nothing is controlled: it moves the comparison's marked row.
+        const shadow = element(doc, "p", C.settingRowHelp, translate(language, "battery.modeShadow"));
+        shadow.dataset["batteryModeShadow"] = "true";
+        editor.body.append(shadow);
+      }
+      editor.submit(async () => {
+        const changes: BatteryChanges = {};
+        if (chosen !== current) {
+          changes["battery_mode"] = chosen;
+        }
+        if (field !== null && costs !== null) {
+          const read = wearValue(language, field.value, costs);
+          if ("error" in read) {
+            return read.error;
+          }
+          if (read.value !== own) {
+            changes["battery_wear_minor_per_kwh"] = read.value;
+          }
+        }
+        return Object.keys(changes).length === 0 ? null : await this.writeBattery(changes);
+      });
+      return editor.form;
+    });
   }
 
   private onOff(title: string, key: string, on: boolean, intro?: string): void {
@@ -1015,10 +1129,9 @@ export class SiteSections {
         key: "battery_mode",
         label: modeLabel,
         value: translate(language, `house.mode.${mode}` as TranslationKey),
-        help: translate(language, `battery.modeHelp.${mode}` as TranslationKey),
         ...(admin
           ? {
-              onTap: () => this.openBatteryMode(modeLabel, mode),
+              onTap: () => this.openBatteryMode(modeLabel, mode, status),
               changeableText: translate(language, "settings.row.changeable", {
                 label: modeLabel,
                 value: translate(language, `house.mode.${mode}` as TranslationKey),
@@ -1027,24 +1140,6 @@ export class SiteSections {
           : {}),
       }),
     );
-    const planLine = planCostsLine(language, status);
-    if (planLine !== null) {
-      const costs = element(doc, "p", C.settingRowHelp, `${planLine} `);
-      costs.dataset["planCosts"] = "true";
-      const more = doc.createElement("a");
-      more.href = PLAN_DOCS_URL;
-      more.target = "_blank";
-      more.rel = "noopener noreferrer";
-      more.textContent = translate(language, "battery.planCostsDocs");
-      costs.append(more);
-      section.append(costs);
-    }
-    if (status.state !== "on") {
-      // The mode counts even when nothing is controlled: it moves the comparison's marked row.
-      const shadow = element(doc, "p", C.settingRowHelp, translate(language, "battery.modeShadow"));
-      shadow.dataset["batteryModeShadow"] = "true";
-      section.append(shadow);
-    }
     const switchLabel = translate(language, "battery.switch");
     section.append(
       ...settingRow(doc, {

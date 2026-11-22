@@ -56,13 +56,15 @@
       "battery_control_enabled": false,
       "battery_control_import_limit_acts": false,
       "battery_control_shadow_only": true,
-      "battery_mode": "balanced"
+      "battery_mode": "balanced",
+      "battery_wear_minor_per_kwh": null
     },
     "per_phase": null,
     "plan_costs": {
       "balanced_margin_minor_per_kwh": 100.0,
       "major_unit": "kr",
       "minor_unit": "\u00f6re",
+      "wear_default_minor_per_kwh": 15.0,
       "wear_minor_per_kwh": 15.0
     },
     "preheat": null,

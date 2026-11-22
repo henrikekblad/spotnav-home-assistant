@@ -10,7 +10,8 @@
       "battery_control_ai_takeover_ack": false,
       "battery_control_import_limit_acts": true,
       "battery_control_accept_ha_down": false,
-      "battery_mode": "balanced"
+      "battery_mode": "balanced",
+      "battery_wear_minor_per_kwh": null
     },
     "state": "on",
     "line": "watching:ai_mode",

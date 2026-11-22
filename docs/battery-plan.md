@@ -127,10 +127,15 @@ only when it is highly profitable, and **Self-consumption** never.
 
 ### The wear cost
 
-Each kWh through a battery wears it a little. The plan counts that as **15 öre per kWh each way** (charged, and again
-discharged) in Sweden. It is one constant, not a setting; other currencies have the same sum at the rates of
-November 2026 (for example 16 øre in Norway, 10 øre in Denmark, 1.4 cent in euro areas). The wear steers the plan away
-from pointless cycling. It is reported separately and never counted as money you spent.
+Each kWh through a battery wears it a little. By default the plan counts that as **15 öre per kWh each way** (charged,
+and again discharged) in Sweden; other currencies have the same sum at the rates of November 2026 (for example 16 øre
+in Norway, 10 øre in Denmark, 1.4 cent in euro areas). The wear steers the plan away from pointless cycling. It is
+reported separately and never counted as money you spent.
+
+An administrator can change it: tap **Mode** in the settings' **Home battery** section, and the mode dialog has a
+**Wear** field in the area's minor unit per kWh each way, from 0 up to ten times the default. A higher figure makes the
+plan cycle the battery less, a lower one more. Empty the field, or choose **Default**, to go back to the currency's
+figure. Balanced still counts twice the figure you set.
 
 ## The stored value
 
