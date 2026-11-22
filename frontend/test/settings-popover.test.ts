@@ -331,7 +331,7 @@ describe("the popover from the house card", () => {
     expect(root.querySelectorAll("[data-beta='steps'] li")).toHaveLength(5);
   });
 
-  it("draws Support as the charger card does: heading icon, out-of-date line, rows, then the buttons", async () => {
+  it("draws Support as the charger card does: heading icon, out-of-date line, rows, then the actions as rows", async () => {
     const { root } = await mount();
     const popover = await open(root);
     await vi.advanceTimersByTimeAsync(0);
@@ -341,7 +341,7 @@ describe("the popover from the house card", () => {
     const order = [...support.children].map((child) =>
       (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
     );
-    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "p", "buttons"]);
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "download_debug", "p", "send_debug", "disconnect_phones"]);
   });
 
   it("shows the battery's line, checklist and report, and turns the switch off", async () => {

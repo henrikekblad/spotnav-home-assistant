@@ -8,7 +8,7 @@ import { onOffEditor, sectionHeading, settingRow, singleEditor, type ChoiceOptio
 import { sendDebugEditor } from "./send-debug";
 import { disconnectPhonesEditor } from "./phones";
 import { BetaRows } from "./beta";
-import { cardOutdatedNote, supportButton, supportSection } from "./support-section";
+import { cardOutdatedNote, supportAction, supportSection, type SupportAction } from "./support-section";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 import type { PageHelpers, ViewContext } from "./card-view-context";
@@ -184,7 +184,7 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
     const note = cardOutdatedNote(doc, model.language, cardIsOutdated);
     outdatedNote = note;
     const rows: HTMLElement[] = [];
-    const buttons: HTMLElement[] = [];
+    const actions: SupportAction[] = [];
     if (input.isAdmin) {
       rows.push(
         overviewRow(
@@ -208,32 +208,33 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
         );
       }
     }
-    const about = supportButton(doc, translate(model.language, "settings.about.open"), () => openCapabilities());
-    about.dataset["about"] = "open";
-    buttons.push(about);
+    const L = model.language;
+    const about = supportAction(doc, "about", translate(L, "settings.about.open"), () => openCapabilities());
+    about.button.dataset["about"] = "open";
+    actions.push(about);
     if (input.isAdmin) {
-      const download = supportButton(doc, translate(model.language, "debug.download"), () => {
+      const download = supportAction(doc, "download_debug", translate(L, "debug.download"), () => {
         if (!debugPending) {
           input.onDownloadDebug?.();
         }
-      });
-      download.dataset["downloadDebug"] = "true";
-      debugButton = download;
+      }, translate(L, "debug.intro"));
+      download.button.dataset["downloadDebug"] = "true";
+      debugButton = download.button;
       paintDebugButton();
-      const send = supportButton(doc, translate(model.language, "sendDebug.open"), () => openSendDebug());
-      send.dataset["sendDebug"] = "open";
-      buttons.push(download, send);
+      const send = supportAction(doc, "send_debug", translate(L, "sendDebug.open"), () => openSendDebug());
+      send.button.dataset["sendDebug"] = "open";
+      actions.push(download, send);
       const disconnect = input.onDisconnectPhones;
       if (disconnect !== undefined) {
-        const label = translate(model.language, "phones.disconnect.open");
-        const phones = supportButton(doc, label, () =>
-          openValueEditor(label, (handlers) => disconnectPhonesEditor(doc, model.language, disconnect, handlers)),
+        const label = translate(L, "phones.disconnect.open");
+        const phones = supportAction(doc, "disconnect_phones", label, () =>
+          openValueEditor(label, (handlers) => disconnectPhonesEditor(doc, L, disconnect, handlers)),
         );
-        phones.dataset["disconnectPhones"] = "open";
-        buttons.push(phones);
+        phones.button.dataset["disconnectPhones"] = "open";
+        actions.push(phones);
       }
     }
-    return supportSection({ doc, language: model.language, note, rows, debugIntro: input.isAdmin, buttons });
+    return supportSection({ doc, language: L, note, rows, actions });
   }
 
   /** The "Betatestare" and "Hårdvarutest" rows, read once and then from every answer their dialogs read. */
@@ -272,7 +273,8 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
       return;
     }
     debugButton.disabled = debugPending;
-    debugButton.textContent = translate(model.language, debugPending ? "debug.preparing" : "debug.download");
+    // The row's label says what it does; while the file is made its value says so.
+    debugButton.textContent = debugPending ? translate(model.language, "debug.preparing") : "";
   }
 
   return {

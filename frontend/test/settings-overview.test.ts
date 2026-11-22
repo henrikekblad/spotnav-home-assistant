@@ -268,15 +268,23 @@ describe("Download debug info", () => {
   it("is offered to administrators only, beside About this card in Support", async () => {
     const admin = await mounted();
     await openSettings(admin.element);
-    expect(debugButton(admin.element)?.textContent).toBe(translate("en", "debug.download"));
+    const label = (button: Element | null | undefined): string | null | undefined =>
+      button?.closest("[data-row]")?.querySelector(`.${VISUAL_CLASSES.settingRowLabel}`)?.textContent;
+    expect(label(debugButton(admin.element))).toBe(translate("en", "debug.download"));
     const support = section(admin.element, "support");
-    const actions = support?.querySelectorAll(`.${VISUAL_CLASSES.settingsSupportActions} button`) ?? [];
-    expect(Array.from(actions).map((button) => button.textContent)).toEqual([
+    // The actions are rows with a chevron, as every other row of Settings; the debug file's line under its row.
+    const actions = support?.querySelectorAll<HTMLElement>("[data-row]") ?? [];
+    expect(Array.from(actions).map((row) => row.dataset["row"])).toEqual([
+      "automations", "beta", "hardware_test", "docs", "about", "download_debug", "send_debug", "disconnect_phones",
+    ]);
+    expect(Array.from(actions).slice(3).map((row) => label(row.querySelector("button")))).toEqual([
+      translate("en", "settings.docs"),
       translate("en", "settings.about.open"),
       translate("en", "debug.download"),
       translate("en", "sendDebug.open"),
       translate("en", "phones.disconnect.open"),
     ]);
+    expect(support?.querySelector("[data-help='download_debug']")?.textContent).toBe(translate("en", "debug.intro"));
 
     // A reader who is not an administrator is shown only what they may change: Display, and no Support.
     const reader = await mounted(fixture("start_idle"), false);
@@ -306,7 +314,7 @@ describe("Download debug info", () => {
     const order = [...support.children].map((child) =>
       (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
     );
-    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "p", "buttons"]);
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "about", "download_debug", "p", "send_debug", "disconnect_phones"]);
     row?.querySelector<HTMLButtonElement>("[data-edit='beta']")?.click();
     await settle();
     expect(shadow(admin.element).querySelector("[data-beta='box'] [data-beta-field='on']")).not.toBeNull();

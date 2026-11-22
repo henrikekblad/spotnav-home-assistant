@@ -237,9 +237,9 @@ describe("Support in the settings popover", () => {
   ] as const) {
     it(`has send and download rows from the ${name} card, and the send needs no charger`, async () => {
       const { root, messages, support } = await open(tag, config, ctor as unknown as CustomElementConstructor);
-      expect(support.querySelector("button[data-debug='download']")!.textContent).toBe("Ladda ner felsökningsinfo");
+      expect(support.querySelector("[data-row='download_debug']")!.textContent).toBe("Ladda ner felsökningsinfo");
       const send = support.querySelector<HTMLButtonElement>("button[data-debug='send']")!;
-      expect(send.textContent).toBe("Skicka felsökningsinfo");
+      expect(send.closest("[data-row]")?.textContent).toBe("Skicka felsökningsinfo");
       send.click();
       const form = root.querySelector<HTMLFormElement>("form[data-send-debug='form']")!;
       form.querySelector<HTMLTextAreaElement>("[data-send-debug-field='message']")!.value = "Något är fel";
