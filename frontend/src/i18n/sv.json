@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "Batteriets storlek finns i en avstängd sensor i {integration}.",
   "battery.enableFacts.floor": "Batteriets lägsta nivå finns i en avstängd entitet i {integration}.",
   "battery.enableFacts.both": "Batteriets storlek och lägsta nivå finns i avstängda entiteter i {integration}.",
+  "battery.enableFacts.rating": "Batteriets laddnings- och urladdningseffekt finns i avstängda entiteter i {integration}.",
+  "battery.enableFacts.several": "Det batteriplanen behöver veta om batteriet finns i avstängda entiteter i {integration}.",
   "battery.enableFacts.button": "Slå på",
   "battery.check.progress": "Kontroll pågår: {done} av {total} steg klara.",
   "battery.mode.hold": "Hålla",

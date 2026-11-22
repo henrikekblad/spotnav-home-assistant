@@ -452,3 +452,31 @@ async def test_the_size_on_the_batterys_device_is_picked_else_the_only_one(hass:
     registry.async_remove(second.entity_id)
     _entry, entities, _needs = optin.disabled_fact_entities(hass, _config(battery), facts)
     assert [entity.entity_id for entity in entities] == [found["battery_install_capacity"]]
+
+
+async def test_solax_disabled_bms_currents_are_listed_as_the_rating_and_nothing_once_the_power_is_read(
+    hass: HomeAssistant,
+) -> None:
+    from dataclasses import replace
+
+    battery, found = _solax(hass, capacity_disabled=None)
+    registry = er.async_get(hass)
+    owner = hass.config_entries.async_get_entry("SOLAX")
+    device = registry.async_get(battery).device_id
+    for key in ("bms_charge_max_current", "bms_discharge_max_current", "battery_voltage_charge"):
+        entry = registry.async_get_or_create(
+            "sensor", "solax_modbus", f"SolaX_{key}", device_id=device, config_entry=owner,
+            suggested_object_id=f"solax_{key}", disabled_by=INTEGRATION if key.startswith("bms") else None,
+        )
+        found[key] = entry.entity_id
+    hass.states.async_set(found["battery_install_capacity"], "10", {"unit_of_measurement": "kWh"})
+    _site_entry, control = await _site(hass, battery)
+    facts = control._read_facts()
+    assert facts.rated_charge_kw is None
+
+    _entry, entities, needs = optin.disabled_fact_entities(hass, _config(battery), facts)
+    assert [entity.entity_id for entity in entities] == [found["bms_charge_max_current"], found["bms_discharge_max_current"]]
+    assert needs == ["rating"]
+    # Read elsewhere (or once enabled): nothing to ask.
+    read = replace(facts, rated_charge_kw=5.0, rated_discharge_kw=5.0)
+    assert optin.disabled_fact_entities(hass, _config(battery), read)[1] == []

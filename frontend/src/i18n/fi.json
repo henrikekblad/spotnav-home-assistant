@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "Akun koko on käytöstä poistetussa anturissa kohteessa {integration}.",
   "battery.enableFacts.floor": "Akun alin taso on käytöstä poistetussa entiteetissä kohteessa {integration}.",
   "battery.enableFacts.both": "Akun koko ja alin taso ovat käytöstä poistetuissa entiteeteissä kohteessa {integration}.",
+  "battery.enableFacts.rating": "Akun lataus- ja purkutehon tiedot ovat käytöstä poistetuissa entiteeteissä kohteessa {integration}.",
+  "battery.enableFacts.several": "Akkusuunnitelman tarvitsemat akun tiedot ovat käytöstä poistetuissa entiteeteissä kohteessa {integration}.",
   "battery.enableFacts.button": "Ota käyttöön",
   "battery.check.progress": "Tarkistus käynnissä: {done}/{total} vaihetta valmiina.",
   "battery.mode.hold": "Pito",

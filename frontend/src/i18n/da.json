@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "Batteriets størrelse ligger i en deaktiveret sensor i {integration}.",
   "battery.enableFacts.floor": "Batteriets laveste niveau ligger i en deaktiveret entitet i {integration}.",
   "battery.enableFacts.both": "Batteriets størrelse og laveste niveau ligger i deaktiverede entiteter i {integration}.",
+  "battery.enableFacts.rating": "Batteriets lade- og afladeeffekt findes i deaktiverede entiteter i {integration}.",
+  "battery.enableFacts.several": "Det, batteriplanen skal vide om batteriet, findes i deaktiverede entiteter i {integration}.",
   "battery.enableFacts.button": "Slå til",
   "battery.check.progress": "Tjek i gang: {done} af {total} trin klaret.",
   "battery.mode.hold": "Holde",

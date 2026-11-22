@@ -859,7 +859,8 @@ export class SiteSections {
     const language = this.language;
     const size = found.needs.includes("size");
     const floor = found.needs.includes("floor");
-    const which = size && floor ? "both" : size ? "size" : "floor";
+    const rating = found.needs.includes("rating");
+    const which = rating ? (size || floor ? "several" : "rating") : size && floor ? "both" : size ? "size" : "floor";
     const wrap = element(doc, "div");
     wrap.dataset["enableFacts"] = "true";
     const line = element(doc, "p", C.settingRowHelp, translate(language, `battery.enableFacts.${which}`, { integration: found.integration }));

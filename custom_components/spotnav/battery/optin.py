@@ -139,6 +139,7 @@ _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabl
 #: What a fact the plan needs is (`fact_needs`): the battery's size and its own floor.
 NEED_SIZE: Final = "size"
 NEED_FLOOR: Final = "floor"
+NEED_RATING: Final = "rating"
 
 
 def adapter_of(brand: str | None) -> Adapter | None:
@@ -244,7 +245,7 @@ def disabled_fact_entities(
     hass: HomeAssistant, config: Mapping[str, Any], facts: BatteryFacts
 ) -> tuple[str | None, list[er.RegistryEntry], list[str]]:
     """Before control is on: the disabled entities that hold a fact the battery plan needs and does not have, and
-    which facts (`NEED_SIZE`, `NEED_FLOOR`). The size when the facts have none and its entity is disabled (or, for a
+    which facts (`NEED_SIZE`, `NEED_FLOOR`, `NEED_RATING`). The size when the facts have none and its entity is disabled (or, for a
     brand that states it in amp-hours, the amp-hours and the voltage are both there and one is disabled); the floor
     likewise from the reserves. Never a control. `(None, [], [])` when nothing would change. Registry reads only."""
     adapter = adapter_of(facts.brand)
@@ -271,6 +272,14 @@ def disabled_fact_entities(
                 add(NEED_SIZE, pair)
     if facts.reserve_soc_pct is None:
         add(NEED_FLOOR, [source.match for source in adapter.reserves])
+    if facts.rated_charge_kw is None or facts.rated_discharge_kw is None:
+        # The rated charge and discharge power, read directly or as the BMS' currents times the battery voltage.
+        direct = [adapter.facts[role] for role in ("rated_charge", "rated_discharge") if role in adapter.facts]
+        amps = [adapter.facts[role] for role in ("charge_current", "discharge_current") if role in adapter.facts]
+        volts = adapter.facts.get("voltage")
+        if volts is not None and amps:
+            direct.extend([*amps, volts])
+        add(NEED_RATING, [match for match in direct if _pick(match, battery, entries) is not None])
     if not found:
         return None, [], []
     return battery.config_entry_id, found, needs

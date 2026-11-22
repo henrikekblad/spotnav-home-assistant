@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "La taille de la batterie se trouve dans un capteur désactivé de {integration}.",
   "battery.enableFacts.floor": "Le niveau minimal de la batterie se trouve dans une entité désactivée de {integration}.",
   "battery.enableFacts.both": "La taille et le niveau minimal de la batterie se trouvent dans des entités désactivées de {integration}.",
+  "battery.enableFacts.rating": "La puissance de charge et de décharge de la batterie se trouve dans des entités désactivées dans {integration}.",
+  "battery.enableFacts.several": "Ce que le plan de batterie doit savoir de la batterie se trouve dans des entités désactivées dans {integration}.",
   "battery.enableFacts.button": "Activer",
   "battery.check.progress": "Vérification en cours : {done} étapes sur {total} faites.",
   "battery.mode.hold": "Maintenir",

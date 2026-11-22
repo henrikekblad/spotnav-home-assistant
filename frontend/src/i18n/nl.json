@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "De grootte van de batterij staat in een uitgeschakelde sensor in {integration}.",
   "battery.enableFacts.floor": "Het laagste niveau van de batterij staat in een uitgeschakelde entiteit in {integration}.",
   "battery.enableFacts.both": "De grootte en het laagste niveau van de batterij staan in uitgeschakelde entiteiten in {integration}.",
+  "battery.enableFacts.rating": "Het laad- en ontlaadvermogen van de batterij staat in uitgeschakelde entiteiten in {integration}.",
+  "battery.enableFacts.several": "Wat het batterijplan over de batterij moet weten, staat in uitgeschakelde entiteiten in {integration}.",
   "battery.enableFacts.button": "Inschakelen",
   "battery.check.progress": "Controle bezig: {done} van {total} stappen klaar.",
   "battery.mode.hold": "Vasthouden",

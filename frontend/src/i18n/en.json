@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "The battery's size is in a disabled sensor in {integration}.",
   "battery.enableFacts.floor": "The battery's lowest level is in a disabled entity in {integration}.",
   "battery.enableFacts.both": "The battery's size and lowest level are in disabled entities in {integration}.",
+  "battery.enableFacts.rating": "The battery's rated charge and discharge power is in disabled entities in {integration}.",
+  "battery.enableFacts.several": "What the battery plan needs from the battery is in disabled entities in {integration}.",
   "battery.enableFacts.button": "Turn on",
   "battery.check.progress": "Check running: {done} of {total} steps done.",
   "battery.mode.hold": "Hold",

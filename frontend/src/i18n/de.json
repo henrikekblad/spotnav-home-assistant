@@ -1739,6 +1739,8 @@
   "battery.enableFacts.size": "Die Größe der Batterie steht in einem deaktivierten Sensor in {integration}.",
   "battery.enableFacts.floor": "Der niedrigste Ladestand der Batterie steht in einer deaktivierten Entität in {integration}.",
   "battery.enableFacts.both": "Größe und niedrigster Ladestand der Batterie stehen in deaktivierten Entitäten in {integration}.",
+  "battery.enableFacts.rating": "Die Lade- und Entladeleistung der Batterie steckt in deaktivierten Entitäten in {integration}.",
+  "battery.enableFacts.several": "Was der Batterieplan über die Batterie wissen muss, steckt in deaktivierten Entitäten in {integration}.",
   "battery.enableFacts.button": "Einschalten",
   "battery.check.progress": "Prüfung läuft: {done} von {total} Schritten erledigt.",
   "battery.mode.hold": "Halten",
