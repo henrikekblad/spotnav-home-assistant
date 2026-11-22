@@ -6,7 +6,7 @@ hand-back, and an unbalanced house that never passes the fuse. The plant here is
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -726,3 +726,24 @@ def test_a_grid_setpoint_found_selling_is_handed_back_as_the_gx_default_never_as
     now, _ = _run(executor, plant, T0, 5, "grid_charge", 2.0)
     _now, results = _run(executor, plant, now, 5, "self_consume")
     assert ("grid_setpoint", 120.0) in _written(results)
+
+
+def test_the_ess_controls_are_found_on_another_device_of_the_battery_s_entry_but_never_guessed_between_two() -> None:
+    """Victron puts the ESS settings on the GX's system device and the setpoints per phase on the VE.Bus device, not
+    always the device of the battery's own entity (`facts.find_entity`): one in the entry is taken, two that cannot be
+    told apart are none (control then says it is not found, never writes the wrong one)."""
+    from custom_components.spotnav.battery.executor import role_reads
+    from custom_components.spotnav.battery.facts import EntityFact
+
+    battery = EntityFact("sensor.battery_power", "victron_gx", unique_id="abc_battery_512_battery_power",
+                         device_id="battery", state="100")
+    ess = EntityFact("number.ess_max_charge", "victron_gx", unique_id="abc_system_0_system_ess_max_charge_power",
+                     device_id="system", state="-1")
+    reads = role_reads(VICTRON_CONTROL, [battery, ess], battery)
+    assert reads["charge_power"].entity_id == "number.ess_max_charge"
+    other = replace(ess, entity_id="number.other_ess_max_charge", unique_id="xyz_system_0_system_ess_max_charge_power",
+                    device_id="system2")
+    assert "charge_power" not in role_reads(VICTRON_CONTROL, [battery, ess, other], battery)
+    # One on the battery's own device wins over another elsewhere.
+    own = replace(other, device_id="battery")
+    assert role_reads(VICTRON_CONTROL, [battery, ess, own], battery)["charge_power"].entity_id == own.entity_id
