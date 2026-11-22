@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Estompé : ce que SpotNav ferait d'une charge qu'il ne fait qu'afficher. Cette charge n'est pas pilotée maintenant.",
   "house.plan.perLoad": "Par charge",
   "house.plan.inWords": "En mots",
+  "house.plan.rows.one": "{count} ligne",
+  "house.plan.rows.other": "{count} lignes",
   "house.plan.nothing": "Rien de prévu pour les prochaines heures.",
   "house.plan.rolling": "une journée glissante à partir de maintenant",
   "house.plan.would": "ferait",

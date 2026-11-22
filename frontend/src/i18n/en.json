@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Faded: what SpotNav would do with a load it only shows. That load is not controlled now.",
   "house.plan.perLoad": "Per load",
   "house.plan.inWords": "In words",
+  "house.plan.rows.one": "{count} line",
+  "house.plan.rows.other": "{count} lines",
   "house.plan.nothing": "Nothing planned for the next hours.",
   "house.plan.rolling": "a rolling day from now",
   "house.plan.would": "would",

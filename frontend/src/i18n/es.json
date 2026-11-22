@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Atenuado: lo que SpotNav haría con una carga que solo muestra. Esa carga no se controla ahora.",
   "house.plan.perLoad": "Por carga",
   "house.plan.inWords": "En palabras",
+  "house.plan.rows.one": "{count} línea",
+  "house.plan.rows.other": "{count} líneas",
   "house.plan.nothing": "Nada previsto para las próximas horas.",
   "house.plan.rolling": "un día móvil desde ahora",
   "house.plan.would": "haría",

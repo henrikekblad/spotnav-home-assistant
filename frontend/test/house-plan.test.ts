@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouse } from "../src/house-model";
-import { decodePlan, planBody, priceTones, runWords, type PlanAnswer } from "../src/house-plan";
+import { decodePlan, planBody, priceTones, resetPlanSections, runWords, type PlanAnswer } from "../src/house-plan";
 import { HOUSE_TABS } from "../src/house-tabs";
 import { houseBody } from "../src/house-view";
 import { LANGUAGES, translate } from "../src/i18n";
@@ -157,6 +157,73 @@ describe("the Plan tab", () => {
     const root = body(plan(), "sv", 300);
     const chart = root.querySelector("svg")!;
     expect(Number(chart.getAttribute("width"))).toBeLessThanOrEqual(300);
+  });
+});
+
+describe("the Plan tab's folding sections", () => {
+  function memory(): { store: () => { getItem(key: string): string | null; setItem(key: string, value: string): void }; saved: Map<string, string> } {
+    const saved = new Map<string, string>();
+    return { saved, store: () => ({ getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) }) };
+  }
+  function section(root: HTMLElement, name: string): { heading: HTMLElement; button: HTMLButtonElement | null; content: HTMLElement } {
+    return {
+      heading: root.querySelector<HTMLElement>(`h4[data-section='${name}']`)!,
+      button: root.querySelector<HTMLButtonElement>(`h4[data-section='${name}'] button`),
+      content: root.querySelector<HTMLElement>(`div[data-section='${name}']`)!,
+    };
+  }
+  beforeEach(() => resetPlanSections());
+
+  it("folds both sections by default, with a hint of what is inside, and remembers what the viewer opens", () => {
+    const { store, saved } = memory();
+    const root = planBody({ doc: document, language: "sv", plan: plan("car_only.json"), width: 360, store });
+    const lanes = section(root, "lanes");
+    const words = section(root, "words");
+    expect(lanes.button?.getAttribute("aria-expanded")).toBe("false");
+    expect(lanes.button?.type).toBe("button");
+    expect(lanes.content.hidden).toBe(true);
+    expect(lanes.button?.textContent).toBe("Per last · 1");
+    expect(words.content.hidden).toBe(true);
+    const rows = words.content.querySelectorAll("li").length;
+    expect(words.button?.textContent).toBe(`I ord · ${rows} ${rows === 1 ? "rad" : "rader"}`);
+    words.button!.click();
+    expect(words.button!.getAttribute("aria-expanded")).toBe("true");
+    expect(words.content.hidden).toBe(false);
+    expect(saved.get(`spotnav-house-card.plan.words.${plan("car_only.json").site_id}`)).toBe("open");
+    // A new drawing, as after the next update, keeps the choice; so does a new page reading it back.
+    const again = planBody({ doc: document, language: "sv", plan: plan("car_only.json"), width: 360, store });
+    expect(section(again, "words").content.hidden).toBe(false);
+    expect(section(again, "lanes").content.hidden).toBe(true);
+    resetPlanSections();
+    const reloaded = planBody({ doc: document, language: "sv", plan: plan("car_only.json"), width: 360, store });
+    expect(section(reloaded, "words").content.hidden).toBe(false);
+  });
+
+  it("holds the choice on the page where nothing can be stored", () => {
+    const store = () => {
+      throw new Error("blocked");
+    };
+    const root = planBody({ doc: document, language: "en", plan: plan("car_only.json"), width: 360, store });
+    section(root, "lanes").button!.click();
+    const again = planBody({ doc: document, language: "en", plan: plan("car_only.json"), width: 360, store });
+    expect(section(again, "lanes").content.hidden).toBe(false);
+  });
+
+  it("never folds away a car's does-not-fit choice: Per load is open under a plain heading", () => {
+    const { store } = memory();
+    const root = planBody({ doc: document, language: "sv", plan: plan(), width: 360, store, onDoesNotFit: vi.fn() });
+    const lanes = section(root, "lanes");
+    expect(lanes.button).toBeNull();
+    expect(lanes.heading.textContent).toBe("Per last");
+    expect(lanes.content.hidden).toBe(false);
+    expect(lanes.content.querySelector("[data-part='does-not-fit'] button")).not.toBeNull();
+    expect(section(root, "words").content.hidden).toBe(true);
+  });
+
+  it("has the hint's words in every language", () => {
+    for (const language of LANGUAGES) {
+      expect(translate(language, "house.plan.rows.other", { count: "6" }), language).toContain("6");
+    }
   });
 });
 
