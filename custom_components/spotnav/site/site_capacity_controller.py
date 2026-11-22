@@ -5858,7 +5858,8 @@ class SiteCapacityController:
         (`later_departure_for`). Ends at the later departure, an unplug or another departure set; kept across a
         restart. The error's code, else `None`: `spotnav_no_import_target`, `spotnav_no_departure`,
         `spotnav_stale_departure` (`for_departure` is not the plan's departure any more), `spotnav_no_later_departure`
-        (nothing later fits within the prices held, or `to` is not after the departure)."""
+        (nothing later fits within the prices held, or `to` is not the later departure the risk holds now, or cannot
+        be read)."""
         if self._hold_set_kw() is None:
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
             return ERROR_NO_IMPORT_TARGET
@@ -5872,15 +5873,26 @@ class SiteCapacityController:
         if for_departure is not None and for_departure != int(departure.timestamp()):
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_STALE_DEPARTURE)
             return ERROR_STALE_DEPARTURE
-        if to is not None:
-            later: datetime | None = datetime.fromtimestamp(to, tz=dt_util.UTC)
-        else:
-            risk = self._target_risk.get(charger_entry_id)
-            later = (
-                None
-                if risk is None or risk.departure != plan.departure or risk.later_departure is None
-                else _aware_instant(risk.later_departure)
-            )
+        risk = self._target_risk.get(charger_entry_id)
+        later = (
+            None
+            if risk is None or risk.departure != plan.departure or risk.later_departure is None
+            else _aware_instant(risk.later_departure)
+        )
+        if to is not None and later is not None:
+            # A phone's button: only the later departure it was told, and the one the risk still holds. A time that
+            # cannot be read, or any other time, is not taken.
+            try:
+                told: datetime | None = datetime.fromtimestamp(to, tz=dt_util.UTC)
+            except (OverflowError, ValueError, OSError):
+                _LOGGER.debug("SpotNav site %s: a later departure's time %r cannot be read", self.entry_id, to)
+                told = None
+            if told is None or int(told.timestamp()) != int(later.timestamp()):
+                _LOGGER.debug(
+                    "SpotNav site %s: the later departure told (%r) is not the one held now (%s); not taken",
+                    self.entry_id, to, later.isoformat(),
+                )
+                later = None
         if later is None or later <= departure:
             self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_LATER_DEPARTURE)
             return ERROR_NO_LATER_DEPARTURE

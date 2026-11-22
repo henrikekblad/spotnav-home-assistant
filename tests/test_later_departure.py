@@ -203,6 +203,15 @@ async def test_the_notice_offers_the_later_departure_and_its_press_moves_it(hass
         )
         await hass.async_block_till_done()
         assert controller.later_departure_for(charger) is None
+        # The pre-release review (2026-11-22): a time other than the one the risk holds, or one that cannot be read
+        # (it overflowed), is not taken.
+        for to in (int(later.timestamp()) + 3600, int(later.timestamp()) + 86400 * 365, 10**30):
+            hass.bus.async_fire(
+                "mobile_app_notification_action", {"action": f"SPOTNAV_LATER_DEPARTURE_{charger}_{stamp}_{to}"}
+            )
+            await hass.async_block_till_done()
+            assert controller.later_departure_for(charger) is None, to
+        assert controller.async_later_departure(charger, for_departure=stamp, to=10**30) == ERROR_NO_LATER_DEPARTURE
         # The press moves this departure to the time told.
         hass.bus.async_fire("mobile_app_notification_action", {"action": actions[1]["action"]})
         await hass.async_block_till_done()
