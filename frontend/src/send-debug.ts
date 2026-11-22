@@ -132,6 +132,8 @@ export function sendDebugEditor(
   idPrefix: string,
   send: SendDebug,
   handlers: EditorHandlers,
+  /** The installation's saved address (sent before, or the beta box's), filled in so it need not be typed again. */
+  savedEmail: string | null = null,
 ): HTMLFormElement {
   const say = (key: TranslationKey, values?: Record<string, string>): string => translate(language, key, values);
   let sentRef: string | null = null;
@@ -175,8 +177,11 @@ export function sendDebugEditor(
   email.dataset["sendDebugField"] = "email";
   const emailLabel = element(doc, "label", C.settingsLabel, say("sendDebug.email"));
   emailLabel.setAttribute("for", email.id);
+  email.value = savedEmail ?? "";
+  const emailKept = element(doc, "p", C.settingRowHelp, say("sendDebug.emailKept"));
+  emailKept.dataset["sendDebugEmailKept"] = "";
   const emailField = element(doc, "div", C.settingsField);
-  emailField.append(emailLabel, email);
+  emailField.append(emailLabel, email, emailKept);
 
   const consent = doc.createElement("input");
   consent.type = "checkbox";

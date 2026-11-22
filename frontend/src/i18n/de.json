@@ -785,6 +785,7 @@
   "sendDebug.privacy": "Datenschutzerklärung",
   "sendDebug.message": "Was ist passiert, und ungefähr wann?",
   "sendDebug.email": "E-Mail (optional, wenn du eine Antwort möchtest)",
+  "sendDebug.emailKept": "Wird in Home Assistant für das nächste Mal gespeichert, dieselbe Adresse wie unter Betatester.",
   "sendDebug.consent": "Ich bin einverstanden, dass diese Informationen an den Entwickler von SpotNav gesendet werden",
   "sendDebug.send": "Senden",
   "sendDebug.sent": "Gesendet. Deine Referenz: {ref}. Gib sie an, wenn du im Forum oder in der Gruppe schreibst.",

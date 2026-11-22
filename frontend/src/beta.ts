@@ -643,6 +643,19 @@ export class BetaRows {
     return [betaRow, testRow];
   }
 
+  /** The installation's saved address, `null` when none is saved or it has not been read yet. */
+  get email(): string | null {
+    return this.answer?.beta?.email ?? null;
+  }
+
+  /** A debug report went with `email`: the backend kept it, so the next dialog fills it in without a read. */
+  rememberEmail(email: string): void {
+    const answer = this.answer;
+    if (answer?.beta != null) {
+      this.answer = { ...answer, beta: { ...answer.beta, email } };
+    }
+  }
+
   private show(answer: BetaAnswer): void {
     if (!this.alive()) {
       return;

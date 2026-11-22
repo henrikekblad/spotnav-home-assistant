@@ -222,3 +222,23 @@ async def test_an_unknown_kind_is_never_sent(hass: HomeAssistant, aioclient_mock
     with pytest.raises(ValueError):
         await support_report.async_send_report(hass, "", None, kind="")
     assert aioclient_mock.call_count == 0
+
+
+async def test_the_address_is_kept_for_the_next_report_and_the_beta_box(
+    hass: HomeAssistant, hass_ws_client, aioclient_mock
+) -> None:
+    from custom_components.spotnav.beta import beta_of
+
+    await setup_charger_and_site(hass)
+    aioclient_mock.post(URL, status=201, json={"ref": "SN-ABCD"})
+    client = await admin(hass, hass_ws_client)
+
+    await ws_call(client, _send(email=" me@example.com "))
+    assert beta_of(hass).state.email == "me@example.com"
+    # A blank field sends without an address and keeps the saved one; beta stays off.
+    await ws_call(client, _send(email=""))
+    assert beta_of(hass).state.email == "me@example.com"
+    assert beta_of(hass).state.on is False
+    # A refused address is not saved.
+    await ws_call(client, _send(email="not an address"))
+    assert beta_of(hass).state.email == "me@example.com"

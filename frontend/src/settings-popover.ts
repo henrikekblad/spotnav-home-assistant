@@ -2205,8 +2205,12 @@ export class SettingsPopover {
         if (hass === null || !this.isAdmin()) {
           return { error: sendFailureText(this.language, "unauthorized") };
         }
-        return await sendDebugReport(hass, this.language, this.input.doc.defaultView?.navigator?.userAgent ?? null, await this.servedCardHash(hass), message, email);
-      }, handlers),
+        const outcome = await sendDebugReport(hass, this.language, this.input.doc.defaultView?.navigator?.userAgent ?? null, await this.servedCardHash(hass), message, email);
+        if ("ref" in outcome && email !== null) {
+          this.betaRows?.rememberEmail(email);
+        }
+        return outcome;
+      }, handlers, this.betaRows?.email ?? null),
     );
   }
 
