@@ -27,6 +27,11 @@ day's need `E` is the `NEED_QUANTILE` of the last days' kWh times `NEED_SHARE`, 
 or under `WARM_DAYS` of history) the 5-hour night window ending by 07:00 and a 3-hour day window ending by 17:00. Each
 is the cheapest block of its span, one without a tight hour where one fits. Away changes nothing. At most
 `MAX_SWITCHINGS_DAY` planned switchings a day: the next off would pass it, so the switch stays on for the day.
+
+**The ceiling** (`site/shed_order.py`): the site's shed order may pause a cheap window to the period's end
+(`Rules.want(shed_until=...)`, `ceiling`), after every hard rule above, within the longest off stretch, and counted
+among the day's switchings; never the unmetered night window or a gap filler, never once the last full heat is
+`SHED_FULL_WITHIN` old or not known.
 """
 
 from __future__ import annotations
@@ -58,6 +63,9 @@ MAX_OFF: Final = timedelta(hours=8)
 MAX_OFF_MARGIN: Final = timedelta(minutes=5)
 MAX_PLANNED_OFF: Final = timedelta(hours=7)
 FORCED_ON: Final = timedelta(hours=1)
+#: The shed order may pause it only while the last full heat is younger than this (`FULL_EVERY` less a heat-up's
+#: allowance), and never while none is known.
+SHED_FULL_WITHIN: Final = timedelta(hours=16)
 SENSOR_LOST_AFTER: Final = timedelta(minutes=10)
 MAX_SWITCHINGS_DAY: Final = 8
 
@@ -96,6 +104,8 @@ WANT_FULL_HEAT: Final = "full_heat"
 WANT_TANK_LOW: Final = "tank_low"
 WANT_WRITE_CAP: Final = "write_cap"
 WANT_OFF: Final = "planned_off"
+#: Paused for the ceiling (`site/shed_order.py`): only in a cheap window, after every hard rule.
+WANT_SHED: Final = "ceiling"
 
 
 def mode_of(metered: bool, tank: bool) -> str:
@@ -464,9 +474,21 @@ class Rules:
         return kept.stopped
 
     def want(
-        self, now: datetime, *, mode: str, windows: Sequence[Window], plan_fresh: bool, day: str
+        self,
+        now: datetime,
+        *,
+        mode: str,
+        windows: Sequence[Window],
+        plan_fresh: bool,
+        day: str,
+        shed_until: datetime | None = None,
     ) -> Want:
-        """Whether the switch is to be on now while control runs, and why (see the module); hard rules first."""
+        """Whether the switch is to be on now while control runs, and why (see the module); hard rules first.
+
+        `shed_until`: the site's shed order pauses it for the ceiling until then (`site/shed_order.py`). Only a cheap
+        window is paused, after every hard rule above (an unmetered night window and the gap fillers are hard rules
+        too), within the longest off stretch and the day's switchings (an off it could not end with an on in the day's
+        cap leaves it on)."""
         kept = self.kept
         if kept.forced_until is not None and now < kept.forced_until:
             return Want(True, WANT_FORCED, kept.forced_until)
@@ -486,12 +508,31 @@ class Rules:
             return Want(True, WANT_FORCED, kept.forced_until)
         window = next((item for item in windows if item.covers(now)), None)
         if window is not None:
+            if (
+                shed_until is not None
+                and now < shed_until
+                and window.reason == WINDOW_CHEAP
+                and kept.last_full is not None
+                and now - kept.last_full < SHED_FULL_WITHIN
+            ):
+                if kept.off_since is None and kept.switchings.get(day, 0) + 2 > MAX_SWITCHINGS_DAY:
+                    return Want(True, WANT_WRITE_CAP)
+                latest = (kept.off_since or now) + MAX_OFF - MAX_OFF_MARGIN
+                return Want(False, WANT_SHED, min(shed_until, latest))
             return Want(True, window.reason, window.end)
         if kept.off_since is None and kept.switchings.get(day, 0) + 2 > MAX_SWITCHINGS_DAY:
             return Want(True, WANT_WRITE_CAP)
         following = min((item.start for item in windows if item.start > now), default=None)
         latest = (kept.off_since or now) + MAX_OFF - MAX_OFF_MARGIN
         return Want(False, WANT_OFF, latest if following is None else min(following, latest))
+
+    def would_shed(self, now: datetime, *, mode: str, windows: Sequence[Window], plan_fresh: bool, day: str) -> bool:
+        """Whether a pause for the ceiling asked for now would be taken (`want` with `shed_until` just ahead): every
+        hard rule, the cheap window, the day's switchings and the longest off stretch. Changes nothing kept."""
+        trial = Rules(Kept.from_dict(self.kept.as_dict()))
+        trial.meter_lost_since, trial.tank_lost_since = self.meter_lost_since, self.tank_lost_since
+        want = trial.want(now, mode=mode, windows=windows, plan_fresh=plan_fresh, day=day, shed_until=now + timedelta(seconds=1))
+        return want.reason == WANT_SHED
 
     def switched(self, now: datetime, on: bool, *, day: str, planned: bool) -> None:
         """A switching of SpotNav's that read back: the off stretch, and the day's planned switchings."""

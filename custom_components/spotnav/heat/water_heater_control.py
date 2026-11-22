@@ -19,12 +19,22 @@ without it.
    the next local day. Turned off by someone else while SpotNav allows it: left off (their choice), paused to the next
    day, then the plan (and the hard rules) resume. A change counts when it has read for `FOREIGN_CONFIRM`.
 4. **Blocks**: an enabled automation whose actions reference the switch (`heat/automations.py`, one note).
-5. **The check**, once per switch (again after the opt-in is turned off and on): the first off and the following on
+5. **The meter** on the switch's device is trusted (metered mode, full heat seen on it) only once it followed one of
+   SpotNav's own switchings (`_judge_meter`): an off takes it from the element's draw to under `CUT_W`, or an on
+   raises it to the element's draw, within `CUT_WITHIN`. A later off it does not follow takes the trust back
+   (unmetered: the hard night window again). A reading not reported for a while is none (`heat_zones.read_power_w`).
+6. **The check**, once per switch (again after the opt-in is turned off and on): the first off and the following on
    read back; where the element drew when the off was written, the power must fall under `CUT_W` within `CUT_WITHIN`
    (else the switch does not cut the element: `check_failed`, on).
-6. **Control**: `water_heater.Rules.want` on the windows (`water_heater.plan_windows`, made again every look from the
+7. **Control**: `water_heater.Rules.want` on the windows (`water_heater.plan_windows`, made again every look from the
    prices with their fees and the heat plan's tight hours; a window that has begun is kept as it is). Without prices
    for the running hour the switch is on (`no_plan`).
+8. **The ceiling** (`site/shed_order.py`): where the site's shed order pauses the water heater for the ceiling, a
+   cheap window is paused until the period's end (`ceiling`), after every hard rule, and only where the window left
+   after the pause still covers the heater's need (its energy at the element's power, less the time it was seen
+   drawing in it: `_until_max`). What it could give is offered at each look (`shed_offer`): what its trusted meter
+   reads it drawing (never a learnt figure; read again at every ask), whether the rules would take the pause now
+   (`Rules.would_shed`, with the day's switchings and the longest off stretch) or hold it, and the latest it may last.
 """
 
 from __future__ import annotations
@@ -33,6 +43,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -43,6 +54,7 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
+from ..site.shed_order import LOAD_WATER_HEATER, Offer
 from .automations import SteeringAutomation, steering_automations
 from .config import HeatConfig
 from .water_heater import (
@@ -51,6 +63,7 @@ from .water_heater import (
     MODE_UNMETERED,
     WINDOW_CHEAP,
     WANT_OFF,
+    WANT_SHED,
     Kept,
     Rules,
     Want,
@@ -140,11 +153,16 @@ class WaterHeaterControl:
         self.want: Want | None = None
         self.metered = False
         self.power_sensor: str | None = None
-        #: The meter that has been seen at `FULL_DRAW_W` or more once, `{entity, sensor}`: a meter on a contactor's coil
-        #: never is, and then the water heater is no more metered than one without a meter.
+        #: The meter trusted as the element's, `{entity, sensor}`: one that followed SpotNav's own switching
+        #: (`_judge_meter`). Until then (a meter on a contactor's coil, another channel, a frozen one) the water heater
+        #: is no more metered than one without a meter: the unmetered night window holds.
         self.meter_seen: dict[str, str] | None = None
-        #: A meter is there but has not been seen drawing the element's power yet.
+        #: A meter is there but has not yet followed one of SpotNav's own switchings (`_judge_meter`).
         self.meter_waiting = False
+        #: SpotNav's last switching the meter is judged against, the reading at its write, and the last reading.
+        self._meter_watch: dict[str, Any] | None = None
+        self._power_at_write: float | None = None
+        self._last_power: float | None = None
         self.daily: list[float] = []
         self._history_at: datetime | None = None
         self._draws: deque[float] = deque(maxlen=DRAW_SAMPLES)
@@ -156,6 +174,14 @@ class WaterHeaterControl:
         self._again = False
         self._task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
+        #: What a pause for the ceiling would give and whether the rules allow it, as of the last look.
+        self.offer: Offer | None = None
+        #: The look's mode and plan freshness (the offer asks the rules as the look would), and the element's time seen
+        #: drawing per window (`_until_max`, memory only: a restart counts it from nothing, which only sheds less).
+        self._look_mode: str | None = None
+        self._look_fresh = False
+        self._drawn_s: dict[str, float] = {}
+        self._drawn_at: datetime | None = None
         control.parts["water_heater"] = self
         shadow.extra_deltas.append(self.forecast_delta)
 
@@ -263,23 +289,18 @@ class WaterHeaterControl:
         return state.state == "on"
 
     def _power(self, entity_id: str) -> tuple[str | None, float | None]:
-        """The power sensor on the switch's device and its reading (W); `(None, None)` without one."""
-        from ..site.heat_meter import KIND_POWER  # noqa: PLC0415
-        from ..site.heat_zones import device_sensors, pick_zone_sensor  # noqa: PLC0415
+        """The power sensor on the switch's device and its reading (W, `heat_zones.read_power_w`: its unit converted,
+        none for one that has not reported for a while); `(None, None)` without one."""
+        from ..site.heat_zones import device_sensors, pick_power_sensor, read_power_w  # noqa: PLC0415
 
         try:
             _device, sensors = device_sensors(self.hass, entity_id)
         except Exception:  # noqa: BLE001 - unmetered
             return None, None
-        picked = pick_zone_sensor(sensors)
-        if picked is None or picked[1] != KIND_POWER:
+        picked = pick_power_sensor(sensors)
+        if picked is None:
             return None, None
-        state = self.hass.states.get(picked[0])
-        value = None if state is None or state.state in ("unavailable", "unknown") else finite_number(state.state)
-        if value is None:
-            return picked[0], None
-        unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
-        return picked[0], value * 1000.0 if unit == "kW" else value
+        return picked, read_power_w(self.hass, picked)
 
     def _tank(self, sensor: str | None) -> float | None:
         if sensor is None:
@@ -316,6 +337,11 @@ class WaterHeaterControl:
         except Exception:  # noqa: BLE001 - the windows' sizes as without history
             _LOGGER.debug("SpotNav water heater: the history could not be read", exc_info=True)
         self.rules.trim(now, self._day(now - timedelta(days=3)))
+        try:
+            self.offer = self._offer(now)
+        except Exception:  # noqa: BLE001 - nothing offered: the shed order skips the water heater
+            _LOGGER.debug("SpotNav water heater: its offer to the shed order could not be made", exc_info=True)
+            self.offer = None
         self.control.keep_soon()
 
     async def _async_look(self, now: datetime) -> None:
@@ -338,21 +364,23 @@ class WaterHeaterControl:
 
         read = self._read(switch)
         self.power_sensor, power = self._power(switch)
-        if power is not None and power >= FULL_DRAW_W and self.power_sensor is not None:
-            self.meter_seen = {"entity": switch, "sensor": self.power_sensor}
-        elif self.meter_seen is not None and (self.meter_seen["entity"] != switch or self.meter_seen["sensor"] != self.power_sensor):
-            # Another meter: it has to show the element's draw itself.
+        if self.meter_seen is not None and (self.meter_seen["entity"] != switch or self.meter_seen["sensor"] != self.power_sensor):
+            # Another meter: it has to follow SpotNav's own switching itself.
             self.meter_seen = None
+            self._meter_watch = None
+        self._judge_meter(now, switch, power)
+        self._last_power = power
         self.metered = self.power_sensor is not None and self.meter_seen is not None
         self.meter_waiting = self.power_sensor is not None and not self.metered
         tank_sensor = None if heater is None else heater.tank_sensor
         tank_c = self._tank(tank_sensor)
-        if power is not None and power >= FULL_DRAW_W:
+        if self.metered and power is not None and power >= FULL_DRAW_W:
             self._draws.append(power)
             self.kw = element_kw(self._draws)
         if self.rules.observe(now, on=read, power_w=power, metered=self.metered, tank_c=tank_c, tank=tank_sensor is not None):
             self._log(now, "full_heat")
         mode = mode_of(self.metered, tank_sensor is not None)
+        self._count_draw(now, read, power)
 
         if enabled and self._was_enabled is False:
             # Turned on again: a failed check, a pause and the give-up are tried afresh.
@@ -380,6 +408,7 @@ class WaterHeaterControl:
         )
         self.rules.kept.windows = windows
         fresh = current in prices
+        self._look_mode, self._look_fresh = mode, fresh
 
         # A write is read back first.
         if self.pending is not None:
@@ -491,12 +520,103 @@ class WaterHeaterControl:
 
         # Seen on while control runs: an off from here on that SpotNav did not write is someone else's.
         self._seen_on = read is True and not self.held_off
-        want = self.want = self.rules.want(now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now))
+        shed_until = self._shed_until(now)
+        if shed_until is not None:
+            # Only where the window left after the pause still covers the heater's need.
+            latest = self._until_max(now)
+            if latest is None or latest < shed_until:
+                shed_until = None
+        want = self.want = self.rules.want(
+            now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now), shed_until=shed_until
+        )
         verifying = self.check is None or self.check.get("entity") != switch
         self.state, self.reason = (STATE_VERIFYING if verifying else STATE_RUNNING), want.reason
         if want.on == read:
             return
         await self._async_write(want.on, now, planned=(not want.on) or want.reason == WINDOW_CHEAP, why=want.reason, power=power)
+
+    # ---- the shed order (`site/shed_order.py`)
+
+    def _shed_until(self, now: datetime) -> datetime | None:
+        order = getattr(self.site, "shed_order", None)
+        return None if order is None else order.until(LOAD_WATER_HEATER, now)
+
+    def _give_w(self, read: bool | None) -> float:
+        """What a pause gives now (W): what a trusted meter reads the element drawing now; nothing while the switch
+        reads off, without a trusted meter or without a reading (never a learnt figure: the hold counts it as freed)."""
+        if read is not True or not self.metered or self.power_sensor is None:
+            return 0.0
+        from ..site.heat_zones import read_power_w  # noqa: PLC0415
+
+        value = read_power_w(self.hass, self.power_sensor)
+        return 0.0 if value is None else max(0.0, value)
+
+    def _until_max(self, now: datetime) -> datetime | None:
+        """The latest a pause may last and still leave the cheap window running now the time its remaining need takes
+        (`shed_order.Offer.until_max`): the window's end less its energy at the element's power, less what the element
+        was seen drawing in it. `now` (no pause) where that is not known (no window energy or power learnt yet)."""
+        window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+        if window is None or window.kwh is None or self.kw is None or self.kw <= 0:
+            return now
+        need_s = max(0.0, window.kwh / self.kw * 3600.0 - self._drawn_s.get(window.key, 0.0))
+        return window.end - timedelta(seconds=need_s)
+
+    def _count_draw(self, now: datetime, read: bool | None, power: float | None) -> None:
+        """The time the element was seen drawing in the window running now (`_until_max`), since the last look."""
+        last, self._drawn_at = self._drawn_at, now
+        window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+        keys = {item.key for item in self.rules.kept.windows}
+        self._drawn_s = {key: seconds for key, seconds in self._drawn_s.items() if key in keys}
+        if window is None or last is None or read is not True or power is None or power < FULL_DRAW_W:
+            return
+        self._drawn_s[window.key] = self._drawn_s.get(window.key, 0.0) + min(max(0.0, (now - last).total_seconds()), 2 * LOOK_S)
+
+    def _offer(self, now: datetime) -> Offer | None:
+        """The water heater's offer to the shed order (`shed_order.Offer`), `None` without a switch chosen. Controlled:
+        ready while running in a cheap window (or already paused for the ceiling), its hard rules not holding it on.
+        Watched: what it would give in a cheap window, `would` only."""
+        heater = self.shadow.config().water_heater
+        if heater is None or self.entity != heater.entity_id:
+            return None
+        read = self._read(heater.entity_id)
+        give = self._give_w(read)
+        if not heater.control:
+            window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+            ready = read is True and window is not None and window.reason == WINDOW_CHEAP
+            return Offer(live=False, ready=ready, give_w=give, drawing=read is True)
+        reason = None if self.want is None else self.want.reason
+        running = self.state == STATE_RUNNING
+        if not running:
+            return Offer(live=True, ready=False, give_w=give, drawing=read is True, why=self.reason)
+        held = self.held_off and reason == WANT_SHED and self.pending is None
+        # Its off written for the ceiling, not read back yet.
+        taking = reason == WANT_SHED and self.pending is not None and not self.pending[0]
+        # The rules asked as the next look would (the write cap, the longest off stretch, every hard rule).
+        ready = held or taking or (
+            reason == WINDOW_CHEAP
+            and self._look_mode is not None
+            and self.rules.would_shed(
+                now, mode=self._look_mode, windows=self.rules.kept.windows, plan_fresh=self._look_fresh, day=self._day(now)
+            )
+        )
+        return Offer(
+            live=True,
+            ready=ready,
+            give_w=give,
+            drawing=read is True,
+            why=None if ready else reason,
+            held=held,
+            until_max=self._until_max(now),
+            pending=taking,
+        )
+
+    def shed_offer(self) -> Offer | None:
+        """The offer as of the last look, with the switch and the meter read now (whether it still draws, and what)."""
+        offer = self.offer
+        if offer is None or self.entity is None:
+            return offer
+        read = self._read(self.entity)
+        return replace(offer, drawing=read is True, give_w=self._give_w(read))
 
     # ---- writes
 
@@ -517,6 +637,7 @@ class WaterHeaterControl:
             if self.check is None or self.check.get("entity") != self.entity:
                 self.trial = {"phase": "off", "drew": power is not None and power >= FULL_DRAW_W}
         self.pending = (on, now, planned)
+        self._power_at_write = self._last_power
         self._retry_on_at = None
         self._log(now, "write", on=on, why=why)
         try:
@@ -524,7 +645,52 @@ class WaterHeaterControl:
         except Exception as err:  # noqa: BLE001 - not read back: the look after `READ_BACK` gives it up
             _LOGGER.warning("SpotNav water heater: switching %s %s failed: %s", self.entity, "on" if on else "off", err)
 
+    def _judge_meter(self, now: datetime, switch: str, power: float | None) -> None:
+        """Whether the meter on the switch's device is the element's (`meter_seen`, see `_watch_meter`): trusted once
+        one of SpotNav's own offs takes its reading from the element's draw to under `CUT_W`, or an on raises it from
+        there to the element's draw, within `CUT_WITHIN`; trust lost (unmetered again) where a later off does not cut
+        it. One reading of 500 W proves nothing: another channel of the device, a meter of the whole circuit."""
+        watch = self._meter_watch
+        if watch is None or self.power_sensor is None or watch["sensor"] != self.power_sensor:
+            self._meter_watch = None
+            return
+        before = watch["before"]
+        late = now - watch["at"] > CUT_WITHIN
+        if not watch["on"] and before is not None and before >= FULL_DRAW_W:
+            if power is not None and power < CUT_W and not late:
+                self._trust_meter(now, switch, "cut")
+            elif late:
+                if self.meter_seen is not None:
+                    self._log(now, "meter_not_cut", sensor=self.power_sensor)
+                    _LOGGER.info("SpotNav water heater: %s did not fall when %s was turned off; not trusted", self.power_sensor, switch)
+                self.meter_seen = None
+                self._meter_watch = None
+            return
+        if watch["on"] and (before is None or before < CUT_W):
+            if power is not None and power >= FULL_DRAW_W and not late:
+                self._trust_meter(now, switch, "rise")
+            elif late:
+                # Its thermostat may not have called: nothing learnt either way.
+                self._meter_watch = None
+            return
+        self._meter_watch = None
+
+    def _trust_meter(self, now: datetime, switch: str, how: str) -> None:
+        if self.meter_seen is None:
+            self._log(now, "meter_trusted", sensor=self.power_sensor, how=how)
+        self.meter_seen = {"entity": switch, "sensor": self.power_sensor}  # type: ignore[dict-item]
+        self._meter_watch = None
+
+    def _watch_meter(self, now: datetime, on: bool) -> None:
+        """A switching of SpotNav's read back: the meter's next readings are judged against it (`_judge_meter`), from
+        the reading before the write."""
+        if self.power_sensor is None:
+            self._meter_watch = None
+            return
+        self._meter_watch = {"on": on, "at": now, "before": self._power_at_write, "sensor": self.power_sensor}
+
     def _confirm(self, now: datetime, on: bool, planned: bool, power: float | None) -> None:
+        self._watch_meter(now, on)
         self.pending = None
         self.rules.switched(now, on, day=self._day(now), planned=planned)
         self.held_off = not on

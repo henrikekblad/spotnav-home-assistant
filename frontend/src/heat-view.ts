@@ -1164,7 +1164,9 @@ function waterHeaterBaseLine(language: Language, answer: HeatAnswer): string | n
   }
   if (heater.state === "running" || heater.state === "verifying") {
     if (heater.on === false && heater.until !== null) {
-      return translate(language, "heat.waterHeater.off", { until: whenLabel(language, answer, Date.parse(heater.until)) });
+      // Paused by the shed order under the ceiling ("Pausad för taket till 18:00"), else off by the plan.
+      const key = heater.reason === "ceiling" ? "heat.waterHeater.ceiling" : "heat.waterHeater.off";
+      return translate(language, key, { until: whenLabel(language, answer, Date.parse(heater.until)) });
     }
     const reason = heater.reason ?? "";
     if (heater.on === true && HEATER_WHY.includes(reason)) {
@@ -1198,7 +1200,8 @@ export function holdLines(language: Language, answer: HeatAnswer): { key: string
   const heater = answer.water_heater;
   if (heater !== null) {
     if (heater.live && heater.on === false && heater.until !== null) {
-      out.push({ key: "waterHeater", text: translate(language, "heat.now.waterHeaterOff", { until: whenLabel(language, answer, Date.parse(heater.until)) }) });
+      const key = heater.reason === "ceiling" ? "heat.now.waterHeaterCeiling" : "heat.now.waterHeaterOff";
+      out.push({ key: "waterHeater", text: translate(language, key, { until: whenLabel(language, answer, Date.parse(heater.until)) }) });
     }
     // The windows within the strip's 24 hours.
     const horizon = Date.parse(answer.now) + AHEAD_HOURS * 3_600_000;
@@ -1471,9 +1474,11 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
     }
     if (control.lowered) {
       const warm = answer.status.would?.reason === "room_warm";
+      // Lowered one step by the shed order under the ceiling where the plan alone would not.
+      const lowered = control.reason === "ceiling" ? "heat.control.loweredCeiling" : warm ? "heat.control.loweredWarm" : "heat.control.lowered";
       return control.until === null
         ? translate(language, "heat.control.loweredNow")
-        : translate(language, warm ? "heat.control.loweredWarm" : "heat.control.lowered", { until: whenLabel(language, answer, Date.parse(control.until)) });
+        : translate(language, lowered, { until: whenLabel(language, answer, Date.parse(control.until)) });
     }
     const reason = control.reason ?? "";
     return translate(language, (CONTROL_SAFETY.includes(reason) ? `heat.control.${reason}` : "heat.control.normal") as TranslationKey);

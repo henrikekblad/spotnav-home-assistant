@@ -267,3 +267,24 @@ def test_the_window() -> None:
     far = tuple(PriceHour(at(h), at(h + 1), 1.0, 1.0) for h in range(0, 72))
     assert len(window(NOW, TZ, far)) == MAX_HOURS
     assert window(NOW, TZ, far)[0] == at(20)
+
+
+def test_the_shed_order_shows_paused_and_lowered_for_the_ceiling() -> None:
+    """The water heater paused and the heat lowered one step by the shed order under the ceiling (`site/shed_order.py`)
+    for the rest of the running hour: `paused` / `lower` with the reason `ceiling`; the watched heat says `would`."""
+    from dataclasses import replace
+
+    base = villa_inputs()
+    heater = replace(base.water_heater, windows=((at(20), at(22), "cheap"),), shed=(NOW, at(21)))
+    heat = replace(base.heat, shed=(NOW, at(21)))
+    answer = plan_view(replace(base, water_heater=heater, heat=heat))
+    lane = _load(answer, "water_heater")
+    assert [(run["what"], run["reason"], run["start"], run["end"]) for run in lane["runs"]] == [
+        ("paused", "ceiling", at(20).isoformat(), at(21).isoformat()),
+        ("on", "cheap", at(21).isoformat(), at(22).isoformat()),
+    ]
+    assert lane["state"] == "live"
+    heat_lane = _load(answer, "heat")
+    assert heat_lane["state"] == "would"
+    assert (heat_lane["runs"][0]["what"], heat_lane["runs"][0]["reason"]) == ("lower", "ceiling")
+    assert heat_lane["level"][0] == -1

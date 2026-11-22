@@ -4,6 +4,10 @@
 site controller it belongs to (`SiteCapacityController._hold_to_import_target`). It keeps no state of its own: what it
 works out (the hour's budget, the shares, the chargers it lowered, paused or locked, the risks and set-asides) is kept
 on the site controller, which the diagnostics, the status and the plans read.
+
+Each pass also runs the site's shed order on the same projection (`site/shed_order.py`, `_shed`): the water heater
+before the car and heat after it. What the water heater is about to give is counted ahead in the cars' budget
+(`ShedOrder.credit_w`), never above the fuse's ceiling; without a budget every step is put back.
 """
 
 from __future__ import annotations
@@ -11,8 +15,9 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
+import logging
 import math
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.util import dt as dt_util
 
@@ -21,7 +26,9 @@ from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..planning.auto_settings import IF_NOT_READY_RELEASE
 from ..runtime import controller_for, preview_for
 from .import_target import (
+    ACTION_HELD,
     ACTION_PAUSED,
+    PAUSE_SLOW_CHARGER,
     battery_discharge_shares_w,
     departure_at_risk,
     departure_shortfall_kwh,
@@ -37,8 +44,10 @@ from .import_target import (
     RISK_LEAVE_KWH,
     share_budget,
     TargetMember,
+    TargetShare,
 )
 from .regulator import RegulatorDecision
+from .shed_order import combine, END_OFF, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
 from .site_capacity import allocation_order, ChargerRequest, PhaseName, PHASES
 from .site_capacity_controller import (
     _current_write_lock,
@@ -57,6 +66,12 @@ from .site_capacity_controller import (
     TARGET_STATE_OFF,
     TargetRisk,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+#: How long the shares must pause a car the water heater's pause would keep charging before the heater goes at once
+#: (s): a spike is no reason, and the regulator's 60 s dwell is still ahead of the car's pause.
+PAUSE_DUE_S: Final = 15.0
 
 
 class ImportTargetHold:
@@ -110,6 +125,7 @@ class ImportTargetHold:
                 self._site._target_released.clear()
                 self._site._save_released()
             self._site._target_last_cap.clear()
+            self._shed(dt_util.utcnow(), None, [], lasting=True)
             return decisions
         now = dt_util.utcnow()
         # The target lifted to the month's free level where a demand-charge part counts the running hour: only ever
@@ -122,11 +138,14 @@ class ImportTargetHold:
             self._site._note_target_state(TARGET_NOT_APPLIED_OUTSIDE_LEVEL)
             self._site._target_risk = {}
             self._site._tell_target_risk()
+            self._shed(now, None, [], lasting=True)
             return decisions
         budget, reason = self._import_target_budget(self._site._target_effective.kw, now)
         self._site._target_not_applied = reason
         self._site._note_target_state(TARGET_STATE_APPLIED if reason is None else reason)
         if budget is None:
+            # Load balancing off holds for good; a reading missing, a gap or the house unknown is a passing loss.
+            self._shed(now, None, [], lasting=reason == TARGET_NOT_APPLIED_LOAD_BALANCING_OFF)
             return decisions
         self._site._target_budget = budget
         # A pause and a held current hold to the end of their hour only.
@@ -198,6 +217,22 @@ class ImportTargetHold:
                 self._target_member(request, decisions.get(request.charger_entry_id), budget, released)
                 for request in ordered
             ]
+            shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
+        # A car the shares pause for the rest of the period: the water heater goes first, now (`_car_pause_due`).
+        offers = self._offers()
+        car_pause_due, deferred = self._car_pause_due(now, budget, members, shares, offers.get(LOAD_WATER_HEATER))
+        credit_w = self._shed(now, budget, members, car_pause_due=car_pause_due, offers=offers)
+        if deferred and credit_w <= 0:
+            # While it is being confirmed, the car is held at its minimum rather than paused for the hour (at most
+            # `PAUSE_DUE_S`, once a period): the few watt-hours it carries the budget takes back from the period.
+            for member in members:
+                if member.charger_entry_id in deferred:
+                    shares[member.charger_entry_id] = TargetShare(ACTION_HELD, member.min_a, member.min_a)
+        if credit_w > 0:
+            # The water heater's pause counted ahead: the cars take only what remains after it (`site/shed_order.py`).
+            ceiling_w = max(0.0, self._site._import_ceiling_w())
+            budget = replace(budget, allowed_w=min(max(0.0, budget.rate_w - budget.house_w + credit_w), ceiling_w))
+            self._site._target_budget = budget
             shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
         self._site._target_shares = shares
         self._site._target_write_wait = {member.charger_entry_id: member.write_wait_s for member in members}
@@ -306,6 +341,135 @@ class ImportTargetHold:
                     # Lowered, but not as far as its share: the floor stopped it (`floor_limited`).
                     self._site._target_floor_limited.add(charger_entry_id)
         return held
+
+    def _shed(
+        self,
+        now: datetime,
+        budget: HourBudget | None,
+        members: Sequence[TargetMember],
+        *,
+        lasting: bool = False,
+        car_pause_due: bool = False,
+        offers: dict[str, Offer | None] | None = None,
+    ) -> float:
+        """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held now,
+        for good (`lasting`: no target or power level, outside the level's hours, load balancing off: every step put
+        back at once) or for a moment (the steps hold a while). The water heater's give counted ahead for the cars
+        (W). A failure puts every step back and counts nothing: the hold goes on as without it."""
+        order: ShedOrder = self._site.shed_order
+        before = {load: step.live for load, step in order.steps.items()}
+        logged = order.logged
+        try:
+            if budget is None:
+                if lasting:
+                    order.clear(now, END_OFF)
+                else:
+                    order.update(now, None, {})
+                credit_w = 0.0
+            else:
+                projection = replace(
+                    _projection(budget, members, self._planned_w(members, now)), car_pause_due=car_pause_due
+                )
+                credit_w = order.update(now, projection, self._offers() if offers is None else offers)
+        except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
+            if not getattr(self, "_shed_failed_logged", False):
+                self._shed_failed_logged = True
+                _LOGGER.exception("SpotNav site %s: the shed order failed; every step is put back", self._site.entry_id)
+            order.clear(now, "error")
+            credit_w = 0.0
+        # Each step taken or put back in the site's change log too (`_log_target`, kept a day across restarts).
+        fresh = min(order.logged - logged, len(order.log))
+        for entry in list(order.log)[len(order.log) - fresh :] if fresh > 0 else []:
+            fields = {key: value for key, value in entry.items() if key not in ("at", "what")}
+            self._site._log_target(None, f"shed_order_{entry['what']}", budget, **fields)
+        after = {load: step.live for load, step in order.steps.items()}
+        if before != after:
+            # A step taken or put back: the loads' controls look at once rather than at their next look.
+            for name in ("water_heater_control", "heat_control", "zones_control"):
+                part = getattr(self._site, name, None)
+                if part is not None:
+                    part.request_look()
+        return credit_w
+
+    def _car_pause_due(
+        self,
+        now: datetime,
+        budget: HourBudget,
+        members: Sequence[TargetMember],
+        shares: Mapping[str, Any],
+        heater: Offer | None,
+    ) -> tuple[bool, set[str]]:
+        """`(due, deferred)`: whether the hold would pause a car for the rest of the period that the water heater's
+        pause would keep charging: a holdable charger (not switch-only, not paused already) whose share pauses it, not
+        for its slow writes (`PAUSE_SLOW_CHARGER`), and which the shares made with the heater's give added do not
+        pause. Due only once that has held `PAUSE_DUE_S` in a row (a kettle's spike is no reason); meanwhile, once a
+        period, those chargers' pause is deferred (`deferred`: held at their minimum instead), so the pause the
+        confirmation is about is not written before it ends."""
+        due = False
+        paused: set[str] = set()
+        if heater is not None and heater.live and heater.useful:
+            paused = {
+                member.charger_entry_id
+                for member in members
+                if member.holdable
+                and not member.switch_only
+                and not member.paused_this_hour
+                and member.wants_a > 0
+                and (share := shares.get(member.charger_entry_id)) is not None
+                and share.action == ACTION_PAUSED
+                and share.reason != PAUSE_SLOW_CHARGER
+            }
+            if paused:
+                ceiling_w = max(0.0, self._site._import_ceiling_w())
+                allowed_w = min(max(0.0, budget.rate_w - budget.house_w + heater.give_w), ceiling_w)
+                with_heater = share_budget(allowed_w, members, remaining_s=budget.remaining_s)
+                paused = {charger for charger in paused if charger in with_heater and with_heater[charger].action != ACTION_PAUSED}
+                due = bool(paused)
+        since = getattr(self._site, "_shed_pause_due_since", None)
+        since = (since or now) if due else None
+        self._site._shed_pause_due_since = since
+        if since is None:
+            return False, set()
+        if (now - since).total_seconds() >= PAUSE_DUE_S:
+            return True, set()
+        # Being confirmed: deferred once per period.
+        deferring = getattr(self._site, "_shed_pause_deferred", None)
+        if deferring is not None and deferring != (budget.hour_start, since):
+            if deferring[0] == budget.hour_start:
+                return False, set()
+        self._site._shed_pause_deferred = (budget.hour_start, since)
+        return False, paused
+
+    def _planned_w(self, members: Sequence[TargetMember], now: datetime) -> dict[str, float]:
+        """Per holdable charger with a plan of SpotNav's whose window runs now: what the plan needs now (W, its own
+        rate, `_plan_power_kw`). A charge without one counts at what it wants."""
+        out: dict[str, float] = {}
+        for member in members:
+            if not member.holdable:
+                continue
+            charger_controller = controller_for(self._site.hass, member.charger_entry_id)
+            plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
+            if plan is None or not getattr(plan, "auto_owned", False):
+                continue
+            if not any(start <= now < end for start, end in plan.windows):
+                continue
+            out[member.charger_entry_id] = _plan_power_kw(plan) * 1000.0
+        return out
+
+    def _offers(self) -> dict[str, Offer | None]:
+        """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`)."""
+        heater_control = getattr(self._site, "water_heater_control", None)
+        heat_control = getattr(self._site, "heat_control", None)
+        zones_control = getattr(self._site, "zones_control", None)
+        return {
+            LOAD_WATER_HEATER: None if heater_control is None else heater_control.shed_offer(),
+            LOAD_HEAT: combine(
+                [
+                    None if heat_control is None else heat_control.offer,
+                    *(() if zones_control is None else zones_control.offers.values()),
+                ]
+            ),
+        }
 
     def _effective_import_target(self, set_kw: float, now: datetime) -> EffectiveTarget:
         """The import target lifted to the month's free level for the running hour (`effective_target`), from the
@@ -467,11 +631,7 @@ class ImportTargetHold:
         # What the plan still expects to deliver before the departure: its energy spread over its windows (the power
         # it planned at, which may already be the target's, `import_target_plan_kw`), for the windows' time left.
         windows = plan.windows
-        window_h = sum(max(0.0, (end - start).total_seconds()) for start, end in windows) / 3600.0
-        if plan.energy_kwh and window_h > 0:
-            power_kw = plan.energy_kwh / window_h
-        else:
-            power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+        power_kw = _plan_power_kw(plan)
         need_kwh = plan_remaining_kwh(windows, power_kw, now, departure)
         preview = preview_for(self._site.hass, member.charger_entry_id)
         if preview is not None:
@@ -564,3 +724,37 @@ class ImportTargetHold:
             battery_discharge_w=battery_discharge_w,
             fuse_margin_a={phase: result.measured_margin_a.get(phase) for phase in phases},
         )
+
+
+def _plan_power_kw(plan: Any) -> float:
+    """The power a plan charges at in its windows (kW): its energy spread over its windows, else its own power."""
+    window_h = sum(max(0.0, (end - start).total_seconds()) for start, end in plan.windows) / 3600.0
+    if plan.energy_kwh and window_h > 0:
+        return float(plan.energy_kwh) / window_h
+    return float(plan.power_kw) if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+
+
+def _projection(
+    budget: HourBudget, members: Sequence[TargetMember], planned_w: Mapping[str, float] | None = None
+) -> Projection:
+    """The hold's period as the shed order reads it: its budget, and what the cars want (`share_budget`'s members): the
+    ones it may hold at what they would draw, no more than what their plan needs now (`planned_w`: a car charging
+    faster than its plan needs is no reason to shed anything; a charge paused for the rest of the period wants
+    nothing in it), the others at what they draw."""
+    planned = planned_w or {}
+    held = sum(
+        min(member_w(member.phases, member.wants_a), planned.get(member.charger_entry_id, float("inf")))
+        for member in members
+        if member.holdable and not member.paused_this_hour
+    )
+    unheld = sum(member_w(member.phases, member.wants_a) for member in members if not member.holdable)
+    return Projection(
+        period_start=budget.hour_start,
+        period_end=budget.hour_end,
+        period_s=budget.period_s,
+        remaining_s=budget.remaining_s,
+        rate_w=budget.rate_w,
+        house_w=budget.house_w,
+        cars_held_w=held,
+        cars_unheld_w=unheld,
+    )

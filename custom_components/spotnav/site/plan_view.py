@@ -31,7 +31,9 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   `house_kw` (drawn inside it, never added). `state` is `live` where SpotNav steers it now, `would` where it only
   watches (what it would do, never claimed as done). `runs` are the hours in words: contiguous hours with one
   `what` (`charge`, `grid_charge`, `sun_charge`, `cover`, `sell`, `on`, `lower`, `preheat`, `night`, `away`)
-  and the plan's `reason` where it has one. `does_not_fit`: a car's charge that does not fit under the ceiling that
+  and the plan's `reason` where it has one; the shed order under the ceiling (`site/shed_order.py`) shows as the
+  water heater `paused` and the heat (and its watched zones) `lower`, each with the reason `ceiling`, over the step's
+  hours (a watched load's lane says `would`). `does_not_fit`: a car's charge that does not fit under the ceiling that
   acts now by its departure, with the person's choices (`site/does_not_fit.py`, the same block as the charger's
   dashboard); `null` for every other load and for a car whose charge fits.
 * **`summary`**: the window's import cost less export earnings (`cost`, minor units, over the priced hours), the
@@ -96,6 +98,9 @@ WHAT_COVER: Final = "cover"
 WHAT_SELL: Final = "sell"
 WHAT_ON: Final = "on"
 WHAT_LOWER: Final = "lower"
+WHAT_PAUSED: Final = "paused"
+#: The reason of a step the shed order under the ceiling takes (`site/shed_order.REASON_CEILING`).
+REASON_CEILING: Final = "ceiling"
 #: The heat plan's actions shown as levels; `normal` and `return` are the pump's own curve (no run).
 HEAT_LEVELS: Final = {"lower": -1, "night": -1, "away": -1, "preheat": 1, "normal": 0, "return": 0}
 #: The battery's power under this (kW) is no run (a hold or rounding).
@@ -142,6 +147,8 @@ class HeatPlan:
     heat_kw: Callable[[datetime], float | None] = lambda _hour: None
     #: The share of the heat a lowered hour takes away (`relay_effect.Effect.lower_share`).
     lower_share: float = 0.0
+    #: Lowered one step for the ceiling by the shed order (`site/shed_order.py`): `(since, until)`.
+    shed: tuple[datetime, datetime] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +167,8 @@ class WaterHeaterPlan:
     windows: tuple[tuple[datetime, datetime, str], ...]
     kw: float | None
     live: bool
+    #: Paused for the ceiling by the shed order (`site/shed_order.py`): `(since, until)`.
+    shed: tuple[datetime, datetime] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,6 +374,9 @@ def _heat(heat: HeatPlan, hours: Sequence[datetime]) -> dict[str, Any]:
     kw: list[float | None] = []
     for start in hours:
         action, why = by_start.get(start, ("normal", None))
+        if heat.shed is not None and _covers(start, [heat.shed]) > 0 and HEAT_LEVELS.get(action, 0) == 0:
+            # Lowered one step for the ceiling where the plan leaves the hour normal.
+            action, why = WHAT_LOWER, REASON_CEILING
         step = HEAT_LEVELS.get(action, 0)
         level.append(step)
         what.append(None if step == 0 else action)
@@ -407,11 +419,19 @@ def _zone(zone: ZonePlan, hours: Sequence[datetime]) -> dict[str, Any]:
 def _water_heater(heater: WaterHeaterPlan, hours: Sequence[datetime]) -> dict[str, Any]:
     shares = [_covers(start, [(a, b) for a, b, _reason in heater.windows]) for start in hours]
     reasons: list[str | None] = []
-    for start, share in zip(hours, shares, strict=True):
+    what: list[str | None] = []
+    for index, (start, share) in enumerate(zip(hours, shares, strict=True)):
         found = next((why for a, b, why in heater.windows if a < start + HOUR and b > start), None)
+        paused = 0.0 if heater.shed is None or share <= 0 else _covers(start, [heater.shed])
+        if paused > 0:
+            # Paused for the ceiling: its window's hours less the pause.
+            shares[index] = max(0.0, share - paused)
+            what.append(WHAT_PAUSED)
+            reasons.append(REASON_CEILING)
+            continue
+        what.append(WHAT_ON if share > 0 else None)
         reasons.append(found if share > 0 else None)
     kw = [None if heater.kw is None else heater.kw * share for share in shares]
-    what = [WHAT_ON if share > 0 else None for share in shares]
     return _load(
         heater.id,
         KIND_WATER_HEATER,

@@ -413,6 +413,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "flexible_loads": None
         if controller is None
         else _part_snapshot(lambda: [load.as_dict() for load in flexible_loads(controller)]),
+        # The shed order under the ceiling (`site/shed_order.py`): the steps taken (paused or would), the projection
+        # they were taken on, what holds a step back, and its log.
+        "shed_order": None if controller is None else _part_snapshot(controller.shed_order.snapshot),
     }
 
 

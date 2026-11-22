@@ -154,6 +154,51 @@ def pick_zone_sensor(sensors: Iterable[DeviceSensor]) -> tuple[str, str] | None:
     return None
 
 
+def pick_power_sensor(sensors: Iterable[DeviceSensor]) -> str | None:
+    """The sensor a device's power now is read from: a `measurement` power sensor, ranked as `pick_zone_sensor` ranks
+    them (an energy sensor beside it is no reason to go without one); `None` without one."""
+    power = [
+        sensor
+        for sensor in sensors
+        if sensor.entity_id.startswith("sensor.")
+        and meter_kind(sensor.device_class, sensor.unit) == KIND_POWER
+        and sensor.state_class == "measurement"
+    ]
+    if not power:
+        return None
+    return min(power, key=lambda s: (_qualifier_rank(s) == 2, _qualifier_rank(s), s.entity_id)).entity_id
+
+
+#: A power reading at or above `QUIET_BELOW_W` not reported for this long is not trusted (a meter frozen at a draw).
+#: One under it stays valid while the entity is available: a change-only meter (Zigbee, Z-Wave plugs) reports 0 W
+#: once and is then quiet for as long as nothing draws.
+POWER_STALE_S: Final = 15 * 60.0
+QUIET_BELOW_W: Final = 100.0
+
+
+def read_power_w(hass: HomeAssistant, entity_id: str, now: datetime | None = None, max_age_s: float = POWER_STALE_S) -> float | None:
+    """A power sensor's reading now in W (Home Assistant's `PowerConverter` from its unit; a unit it does not know, or
+    none, is no reading); `None` while it does not read, or reads a draw (`QUIET_BELOW_W` or more) it has not reported
+    for `max_age_s`."""
+    from homeassistant.util import dt as dt_util  # noqa: PLC0415
+    from homeassistant.util.unit_conversion import PowerConverter  # noqa: PLC0415
+
+    from ..core.parse import number_from_state  # noqa: PLC0415
+
+    state = hass.states.get(entity_id)
+    if state is None or state.state in ("unavailable", "unknown"):
+        return None
+    value = number_from_state(state.state)
+    unit = state.attributes.get("unit_of_measurement")
+    if value is None or unit not in PowerConverter.VALID_UNITS:
+        return None
+    watts = PowerConverter.convert(value, unit, "W")
+    reported = getattr(state, "last_reported", None) or state.last_updated
+    if watts >= QUIET_BELOW_W and (((now or dt_util.utcnow()) - reported).total_seconds()) > max_age_s:
+        return None
+    return watts
+
+
 def resolve_zones(
     zones: Sequence[tuple[str, str, tuple[str, str] | None, str | None]],
     meter: HeatMeter,

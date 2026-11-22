@@ -78,6 +78,7 @@ from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHi
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
 from .demand_ceiling import SiteDemandCeiling
+from .shed_order import ShedOrder
 from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
@@ -892,6 +893,10 @@ class SiteCapacityController:
         from .import_target_hold import ImportTargetHold  # noqa: PLC0415 - it imports us
 
         self._import_target_hold = ImportTargetHold(self)
+        # One shed order under the hold's ceiling (`site/shed_order.py`): battery, water heater, car, heat; run by the
+        # hold on its own projection, kept in memory only.
+        # Nothing is shed for a while after a start: what ended before it is not known (`ShedOrder`).
+        self.shed_order = ShedOrder(started_at=dt_util.utcnow())
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -5567,6 +5572,7 @@ class SiteCapacityController:
             self._target_shares = {}
             self._target_lowered = set()
             self._target_raise_lock = {}
+            self.shed_order.clear(dt_util.utcnow(), "error")
             self._target_not_applied = TARGET_NOT_APPLIED_ERROR
             self._note_target_state(TARGET_NOT_APPLIED_ERROR)
             return decisions

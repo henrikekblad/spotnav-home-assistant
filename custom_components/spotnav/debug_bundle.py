@@ -104,7 +104,10 @@ hours and review, the house's hours, the settings and the shadow logs of the swi
 
 Since 3.0 a site's `diagnostics` also carry `flexible_loads` (additive, no new version): every load the plan can move
 (each member charger's car, the home battery, the heat pump, each floor-heating zone, the water heater) in one shape,
-its goal, handles, hard rules, give and choices (`site/flexible_loads.py`, `planning/flexible_load.py`).
+its goal, handles, hard rules, give and choices (`site/flexible_loads.py`, `planning/flexible_load.py`), each with its
+`state` (running, paused, blocked or watched) and `state_reason` (`ceiling` while the shed order holds it); and
+`shed_order`: the steps the shed order under the ceiling has taken, the projection, what blocks a step and its log
+(`site/shed_order.py`).
 """
 
 from __future__ import annotations

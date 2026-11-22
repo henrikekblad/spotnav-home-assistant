@@ -142,6 +142,17 @@ describe("the Plan tab", () => {
     }
   });
 
+  it("words the shed order's steps: paused and lowered for the ceiling", () => {
+    const heater = plan().loads.find((load) => load.kind === "water_heater")!;
+    const heat = plan().loads.find((load) => load.kind === "heat")!;
+    const run = { ...heater.runs[0]!, what: "paused", reason: "ceiling" };
+    expect(runWords("sv", heater, run)).toBe("Beredaren pausad: för taket");
+    expect(runWords("en", heat, { ...heat.runs[0]!, what: "lower", reason: "ceiling" })).toBe("Heating lowered: for the ceiling");
+    for (const language of LANGUAGES) {
+      expect(runWords(language, heater, run), language).not.toMatch(/house\.plan\./);
+    }
+  });
+
   it("fits a phone's width without a fixed wider box", () => {
     const root = body(plan(), "sv", 300);
     const chart = root.querySelector("svg")!;

@@ -37,6 +37,7 @@ from ..site.flexible_loads import has_power_tariff
 from ..site.house_forecast import BASIS_GROSS
 from ..site.does_not_fit import site_does_not_fit
 from ..site.import_target import stored_import_target_kw
+from ..site.shed_order import LOAD_HEAT, LOAD_WATER_HEATER
 from ..site.plan_view import (
     CEILING_IMPORT_TARGET,
     CEILING_POWER_LEVEL,
@@ -154,6 +155,7 @@ def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[
     if shadow is None:
         return None, (), None
     config = shadow.config()
+    heat_shed, heater_shed = _shed(controller, LOAD_HEAT), _shed(controller, LOAD_WATER_HEATER)
     band = list(shadow.plan or ())
     heat = None
     pump_id = config.control_entity or shadow.relay_id
@@ -169,6 +171,7 @@ def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[
             live=live,
             heat_kw=_guarded("heat pump's heat", shadow.heat_kw, lambda _hour: None),
             lower_share=0.0 if effect is None else float(effect.lower_share),
+            shed=heat_shed,
         )
     zones: list[ZonePlan] = []
     zones_control = getattr(controller, "zones_control", None)
@@ -182,6 +185,9 @@ def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[
             if running
             else planned_lower
         )
+        if not running and heat_shed is not None:
+            # A watched zone the shed order would lower too.
+            lowered = (*lowered, heat_shed)
         zones.append(ZonePlan(id=zone.entity_id, name=_name(hass, zone.entity_id), lowered=lowered, live=running))
     heater = None
     heater_control = getattr(controller, "water_heater_control", None)
@@ -199,8 +205,29 @@ def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[
             windows=tuple(windows),
             kw=float(kw) if isinstance(kw, (int, float)) else None,
             live=bool(status.get("live")),
+            shed=heater_shed,
         )
     return heat, tuple(zones), heater
+
+
+def _shed(controller: Any, load: str) -> tuple[datetime, datetime] | None:
+    """The shed order's step for a load (`site/shed_order.py`): `(since, until)`; a live one only once its control
+    holds it (the water heater off, the pump lowered), never from the step's existence alone; a `would` one (the
+    lane says would). `None` without one."""
+    order = getattr(controller, "shed_order", None)
+    step = None if order is None else order.step(load)
+    if step is None:
+        return None
+    if step.live:
+        if load == LOAD_WATER_HEATER:
+            part = getattr(controller, "water_heater_control", None)
+            held = bool(part is not None and part.held_off)
+        else:
+            part = getattr(controller, "heat_control", None)
+            held = bool(part is not None and part.held)
+        if not (step.taken and held):
+            return None
+    return (step.since, step.until)
 
 
 def _soft(controller: Any) -> dict[datetime, float]:

@@ -347,3 +347,57 @@ async def test_the_zones_are_set_back_at_the_stop_at_the_same_time(hass: HomeAss
     await zones.async_shutdown()
     assert sorted(started) == sorted(by_id)
     assert floor.setpoint == 22.0 and other.setpoint == 22.0 and not zones.holds_any()
+
+
+async def test_a_zone_s_power_is_read_from_its_power_sensor_beside_an_energy_one(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.site import heat_zones
+    from custom_components.spotnav.site.heat_zones import DeviceSensor
+
+    _entry, zones, _thermostat, _now = await _running(hass, freezer, {})
+    sensors = [
+        DeviceSensor("sensor.golv_energi", "energy", "kWh", "total_increasing"),
+        DeviceSensor("sensor.golv_effekt", "power", "W", "measurement"),
+    ]
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", sensors))
+    hass.states.async_set("sensor.golv_effekt", "450", {"unit_of_measurement": "W"})
+    assert zones._zone_power_w(FLOOR) == 450.0  # noqa: SLF001
+    hass.states.async_set("sensor.golv_effekt", "0.5", {"unit_of_measurement": "kW"})
+    assert zones._zone_power_w(FLOOR) == 500.0  # noqa: SLF001
+
+
+async def test_the_effect_check_needs_two_looks_in_a_row(hass: HomeAssistant, freezer) -> None:
+    _entry, zones, thermostat, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    thermostat.attributes = {**thermostat.attributes, "hvac_action": "heating"}
+    thermostat.show()
+    await zones.async_look(now)
+    await zones.async_look(now + MIN)
+    zone = zones.zones[FLOOR]
+    assert zone.effect is not None
+    # One idle look, then heating again: not passed.
+    for step, action in enumerate(("idle", "heating", "idle", "idle"), start=2):
+        thermostat.attributes = {**thermostat.attributes, "hvac_action": action}
+        thermostat.show()
+        await zones.async_look(now + step * MIN)
+        if step < 5:
+            assert zone.check is None, step
+    assert zone.check is not None and zone.check["result"] == "passed"
+
+
+async def test_another_channel_s_fall_does_not_pass_the_effect_check(hass: HomeAssistant, freezer) -> None:
+    """The meter on the zone's device falls (another channel's load stopped) while the thermostat still says it heats:
+    no pass; past the grace, two looks without the effect fail it."""
+    _entry, zones, thermostat, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    readings = iter([800.0] + [100.0] * 100)
+    zones._zone_power_w = lambda _entity: next(readings)  # type: ignore[method-assign]  # noqa: SLF001
+    thermostat.attributes = {**thermostat.attributes, "hvac_action": "heating"}
+    thermostat.show()
+    await zones.async_look(now)
+    await zones.async_look(now + MIN)
+    zone = zones.zones[FLOOR]
+    assert zone.effect is not None and zone.effect["by"] == "power"
+    for step in range(2, 8):
+        await zones.async_look(now + step * MIN)
+    assert zone.check is None
+    for step in range(12, 16):
+        await zones.async_look(now + step * MIN)
+    assert zone.check is not None and zone.check["result"] == "failed"
