@@ -559,8 +559,8 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # inside the window starts it.
             return s, ()
         if event.finished:
-            # The car finished the charge itself (full) and is still plugged in: a start does not change that, as the
-            # window start's retry already says (`_start_retry_refused`).
+            # The car finished the charge itself and a start of this same plan was already tried since, with its level
+            # not dropped (the shell's `_finished_repeat`): another start does not change that.
             return s, ()
         if s.owner in WINDOW_START_SPARED:
             # A charge started by hand is not the plan's to take over (its end would stop it).

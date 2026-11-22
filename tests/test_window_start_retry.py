@@ -26,6 +26,7 @@ from custom_components.spotnav.execution.controller import (
     OWED_GIVE_UP_S,
     START_RETRY_AFTER_S,
 )
+from custom_components.spotnav.core.ownership import SOC_DROP_PCT
 from custom_components.spotnav.flows.charger_detection import detect_charger
 
 from .charger_helpers import detected_config
@@ -258,7 +259,56 @@ async def test_a_car_that_finished_by_itself_is_not_resumed_at_the_next_windows(
     _easee(hass, "completed")  # the car is full
     await hass.async_block_till_done()
     await _walk(hass, freezer, 9000, step=60)
-    assert commands.count("resume") == 1, commands
+    assert commands.count("resume") == 2, f"the window's start and one try for the plan, no more: {commands}"
+
+
+def _soc(level: list[float]) -> Any:
+    from custom_components.spotnav.execution.target_stop import SocReading
+
+    return lambda _vehicle: SocReading(level[0], "vehicle", "sensor.car_soc", None, 10.0)
+
+
+async def _finished_after_a_try(hass: HomeAssistant, freezer: Any, level: list[float], plan: dict[str, Any]):
+    """An Easee that charged the car until `completed`, and the second window's one try already spent."""
+    controller = await _shaped_charger(hass, "easee")
+    controller._soc_reader = _soc(level)  # noqa: SLF001 - the car's level, as the entry wires it
+    _easee(hass, "awaiting_start")
+    commands = _easee_commands(hass)
+    await install_schedule(controller, plan)
+    await _after(hass, freezer, 31)
+    _easee(hass, "charging")
+    await _walk(hass, freezer, 600)
+    _easee(hass, "completed")
+    await hass.async_block_till_done()
+    await _walk(hass, freezer, 65 * 60, step=60)  # into the second window: its one try
+    assert commands.count("resume") == 2, commands
+    return controller, commands
+
+
+async def test_a_raised_target_after_the_car_finished_is_tried_again(hass: HomeAssistant, freezer: Any) -> None:
+    level = [75.0]  # the car stopped below the target (its own limit)
+    plan = {**_windows((0, 30), (60, 90), (120, 150)), "target_soc_percent": 80}
+    controller, commands = await _finished_after_a_try(hass, freezer, level, plan)
+    # A new plan for a raised target, made while the car still says `completed`.
+    raised = {**_windows((0, 20), (40, 60)), "target_soc_percent": 95}
+    await install_schedule(controller, raised)
+    await _walk(hass, freezer, 70 * 60, step=60)
+    assert commands.count("resume") == 3, commands
+
+
+async def test_a_car_level_dropped_since_the_try_is_tried_again(hass: HomeAssistant, freezer: Any) -> None:
+    level = [100.0]
+    controller, commands = await _finished_after_a_try(hass, freezer, level, _windows((0, 30), (60, 90), (120, 150)))
+    level[0] = 100.0 - SOC_DROP_PCT
+    await _walk(hass, freezer, 60 * 60, step=60)  # the third window
+    assert commands.count("resume") == 3, commands
+
+
+async def test_a_full_car_is_tried_once_per_plan(hass: HomeAssistant, freezer: Any) -> None:
+    level = [100.0]
+    controller, commands = await _finished_after_a_try(hass, freezer, level, _windows((0, 30), (60, 90), (120, 150)))
+    await _walk(hass, freezer, 60 * 60, step=60)  # the third window: nothing new
+    assert commands.count("resume") == 2, commands
 
 
 async def test_a_charger_that_reads_finished_after_our_stop_is_started_at_the_next_window(

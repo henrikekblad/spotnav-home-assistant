@@ -160,6 +160,7 @@ from ..core.ownership import (
     PERSON_HOLD_MAX_STOPS,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_STOP_GAP_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_WINDOW_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
+    SOC_DROP_PCT,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -948,6 +949,10 @@ class ChargingController:
         # Whether the charger's "the car finished" (`charger_connection.FINISHED`) came without a stop of ours behind
         # it, as seen when it began (`_observe_finished`); `None` while it does not say so, or since a restart.
         self._finished_by_car: bool | None = None
+        # The plan (`_finished_key`) a window's start was already tried for while the car had finished, and the car's
+        # level then: one try per plan, again when the car's level has dropped since (`_finished_repeat`).
+        self._finished_tried: tuple[Any, ...] | None = None
+        self._finished_tried_soc: float | None = None
         self._seen_charging: bool | None = None
         # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
         self._stop_settled = False
@@ -1742,6 +1747,7 @@ class ChargingController:
         sent later (a window's end: an Easee stays `completed`)."""
         if self.adapter.connection()[0] != CONNECTION_FINISHED:
             self._finished_by_car = None
+            self._finished_tried = self._finished_tried_soc = None
         elif self._finished_by_car is None:
             since = self._stop_settle_since
             ours = (
@@ -1756,6 +1762,40 @@ class ChargingController:
         if self.adapter.connection()[0] != CONNECTION_FINISHED:
             return False
         return self._finished_by_car if self._finished_by_car is not None else not self._own_stop
+
+    def _finished_key(self) -> tuple[Any, ...] | None:
+        """What makes a plan another one for a car that finished: its car, target, charge to the car's limit and
+        departure. A plan made again for the same (new prices) is the same."""
+        plan = self.plan
+        if plan is None:
+            return None
+        return (plan.vehicle_id, plan.target_soc_percent, plan.to_vehicle_limit, plan.departure)
+
+    def _finished_soc(self) -> float | None:
+        plan = self.plan
+        if plan is None or self._soc_reader is None:
+            return None
+        try:
+            reading = self._soc_reader(plan.vehicle_id)
+        except Exception:  # noqa: BLE001 - an unreadable car is a level not known
+            return None
+        return None if reading is None else reading.soc_percent
+
+    def _finished_repeat(self) -> bool:
+        """Whether a window's start would only repeat one already tried while the car had finished by itself: the
+        same plan (`_finished_key`; a raised target, another car or departure is a new one, tried once), and the car's
+        level not `SOC_DROP_PCT` below the one at that try (its need did not grow). A car the charger says finished may
+        have stopped at its own lower limit, or the charger's side may have ended it: one try per plan finds out."""
+        if not self._car_finished() or self._finished_tried is None or self._finished_tried != self._finished_key():
+            return False
+        level, tried = self._finished_soc(), self._finished_tried_soc
+        return not (level is not None and tried is not None and level <= tried - SOC_DROP_PCT)
+
+    def _note_finished_try(self) -> None:
+        """A window's start goes out to a car that finished by itself: the one try for this plan."""
+        if self._car_finished():
+            self._finished_tried = self._finished_key()
+            self._finished_tried_soc = self._finished_soc()
 
     def _observe_connection(self) -> None:
         """Notice a plug-in or an unplug: a change between two connection states the charger reported.
@@ -6026,6 +6066,7 @@ class ChargingController:
             outcome = CommandOutcome(False)
             # Armed before the command: a start that raises is decided again too.
             self._arm_start_retry()
+            self._note_finished_try()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._core_start_outcome(executed)
             if not executed and not self._start_held_back and not self._charger_ready():
@@ -6975,7 +7016,7 @@ class ChargingController:
             "control_on": self._control_on,
             "connected": self.adapter.vehicle_connected(),
             # A charger that says the car finished, with no stop of SpotNav's behind it: the car ended the charge.
-            "finished": self._car_finished(),
+            "finished": self._finished_repeat(),
             "start_pending": self._core_start_pending(),
             **self._core_hold_facts(),
         }
