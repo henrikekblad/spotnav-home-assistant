@@ -1414,8 +1414,20 @@ export class SettingsPopover {
         background: this.input.background,
         onClose: () => {
           this.scrollTop = null;
+          this.leaveEditor = null;
+        },
+        // In an editor, the cross, Escape or the backdrop go back to the page, as Cancel does.
+        onDismiss: () => {
+          const back = this.leaveEditor;
+          this.leaveEditor = null;
+          if (back === null) {
+            return false;
+          }
+          back();
+          return true;
         },
       });
+      this.dialog.element.classList.add(C.settingsWide);
     }
     return this.dialog;
   }
@@ -1543,6 +1555,7 @@ export class SettingsPopover {
     const dialog = this.ensureDialog();
     this.scrollTop = this.panel()?.scrollTop ?? null;
     const back = (): void => {
+      this.leaveEditor = null;
       dialog.show({ title: this.title(), body: this.body() });
       const panel = this.panel();
       if (panel !== null && this.scrollTop !== null) {
@@ -1557,7 +1570,11 @@ export class SettingsPopover {
       onCancel: back,
     });
     dialog.show({ title, body: form, actions: takeActions(form, `${this.input.idPrefix}-popover-value`) });
+    this.leaveEditor = back;
   }
+
+  /** How the open editor goes back to the page (its Cancel), `null` while the page itself shows. */
+  private leaveEditor: (() => void) | null = null;
 
   private body(): HTMLElement {
     const doc = this.input.doc;

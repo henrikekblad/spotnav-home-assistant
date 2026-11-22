@@ -343,7 +343,10 @@ describe("a refresh never closes an open dialog", () => {
     expect(openDialog(element)).not.toBeNull();
     expect(shadow(element).textContent).not.toContain("Renamed Charger");
 
-    // Close it (Escape, the same path the close button and the backdrop share).
+    // Close it (Escape, the same path the close button and the backdrop share): About goes back to Settings, which
+    // it was opened from, and a second Escape closes Settings.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await settle();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await settle();
 

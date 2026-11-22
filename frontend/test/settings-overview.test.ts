@@ -234,6 +234,21 @@ describe("the general Settings popover", () => {
     expect(openDialog(element)?.textContent).toContain(translate("en", "settings.overview.title"));
   });
 
+  it("goes back to Settings from About this card by the cross or Escape", async () => {
+    const { element } = await mounted();
+    settingsGeneralButton(element).click();
+    shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
+    expect(openDialog(element)?.textContent).toContain(translate("en", "cap.title"));
+    openDialog(element)!.querySelector<HTMLButtonElement>(".spotnav-dialog-close")!.click();
+    expect(openDialog(element)?.textContent).toContain(translate("en", "settings.overview.title"));
+    shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(openDialog(element)?.textContent).toContain(translate("en", "settings.overview.title"));
+    // From the page itself the cross closes.
+    openDialog(element)!.querySelector<HTMLButtonElement>(".spotnav-dialog-close")!.click();
+    expect(openDialog(element)).toBeNull();
+  });
+
   it("closes on Escape and returns focus to the button that opened it", async () => {
     const { element } = await mounted();
     settingsGeneralButton(element).click();
