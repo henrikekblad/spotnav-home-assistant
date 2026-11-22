@@ -403,6 +403,12 @@ a change of that state: a value it reports again says nothing. When neither can,
 headline: only Start or Resume ends the Stop. It is a status line only, never a notification. The webhook leaves it
 out unless the request asks for it (`"reads": ["stop_unplug_unseen"]`).
 
+**A charge capped by the Easee circuit.** While an Easee charger charges and the enabled `dynamic_circuit_limit`
+sensor of its circuit (on the circuit's master charger, disabled by default in the Easee integration) reads a limit
+below the current SpotNav set, the line `charger_circuit_limited` (`limit_a`, the lowest phase's limit in A; tone
+`notice`) says so. SpotNav reads that limit and never writes it. The webhook leaves it out, and works the block's tone
+out again, unless the request asks for it (`"reads": ["circuit_limited"]`).
+
 **The sun filling past a reached target.** Under Solar or Hybrid with a target, once the car is at the target and
 below its own known charge limit, the sun may keep charging it to that limit. The status then says
 `sun_past_target` (`percent`, the car's limit; tone `normal`): after the solar headline, and under Hybrid in place

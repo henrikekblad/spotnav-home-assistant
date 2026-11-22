@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Ladataan ilman julkaistuja hintoja, jotta määräaika pysyy.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
+  "issue.circuitLimited": "Easee-piirin oma dynaaminen raja pitää tämän laturin arvossa {limit}, alle SpotNavin asettaman. Se asetetaan Easeessa (sovellus, Equalizer tai automaatio); SpotNav ei muuta sitä.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
   "issue.chargerDisabled.turnOn": "Ota käyttöön",
   "issue.ownMode": "Laturin oma {label} on päällä ({state}). Se toimii SpotNavia vastaan.",

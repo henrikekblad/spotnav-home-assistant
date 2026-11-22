@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Lädt ohne veröffentlichte Preise, um die Abfahrtszeit einzuhalten.",
   "issue.loadBalancing": "Lastmanagement ist für diese Ladestation nicht verfügbar.",
   "issue.heldByCharger": "Der eigene Zeitplan oder das Lastmanagement der Ladestation hält das Laden zurück, daher hat es nicht begonnen.",
+  "issue.circuitLimited": "Das eigene dynamische Limit des Easee-Stromkreises hält diese Ladestation auf {limit}, unter dem, was SpotNav eingestellt hat. Es wird in Easee gesetzt (App, Equalizer oder eine Automation); SpotNav ändert es nicht.",
   "issue.chargerDisabled": "Der eigene Freigabeschalter der Ladestation ist aus, daher kann sie nicht starten. Schalte ihn in den Einstellungen der Ladestation ein.",
   "issue.chargerDisabled.turnOn": "Einschalten",
   "issue.ownMode": "Die eigene Funktion „{label}“ der Ladestation ist an ({state}). Sie arbeitet gegen SpotNav.",

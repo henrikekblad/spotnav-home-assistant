@@ -170,6 +170,10 @@ APP_UNREAD_GUEST_CODES: Final = ("guest_planned", "guest_done")
 #: block's tone stays as it was.
 APP_UNREAD_STOP_UNPLUG_UNSEEN_CODES: Final = ("stop_unplug_unseen",)
 APP_READS_STOP_UNPLUG_UNSEEN: Final = "stop_unplug_unseen"
+#: A limit outside SpotNav's reach caps the charge (`charger_circuit_limited`, Easee's circuit dynamic limit): left out
+#: for an app that does not read `APP_READS_CIRCUIT_LIMITED`. It is a notice, so the block's tone is worked out again.
+APP_UNREAD_CIRCUIT_LIMITED_CODES: Final = ("charger_circuit_limited",)
+APP_READS_CIRCUIT_LIMITED: Final = "circuit_limited"
 #: The departure calendar (`planning/calendar_departure.py`): the dashboard's `departure_calendar` block is left out for
 #: an app that does not read `APP_READS_DEPARTURE_CALENDAR`, as is the settings field of the same name (a replacement
 #: without it keeps the stored calendar).
@@ -258,6 +262,8 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
         return None
     if code in APP_UNREAD_STOP_UNPLUG_UNSEEN_CODES and APP_READS_STOP_UNPLUG_UNSEEN not in opted_in:
         return None
+    if code in APP_UNREAD_CIRCUIT_LIMITED_CODES and APP_READS_CIRCUIT_LIMITED not in opted_in:
+        return None
     if APP_READS_IMPORT_TARGET_STATUS not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         if code in APP_UNREAD_IMPORT_TARGET_FACT_CODES:
@@ -289,7 +295,8 @@ def _status_block_for_app(status: dict[str, Any], opted_in: set[str]) -> dict[st
     ]
     shown = {**status, "lines": lines}
     if any(
-        isinstance(line, dict) and line.get("code") in (*APP_UNREAD_OWN_MODE_CODES, *APP_UNREAD_GUEST_CODES)
+        isinstance(line, dict)
+        and line.get("code") in (*APP_UNREAD_OWN_MODE_CODES, *APP_UNREAD_GUEST_CODES, *APP_UNREAD_CIRCUIT_LIMITED_CODES)
         for line in status["lines"]
     ):
         # A notice left out may have been the only one: the tone is the strongest line the app still gets.

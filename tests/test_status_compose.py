@@ -882,6 +882,18 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "held_by_charger", "params": {}}],
     ),
     (
+        "a charge an Easee circuit limit caps below what SpotNav set says so, only while it charges",
+        base(circuit_limit_a=10.0, charging=True),
+        "notice",
+        [{"code": "charging_now", "params": {"until": None}}, {"code": "charger_circuit_limited", "params": {"limit_a": 10.0}}],
+    ),
+    (
+        "a circuit limit is no line while nothing charges",
+        base(circuit_limit_a=10.0, waiting_for_tomorrow=True),
+        "normal",
+        [{"code": "waiting_for_tomorrow", "params": {}}],
+    ),
+    (
         "a charger whose own enable switch is off says so, and only while it is not charging",
         base(charger_disabled=True, charger_disabled_entity="switch.easee_is_enabled", waiting_for_tomorrow=True),
         "notice",

@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Lader uden offentliggjorte priser for at overholde sluttidspunktet.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
+  "issue.circuitLimited": "Easee-kredsens egen dynamiske grænse holder laderen på {limit}, under det SpotNav har sat. Den sættes i Easee (appen, en Equalizer eller en automatisering); SpotNav ændrer den ikke.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
   "issue.chargerDisabled.turnOn": "Slå til",
   "issue.ownMode": "Laderens egen {label} er slået til ({state}). Den modarbejder SpotNav.",

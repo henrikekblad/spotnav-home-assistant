@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Laddar utan publicerade priser för att hålla sluttiden.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
+  "issue.circuitLimited": "Easee-kretsens egen dynamiska gräns håller laddaren på {limit}, under vad SpotNav har satt. Den sätts i Easee (appen, en Equalizer eller en automation); SpotNav ändrar den inte.",
   "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
   "issue.chargerDisabled.turnOn": "Slå på",
   "issue.ownMode": "Laddboxens egen {label} är på ({state}). Den motverkar SpotNav.",

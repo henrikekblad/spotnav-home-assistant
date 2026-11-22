@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Cargando sin precios publicados para cumplir la hora límite.",
   "issue.loadBalancing": "El equilibrado de carga no está disponible para este cargador.",
   "issue.heldByCharger": "La programación propia del cargador o su equilibrado de carga está reteniendo la carga, así que no ha empezado.",
+  "issue.circuitLimited": "El límite dinámico propio del circuito Easee mantiene este cargador en {limit}, por debajo de lo que SpotNav ha fijado. Se ajusta en Easee (su app, un Equalizer o una automatización); SpotNav no lo cambia.",
   "issue.chargerDisabled": "El interruptor de activación propio del cargador está apagado, así que no puede empezar. Actívalo en los ajustes del cargador.",
   "issue.chargerDisabled.turnOn": "Activar",
   "issue.ownMode": "La función propia «{label}» del cargador está activada ({state}). Va en contra de SpotNav.",

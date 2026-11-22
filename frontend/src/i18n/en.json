@@ -124,6 +124,7 @@
   "issue.chargingWithoutPrices": "Charging without published prices to keep the deadline.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
+  "issue.circuitLimited": "The Easee circuit's own dynamic limit holds this charger to {limit}, below what SpotNav set. It is set in Easee (its app, an Equalizer or an automation); SpotNav does not change it.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.chargerDisabled.turnOn": "Turn on",
   "issue.ownMode": "The charger's own {label} is on ({state}). It works against SpotNav.",

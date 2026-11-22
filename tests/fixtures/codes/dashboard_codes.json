@@ -168,6 +168,12 @@
       ],
       "tone": "normal"
     },
+    "charger_circuit_limited": {
+      "params": [
+        "limit_a"
+      ],
+      "tone": "notice"
+    },
     "charger_disabled": {
       "params": [
         "entity",

@@ -1767,6 +1767,7 @@ export const STATUS_CODE_TABLE = {
   load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull", cause: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
   held_by_charger: ["notice", {}],
+  charger_circuit_limited: ["notice", { limit_a: "number" }],
   charger_disabled: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   charger_own_mode: [
     "notice",
