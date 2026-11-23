@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from custom_components.spotnav.heat.config import HeatConfig, apply_changes, read_config
 from custom_components.spotnav.notifications.heat_settings import HeatNotifications
 from custom_components.spotnav.pool.config import PoolConfig, PoolHeatPump, read_pool
+from custom_components.spotnav.sauna.config import SaunaConfig, read_sauna
 from custom_components.spotnav.spa.config import Bath, SpaConfig, idle_from_setpoint, read_spa
 
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
@@ -259,3 +260,56 @@ def test_the_compare_and_set_compares_the_blocks() -> None:
     assert _same("pool", stored, dict(stored))
     assert not _same("pool", stored, {**stored, "target_c": 28.0})
     assert _same("pool", stored, {**stored, "target_c": 27})
+
+
+# ---- the sauna
+
+
+def test_a_sauna_from_an_integration_and_its_ranges() -> None:
+    known = {**KNOWN, "climate.huum": "climate", "switch.bastu": "switch", "binary_sensor.bastu_door": "door"}
+
+    def sauna_check(entity_id: str, role: str) -> bool | None:
+        return True if entity_id in known else None
+
+    config, errors = apply_changes(
+        HeatConfig(),
+        {"sauna": {"entity_id": "climate.huum", "family": "huum", "sessions": [{"weekdays": [5], "time": "17:00"}], "lock_id": "binary_sensor.bastu_door"}},
+        now=NOW,
+        check=sauna_check,
+    )
+    assert errors == []
+    assert config.sauna == SaunaConfig(
+        "climate.huum", "huum", sessions=(Bath((5,), "17:00"),), lock_id="binary_sensor.bastu_door"
+    )
+    assert config.sauna.target_c == 80.0 and config.sauna.controllable
+    assert read_config(config.as_dict()) == config
+    for changes, expected in (
+        ({"target_c": 120}, ("sauna.target_c", "out_of_range")),
+        ({"target_c": 80.5}, ("sauna.target_c", "not_a_step")),
+        ({"heater_kw": 1}, ("sauna.heater_kw", "out_of_range")),
+        ({"session_once": (NOW - timedelta(hours=1)).isoformat()}, ("sauna.session_once", "session_in_past")),
+        ({"lock_id": "sensor.x"}, ("sauna.lock_id", "wrong_kind")),
+        ({"entity_id": "switch.bastu"}, ("sauna.entity_id", "wrong_kind")),
+    ):
+        _same, found = apply_changes(config, {"sauna": changes}, now=NOW, check=sauna_check)
+        assert [(e.field, e.code) for e in found] == [expected], changes
+
+
+def test_a_relay_sauna_is_controlled_only_with_its_safety_measure_declared() -> None:
+    def sauna_check(entity_id: str, role: str) -> bool | None:
+        return True
+
+    relay = {"entity_id": "switch.bastu", "family": "relay", "heater_kw": 9}
+    config, errors = apply_changes(HeatConfig(), {"sauna": {**relay, "control": True}}, now=NOW, check=sauna_check)
+    assert [(e.field, e.code) for e in errors] == [("sauna.control", "safety_required")]
+    config, errors = apply_changes(
+        HeatConfig(), {"sauna": {**relay, "safety_declared": True, "control": True}}, now=NOW, check=sauna_check
+    )
+    assert errors == [] and config.sauna.control and config.sauna.controllable
+    # A generic climate is watched only.
+    _config, errors = apply_changes(
+        HeatConfig(), {"sauna": {"entity_id": "climate.x", "family": "generic", "control": True}}, now=NOW, check=sauna_check
+    )
+    assert [(e.field, e.code) for e in errors] == [("sauna.control", "watch_only")]
+    # Stored broken: watched, undeclared.
+    assert read_sauna({"entity_id": "switch.bastu", "family": "relay", "control": True}) == SaunaConfig("switch.bastu", "relay")

@@ -166,3 +166,35 @@ async def test_the_heat_cards_choices_carry_the_pool_the_spa_and_the_phones(hass
     assert chosen["pool"]["circulation"][0] == {
         "entity_id": "switch.pool_cirkulation", "name": "Pool cirkulation", "value": "off", "score": 0.5, "ask": True
     }
+
+
+def test_the_sauna_routes_and_their_door() -> None:
+    from custom_components.spotnav.sauna.detect import saunas
+
+    found = saunas(
+        [
+            Seen("climate.huum", "huum", "dev_huum", "Huum"),
+            Seen("binary_sensor.huum_door", "huum", "dev_huum", "Door", device_class="door"),
+            Seen("climate.saunum", "saunum", "dev_saunum", "Saunum", hvac_modes=("off", "heat"), fan_modes=True),
+            Seen("binary_sensor.saunum_door", "saunum", "dev_saunum", "Door", translation_key=None, device_class="door"),
+            Seen("climate.harvia", "harvia_sauna", "dev_harvia", "Harvia", translation_key="thermostat"),
+            Seen("binary_sensor.harvia_door", "harvia_sauna", "dev_harvia", "Door", translation_key="door"),
+            Seen("climate.tylo", "tylo_sauna", "dev_tylo", "Tylö"),
+            Seen("climate.sentio", "sentio", "dev_sentio", "Sentio"),
+            Seen("switch.bastuaggregat", "zwave_js", "dev_relay", "Bastuaggregat"),
+            Seen("climate.ugn", "esphome", "dev_ugn", "Bastu ugn", max_c=110.0, min_c=40.0),
+            Seen("switch.lampa", "zwave_js", "dev_lamp", "Lampa"),
+        ]
+    )
+    by_id = {c.entity_id: c for c in found}
+    assert set(by_id) == {
+        "climate.huum", "climate.saunum", "climate.harvia", "climate.tylo", "climate.sentio", "switch.bastuaggregat", "climate.ugn"
+    }
+    assert (by_id["climate.huum"].family, by_id["climate.huum"].score, by_id["climate.huum"].lock_id) == ("huum", 1.0, "binary_sensor.huum_door")
+    assert by_id["climate.harvia"].lock_id == "binary_sensor.harvia_door" and by_id["climate.harvia"].as_dict()["cloud"] is True
+    assert by_id["climate.tylo"].lock_id is None
+    assert (by_id["switch.bastuaggregat"].family, by_id["switch.bastuaggregat"].ask) == ("relay", True)
+    assert by_id["climate.ugn"].family == "generic"
+    # A sauna's climate (40-110 °C) is never a pool heat pump, nor a spa.
+    assert heat_pump_score(Seen("climate.saunum", "saunum", hvac_modes=("off", "heat"), fan_modes=True, min_c=40, max_c=100)) == 0.0
+    assert spas([Seen("climate.huum", "huum", min_c=40.0, max_c=110.0, name="Sauna")]) == []

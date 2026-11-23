@@ -27,6 +27,7 @@ hand-edited one never fails a read):
      zones: [{entity_id: climate id, offset_c: -3..3 in 0.5 steps, control: bool}] (up to 8),
      water_heater: {entity_id: switch id, control: bool, tank_sensor: sensor id | null} | null,
      pool: the pool's block (`pool/config.py`) | null, spa: the spa's block (`spa/config.py`) | null,
+     sauna: the sauna's block (`sauna/config.py`) | null,
      heat_notifications: {targets: [notify services], events: ["plan_at_risk", "pool_season"]}
      (`notifications/heat_settings.py`)}
 
@@ -34,7 +35,7 @@ A zone's `control` is the person's opt-in that lets SpotNav set that thermostat 
 the person's own setpoint: the zone's `offset_c` is kept but no longer acts). `water_heater` is a plain water heater
 switched by a `switch` (an immersion element on its own thermostat): chosen alone it is watched, `control` lets
 SpotNav switch it inside the legionella rules (`heat/water_heater.py`); `tank_sensor` an optional tank temperature.
-`pool`, `spa` and `heat_notifications` are judged by their own modules; each is an administrator's in `update_heat`
+`pool`, `spa`, `sauna` and `heat_notifications` are judged by their own modules; each is an administrator's in `update_heat`
 (the household's own pool and spa controls go through `spotnav/pool` and `spotnav/spa`). Their field errors name the
 key inside the block (`pool.target_c`, `spa.baths`).
 """
@@ -55,6 +56,7 @@ from ..notifications.heat_settings import (
     read_heat_notifications,
 )
 from ..pool.config import F_POOL, PoolConfig, apply_pool, read_pool
+from ..sauna.config import F_SAUNA, SaunaConfig, apply_sauna, read_sauna
 from ..spa.config import F_SPA, SpaConfig, apply_spa, read_spa
 
 TARGET_MIN_C: Final = 16.0
@@ -128,7 +130,7 @@ F_CONTROL_ENABLED: Final = "control_enabled"
 F_WATER_HEATER: Final = "water_heater"
 FIELDS: Final = (
     F_TARGET, F_MODE, F_AWAY_UNTIL, F_AWAY_DELTA, F_NIGHT, F_INDOOR, F_OUTDOOR, F_PATH, F_CONTROL, F_CONTROL_B, F_HOT_WATER, F_ZONES,
-    F_INDOOR_OFFSETS, F_CONTROL_ENABLED, F_WATER_HEATER, F_POOL, F_SPA, F_HEAT_NOTIFICATIONS,
+    F_INDOOR_OFFSETS, F_CONTROL_ENABLED, F_WATER_HEATER, F_POOL, F_SPA, F_SAUNA, F_HEAT_NOTIFICATIONS,
 )
 #: What anyone who can see the card may change (the dial and home/away, a thermostat's own controls); the rest is an
 #: administrator's.
@@ -227,6 +229,7 @@ class HeatConfig:
     water_heater: WaterHeater | None = None
     pool: PoolConfig | None = None
     spa: SpaConfig | None = None
+    sauna: SaunaConfig | None = None
     heat_notifications: HeatNotifications = field(default_factory=HeatNotifications)
 
     def offset_of(self, entity_id: str) -> float:
@@ -252,6 +255,7 @@ class HeatConfig:
             F_WATER_HEATER: None if self.water_heater is None else self.water_heater.as_dict(),
             F_POOL: None if self.pool is None else self.pool.as_dict(),
             F_SPA: None if self.spa is None else self.spa.as_dict(),
+            F_SAUNA: None if self.sauna is None else self.sauna.as_dict(),
             F_HEAT_NOTIFICATIONS: self.heat_notifications.as_dict(),
         }
 
@@ -383,6 +387,7 @@ def read_config(raw: Any) -> HeatConfig:
         water_heater=_water_heater(raw.get(F_WATER_HEATER)),
         pool=read_pool(raw.get(F_POOL)),
         spa=read_spa(raw.get(F_SPA)),
+        sauna=read_sauna(raw.get(F_SAUNA)),
         heat_notifications=read_heat_notifications(raw.get(F_HEAT_NOTIFICATIONS)),
     )
 
@@ -407,7 +412,7 @@ class FieldError:
 #: What an entity id is, for the judge: `None` when Home Assistant knows no such entity, else whether it fits the
 #: role named (`indoor`, `outdoor`, `zone`, a control path's own name for its first entity and `<path>_b` for its
 #: second, `hot_water`, `water_heater`, `tank`; the pool's `pool_heat_pump`, `pool_switch`, `pool_number`,
-#: `pool_circulation`, `pool_water`; `spa`).
+#: `pool_circulation`, `pool_water`; `spa`; `sauna`, `sauna_lock`).
 EntityCheck = Callable[[str, str], bool | None]
 
 
@@ -687,6 +692,12 @@ def apply_changes(
         errors.extend(FieldError(name, code) for name, code in found)
         if not found:
             updated = replace(updated, spa=spa)
+
+    if F_SAUNA in changes:
+        sauna, found = apply_sauna(current.sauna, changes[F_SAUNA], check, now=now)
+        errors.extend(FieldError(name, code) for name, code in found)
+        if not found:
+            updated = replace(updated, sauna=sauna)
 
     if F_HEAT_NOTIFICATIONS in changes:
         phones, code = judge_heat_notifications(current.heat_notifications, changes[F_HEAT_NOTIFICATIONS])
