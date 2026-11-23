@@ -68,6 +68,11 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("sungrow", "Sungrow", (), "iSolarCloud", ("CheckWatt [F]", "Greenely (pilot) [V]")),
     Coexistence("goodwe", "GoodWe", ("goodwe",), "SEMS: eco modes", ("CheckWatt [F]", "Greenely (pilot) [V]")),
     Coexistence("pixii", "Pixii", (), "Pixii Home", ("Greenely [V]",)),
+    # Emaldo has no Home Assistant integration (a gh search found none, 2026-11-23): its own hardware is run from its
+    # cloud, by its own optimiser and its Grid Rewards guarantee plan, sold with Bixia (since July 2026, [V] in
+    # `plans/research_integrations/commercial_energy_gap_2026-11-14.md`).
+    Coexistence("emaldo", "Emaldo", (), "Emaldo app: its own optimiser and Grid Rewards plan",
+                ("Bixia, Grid Rewards guarantee plan [V]",)),
     Coexistence("ferroamp", "Ferroamp", ("ferroamp",), "EnergyHub", ("Ntricity / Varberg Energi, FCR-D [V]",)),
     Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
     Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),

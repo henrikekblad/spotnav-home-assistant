@@ -55,11 +55,17 @@ def _run(watch: OutsideControlWatch, start: datetime, seconds: float, step: floa
 
 def test_every_brand_named_in_the_research_has_a_row_and_is_watch_only() -> None:
     brands = {row.brand for row in COEXISTENCE}
-    assert {"sigenergy", "huawei", "sungrow", "goodwe", "pixii", "ferroamp", "homevolt", "sonnen"} <= brands
+    assert {"sigenergy", "huawei", "sungrow", "goodwe", "pixii", "ferroamp", "homevolt", "sonnen", "emaldo"} <= brands
     assert all(row.watch_only for row in COEXISTENCE)
     assert coexistence_for("sigenergy").platforms == ("sigen",)
     assert coexistence_for(None, "sonnenbatterie").brand == "sonnen"
     assert coexistence_for("nobody", "nothing") is None
+
+
+def test_emaldo_has_no_integration_and_names_its_own_plan_and_partner() -> None:
+    row = coexistence_for("emaldo")
+    assert row is not None and row.platforms == ()
+    assert "Bixia" in row.aggregators[0]
 
 
 def test_only_an_integration_that_runs_batteries_marks_by_itself() -> None:
