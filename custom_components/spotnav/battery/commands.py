@@ -411,6 +411,9 @@ class Expiry:
     evidence: Evidence = "stated"
     #: The `gate.firmware_key` values a field test saw the fallback act on (only with `evidence` `measured`).
     measured_on: frozenset[str] = frozenset()
+    #: For a phase spec's expiry (`PhaseControl.expiry`): the phases (`L1`..`L3`) that field test saw it act on;
+    #: only those phases' caps are lifted by it (owner decision 2026-11-23). Required there with `measured`.
+    measured_phases: frozenset[str] = frozenset()
     #: For `renewer` `integration`: which integration renews it (diagnostics text).
     integration: str = ""
     note: str = ""
@@ -443,6 +446,8 @@ class Expiry:
             raise ValueError("a window shorter than the shared renewal needs its own renew_s")
         if any(role not in self.renewed_roles for role, _value in self.fallback_values):
             raise ValueError("a documented fallback value is for a renewed role")
+        if not self.measured_phases <= {"L1", "L2", "L3"} or (self.measured_phases and self.evidence != "measured"):
+            raise ValueError("measured_phases names L1, L2 or L3, and only for a measured expiry")
 
     @property
     def expiry_id(self) -> str:
@@ -618,6 +623,10 @@ class PhaseControl:
     def watchdog_renew_s(self) -> int | None:
         """How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`."""
         return self.expiry.renew_s
+
+    def __post_init__(self) -> None:
+        if self.expiry.evidence == "measured" and not self.expiry.measured_phases:
+            raise ValueError("a phase expiry measured in the recipe names the phases it was measured on")
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)

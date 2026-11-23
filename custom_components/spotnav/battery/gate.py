@@ -725,11 +725,14 @@ def expiry_measured(
     """Whether the expiry's fallback was seen to act on this firmware (`firmware_key`): the recipe records a field
     test on it (`Expiry.evidence` `measured`, `measured_on`), or the routine's report for this key has the mode
     `expiry` obeyed for this very expiry (`Expiry.expiry_id`: a measured phase expiry never counts for a balanced
-    one) and, for a phase spec's, on this very phase (`phase`, its row `expiry:<phase>`). A key not read is never
+    one) and, for a phase spec's, on this very phase (`phase`, its row `expiry:<phase>`; in the recipe, one of
+    `Expiry.measured_phases`: a recipe measurement naming no phase lifts no phase). A key not read is never
     measured; a report kept under another key never counts."""
     if key is None or not firmware_known(key):
         return False
-    if expiry.evidence == "measured" and key in expiry.measured_on:
+    if expiry.evidence == "measured" and key in expiry.measured_on and (
+        phase is None or phase in expiry.measured_phases
+    ):
         return True
     return expiry_row_passed(report, expiry, phase) and report is not None and report.get("key") == key
 

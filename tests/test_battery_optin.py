@@ -298,16 +298,27 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
     control._key = "v3.60 | victron_gx 1"  # a firmware read once
     assert control.firmware_known()
     expiry = VICTRON_CONTROL.phase_control.expiry
-    measured = replace(VICTRON_CONTROL, phase_control=replace(
-        VICTRON_CONTROL.phase_control,
-        expiry=replace(expiry, evidence="measured", measured_on=frozenset({control.firmware_key()})),
-    ))
+    def recorded(phases: frozenset[str], key: str = control.firmware_key()) -> Any:
+        return replace(VICTRON_CONTROL, phase_control=replace(
+            VICTRON_CONTROL.phase_control,
+            expiry=replace(expiry, evidence="measured", measured_on=frozenset({key}), measured_phases=phases),
+        ))
+
+    measured = recorded(frozenset({"L1", "L2", "L3"}))
     assert control._expiry_lifts(measured, phased=True)
     assert not control._expiry_lifts(measured, phased=False)
-    elsewhere = replace(VICTRON_CONTROL, phase_control=replace(
-        VICTRON_CONTROL.phase_control,
-        expiry=replace(expiry, evidence="measured", measured_on=frozenset({"other | victron 0"})),
-    ))
+    # Recorded in the recipe on L1 alone: only L1's cap is lifted.
+    only_l1 = recorded(frozenset({"L1"}))
+    assert control._phase_expiry_lifts(only_l1) == (True, False, False)
+    assert not control._expiry_lifts(only_l1, phased=True) and not control._expiry_lifts(only_l1, phased=False)
+    # A phase expiry recorded in the recipe must name its phases; one that names none lifts nothing.
+    with pytest.raises(ValueError):
+        recorded(frozenset())
+    assert not gate.expiry_measured(
+        replace(expiry, evidence="measured", measured_on=frozenset({control.firmware_key()})),
+        control.firmware_key(), None, "L1",
+    )
+    elsewhere = recorded(frozenset({"L1", "L2", "L3"}), "other | victron 0")
     assert not control._expiry_lifts(elsewhere, phased=True)
     # The routine's mode `expiry` may try Victron's phase dead-man here (stated, within the minute) once control passed.
     assert control._expiry_to_test() == (expiry, 0)

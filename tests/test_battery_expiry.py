@@ -92,3 +92,23 @@ def test_read_back_kinds_per_brand_keep_the_old_control_facts() -> None:
     assert kinds["ferroamp"] == {"command": "answer"}
     local = {control.brand for control in CONTROLS if control.local_readback}
     assert local == {"solax", "goodwe", "tesla", "ferroamp"}
+
+
+def test_a_recipe_measurement_of_a_phase_expiry_names_its_phases() -> None:
+    from custom_components.spotnav.battery.gate import expiry_measured, expiry_phases_measured  # noqa: PLC0415
+
+    key = "fw | x 1"
+    on_l1 = Expiry("device_deadman", "spotnav", 60.0, ("a",), renew_s=20, evidence="measured",
+                   measured_on=frozenset({key}), measured_phases=frozenset({"L1"}))
+    assert expiry_phases_measured(on_l1, key, None) == (True, False, False)
+    named_none = Expiry("device_deadman", "spotnav", 60.0, ("a",), renew_s=20, evidence="measured",
+                        measured_on=frozenset({key}))
+    assert expiry_phases_measured(named_none, key, None) == (False, False, False)
+    # Measured on the whole command: counts there (a balanced expiry), never for a phase.
+    assert expiry_measured(named_none, key) and not expiry_measured(named_none, key, None, "L2")
+    for bad in (frozenset({"L4"}),):
+        with pytest.raises(ValueError):
+            Expiry("device_deadman", "spotnav", 60.0, ("a",), renew_s=20, evidence="measured",
+                   measured_on=frozenset({key}), measured_phases=bad)
+    with pytest.raises(ValueError):
+        Expiry("device_deadman", "spotnav", 60.0, ("a",), renew_s=20, measured_phases=frozenset({"L1"}))
