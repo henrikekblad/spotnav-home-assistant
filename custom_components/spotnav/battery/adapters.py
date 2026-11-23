@@ -278,6 +278,27 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   battery) and `pack_input_power` (out of it), both non-negative (`device.py` lines 185-186 and 258-268), as the site
   detection's Zendure row reads them.
 
+* Sungrow SH hybrids (SH-RS 1p, SH-RT 3p) through mkaiser's YAML Modbus package (mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant
+  `e2adb62`, read 2026-11-23, `plans/research_integrations/sungrow_control_2026-11-23.md`), read only (the mode and power
+  registers have a watchdog only in External EMS, which nothing here writes). It is no integration: its entities are
+  `modbus` sensors (unique ids `sg_<key>`) and `template` numbers and selects (`uid_<key>`), with no config entry and no
+  device. `modbus` is every YAML Modbus device's platform, so the adapter is chosen by the battery entity's unique id
+  too (`PackageScope`: `sg_` or `uid_`, an optional `_inv_<n>` suffix on every id of the multi-inverter files
+  `modbus_sungrow_multiple_inverters_<n>.yaml`), and its entities are looked for in both platforms, the inverter the
+  battery entity's suffix names. The level is `sg_battery_level` (13022, 0.1 %): the package's own comment says "0..100 %
+  | min_soc..max_soc" and it builds `sg_battery_level_nom` (min + (max - min) x level) from it, so whether the register is
+  the level inside the person's SoC window or the absolute level is not settled (a tester decides); it is read as it
+  stands. The size is `uid_battery_capacity_high_precision` (5638, kWh). The rating is `sg_bdc_rated_power` (5627, the
+  battery converter's rated power, W; evcc uses it as the battery's charge and discharge power), one figure for both
+  directions. The counters are `sg_total_battery_charge` and `sg_total_battery_discharge` (kWh; the package's README
+  says some firmware count the PV-to-battery path in the charge, which is the cells' energy, as wanted). The firmware is
+  `sg_inverter_firmware_version` (13249, SH*T and newer only: it reads unavailable elsewhere, and then no firmware is
+  known). The mode is the template selects `uid_ems_mode` (free only in "Self-consumption mode (default)") and
+  `uid_battery_forced_charge_discharge` (free only at "Stop (default)"); the inverter's own time-of-use windows run
+  beside self-consumption and are not seen by either. The battery's power `sg_battery_power` (5213) is
+  discharge-positive ("negative: Battery charging"), negated by the site. No floor is read: the SoC limits
+  (`uid_battery_min_soc`) are the person's, and what the level means against them is open.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -458,6 +479,25 @@ class PreheatSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class PackageScope:
+    """A YAML package's entities, which belong to no config entry and no device: found by the fixed unique ids the
+    package gives them, over `platforms` (a package's numbers and selects are `template`, its registers `modbus`).
+    `pattern` is the shape every id of the package has, its group `suffix` the multi-inverter variant's `_inv_<n>`
+    (empty for the single-inverter file); two inverters' entities are told apart by that suffix and by nothing else."""
+
+    platforms: tuple[str, ...]
+    pattern: re.Pattern[str]
+
+    def suffix(self, unique_id: str) -> str | None:
+        """The inverter suffix of a package id (`""` for none), `None` for an id that is not the package's."""
+        found = self.pattern.fullmatch(unique_id.lower())
+        return None if found is None else found.group("suffix") or ""
+
+    def admits(self, platform: str, unique_id: str, suffix: str) -> bool:
+        return platform in self.platforms and self.suffix(unique_id) == suffix
+
+
+@dataclass(frozen=True, slots=True)
 class Adapter:
     brand: str
     label: str
@@ -487,6 +527,9 @@ class Adapter:
     soc_packs: tuple[SocPack, ...] = ()
     #: The battery's own heater, where the integration has it (see the module).
     preheat: PreheatSpec | None = None
+    #: Set for a YAML package read through a platform other brands share: the adapter is chosen only for a battery
+    #: entity whose unique id is the package's, and its entities are looked for by that scope (`PackageScope`).
+    package: PackageScope | None = None
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -1134,19 +1177,58 @@ ZENDURE: Final = Adapter(
     reserves=(ReserveSource(_key("min_soc", "number")),),
 )
 
+def _package(key: str, *domains: str) -> Match:
+    """A package entity: the key is the whole unique id, with the multi-inverter `_inv_<n>` suffix allowed."""
+    return Match(domains or ("sensor",), re.compile(rf"^{re.escape(key)}(?:_inv_\d+)?$"))
+
+
+#: Sungrow through mkaiser's YAML Modbus package (see the module): read only.
+SUNGROW: Final = Adapter(
+    brand="sungrow",
+    label="Sungrow",
+    platforms=("modbus",),
+    package=PackageScope(("modbus", "template"), re.compile(r"(?:sg|uid)_.+?(?P<suffix>_inv_\d+)?")),
+    facts={
+        # 13022, "0..100 % | min_soc..max_soc": the level inside the SoC window or the absolute one is not settled.
+        "soc": _package("sg_battery_level"),
+        "capacity": _package("uid_battery_capacity_high_precision"),
+        "rated_charge": _package("sg_bdc_rated_power"),
+        "rated_discharge": _package("sg_bdc_rated_power"),
+        "charged_total": _package("sg_total_battery_charge"),
+        "discharged_total": _package("sg_total_battery_discharge"),
+        "firmware": _package("sg_inverter_firmware_version"),
+    },
+    modes=(
+        ModeRule(_package("uid_ems_mode", "select"), frozenset({"Self-consumption mode (default)"}), "EMS mode"),
+        ModeRule(_package("uid_battery_forced_charge_discharge", "select"), frozenset({"Stop (default)"}), "forced command"),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW,
 )
 
 
-def adapter_for(platform: str, manufacturer: str | None = None) -> Adapter | None:
-    """The adapter of an integration, `None` for a brand SpotNav has none for."""
+def adapter_for(platform: str, manufacturer: str | None = None, unique_id: str | None = None) -> Adapter | None:
+    """The adapter of an integration, `None` for a brand SpotNav has none for. An adapter of a YAML package is chosen
+    only for a battery entity whose unique id is the package's (`unique_id`), as `modbus` is every device's."""
     for adapter in ADAPTERS:
         if platform not in adapter.platforms:
+            continue
+        if adapter.package is not None and (unique_id is None or adapter.package.suffix(unique_id) is None):
             continue
         wanted = (adapter.manufacturer,) if isinstance(adapter.manufacturer, str) else adapter.manufacturer
         if wanted is not None and not any(part in (manufacturer or "").lower() for part in wanted):
             continue
         return adapter
     return None
+
+
+def package_of(platform: str, unique_id: str) -> tuple[PackageScope, str] | None:
+    """The package scope a battery entity belongs to and its inverter suffix, `None` for an entity of an integration."""
+    adapter = adapter_for(platform, None, unique_id)
+    if adapter is None or adapter.package is None:
+        return None
+    suffix = adapter.package.suffix(unique_id)
+    return None if suffix is None else (adapter.package, suffix)

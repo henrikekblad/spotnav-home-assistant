@@ -2438,5 +2438,116 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "sungrow": {
+  "_source": "mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant e2adb62 (modbus_sungrow.yaml, 2026-11-20): the unique ids are the package's own literals; platforms `modbus` (registers) and `template` (selects); no config entry and no device. Not a real registry; states made up.",
+  "platform": "modbus",
+  "manufacturer": null,
+  "battery": "sensor.battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.battery_power",
+    "unique_id": "sg_battery_power",
+    "platform": "modbus",
+    "device": null,
+    "state": "-1200",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_level",
+    "unique_id": "sg_battery_level",
+    "platform": "modbus",
+    "device": null,
+    "state": "63.5",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_capacity_high_precision",
+    "unique_id": "uid_battery_capacity_high_precision",
+    "platform": "modbus",
+    "device": null,
+    "state": "9.6",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bdc_rated_power",
+    "unique_id": "sg_bdc_rated_power",
+    "platform": "modbus",
+    "device": null,
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.total_battery_charge",
+    "unique_id": "sg_total_battery_charge",
+    "platform": "modbus",
+    "device": null,
+    "state": "812.4",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.total_battery_discharge",
+    "unique_id": "sg_total_battery_discharge",
+    "platform": "modbus",
+    "device": null,
+    "state": "741.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.inverter_firmware_version",
+    "unique_id": "sg_inverter_firmware_version",
+    "platform": "modbus",
+    "device": null,
+    "state": "SAPPHIRE-H_P_V11 V01 B 95.14",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.ems_mode",
+    "unique_id": "uid_ems_mode",
+    "platform": "template",
+    "device": null,
+    "state": "Self-consumption mode (default)",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.battery_forced_charge_discharge",
+    "unique_id": "uid_battery_forced_charge_discharge",
+    "platform": "template",
+    "device": null,
+    "state": "Stop (default)",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "sungrow",
+   "soc_pct": 63.5,
+   "capacity_kwh": 9.6,
+   "rated_charge_kw": 5.0,
+   "rated_discharge_kw": 5.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

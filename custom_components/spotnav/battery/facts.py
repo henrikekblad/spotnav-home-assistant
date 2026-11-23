@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from ..core.parse import number_from_state
-from .adapters import Adapter, ControlSpec, FactRole, Match, PreheatSpec, ReserveSource, SocPack, adapter_for
+from .adapters import Adapter, ControlSpec, FactRole, Match, PreheatSpec, ReserveSource, SocPack, adapter_for, package_of
 
 ManagementState = Literal["free", "self_managed", "unknown", "externally_controlled"]
 
@@ -291,8 +291,15 @@ def _from_amps(entity: EntityFact | None, volts: float | None) -> tuple[float | 
 def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
     """The entity `match` names: the one on the battery's device, else the only one in its entry, else none
     (two plants in one entry and none on the battery's device cannot be told apart)."""
+    package = package_of(battery.platform, battery.unique_id)
+    if package is None:
+        in_scope = lambda entity: entity.platform == battery.platform  # noqa: E731
+    else:
+        # A YAML package: no config entry and no device, so the inverter is told by the id's suffix (`_inv_<n>`).
+        scope, suffix = package
+        in_scope = lambda entity: scope.admits(entity.platform, entity.unique_id, suffix)  # noqa: E731
     found = sorted(
-        (entity for entity in entities if entity.platform == battery.platform and match.matches(entity.domain, entity.unique_id)),
+        (entity for entity in entities if in_scope(entity) and match.matches(entity.domain, entity.unique_id)),
         key=lambda entity: entity.entity_id,
     )
     if not found:
@@ -598,7 +605,7 @@ def battery_facts(
     names no firmware entity or it reads nothing (`device_firmware`)."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
-    adapter = adapter_for(battery.platform, manufacturer)
+    adapter = adapter_for(battery.platform, manufacturer, battery.unique_id)
     management = _management(adapter, entities, battery, external_planner)
     if adapter is None:
         soc = _unknown_brand_soc(entities, battery)

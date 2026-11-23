@@ -28,7 +28,7 @@ def _entities(brand: dict[str, Any], **changes: dict[str, Any]) -> list[EntityFa
         entities.append(
             EntityFact(
                 entity_id=row["entity_id"],
-                platform=brand["platform"],
+                platform=row.get("platform", brand["platform"]),
                 unique_id=row["unique_id"],
                 device_id=row["device"],
                 config_entry_id="entry",
@@ -463,6 +463,8 @@ PLAN_REASON = {
     "anker": "no_rated_power",
     # Zendure states the size and the output's rating but not the charge rating (a raw sensor with no unit): learnt.
     "zendure": "no_rated_power",
+    # Sungrow's package states the size and the converter's rating: the plan has all it needs.
+    "sungrow": None,
 }
 
 

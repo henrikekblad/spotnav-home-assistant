@@ -779,8 +779,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "`sungrow`, HACS (KRoperUK/sungrow-hass); the mkaiser Modbus YAML package (plain `modbus` sensors, not an "
         "integration)",
         keys=("sungrow", "modbus"),
-        control="Not mapped. Forced charge and discharge exist locally",
-        note="No battery level or size is read yet. iSolarCloud entries update only every 5 minutes.",
+        adapter="sungrow",
+        control="Not mapped: read only. Forced charge and discharge exist locally",
+        note="Battery level, size and mode are read through the Modbus package only, not through the `sungrow` "
+        "integration; its level may be the level inside the SoC limits you set, which is not yet confirmed. "
+        "iSolarCloud entries update only every 5 minutes.",
     ),
     Overview(
         "GoodWe (ET, EH)",
