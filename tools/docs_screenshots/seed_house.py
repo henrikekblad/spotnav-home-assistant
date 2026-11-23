@@ -144,7 +144,7 @@ def _decision_ledger(hass, result):
         price = round(sell * 1.25 + 82.5, 2)
         lo = m.index(hour)
         span = range(lo, min(lo + 12, m.n))
-        mean = lambda series: sum(series[i] for i in span) / len(span)  # noqa: E731
+        mean = lambda series, span=span: sum(series[i] for i in span) / len(span)  # noqa: E731
         sun, heat, batt = mean(m.sun), mean(m.heat), mean(m.batt)
         house = mean(m.house) + heat
         car_plan = 6.93 if 1 <= h < 4 else None
