@@ -153,7 +153,6 @@ from ..core.ownership import (
     NO_CAR_FACTS,
     automatic_allowed,
     owner_as_sent,
-    REASON_BALANCING,
     safety_resume_gap_s,
     SENT_START,
     SENT_STOP,
@@ -3715,14 +3714,10 @@ class ChargingController:
 
     @property
     def balancing_stop_on_its_way(self) -> bool:
-        """Whether load balancing's stop is on its way: the core's stop for it awaits its result, or the controller
-        sends it (`_regulated_stop`). The core holds the charge back only once that result comes, so a look at the
-        charge in between (the charger already reads off) must take it for balancing's pause, as after the result."""
-        if self._balancing_stop_in_flight:
-            return True
-        return any(
-            item.command == "stop" and item.reason == REASON_BALANCING for item in self._runner.session.pending
-        )
+        """Whether load balancing's stop is on its way (`_regulated_stop`, from its decision to its result). The core
+        holds the charge back only once that result comes, so a look at the charge in between (the charger already
+        reads off) must take it for balancing's pause, as after the result."""
+        return self._balancing_stop_in_flight
 
     @property
     def paused_charge_origin(self) -> str | None:
