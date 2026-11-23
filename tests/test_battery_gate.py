@@ -761,3 +761,19 @@ def test_a_plants_own_import_comes_off_every_ha_down_cap_but_never_off_the_impor
         20.0, 400.0, **base)))
     assert grid_charge_phase_caps_kw(20.0, 400.0, own_import_a=float("inf"), expiry_lifts=True, **base) == (
         0.0, 0.0, 0.0)
+
+
+def test_a_phase_dead_man_lifts_only_the_phases_it_was_proven_on() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "house_phase_peaks_a": UNBALANCED}
+    kept = grid_charge_phase_caps_kw(20.0, 400.0, **base)
+    lifted = 18.0 * volts / 1000
+    l1 = grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(True, False, False), **base)
+    assert l1[0] == pytest.approx(lifted) and l1[1:] == pytest.approx(kept[1:])
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(True, True, True), **base) == pytest.approx(
+        (lifted,) * 3)
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=True, **base) == pytest.approx((lifted,) * 3)
+    # The unproven phases keep the accepted rule where the person accepted the HA-down risk.
+    accepted = grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(False, True, False), accept_ha_down=True,
+                                         site_margin_a=1.0, **base)
+    assert accepted == pytest.approx((19.0 * volts / 1000, lifted, 19.0 * volts / 1000))

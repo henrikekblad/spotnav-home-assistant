@@ -310,13 +310,36 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
     ))
     assert not control._expiry_lifts(elsewhere, phased=True)
     # The routine's mode `expiry` may try Victron's phase dead-man here (stated, within the minute) once control passed.
-    assert control._expiry_to_test() == (expiry, True)
+    assert control._expiry_to_test() == (expiry, 0)
     passed = {"key": control.firmware_key(), "attempts": 1,
               "modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
                         "per_phase": {"outcome": "obeyed"}}}
     assert control._expiry_due(passed) and not control._expiry_due(None)
-    measured_row = {**passed, "modes": {**passed["modes"], "expiry": {"outcome": "obeyed", "expiry_id": expiry.expiry_id}}}
-    assert not control._expiry_due(measured_row)
+    def proven(*phases: str) -> dict:
+        rows = {f"expiry:{phase}": {"outcome": "obeyed", "expiry_id": expiry.expiry_id, "fallback_s": 50.0}
+                for phase in phases}
+        return {**passed, "modes": {**passed["modes"], **rows}}
+
+    # One phase a run: L1 proven, L2 next; all three proven, nothing left.
+    assert control._expiry_to_test(proven("L1")) == (expiry, 1) and control._expiry_due(proven("L1"))
+    assert not control._expiry_due(proven("L1", "L2", "L3"))
+    # The owner's rule: only the proven phases' caps are lifted (the recipe as shipped, measured by the routine).
+    control.reports = {control.firmware_key(): proven("L1")}
+    stated = VICTRON_CONTROL
+    assert control._phase_expiry_lifts(stated) == (True, False, False)
+    assert not control._expiry_lifts(stated, phased=True) and not control._expiry_lifts(stated, phased=False)
+    shipped = gate.grid_charge_phase_caps_kw(
+        fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
+        house_phase_peaks_a=control._phase_peaks(now) or None,
+    )
+    caps = control._phase_caps_kw(now)
+    assert caps[0] == pytest.approx((fuse_a - 2.0) * volts / 1000) and caps[1:] == pytest.approx(shipped[1:])
+    control.reports = {control.firmware_key(): proven("L1", "L2", "L3")}
+    assert control._phase_expiry_lifts(stated) == (True, True, True) and control._expiry_lifts(stated, phased=True)
+    assert control._phase_caps_kw(now) == pytest.approx(((fuse_a - 2.0) * volts / 1000,) * 3)
+    # Never the balanced cap.
+    assert not control._expiry_lifts(stated, phased=False)
+    control.reports = {}
 
     # A sensor that reads nothing: no charge per phase.
     hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")

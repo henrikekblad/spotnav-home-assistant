@@ -862,9 +862,9 @@ def test_victrons_dead_man_is_measured_on_the_probes_discharge_on_one_phase() ->
     assert verification.done
     modes = verification.report()["modes"]
     assert {mode: row["outcome"] for mode, row in modes.items()} == {
-        "hold": "obeyed", "per_phase": "obeyed", "expiry": "obeyed", "normal": "restored"
+        "hold": "obeyed", "per_phase": "obeyed", "expiry:L1": "obeyed", "normal": "restored"
     }
-    row = modes["expiry"]
+    row = modes["expiry:L1"]
     assert row["scope"] == "phase" and row["expiry_id"] == VICTRON_PHASES.expiry.expiry_id
     # The last renewal was at most `VICTRON_RENEW_S` and three looks before the silence began.
     assert VICTRON_SILENCE_S - VICTRON_RENEW_S - 30 <= row["fallback_s"] <= VICTRON_SILENCE_S + 10
@@ -873,24 +873,26 @@ def test_victrons_dead_man_is_measured_on_the_probes_discharge_on_one_phase() ->
     # Recorded in the report for this firmware, it lifts a charge per phase only.
     key = "v3.60 | victron_gx 1"
     report = {"key": key, "modes": modes}
-    assert gate.expiry_measured(VICTRON_PHASES.expiry, key, report)
+    assert gate.expiry_measured(VICTRON_PHASES.expiry, key, report, "L1")
+    # Proven on L1 only: L2 and L3 stay unproven, and the balanced charge is never lifted by it.
+    assert gate.expiry_phases_measured(VICTRON_PHASES.expiry, key, report) == (True, False, False)
     assert not gate.expiry_measured(VICTRON_CONTROL.expiry, key, report)
-    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.70 | victron_gx 1", report)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.70 | victron_gx 1", report, "L1")
 
 
 def test_a_multi_that_never_falls_back_leaves_the_dead_man_stated() -> None:
     verification, _executor, _looks = _verify_expiry(Plant(fallback=False))
     modes = verification.report()["modes"]
-    assert modes["expiry"]["outcome"] == "ignored" and modes["per_phase"]["outcome"] == "obeyed"
+    assert modes["expiry:L1"]["outcome"] == "ignored" and modes["per_phase"]["outcome"] == "obeyed"
     report = {"key": "v3.60 | victron_gx 1", "modes": modes}
-    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.60 | victron_gx 1", report)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.60 | victron_gx 1", report, "L1")
     # A failed expiry never fails the report.
     assert gate.report_status({**report, "modes": {**modes, "normal": {"outcome": "restored"}}}) == "passed"
 
 
 def _measured(modes: dict[str, Any]) -> bool:
     key = "v3.60 | victron_gx 1"
-    return gate.expiry_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes})
+    return any(gate.expiry_phases_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes}))
 
 
 @pytest.mark.parametrize(("start", "end"), [(0.6, 0.1), (0.8, 0.3), (1.0, 0.0)])
@@ -905,14 +907,14 @@ def test_a_load_that_drops_on_the_probed_phase_is_never_a_fallback(start: float,
 
     verification, _executor, _looks = _verify_expiry(plant, mutate=drop)
     modes = verification.report()["modes"]
-    assert modes["expiry"]["outcome"] == "not_judgeable:house_changed"
+    assert modes["expiry:L1"]["outcome"] == "not_judgeable:house_changed"
     assert not _measured(modes)
 
 
 def test_one_look_that_reads_like_passthru_is_a_glitch_not_a_fallback() -> None:
     verification, _executor, _looks = _verify_expiry(Plant(fallback=False), glitch_at_s=30.0)
     modes = verification.report()["modes"]
-    assert modes["expiry"]["outcome"] == "ignored" and modes["expiry"]["fallback_s"] is None
+    assert modes["expiry:L1"]["outcome"] == "ignored" and modes["expiry:L1"]["fallback_s"] is None
     assert not _measured(modes)
 
 
@@ -924,4 +926,15 @@ def test_the_silence_needs_room_for_the_probes_own_power_coming_back() -> None:
         model.beside_kw[0] = 0.5 if since < 20 else 4.4  # L1 about 16 A: room for the margin, not for the probe
 
     verification, _executor, _looks = _verify_expiry(Plant(), mutate=beside)
-    assert verification.report()["modes"]["expiry"]["outcome"] == "aborted:fuse_headroom"
+    assert verification.report()["modes"]["expiry:L1"]["outcome"] == "aborted:fuse_headroom"
+
+
+def test_a_later_run_proves_another_phase_on_its_own() -> None:
+    executor = Executor(VICTRON_CONTROL)
+    now = T0
+    verification = Verification(
+        executor, now, firmware="v3.60", modes=("hold", "per_phase", "expiry"), expiry=VICTRON_PHASES.expiry,
+        expiry_phased=True, expiry_phase=1,
+    )
+    assert [result.report_name for result in verification.results][-2] == "expiry:L2"
+    assert verification.results[-2].phase == "L2"

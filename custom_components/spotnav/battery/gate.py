@@ -343,7 +343,7 @@ def merge_report(
         if (
             kept is not None and mode_verdict(kept.get("outcome")) != "pending"
             # An expiry decided for another expiry than the one this run tried (the recipe changed) is not kept.
-            and not (name == MODE_EXPIRY and kept.get("expiry_id") != row.get("expiry_id"))
+            and not (name.startswith(MODE_EXPIRY) and kept.get("expiry_id") != row.get("expiry_id"))
         ):
             continue
         modes[name] = dict(row)
@@ -713,21 +713,37 @@ def import_limit_phase_holds(
     )
 
 
-def expiry_measured(expiry: Expiry, key: str | None, report: Mapping[str, Any] | None = None) -> bool:
+def expiry_mode(phase: str | None = None) -> str:
+    """The report's row for an expiry measured on the whole command (`expiry`), or on one phase of a phase spec's
+    (`expiry:L1`): each phase is proven on its own (owner decision 2026-11-23)."""
+    return MODE_EXPIRY if phase is None else f"{MODE_EXPIRY}:{phase}"
+
+
+def expiry_measured(
+    expiry: Expiry, key: str | None, report: Mapping[str, Any] | None = None, phase: str | None = None
+) -> bool:
     """Whether the expiry's fallback was seen to act on this firmware (`firmware_key`): the recipe records a field
     test on it (`Expiry.evidence` `measured`, `measured_on`), or the routine's report for this key has the mode
     `expiry` obeyed for this very expiry (`Expiry.expiry_id`: a measured phase expiry never counts for a balanced
-    one). A key not read is never measured; a report kept under another key never counts."""
+    one) and, for a phase spec's, on this very phase (`phase`, its row `expiry:<phase>`). A key not read is never
+    measured; a report kept under another key never counts."""
     if key is None or not firmware_known(key):
         return False
     if expiry.evidence == "measured" and key in expiry.measured_on:
         return True
-    return expiry_row_passed(report, expiry) and report is not None and report.get("key") == key
+    return expiry_row_passed(report, expiry, phase) and report is not None and report.get("key") == key
 
 
-def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
-    """Whether the report's mode `expiry` is `obeyed` for this very expiry (`Expiry.expiry_id`)."""
-    row = _modes(report).get(MODE_EXPIRY)
+def expiry_phases_measured(expiry: Expiry, key: str | None, report: Mapping[str, Any] | None) -> tuple[bool, bool, bool]:
+    """A phase spec's expiry measured on L1, L2 and L3 (`expiry_measured` per phase)."""
+    found = [expiry_measured(expiry, key, report, phase) for phase in PHASE_NAMES]
+    return (found[0], found[1], found[2])
+
+
+def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry, phase: str | None = None) -> bool:
+    """Whether the report's row for this expiry (`expiry_mode`) is `obeyed` for this very expiry
+    (`Expiry.expiry_id`), its fallback within the minute and a look."""
+    row = _modes(report).get(expiry_mode(phase))
     if not isinstance(row, Mapping) or row.get("outcome") != "obeyed" or row.get("expiry_id") != expiry.expiry_id:
         return False
     # The fallback counted from the last write, within the minute the lift rests on (and one look).
@@ -738,10 +754,10 @@ def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
     )
 
 
-def expiry_due(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
-    """Whether the report has the mode `expiry` still undecided for this very expiry (no row, a row for another
-    expiry, or a row still pending)."""
-    row = _modes(report).get(MODE_EXPIRY)
+def expiry_due(report: Mapping[str, Any] | None, expiry: Expiry, phase: str | None = None) -> bool:
+    """Whether the report has the mode `expiry` still undecided for this very expiry (and phase): no row, a row for
+    another expiry, or a row still pending."""
+    row = _modes(report).get(expiry_mode(phase))
     if not isinstance(row, Mapping) or row.get("expiry_id") != expiry.expiry_id:
         return True
     return mode_verdict(row.get("outcome")) == "pending"
@@ -805,8 +821,8 @@ def expiry_note(expiry: Expiry, *, measured: bool) -> str | None:
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
-    expiry_lifts: bool = False, accept_ha_down: bool = False, site_margin_a: float | None = None,
-    own_import_a: float = 0.0,
+    expiry_lifts: bool | tuple[bool, bool, bool] = False, accept_ha_down: bool = False,
+    site_margin_a: float | None = None, own_import_a: float = 0.0,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -842,23 +858,27 @@ def grid_charge_phase_caps_kw(
     targets and may open the fuse: what the person accepted.
 
     `own_import_a`: what the plant may import by itself on each phase (A, `commands.AutonomousImport`), taken off
-    every phase in each of the rules above (infinite: no grid charge)."""
+    every phase in each of the rules above (infinite: no grid charge).
+
+    `expiry_lifts` per phase (L1, L2, L3; one bool: all three): the dead-man lifts only the phases it was measured on
+    (owner decision 2026-11-23); every other phase keeps its own cap by the rules after it."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     own_a = _own_a(own_import_a)
-    if expiry_lifts:
-        most = max(main_fuse_a - margin_a - own_a, 0.0) * volts / 1000.0
-        return (most, most, most)
+    lifts = (expiry_lifts,) * 3 if isinstance(expiry_lifts, bool) else tuple(item is True for item in expiry_lifts)
+    lifted = max(main_fuse_a - margin_a - own_a, 0.0) * volts / 1000.0
     if accept_ha_down:
         most = max(
             main_fuse_a - (margin_a if site_margin_a is None else site_margin_a) - own_a, 0.0
         ) * volts / 1000.0
-        return (most, most, most)
-    house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
-    room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - peak, 0.0) * volts / 1000.0 for peak in house]
-    return (room[0], room[1], room[2])
+        room = [most, most, most]
+    else:
+        house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
+        room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - peak, 0.0) * volts / 1000.0 for peak in house]
+    out = [lifted if lifts[index] else room[index] for index in range(3)]
+    return (out[0], out[1], out[2])
 
 
 def _own_a(own_import_a: float) -> float:

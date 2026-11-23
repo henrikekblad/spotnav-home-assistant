@@ -85,7 +85,9 @@ and nothing more is owed to it, the executor stops renewing it (`ExecInputs.expi
 renewed role that reads the maker's documented fallback is the device's own, any other change of it is another
 writer and ends the test unjudged). Every look then samples the plant. A fallback is the probed phase's plant power
 at about 0 **and**, for a target that is the grid's power at a point, that power off the value last written, for
-`READINGS` looks in a row (one look is a glitch), with the house on that phase (the whole site's for a hold) where
+`READINGS` looks in a row (one look is a glitch). Each phase of a phase spec's is proven on its own (its row
+`expiry:L1`..`expiry:L3`, one phase a run, `control.BatteryControl._expiry_to_test`): the HA-down cap is lifted only on
+the phases proven (owner decision 2026-11-23), with the house on that phase (the whole site's for a hold) where
 it was at the silence's start: a load that moves on it reads exactly like a fallback, and is
 `not_judgeable:house_changed`, never a pass. The fallback is timed from the last write of a renewed role: `obeyed`
 within the window and one look (the gate takes it only within `gate.SILENCE_FALLBACK_MAX_S` and one look,
@@ -128,7 +130,15 @@ from typing import Any, Final, Literal
 from .commands import ACTION_CURTAIL_EXPORT, WATCHDOG_RENEW_S, Expiry, Phases
 from .executor import HEADROOM_MARGIN_A, RATE_UP_DWELL_S, Executor, StepResult
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES, phase_volts
-from .gate import EXPIRY_LOOK_S, MODE_EXPIRY, MODE_PER_PHASE, PHASE_NAMES, SILENCE_FALLBACK_MAX_S, mode_verdict
+from .gate import (
+    EXPIRY_LOOK_S,
+    MODE_EXPIRY,
+    MODE_PER_PHASE,
+    PHASE_NAMES,
+    SILENCE_FALLBACK_MAX_S,
+    expiry_mode,
+    mode_verdict,
+)
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     DISCHARGE_MARGIN_PCT,
@@ -298,6 +308,13 @@ class ModeResult:
     expired: list[str] = field(default_factory=list)
     #: The fallback came, but later than the window and one look (`ignored`).
     late: bool = False
+    #: For a phase spec's expiry: the phase probed (`L1`..`L3`); its row is that phase's own (`report_name`).
+    phase: str | None = None
+
+    @property
+    def report_name(self) -> str:
+        """The report's row: the mode, or for a phase spec's expiry `expiry:<phase>` (each phase proven alone)."""
+        return expiry_mode(self.phase) if self.mode == MODE_EXPIRY else self.mode
 
     @property
     def phased(self) -> bool:
@@ -314,7 +331,8 @@ class ModeResult:
             extra["via"] = self.via
         if self.mode == MODE_EXPIRY:
             extra |= {"expiry_id": self.expiry_id, "window_s": self.window_s, "scope": self.scope,
-                      "fallback_s": self.fallback_s, "expired": list(self.expired), "late": self.late}
+                      "fallback_s": self.fallback_s, "expired": list(self.expired), "late": self.late,
+                      "phase": self.phase}
         if self.phased:
             extra["phases"] = [dict(row) for row in self.phases]
         return extra | {
@@ -337,6 +355,7 @@ class Verification:
         modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
         timing: Timing | None = None, stop_on_fail: bool = False, charge_soc_max_pct: float = CHARGE_TAPER_SOC_PCT,
         expiry: Expiry | None = None, expiry_phased: bool = False, phase_mapped: bool = False,
+        expiry_phase: int = 0,
     ) -> None:
         self.executor = executor
         #: The mode `expiry`: the expiry it tries, whether it is the phase spec's (tried on the per-phase probe's
@@ -344,6 +363,8 @@ class Verification:
         self.expiry = expiry
         self.expiry_phased = expiry_phased
         self.phase_mapped = phase_mapped
+        #: For a phase spec's expiry: the phase this run proves (0-2, the meter's L1-L3); one a run.
+        self.expiry_phase = min(max(int(expiry_phase), 0), 2)
         #: When the mode `expiry`'s silence began (`ExecInputs.expiry_probe` from then on), `None` before and after.
         self.expiry_since: datetime | None = None
         #: The mode `expiry`'s house at the silence's start (kW), the last look a renewed role was written in, and
@@ -377,6 +398,10 @@ class Verification:
             if (modes is None and name not in _NAMED_ONLY) or (modes is not None and name in modes)
             or action == ACTION_SELF_CONSUME
         ]
+        for result in self.results:
+            if result.mode == MODE_EXPIRY:
+                result.scope = "phase" if expiry_phased else "hold"
+                result.phase = PHASE_NAMES[self.expiry_phase] if expiry_phased else None
         #: The phased modes: the steps (phase index, charge kW, negative a discharge), the step now (-1: every
         #: target at 0), and the house per phase before its probe (kW).
         self.steps: list[tuple[int, float]] = [(index, -PROBE_KW) for index in range(3)]
@@ -488,7 +513,7 @@ class Verification:
             return unfit
         # A discharge, never a charge (its fallback puts the probe's power back on the phase: `_expiry_unsafe`).
         result.action = ACTION_GRID_CHARGE
-        self.steps = [(0, -PROBE_KW)]
+        self.steps = [(self.expiry_phase, -PROBE_KW)]
         self.probe_index, self.probe_house = 0, _house_kw(sample)
         return None
 
@@ -1125,7 +1150,7 @@ class Verification:
             "firmware": self.firmware,
             "started_at": self.started_at.isoformat(),
             "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
-            "modes": {result.mode: result.as_dict() for result in self.results},
+            "modes": {result.report_name: result.as_dict() for result in self.results},
         }
 
 
