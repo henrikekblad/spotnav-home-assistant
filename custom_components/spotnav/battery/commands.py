@@ -696,8 +696,10 @@ class BrandControl:
     #: whatever strategy runs (the same acknowledgement as `takeover`, `ExecInputs.takeover`); the hand-back gives
     #: the plant back to that strategy.
     strategy_unread: bool = False
-    #: The roles renewed to keep a watchdog alive (`WATCHDOG_RENEW_S`); empty when the brand has none.
-    watchdog_roles: tuple[str, ...] = ()
+    #: How a command ends by itself when nothing renews it, and the roles SpotNav renews meanwhile (`Expiry`;
+    #: `watchdog_roles`, `watchdog_renew_s`). The phase spec's own is the phase control's (`PhaseControl`), never
+    #: this one: a phased control's balanced commands keep the brand's.
+    expiry: Expiry = NO_EXPIRY
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
     requires: tuple[tuple[str, frozenset[str], str], ...] = ()
     #: Extra requirements for one action (`(action, role, forbidden states, reason)`); a forbidden state that is a
@@ -752,8 +754,6 @@ class BrandControl:
     #: the battery's charge), where the brand sets the **grid's** power and not the battery's: used instead of
     #: `states` when the load is known (`wanted`'s `house_kw`). An action in it does not run without that load.
     house_states: Mapping[str, Callable[[float, float], tuple[Want, ...]]] = field(default_factory=dict)
-    #: How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`.
-    watchdog_renew_s: int | None = None
     #: A slow control (a cloud: Tesla): planned actions only. No hold for a car, no peak cover, no change of action
     #: sooner than `min_change_s`, the read-back waits `readback_s` and a hand-back waits `rearm_s` before the next
     #: action (`executor.py`, `control.py`). `None`: the executor's own figure.
@@ -802,6 +802,23 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+
+    @property
+    def watchdog_roles(self) -> tuple[str, ...]:
+        """The roles renewed to keep a watchdog alive: the expiry's, and on a phased control (`with_phases`) the phase
+        spec's after them; empty when the brand has none."""
+        spec = self.phase_control
+        extra = spec.watchdog_roles if self.phased and spec is not None else ()
+        return (*self.expiry.renewed_roles, *extra)
+
+    @property
+    def watchdog_renew_s(self) -> int | None:
+        """How often the `watchdog_roles` are renewed (s): the phase spec's own on a phased control where it states
+        one, else the expiry's; `None`: `WATCHDOG_RENEW_S`."""
+        spec = self.phase_control
+        if self.phased and spec is not None and spec.watchdog_renew_s is not None:
+            return spec.watchdog_renew_s
+        return self.expiry.renew_s
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -857,13 +874,11 @@ class BrandControl:
             roles=(*self.roles, *spec.owned()),
             states={action: with_idle(build) for action, build in self.states.items()},
             house_states={action: with_idle(build) for action, build in self.house_states.items()},
-            watchdog_renew_s=spec.watchdog_renew_s if spec.watchdog_renew_s is not None else self.watchdog_renew_s,
             enter_order=spec.enter_order, restore_order=spec.restore_order,
             peak_first={**self.peak_first, ACTION_GRID_CHARGE: spec.stop_first},
             requires=(*self.requires, *((role.name, states, why) for role, states, why in spec.requires)),
             # What it owns it writes itself; nothing of them is left to watch.
             watched=tuple(row for row in self.watched if row[0].name not in owned),
-            watchdog_roles=(*self.watchdog_roles, *spec.watchdog_roles),
             own_states={**self.own_states, **spec.own_states},
             phased=True,
         )
@@ -1293,7 +1308,8 @@ SOLAREDGE_CONTROL: Final = BrandControl(
     },
     enter_order=("command_timeout", "charge_limit", "discharge_limit", "command_mode"),
     restore_order=("command_mode", "charge_limit", "discharge_limit", "command_timeout"),
-    watchdog_roles=("command_timeout", "command_mode"),
+    # The command timeout returns the inverter to its default mode (the maker's word; not measured).
+    expiry=Expiry("device_deadman", "spotnav", float(WATCHDOG_S), ("command_timeout", "command_mode")),
     requires=(("control_mode", frozenset({"Remote Control"}), "not_in_remote_control"),),
     peak_first={ACTION_HOLD: ("command_mode",), ACTION_GRID_CHARGE: ("command_mode",)},
     action_requires=((ACTION_GRID_CHARGE, "ac_charge_policy", frozenset({"Disabled"}), "ac_charge_disabled"),),
@@ -1331,7 +1347,8 @@ HUAWEI_CONTROL: Final = BrandControl(
     },
     enter_order=("discharge_power", "charge_power", "forcible"),
     restore_order=("forcible", "charge_power", "discharge_power"),
-    watchdog_roles=("forcible",),
+    # A forcible charge carries its duration (the maker's word; not measured).
+    expiry=Expiry("device_lease", "spotnav", float(WATCHDOG_S), ("forcible",)),
     requires=(("forcible", frozenset({"stop"}), "forcible_charge_running"),),
     peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("forcible",)},
     note="Services and numbers need the installer password; a forcible charge ends by itself after its duration.",
@@ -1372,7 +1389,8 @@ SOLAX_CONTROL: Final = BrandControl(
             {"Enabled No Discharge", "Enabled Battery Control", "Enabled Self Use", "Enabled Power Control"}
         )
     },
-    watchdog_roles=("trigger",),
+    # The remote control's autorepeat ends after its duration (the maker's word; not measured).
+    expiry=Expiry("device_lease", "spotnav", float(WATCHDOG_S), ("trigger",)),
     requires=(("power_control", frozenset({"Disabled"}), "remote_control_in_use"),),
     peak_first={ACTION_HOLD: ("power_control", "trigger"), ACTION_GRID_CHARGE: ("power_control", "trigger")},
     local_readback=True,

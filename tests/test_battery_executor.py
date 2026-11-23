@@ -1786,7 +1786,7 @@ def test_a_change_never_renews_a_button_it_presses_anyway() -> None:
 
 def test_a_change_puts_nothing_in_a_fast_watchdogs_renewal() -> None:
     """A fast watchdog (`BrandControl.watchdog_renew_s`) renews on its own round, never on a change."""
-    fast = replace(SOLAREDGE_CONTROL, watchdog_renew_s=20)
+    fast = replace(SOLAREDGE_CONTROL, expiry=replace(SOLAREDGE_CONTROL.expiry, renew_s=20))
     executor = _changed(fast, SOLAREDGE_STATES, "hold", "discharge_house")
     assert executor.state.renew == ()
 
