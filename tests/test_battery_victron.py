@@ -244,6 +244,10 @@ def test_the_setpoints_are_setpoints_with_a_cap_that_fits_a_minute_and_the_rest_
 def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> None:
     # The page's 60 s fallback is not stated until a field test has seen it: the HA-down cap is not lifted on it.
     assert VICTRON_PHASES.silence_fallback_s is None and VICTRON_SILENCE_S == 60
+    expiry = VICTRON_PHASES.expiry
+    assert (expiry.kind, expiry.renewer, expiry.window_s, expiry.evidence) == ("device_deadman", "spotnav", 60.0, "stated")
+    assert expiry.renewed_roles == TARGETS and expiry.measured_on == frozenset()
+    assert VICTRON_CONTROL.expiry.kind == "none"
     assert _shipped() == _caps() and _shipped() != _lifted()
     assert VICTRON_PHASES.watchdog_renew_s == VICTRON_RENEW_S
     # Three roles, one written a look: each is written again within the renewal plus three looks.

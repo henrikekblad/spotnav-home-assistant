@@ -547,8 +547,11 @@ class PhaseControl:
     #: Other roles only the phased control writes (in `follow`: a scheduling mode), so a plant without them shows no
     #: missing control for the balanced one.
     modes: tuple[Role, ...] = ()
-    #: Roles renewed to keep a brand's watchdog alive while the phased control runs (added to the control's own).
-    watchdog_roles: tuple[str, ...] = ()
+    #: How the charge per phase ends by itself when nothing renews it, and the roles SpotNav renews to keep it alive
+    #: while the phased control runs (`BrandControl.watchdog_roles`, after the control's own) and how often (`None`:
+    #: `WATCHDOG_RENEW_S`). Read by the gate (`gate.grid_charge_phase_caps_kw`): only a dead-man **measured** on a
+    #: plant may let a phase's HA-down cap be the fuse itself (a maker's page alone is not enough).
+    expiry: Expiry = NO_EXPIRY
     #: Mode-rule labels and the states the phased control's own commands leave them in (added to the control's own).
     own_states: Mapping[str, frozenset[str]] = field(default_factory=dict)
     #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
@@ -570,20 +573,30 @@ class PhaseControl:
     #: effect is judged at the point against the target written (`grid_phases`). `scale` as for a written role.
     behind: tuple[Role, Role, Role] | None = None
     point: tuple[Role, Role, Role] | None = None
-    #: How often the `watchdog_roles` are renewed while the phased control runs a charge per phase (s); `None`:
-    #: `WATCHDOG_RENEW_S`.
-    watchdog_renew_s: int | None = None
-    #: The plant stops following the targets by itself this long after the last write of them (s): the maker's own
-    #: dead-man. `None`: the targets stay until written. Read by the gate (`gate.grid_charge_phase_caps_kw`): only
-    #: with it may a phase's HA-down cap be the fuse itself, so it is set only once a field test on a plant has seen
-    #: the fallback act (a maker's page alone is not enough); no recipe sets it yet.
-    silence_fallback_s: int | None = None
     #: The three targets exist only on a three-phase plant (an entity per phase the plant has): finding them is
     #: what shows the plant's phases, where the brand has no other reading of them.
     three_phase_by_targets: bool = False
     #: The largest size a `grid` target is written at (kW): the entity's own range, which a write beyond would be
     #: refused by. A target cut to it leaves the battery less than its charge, never more.
     limit_kw: float | None = None
+
+    @property
+    def watchdog_roles(self) -> tuple[str, ...]:
+        """Roles renewed to keep the charge per phase alive (`expiry`)."""
+        return self.expiry.renewed_roles
+
+    @property
+    def watchdog_renew_s(self) -> int | None:
+        """How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`."""
+        return self.expiry.renew_s
+
+    @property
+    def silence_fallback_s(self) -> float | None:
+        """The plant stops following the targets by itself this long after the last write of them (s): the expiry's
+        window, only for a dead-man measured on a plant (`Expiry.evidence`); `None` otherwise: the targets are
+        reckoned as staying until written. No recipe is measured yet."""
+        expiry = self.expiry
+        return expiry.window_s if expiry.kind == "device_deadman" and expiry.evidence == "measured" else None
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
@@ -808,7 +821,7 @@ class BrandControl:
         """The roles renewed to keep a watchdog alive: the expiry's, and on a phased control (`with_phases`) the phase
         spec's after them; empty when the brand has none."""
         spec = self.phase_control
-        extra = spec.watchdog_roles if self.phased and spec is not None else ()
+        extra = spec.expiry.renewed_roles if self.phased and spec is not None else ()
         return (*self.expiry.renewed_roles, *extra)
 
     @property
@@ -816,8 +829,8 @@ class BrandControl:
         """How often the `watchdog_roles` are renewed (s): the phase spec's own on a phased control where it states
         one, else the expiry's; `None`: `WATCHDOG_RENEW_S`."""
         spec = self.phase_control
-        if self.phased and spec is not None and spec.watchdog_renew_s is not None:
-            return spec.watchdog_renew_s
+        if self.phased and spec is not None and spec.expiry.renew_s is not None:
+            return spec.expiry.renew_s
         return self.expiry.renew_s
 
     def role(self, name: str) -> Role:
@@ -1579,10 +1592,12 @@ VICTRON_PHASES: Final = PhaseControl(
     park=False,
     behind=_vic_phase_roles("load", "vebus_inverter_output_power"),
     point=_vic_phase_roles("input", "vebus_inverter_input_power"),
-    watchdog_roles=tuple(role.name for role in _VIC_PHASE_TARGETS),
-    watchdog_renew_s=VICTRON_RENEW_S,
-    # Not stated until a field test shows the fallback (the module): the targets are reckoned as if they stay.
-    silence_fallback_s=None,
+    # The Multi's 60 s watchdog, renewed every `VICTRON_RENEW_S`: the page's word only, so stated, not measured (the
+    # module): the targets are reckoned as if they stay until a field test shows the fallback.
+    expiry=Expiry(
+        "device_deadman", "spotnav", float(VICTRON_SILENCE_S), tuple(role.name for role in _VIC_PHASE_TARGETS),
+        renew_s=VICTRON_RENEW_S,
+    ),
     three_phase_by_targets=True,
     limit_kw=VICTRON_SETPOINT_MAX_KW,
     own_states={"ESS mode": frozenset({_VIC_EXTERNAL})},
