@@ -1365,7 +1365,7 @@ async def test_the_import_limit_is_trusted_only_where_it_was_shown_to_act(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str
 ) -> None:
     """Sigenergy's limit was shown to act in its grid charge on V100R001C21SPC117 (owner decision 2026-11-23): on
-    another firmware neither rule lifts the cap; the card is told `not_supported`, the diagnostics `not_trusted`."""
+    another firmware neither rule lifts the cap, and the step shown is the test on that firmware (owner decision 7)."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
     _field_tested(monkeypatch)
     trust = commands_module.SIGENERGY_IMPORT_LIMIT_TRUST
@@ -1392,11 +1392,24 @@ async def test_the_import_limit_is_trusted_only_where_it_was_shown_to_act(
     cap = control.status()["grid_charge_cap"]
     assert (cap["rule"] == "import_limit") is trusted and cap["import_limit"]["holds"] is trusted
     if not trusted:
-        assert control._import_limit_refusal() == "not_trusted"
-        assert cap["import_limit"]["why"] == "not_supported" and cap["import_limit"]["per_phase"]["why"] == "not_supported"
-        assert control.snapshot()["import_limit_refusal"] == {"total": "not_trusted", "per_phase": "not_trusted"}
+        code = {"other_firmware": "firmware_not_tested", "firmware_unread": "firmware_unread"}.get(case, "not_trusted")
+        assert control._import_limit_refusal() == code
+        assert control.snapshot()["import_limit_refusal"] == {"total": code, "per_phase": code}
         assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "the cap: no charge"
         assert not control.import_limit_guards()
+        if code == "not_trusted":
+            # Nothing on this site can make the recipe trust it: the card is told `not_supported`, and the HA-down
+            # acceptance is offered as on any plant without the per-phase hold.
+            assert cap["import_limit"]["why"] == "not_supported"
+            assert cap["import_limit"]["per_phase"]["why"] == "not_supported"
+            assert cap["ha_down"]["offered"] is True
+        else:
+            # Owner decision 7: the step is the import-limit test on this firmware (or reading the firmware), never
+            # the HA-down acceptance, and nothing is written by the tap meanwhile.
+            assert cap["import_limit"]["why"] == code and cap["import_limit"]["per_phase"]["why"] == code
+            assert cap["ha_down"]["offered"] is False
+            assert cap["import_limit"]["per_phase"]["set_kw"] is None and control.import_limit_write_kw() is None
+            assert await control.async_set_import_limit() == code
 
 
 @pytest.mark.parametrize("case", ["none", "fixed", "unread"])

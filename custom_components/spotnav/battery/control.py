@@ -382,8 +382,15 @@ RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
 #: none, a step they can take (enable the Output Type or the grid sensor status, turn the phase switch on), or the
 #: site's sources not read yet (a moment after a start: the HA-down row must not flash up meanwhile).
 PHASE_PATH_STEPS: Final = frozenset(
-    {None, "sources_unknown", "output_type_unread", "phase_control_off", "grid_sensor_offline"}
+    {None, "sources_unknown", "output_type_unread", "phase_control_off", "grid_sensor_offline", *(
+        # The import limit not tested on this firmware, or the firmware not read (owner decision 7): the step is the
+        # field test on it, never the HA-down acceptance.
+        "firmware_not_tested", "firmware_unread",
+    )}
 )
+#: Path steps that leave nothing for the tap to write (`import_limit_write_kw`, `async_set_import_limit`): the limit
+#: is not trusted on this firmware until the field test ran on it.
+FIRMWARE_STEPS: Final = frozenset({"firmware_not_tested", "firmware_unread"})
 #: How long the person's import-limit write is read back for, and how often (s).
 IMPORT_LIMIT_READ_BACK_S: Final = 15.0
 IMPORT_LIMIT_READ_BACK_STEP_S: Final = 0.5
@@ -2035,7 +2042,8 @@ class BatteryControl:
         """Why the plant's own import limit cannot be the fuse's guard on this site whatever it reads, as a stable
         code; `None` when it can. The rule (`gate.import_limit_max_kw`) rests on the plant seeing every source and
         spreading its charge evenly over three phases, so it is refused where the recipe does not trust the limit here
-        (`not_trusted`, `_import_limit_trusted`: not shown to act in its grid charge, or on another firmware), for a
+        (`_import_limit_distrust`: `not_trusted`, not shown to act in that state; `firmware_not_tested`, another
+        firmware than the one it was tested on; `firmware_unread`, the firmware never read), for a
         plant that is not three-phase
         (`plant_not_three_phase`: a single-phase source), a sun source that is not the plant's (`foreign_pv`: it
         lowers the total the plant sees while one phase carries more), sources not read yet (`sources_unknown`), and
@@ -2044,8 +2052,9 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return "not_supported"
-        if not self._import_limit_trusted(control, action):
-            return "not_trusted"
+        distrust = self._import_limit_distrust(control, action)
+        if distrust is not None:
+            return distrust
         if self._plant_phases(control) != 3:
             return "plant_not_three_phase"
         if self._sources is None:
@@ -2059,19 +2068,22 @@ class BatteryControl:
                     return "dc_charger"
         return None
 
-    def _import_limit_trusted(self, control: BrandControl, action: str = ACTION_GRID_CHARGE) -> bool:
-        """Whether the recipe trusts the plant's own import limit here (`commands.ImportLimitTrust`): not marked
-        untrusted, shown to act in the state the caller relies on (`action`: the recipe's grid charge for the battery's
-        two rules, the plant's own mode for a charger's lift), and on the plant's firmware as read (the last reading,
-        `firmware_key`; one never read is not trusted where the recipe names its firmwares)."""
+    def _import_limit_distrust(self, control: BrandControl, action: str = ACTION_GRID_CHARGE) -> str | None:
+        """Why the recipe does not trust the plant's own import limit here (`commands.ImportLimitTrust`), `None` when it
+        does: `not_trusted` (marked untrusted, or not shown to act in the state the caller relies on, `action`: the
+        recipe's grid charge for the battery's two rules, the plant's own mode for a charger's lift),
+        `firmware_unread` (the recipe names its firmwares and the plant's was never read: fail closed) or
+        `firmware_not_tested` (read, and not one it was tested on: the field test is to be run on it). The last two
+        are steps on the per-phase path (`PHASE_PATH_STEPS`, owner decision 7): no HA-down acceptance is offered
+        instead."""
         trust = control.import_limit_trust
         if trust is None or trust.untrusted or action not in trust.acts_in:
-            return False
+            return "not_trusted"
         if trust.firmware is None:
-            return True
+            return None
         if not self.firmware_known():
-            return False
-        return self.firmware_key().split(" | ", 1)[0] in trust.firmware
+            return "firmware_unread"
+        return None if self.firmware_key().split(" | ", 1)[0] in trust.firmware else "firmware_not_tested"
 
     def _site_margin_a(self) -> float:
         """The site's own safety margin (A per phase) as stored now, for the per-phase import-limit rule only."""
@@ -2144,6 +2156,8 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None or not self._phase_path_open():
             return None
+        if self._import_limit_phase_refusal(assume_acts=True) in FIRMWARE_STEPS:
+            return None  # not trusted on this firmware yet: the field test first, nothing to write
         target = self.import_limit_target_kw()
         most = gate.import_limit_phase_max_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
@@ -2173,7 +2187,7 @@ class BatteryControl:
             return "not_enabled"  # nothing is written to the plant while battery control is off
         control = control_for(self.facts.brand)
         refusal = self._import_limit_phase_refusal(assume_acts=True)
-        if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS:
+        if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS or refusal in FIRMWARE_STEPS:
             return refusal or "not_supported"
         target = self.import_limit_target_kw()
         if target is None:
