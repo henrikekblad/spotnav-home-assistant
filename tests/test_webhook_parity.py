@@ -299,8 +299,12 @@ async def test_site_settings_over_the_webhook_write_solar_only(
     assert success["site"]["solar_priority"] == SOLAR_PRIORITY_BATTERY_FIRST
     assert success["site"]["solar_forecast"]["selected"] == [roof.entry_id]
     assert success["site"]["active_control"]["writable"] is False and success["site"]["writable"] is True
-    assert site.data[CONF_SOLAR_PRIORITY] == SOLAR_PRIORITY_BATTERY_FIRST
-    assert other_site.data.get(CONF_SOLAR_PRIORITY) != SOLAR_PRIORITY_BATTERY_FIRST
+    # Stored as the battery's place in the site's priority list (above the cars), the old key dropped.
+    assert CONF_SOLAR_PRIORITY not in site.data
+    assert site.data["priority"].index("battery") < min(
+        index for index, item in enumerate(site.data["priority"]) if item.startswith("charger:")
+    )
+    assert "priority" not in other_site.data
     assert other_site.data.get(CONF_SOLAR_FORECAST_ENTRIES, []) == []
 
     status, conflict = await post(
@@ -332,7 +336,7 @@ async def test_site_settings_over_the_webhook_write_solar_only(
         assert refused["site"]["active_control"]["writable"] is False
         forbidden.append(refused)
     assert site.data.get(CONF_ACTIVE_CONTROL_ENABLED) == active_before
-    assert site.data[CONF_SOLAR_PRIORITY] == SOLAR_PRIORITY_BATTERY_FIRST
+    assert success["site"]["solar_priority"] == SOLAR_PRIORITY_BATTERY_FIRST and CONF_SOLAR_PRIORITY not in site.data
     status, other_version = await post(
         client, "webhook-entry_site",
         {"action": "update_site_settings", "api_version": 2, "expected": {}, "changes": {"solar_priority": SOLAR_PRIORITY_CAR_FIRST}},
@@ -418,22 +422,24 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         {"action": "update_charger_priority", "api_version": 1, "expected": "normal", "priority": "first"},
     )
     assert status == 200 and success["ok"] is True and success["error"] is None
-    assert success["charger_priority"] == {"value": "first", "choices": ["first", "normal", "last"], "writable": True}
-    assert charger.data[CONF_CHARGER_PRIORITY] == "first"
+    # No longer stored on the charger: the site's priority list holds the order, and a charger alone on its site
+    # reads "normal" there whatever an older app writes (`site/priority.derived_charger_priorities`).
+    assert success["charger_priority"] == {"value": "normal", "choices": ["first", "normal", "last"], "writable": True}
+    assert CONF_CHARGER_PRIORITY not in charger.data
     # A priority alone is read live by the site: the charger is not reloaded for it.
     assert charger.runtime_data.controller is controller_before
 
     status, dashboard = await post(client, "webhook-entry_prio", {"action": "dashboard", "api_version": 1})
-    assert status == 200 and dashboard["charger_priority"]["value"] == "first"
+    assert status == 200 and dashboard["charger_priority"]["value"] == "normal"
 
     status, conflict = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "last"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "last"}
     )
     assert status == 409 and conflict["error"] == "spotnav_conflict"
-    assert conflict["charger_priority"]["value"] == "first" and charger.data[CONF_CHARGER_PRIORITY] == "first"
+    assert conflict["charger_priority"]["value"] == "normal" and CONF_CHARGER_PRIORITY not in charger.data
 
     status, invalid = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "top"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "top"}
     )
     assert status == 400 and invalid["error"] == "spotnav_invalid_value"
     assert invalid["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
@@ -443,7 +449,7 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         assert status == 400 and refused["error"] == "spotnav_invalid_value"
         assert refused["field_errors"] == [{"field": "expected", "code": "invalid_value"}]
     status, missing = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal"}
     )
     assert status == 400 and missing["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
 
@@ -461,7 +467,7 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
 
     # Back to the default: stored as nothing, as the socket stores it.
     status, back = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "normal"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "normal"}
     )
     assert status == 200 and back["charger_priority"]["value"] == "normal"
     assert CONF_CHARGER_PRIORITY not in charger.data

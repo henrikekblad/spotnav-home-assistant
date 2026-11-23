@@ -181,6 +181,15 @@
       "url": null
     }
   },
+  "priority": {
+    "order": [
+      {
+        "id": "charger:entry_a",
+        "name": "entry_a"
+      }
+    ],
+    "writable": false
+  },
   "setup": {
     "items": [
       {

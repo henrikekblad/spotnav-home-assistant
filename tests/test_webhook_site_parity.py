@@ -133,6 +133,8 @@ async def test_the_site_settings_view_is_the_administrators_bar_load_balancing(
     assert expected["writable"] is True and expected["site"]["active_control"]["writable"] is True
     # As the webhook's dashboard: what its writes can change is writable, load balancing is not.
     expected["site"]["active_control"]["writable"] = False
+    # The priority list is written over the WebSocket only: the apps read it.
+    expected["priority"]["writable"] = False
     # An app that does not read the power level never meets its keys (its decoder refuses a demand block with them).
     reading = {**expected, "ok": True, "action": "get_site_settings_view"}
     prices = expected["price_settings"]
