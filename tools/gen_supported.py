@@ -795,8 +795,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "Fronius (GEN24 with BYD)",
         "`fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
         keys=("fronius",),
+        adapter="fronius",
         control="Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve)",
-        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute.",
+        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute. "
+        "The ratings, the floor and the counters are read only where the inverter accepts control over Modbus; the "
+        "size is the battery's designed capacity.",
     ),
     Overview(
         "Victron (GX with ESS)",

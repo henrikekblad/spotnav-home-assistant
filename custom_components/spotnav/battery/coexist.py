@@ -38,6 +38,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   2025) needs the inverter's "External via protocol (Modbus TCP)" setting, which only one writer may use [U]
   (`plans/research_integrations/kostal_control_2026-11-23.md`). `kostal_modbus_control` (mbuhansen 4.3.0) is the
   battery-control integration for it, set up for control but also for readings.
+* Fronius's own control is what the inverter's web UI holds and Home Assistant cannot see: battery time-of-use
+  schedules, the Energy Cost Assistant in Solar.web and a grid operator's dynamic power reduction, all of which outrank or
+  precede Modbus limits ([EVCC] requirement text in `plans/research_integrations/fronius_control_2026-11-23.md`). No
+  aggregator is named: no Nordic one was found.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -104,6 +108,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("kostal", "Kostal", ("kostal_plenticore", "kostal_modbus_control"),
                 "Kostal: smart battery control, time control and the automatic strategies",
                 ("Tibber, over its bridge [U]",)),
+    Coexistence("fronius", "Fronius", ("fronius",),
+                "Fronius web UI: time-of-use schedules, Energy Cost Assistant and dynamic power reduction"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

@@ -178,6 +178,22 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   `scb_battery_power` as the discharge-positive power without inverting it, `templates/kostal.yaml` line 127; Modbus:
   register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
 
+* Fronius (Gen24, Gen24 Plus, Tauro, Verto Plus; BYD or Reserva battery), core `fronius` (home-assistant/core `42f4a32`,
+  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`): read only (the Modbus limits and
+  their revert timer are not written here). Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
+  (`sensor.py` line 1266: `state_of_charge`, line 1069; `capacity_designed`, line 1033; only for a storage that reports
+  a serial) and `<inverter id>-modbus-<key>` for what the Modbus settings read (lines 1200-1202): the counters
+  `storage_energy_charged_total` and `storage_energy_discharged_total` (Wh, DC side, line 512), `battery_power_limit_reference`
+  (WChaMax, W, line 545, the base the integration's percent limits are of, one figure for charge and discharge), and the
+  number `battery_minimum_reserve` (`number.py` line 91, MinRsvPct, the discharge floor). They exist only where the
+  inverter accepts control over Modbus. The mode is the two switches `battery_charge_power_limit_enabled` and
+  `battery_discharge_power_limit_enabled` (`switch.py` lines 61-69, SunSpec `StorCtl_Mod`): both off is the inverter's own
+  self-consumption; a limit in force is someone's. Schedules and the Energy Cost Assistant in the inverter's web UI are
+  invisible to Home Assistant. The battery's power is discharge-positive (`power_battery`, disabled by default,
+  `sensor.py` line 926; its `power_battery_discharge` is the positive part, line 936), negated by the site. The firmware
+  is the device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's. The size is
+  the storage's *designed* capacity, not the usable or aged one; `capacity_maximum` (line 1026) is not read.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -928,9 +944,41 @@ KOSTAL: Final = Adapter(
     reserves=(ReserveSource(Match(("number",), re.compile(r"_devices:local_battery:minsoc$"))),),
 )
 
+def _fronius(key: str, *domains: str) -> Match:
+    """`<id>-<key>` or `<id>-modbus-<key>`: the key after the last hyphen."""
+    return Match(domains or ("sensor",), re.compile(rf"-{re.escape(key)}$"))
+
+
+#: Fronius through core `fronius` (see the module): read only. Its unique ids join the parts with a hyphen.
+FRONIUS: Final = Adapter(
+    brand="fronius",
+    label="Fronius",
+    platforms=("fronius",),
+    facts={
+        "soc": _fronius("state_of_charge"),
+        "capacity": _fronius("capacity_designed"),
+        "rated_charge": _fronius("battery_power_limit_reference"),
+        "rated_discharge": _fronius("battery_power_limit_reference"),
+        "charged_total": _fronius("storage_energy_charged_total"),
+        "discharged_total": _fronius("storage_energy_discharged_total"),
+    },
+    modes=(
+        ModeRule(
+            _fronius("battery_charge_power_limit_enabled", "switch"), frozenset({"off"}), "charge limit", required=False
+        ),
+        ModeRule(
+            _fronius("battery_discharge_power_limit_enabled", "switch"),
+            frozenset({"off"}),
+            "discharge limit",
+            required=False,
+        ),
+    ),
+    reserves=(ReserveSource(_fronius("battery_minimum_reserve", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS,
 )
 
 

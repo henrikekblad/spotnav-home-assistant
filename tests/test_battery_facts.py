@@ -453,6 +453,8 @@ PLAN_REASON = {
     "ecoflow": "no_rated_power",
     # Kostal's core integration states no size and no rating (the Modbus one states a size, no rating).
     "kostal": "no_capacity",
+    # Fronius states all the plan needs where the inverter accepts control over Modbus (the rating is WChaMax).
+    "fronius": None,
 }
 
 
