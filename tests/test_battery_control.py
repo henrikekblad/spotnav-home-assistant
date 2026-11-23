@@ -1346,6 +1346,54 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
     assert cap["import_limit"]["per_phase"]["entity_id"] == named.get(case)
 
 
+@pytest.mark.parametrize("case", ["tested", "other_firmware", "firmware_unread", "not_in_grid_charge", "untrusted"])
+async def test_the_import_limit_is_trusted_only_where_it_was_shown_to_act(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str
+) -> None:
+    """Sigenergy's limit was shown to act in its grid charge on V100R001C21SPC117 (owner decision 2026-11-23): on
+    another firmware neither rule lifts the cap; the card is told `not_supported`, the diagnostics `not_trusted`."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _field_tested(monkeypatch)
+    trust = commands_module.SIGENERGY_IMPORT_LIMIT_TRUST
+    if case in ("not_in_grid_charge", "untrusted"):
+        changed = replace(trust, acts_in=frozenset({"hold"})) if case == "not_in_grid_charge" else replace(
+            trust, untrusted="a maker's bug")
+        controls = tuple(
+            replace(c, import_limit_trust=changed) if c.brand == "sigenergy" else c for c in commands_module.CONTROLS
+        )
+        monkeypatch.setattr(commands_module, "CONTROLS", controls)
+    if case == "other_firmware":
+        hass.states.async_set(FIRMWARE, "V100R001C21SPC118")
+    elif case == "firmware_unread":
+        hass.states.async_remove(FIRMWARE)
+    _per_phase_plant(hass)
+    _import_limit(hass, "12.4")
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    now = dt_util.now()
+    await control._async_read_sources(now)
+    _options(hass, site, import_limit_acts=True)
+    trusted = case == "tested"
+    assert (control._import_limit_refusal() is None) is trusted
+    assert (control._import_limit_phase_refusal() is None) is trusted
+    cap = control.status()["grid_charge_cap"]
+    assert (cap["rule"] == "import_limit") is trusted and cap["import_limit"]["holds"] is trusted
+    if not trusted:
+        assert control._import_limit_refusal() == "not_trusted"
+        assert cap["import_limit"]["why"] == "not_supported" and cap["import_limit"]["per_phase"]["why"] == "not_supported"
+        assert control.snapshot()["import_limit_refusal"] == {"total": "not_trusted", "per_phase": "not_trusted"}
+        assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "the cap: no charge"
+        assert not control.import_limit_guards()
+
+
+def test_every_recipe_with_an_import_limit_says_where_it_was_shown_to_act() -> None:
+    sigen = commands_module.SIGENERGY_CONTROL.import_limit_trust
+    assert sigen is not None and sigen.acts_in == frozenset({"grid_charge"})
+    assert sigen.firmware == frozenset({"V100R001C21SPC117"}) and not sigen.untrusted
+    assert all(c.import_limit_trust is not None for c in commands_module.CONTROLS if c.import_limit is not None)
+    with pytest.raises(ValueError):
+        replace(commands_module.SIGENERGY_CONTROL, import_limit_trust=None)
+
+
 @pytest.mark.parametrize(("margin", "limit", "held"), [(0.0, "13.8", True), (1.0, "13.8", False), (1.0, "13.1", True),
                                                        (None, "13.8", False)])
 async def test_a_limit_held_per_phase_counts_the_site_s_own_safety_margin(

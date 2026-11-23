@@ -349,6 +349,12 @@ class Trial:
 
 
 
+def _card_refusal(refusal: str | None) -> str | None:
+    """An import-limit refusal as the card is sent it: `not_trusted` (`commands.ImportLimitTrust`) as `not_supported`,
+    a code the card knows; the precise code is in the diagnostics (`snapshot`)."""
+    return "not_supported" if refusal == "not_trusted" else refusal
+
+
 def _grid_charge_expiry(control: BrandControl | None, *, phased: bool) -> Expiry | None:
     """The expiry of a grid charge on this control: the phase spec's for a charge per phase (`phased`; `None` for a
     brand without one), else the recipe's own for the grid charge (`expiry_by_action`, then `expiry`: never the
@@ -1969,7 +1975,9 @@ class BatteryControl:
     def _import_limit_refusal(self, *, dc_charger: bool = True) -> str | None:
         """Why the plant's own import limit cannot be the fuse's guard on this site whatever it reads, as a stable
         code; `None` when it can. The rule (`gate.import_limit_max_kw`) rests on the plant seeing every source and
-        spreading its charge evenly over three phases, so it is refused for a plant that is not three-phase
+        spreading its charge evenly over three phases, so it is refused where the recipe does not trust the limit here
+        (`not_trusted`, `_import_limit_trusted`: not shown to act in its grid charge, or on another firmware), for a
+        plant that is not three-phase
         (`plant_not_three_phase`: a single-phase source), a sun source that is not the plant's (`foreign_pv`: it
         lowers the total the plant sees while one phase carries more), sources not read yet (`sources_unknown`), and
         a charger run by power through the plant (`dc_charger`: Sigenergy's DC charger, which can also put out, V2G;
@@ -1977,6 +1985,8 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return "not_supported"
+        if not self._import_limit_trusted(control):
+            return "not_trusted"
         if self._plant_phases(control) != 3:
             return "plant_not_three_phase"
         if self._sources is None:
@@ -1989,6 +1999,19 @@ class BatteryControl:
                 if entry is not None and entry.data.get(CONF_CURRENT_CONTROL) == CURRENT_CONTROL_POWER:
                     return "dc_charger"
         return None
+
+    def _import_limit_trusted(self, control: BrandControl) -> bool:
+        """Whether the recipe trusts the plant's own import limit here (`commands.ImportLimitTrust`): not marked
+        untrusted, shown to act in the recipe's grid charge, and on the plant's firmware as read (the last reading,
+        `firmware_key`; one never read is not trusted where the recipe names its firmwares)."""
+        trust = control.import_limit_trust
+        if trust is None or trust.untrusted or ACTION_GRID_CHARGE not in trust.acts_in:
+            return False
+        if trust.firmware is None:
+            return True
+        if not self.firmware_known():
+            return False
+        return self.firmware_key().split(" | ", 1)[0] in trust.firmware
 
     def _site_margin_a(self) -> float:
         """The site's own safety margin (A per phase) as stored now, for the per-phase import-limit rule only."""
@@ -2199,7 +2222,7 @@ class BatteryControl:
             "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
             "holds": options.import_limit_acts and refusal is None
             and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
-            "why": refusal,
+            "why": _card_refusal(refusal),
         }
         spec = control.import_limit_phases
         if spec is None:
@@ -2216,7 +2239,8 @@ class BatteryControl:
         match = {"output_type_unread": control.output_type, "phase_control_off": spec.switch,
                  "grid_sensor_offline": spec.grid_sensor}.get(phase_refusal or "")
         block["per_phase"] = {
-            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds,
+            "why": _card_refusal(phase_refusal),
             # What the administrator's tap sets the limit to (`import_limit_target_kw`), the card's figure too.
             "set_kw": self.import_limit_write_kw(),
             "entity_id": None if match is None else plant_entity_id(self.hass, self.site.config, match),
@@ -3164,7 +3188,16 @@ class BatteryControl:
             "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
             "expiry": self._expiry_block(),
+            # The precise import-limit refusals (the card is sent `not_supported` for `not_trusted`).
+            "import_limit_refusal": self._import_limit_refusals(),
         }
+
+    def _import_limit_refusals(self) -> dict[str, str | None] | None:
+        try:
+            return {"total": self._import_limit_refusal(), "per_phase": self._import_limit_phase_refusal()}
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("import_limit_refusals: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
 
     def _write_budget_block(self) -> dict[str, Any] | None:
         try:

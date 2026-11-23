@@ -698,6 +698,20 @@ class ImportLimitPhases:
 
 
 @dataclass(frozen=True, slots=True)
+class ImportLimitTrust:
+    """Where a plant's own grid import limit (`BrandControl.import_limit`) was shown to act, so that either import-limit
+    rule may stand in for the HA-down cap (`control.BatteryControl._import_limit_refusal`: `not_trusted` elsewhere).
+    Data only."""
+
+    #: The plan actions in whose commanded state the limit was shown to act.
+    acts_in: frozenset[str]
+    #: The plant firmwares (as read, the firmware part of `gate.firmware_key`) it was shown to act on; `None`: any.
+    firmware: frozenset[str] | None = None
+    #: Non-empty: never trusted, the offer hidden (the reason, e.g. a known bug of the maker's).
+    untrusted: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class BrandControl:
     brand: str
     adapter: Adapter
@@ -745,6 +759,8 @@ class BrandControl:
     #: Where that limit is held per phase (`ImportLimitPhases`): with the owner's test recorded, the HA-down cap is
     #: lifted while it reads at most what keeps every phase under the fuse (`gate.import_limit_phase_holds`).
     import_limit_phases: ImportLimitPhases | None = None
+    #: Where that limit was shown to act (`ImportLimitTrust`); set wherever `import_limit` is.
+    import_limit_trust: ImportLimitTrust | None = None
     note: str = ""
     #: Ways to hold, tried in order by the verification (`HoldVariant`); the first is in `states` and `peak_first`
     #: until another is chosen (`with_hold`). Empty: the brand has one hold.
@@ -813,6 +829,10 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+
+    def __post_init__(self) -> None:
+        if self.import_limit is not None and self.import_limit_trust is None:
+            raise ValueError(f"{self.brand}: an import limit needs to say where it was shown to act")
 
     @property
     def watchdog_roles(self) -> tuple[str, ...]:
@@ -1259,6 +1279,11 @@ SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
     field_tested=True,
 )
 
+#: Where Sigenergy's import limit was shown to act (see `SIGENERGY_IMPORT_LIMIT_PHASES`).
+SIGENERGY_IMPORT_LIMIT_TRUST: Final = ImportLimitTrust(
+    acts_in=frozenset({ACTION_GRID_CHARGE}), firmware=frozenset({"V100R001C21SPC117"}),
+)
+
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
     # Flips to True once the owner's on-site tests are rerun on the reworked executor (one line, here and below).
@@ -1291,6 +1316,10 @@ SIGENERGY_CONTROL: Final = BrandControl(
     output_type=_key("inverter_output_type"),
     import_limit=_key("plant_grid_maximum_import_limitation", "number"),
     import_limit_phases=SIGENERGY_IMPORT_LIMIT_PHASES,
+    # The on-site tests of 2026-11-18 and 2026-11-21 ran in Remote EMS "Command Charging (Grid First)", this recipe's
+    # grid charge, on firmware V100R001C21SPC117 (owner decision 2026-11-23: trusted on the firmware it was tested
+    # on; another is added once it is re-tested there). The site's own option that its limit acts is not tied to it.
+    import_limit_trust=SIGENERGY_IMPORT_LIMIT_TRUST,
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
     hold_variants=SIGENERGY_HOLDS,
