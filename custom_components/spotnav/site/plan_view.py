@@ -13,7 +13,8 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
      loads: [{id, kind, name, state: "live" | "would", in_house, kw: [...], level: [...] | null,
               runs: [{start, end, what, reason, kw, kwh, active_min}], summary: {...}, does_not_fit: {...} | null,
               planned: [...] | null, ran: [...] | null, reason: [...] | null}],
-     past: bool, date: "YYYY-MM-DD" | null, history: {days, first}}
+     past: bool, date: "YYYY-MM-DD" | null, history: {days, first},
+     not_ready: {items: [...], ranked: [...]} | null}
 
 * **Past and history** (plan `plans/v3_decision_history.md`): the live answer has `past` false, `date` null, each
   hour `past` false with `recorded` and `planned_net_kw` null, each load `planned`, `ran` and `reason` null. A past
@@ -48,6 +49,10 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   hours (a watched load's lane says `would`). `does_not_fit`: a car's charge that does not fit under the ceiling that
   acts now by its departure, with the person's choices (`site/does_not_fit.py`, the same block as the charger's
   dashboard); `null` for every other load and for a car whose charge fits.
+* **`not_ready`**: what will not be ready in time across every deadline of the site (the cars' departures under the
+  ceiling, the spa's baths and the sauna's sessions), with each choice ranked by what it frees (`site/not_ready.py`,
+  the card's choice sheet and the phones' combined notice); `null` when everything fits. A past day has none; today
+  stepped back carries the live one.
 * **`summary`**: the window's import cost less export earnings (`cost`, minor units, over the priced hours), the
   highest hour from the grid and the ceiling at it (`over` when above); `month_peak` the month's highest measured
   hour so far, where the price has a demand charge or a power level (`power_tariff`).
@@ -103,6 +108,7 @@ PLAN_KEYS: Final = (
     "past",
     "date",
     "history",
+    "not_ready",
 )
 HOUR_KEYS: Final = (
     "start",
@@ -296,6 +302,8 @@ class PlanInputs:
     month_peak: tuple[float, datetime] | None = None
     #: The first hour the decision history holds (`site/decision_ledger.py`), `None` before any.
     history_first: datetime | None = None
+    #: What will not be ready in time across every deadline (`site/not_ready.py`), `None` when all fit.
+    not_ready: dict[str, Any] | None = None
 
 
 def _r(value: float | None, digits: int = 3) -> float | None:
@@ -749,6 +757,7 @@ def plan_view(inputs: PlanInputs) -> dict[str, Any]:
         "past": False,
         "date": None,
         "history": history_block(inputs.history_first),
+        "not_ready": inputs.not_ready,
     }
 
 

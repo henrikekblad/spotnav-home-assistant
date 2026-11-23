@@ -1784,6 +1784,7 @@
     "minor_unit": "öre"
   },
   "month_peak": null,
+  "not_ready": null,
   "past": true,
   "power_tariff": false,
   "site_id": "site_villa",
