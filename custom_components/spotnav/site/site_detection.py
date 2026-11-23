@@ -841,6 +841,11 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # `Pac_total_W`, "positive = discharging" on the AC side (the README's table, `sensor_list.py`). The positive-only
     # `state_battery_input` and the energy counters end otherwise. Sign from the source, unverified on hardware.
     BatteryRow(("sonnenbatterie",), _re(r"_state_battery_inout$"), inverted=True, label="sonnenBatterie"),
+    # Alpha ESS (`alphaess_modbus`, senalse `b256f55`): `<entry id>_power_battery`, register 0x0126. The vendor's register
+    # list says "-: Charge, +: Discharge", the integration's house-load formula `pv + battery + grid` needs the same, and
+    # evcc reads it as the battery's power as it is; the integration's own description string says the opposite. Read as
+    # discharge-positive: sign unverified on hardware.
+    BatteryRow(("alphaess_modbus",), _re(r"_power_battery$"), inverted=True, label="Alpha ESS (Modbus)"),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

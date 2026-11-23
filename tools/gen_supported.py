@@ -166,6 +166,7 @@ NAMES: dict[str, str] = {
     "omnibattery": "Omnibattery",
     "anker_solix": "Anker Solix",
     "sonnenbatterie": "sonnenBatterie",
+    "alphaess_modbus": "Alpha ESS (Modbus)",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -890,7 +891,15 @@ OVERVIEW: tuple[Overview, ...] = (
     Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
     Overview(
         "Alpha ESS",
-        "Not read: `alphaess`, HACS (cloud), and an AlphaESS plugin of `solax_modbus`",
+        "`alphaess_modbus`, HACS (senalse/ha-alphaess-modbus). Not read: `alphaess`, HACS (cloud, entities named by "
+        "their English display names), and an AlphaESS plugin of `solax_modbus`",
+        keys=("alphaess_modbus",),
+        adapter="alphaess",
+        control="Not mapped: read only. The vendor's dispatch block (Modbus 0x0880 and on) has its own lease in the "
+        "command, and the integration has force-charge and dispatch switches",
+        note="Which way the battery power counts is read from the vendor's register list and not yet confirmed on a "
+        "unit. The size is read only when its disabled sensor is enabled, and the ratings are learnt. A supplier's "
+        "dispatch (a virtual power plant) shows as a running dispatch and the battery is then not SpotNav's.",
     ),
     Overview(
         "sonnen",

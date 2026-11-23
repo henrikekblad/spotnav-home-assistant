@@ -469,6 +469,8 @@ PLAN_REASON = {
     "omnibattery": "no_rated_power",
     # sonnen states the rating (`max_power`) but its size sensor is disabled by default: learnt until it is enabled.
     "sonnen": "no_capacity",
+    # Alpha ESS states the size only when its disabled sensor is enabled and no rating: learnt.
+    "alphaess": "no_capacity",
 }
 
 

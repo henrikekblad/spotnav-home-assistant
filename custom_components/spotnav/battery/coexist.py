@@ -63,6 +63,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   optimization; weltmeyer `9441b4a`); a mode change is refused while a virtual power plant is active, which is the
   Tibber VPP (sonnenVPP, since 2024 in Sweden [V]) running the battery
   (`plans/research_integrations/sonnen_control_2026-11-23.md`).
+* Alpha ESS's own control is the app's two time-window sets (`charging_time_period_control`) and the vendor's dispatch block,
+  whose registers a supplier's cloud writes too: evcc issue 36201 reads a dispatch nobody at the house started on a Frank
+  Energie battery (start 1, mode 2, 1800 s) [F]; no Nordic aggregator was found. The integration domains are senalse's
+  `alphaess_modbus` (v1.15.0) and CharlesGillanders' cloud `alphaess` (v0.9.0)
+  (`plans/research_integrations/alphaess_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -138,6 +143,9 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "Deye Cloud or SunSynk Connect: time-of-use programmes and work modes"),
     Coexistence("anker", "Anker SOLIX", ("anker_solix_official",),
                 "Anker app: time-of-use, smart, custom and dynamic-pricing modes, and the backup reserve"),
+    Coexistence("alphaess", "Alpha ESS", ("alphaess_modbus", "alphaess"),
+                "AlphaCloud app: grid-charge and discharge time windows, and supplier dispatch over the same registers",
+                ("Frank Energie VPP (Netherlands) [F]",)),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
@@ -183,6 +191,9 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     # mbuhansen/kostal_plenticore_battery_control (manifest `domain`, 4.3.0, `3bd84ac`): the Modbus control integration for
     # a Kostal Plenticore, which also reads the inverter, so its presence is only a hint.
     OutsideIntegration("kostal_modbus_control", "Kostal Modbus Control", "hint"),
+    # senalse/ha-alphaess-modbus (`b256f55`, v1.15.0): reads the inverter and also has the force charge, force export and
+    # dispatch switches, so its presence is only a hint (the `dispatch_start` mode names it when it runs).
+    OutsideIntegration("alphaess_modbus", "Alpha ESS Modbus", "hint"),
 )
 
 

@@ -2789,5 +2789,170 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "alphaess": {
+  "_source": "senalse/ha-alphaess-modbus b256f55 (v1.15.0): `<config entry id>_<key>` on every platform (sensor.py line 173, number.py line 65, select.py line 48), the keys from const.py; the device's manufacturer is \"AlphaESS\" (__init__.py line 94). Not a real registry; built from the source, the battery capacity disabled by default as there.",
+  "platform": "alphaess_modbus",
+  "manufacturer": "AlphaESS",
+  "battery": "sensor.alphaess_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.alphaess_battery_power",
+    "unique_id": "01jaess00000000000000000_power_battery",
+    "device": "inv",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_battery_state_of_charge",
+    "unique_id": "01jaess00000000000000000_soc_battery",
+    "device": "inv",
+    "state": "64.0",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_battery_state_of_health",
+    "unique_id": "01jaess00000000000000000_soh_battery",
+    "device": "inv",
+    "state": "98.0",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_battery_capacity",
+    "unique_id": "01jaess00000000000000000_battery_capacity_kwh",
+    "device": "inv",
+    "state": "10.1",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.alphaess_total_energy_charge_battery",
+    "unique_id": "01jaess00000000000000000_total_energy_charge_battery",
+    "device": "inv",
+    "state": "4100.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_total_energy_discharge_battery",
+    "unique_id": "01jaess00000000000000000_total_energy_discharge_battery",
+    "device": "inv",
+    "state": "3800.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_total_energy_charge_battery_from_grid",
+    "unique_id": "01jaess00000000000000000_total_energy_charge_battery_from_grid",
+    "device": "inv",
+    "state": "900.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_ems_version",
+    "unique_id": "01jaess00000000000000000_ems_version",
+    "device": "inv",
+    "state": "V0.11.627",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_inverter_version",
+    "unique_id": "01jaess00000000000000000_inverter_version",
+    "device": "inv",
+    "state": "3.015",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_battery_max_charge_current",
+    "unique_id": "01jaess00000000000000000_battery_max_charge_current",
+    "device": "inv",
+    "state": "25",
+    "unit": "A",
+    "device_class": "current",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_discharging_cutoff_soc",
+    "unique_id": "01jaess00000000000000000_discharging_cutoff_soc",
+    "device": "inv",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.alphaess_discharging_cutoff_soc",
+    "unique_id": "01jaess00000000000000000_discharging_cutoff_soc",
+    "device": "inv",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_dispatch_start",
+    "unique_id": "01jaess00000000000000000_dispatch_start",
+    "device": "inv",
+    "state": "0",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_charging_time_period_control",
+    "unique_id": "01jaess00000000000000000_charging_time_period_control",
+    "device": "inv",
+    "state": "0",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.alphaess_charging_time_period_control",
+    "unique_id": "01jaess00000000000000000_charging_time_period_control",
+    "device": "inv",
+    "state": "Disable",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.alphaess_grid_power",
+    "unique_id": "01jaess00000000000000000_power_grid",
+    "device": "inv",
+    "state": "300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "alphaess",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

@@ -330,6 +330,23 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   the code); the firmware, which is the device's `sw_version` (read from the device registry, not an entity). The
   battery's power is `state_battery_inout` (`Pac_total_W`), discharge-positive, the AC side (the README's table).
 
+* Alpha ESS SMILE, `alphaess_modbus` (senalse/ha-alphaess-modbus `b256f55`, v1.15.0, local Modbus TCP, read 2026-11-23,
+  `plans/research_integrations/alphaess_control_2026-11-23.md`): read only. Unique id `<config entry id>_<key>` on every
+  platform, one entry per inverter, the device's manufacturer "AlphaESS". The level is `soc_battery` (%), the size
+  `battery_capacity_kwh` (disabled by default: learnt until it is enabled), the counters `total_energy_charge_battery` and
+  `total_energy_discharge_battery` (the `_from_grid` one ends otherwise), the firmware the `ems_version` sensor (the EMS
+  that runs the dispatch; the device's `sw_version` is the fallback) and the floor `discharging_cutoff_soc` (the
+  number and its sensor). The ratings are learnt: the registers give the BMS's present current limits and no voltage
+  to multiply by is worked out. The modes are `dispatch_start` (1 while a dispatch runs: a Modbus controller's, an
+  automation's, or a supplier's virtual power plant writing the same registers, evcc issue 36201) and
+  `charging_time_period_control` (the app's grid-charge and discharge windows, 0 = none), each free only at 0. The
+  battery's power is `power_battery` (register 0x0126), whose sign is DISPUTED: the vendor's register list says
+  "-: Charge, +: Discharge", the integration's own house-load formula `pv + battery + grid` and evcc's template
+  (which feeds the raw register as the battery's power) need discharge-positive, but its own description string and
+  its "remaining time" sensor read positive as charging. Read as discharge-positive (the vendor's list); sign
+  unverified on hardware. Not read: the cloud integration `alphaess` (CharlesGillanders), whose unique id is
+  `<entry id>_<serial> - <English display name>`, a name a rename or a translation moves.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1267,10 +1284,31 @@ SONNEN: Final = Adapter(
     reserves=(ReserveSource(_key("battery_reserve", "number")), ReserveSource(_key("backup_buffer"))),
 )
 
+#: Alpha ESS SMILE through `alphaess_modbus` (see the module): read only.
+ALPHAESS: Final = Adapter(
+    brand="alphaess",
+    label="Alpha ESS",
+    platforms=("alphaess_modbus",),
+    facts={
+        "soc": _key("soc_battery"),
+        "capacity": _key("battery_capacity_kwh"),
+        "firmware": _key("ems_version"),
+        "charged_total": _key("total_energy_charge_battery"),
+        "discharged_total": _key("total_energy_discharge_battery"),
+    },
+    modes=(
+        # 1 while any dispatch runs, SpotNav's own included: a battery SpotNav is not writing is someone else's then.
+        ModeRule(_key("dispatch_start", "sensor"), frozenset({"0"}), "dispatch"),
+        # The app's windows (0 off, 1 grid charging, 2 discharge control, 3 both); the select of the same key is not it.
+        ModeRule(_key("charging_time_period_control", "sensor"), frozenset({"0"}), "time period control", required=False),
+    ),
+    reserves=(ReserveSource(_key("discharging_cutoff_soc", "number")), ReserveSource(_key("discharging_cutoff_soc"))),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN,
+    SONNEN, ALPHAESS,
 )
 
 
