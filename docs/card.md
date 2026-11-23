@@ -525,7 +525,7 @@ happened and roughly when (required) and an e-mail address (optional, for an ans
 mention in your post or message; when sending fails, it says why and suggests the download instead (see
 [Send debug info](troubleshooting.md#send-debug-info)).
 
-![Support: Automations, the debug info and About this card](images/card-settings-support.png)
+![Support, the same in every card: Automations, Beta tester and Hardware test, then Documentation, the debug info, Disconnect all phones and Support the SpotNav project](images/settings-support.png)
 
 ## Plan settings
 

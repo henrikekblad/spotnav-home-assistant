@@ -1797,6 +1797,7 @@
   "battery.cap.phase.turnOn": "Ota käyttöön…",
   "battery.cap.phase.open": "Avaa Home Assistantissa",
   "battery.cap.phase.setFailed": "Tuontirajaa ei voitu vielä asettaa tai vahvistaa. Odota minuutti ja yritä uudelleen, tai aseta se Sigenergy-sovelluksessa.",
+  "battery.cap.phase.setInApp": "Aseta se Sigenergy-sovelluksessa.",
   "battery.cap.phase.checked": "Ennen jokaista verkosta latausta SpotNav lukee rajan ja laitteiston asetukset ja rajoittaa latausta kuten ennenkin heti, jos jokin ei täsmää.",
   "battery.cap.phase.setText": "SpotNav asettaa Sigenergyn tuontirajaksi {max} kW ja luottaa sen jälkeen siihen, että se pitää jokaisen vaiheen pääsulakkeen alla, vaikka Home Assistant pysähtyisi. SpotNav ei koskaan nosta rajaa. Raja näkyy Sigenergy-sovelluksessa ja sitä voi muuttaa siellä.",
   "battery.cap.phase.turnOnText": "SpotNav luottaa siihen, että Sigenergyn tuontiraja ({value} kW) pitää jokaisen vaiheen pääsulakkeen alla, vaikka Home Assistant pysähtyisi, eikä enää rajoita verkosta lataamista sulakkeen suojaamiseksi.",

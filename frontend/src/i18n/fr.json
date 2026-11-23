@@ -1797,6 +1797,7 @@
   "battery.cap.phase.turnOn": "Activer…",
   "battery.cap.phase.open": "Ouvrir dans Home Assistant",
   "battery.cap.phase.setFailed": "La limite d'importation n'a pas encore pu être réglée ni confirmée. Attendez une minute et réessayez, ou réglez-la dans l'application Sigenergy.",
+  "battery.cap.phase.setInApp": "Réglez-la dans l'application Sigenergy.",
   "battery.cap.phase.checked": "Avant chaque charge depuis le réseau, SpotNav lit la limite et les réglages de l'installation, et retient la charge comme avant dès que quelque chose ne correspond pas.",
   "battery.cap.phase.setText": "SpotNav règle la limite d'importation de Sigenergy sur {max} kW, puis compte sur elle pour maintenir chaque phase sous le fusible principal, même si Home Assistant s'arrête. SpotNav ne relève jamais la limite. Elle est visible et modifiable dans l'application Sigenergy.",
   "battery.cap.phase.turnOnText": "SpotNav compte sur la limite d'importation de Sigenergy ({value} kW) pour maintenir chaque phase sous le fusible principal, même si Home Assistant s'arrête, et ne retient plus la charge depuis le réseau pour protéger le fusible.",

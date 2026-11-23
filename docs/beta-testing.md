@@ -8,9 +8,10 @@ section: Help
 # Beta testing
 
 An administrator can make the installation a **beta tester**: **Settings → Support → Beta tester**. It is off by
-default. Its **Read more** says the same as this page.
+default. Its **Read more** says the same as this page. The hardware test (below) is a row of its own beside it,
+**Settings → Support → Hardware test**, with its own dialog.
 
-![Settings, Support: the Beta tester box with Read more, and Run hardware test](images/settings-beta.png)
+![Settings, Support, Beta tester: the box, Read more and the e-mail address with its Save](images/settings-beta.png)
 
 ## What it unlocks
 
@@ -40,16 +41,19 @@ While the box is ticked, SpotNav sends the same redacted file that **Send debug 
   alert.
 - Untick it at any time and nothing more is sent.
 - A report that fails is skipped, not sent again later.
-- You may give an e-mail address. It is optional and used only to tell you about a problem seen in your reports, or
-  a fix for it.
+- You may give an e-mail address (beside its **Save**). It is optional and used only to tell you about a problem seen
+  in your reports, or a fix for it. It is the installation's one address: an address given with **Send debug info**
+  is the same one, and either dialog shows it filled in.
 - Beta reports and the address are kept for **90 days**, then deleted.
 
 See [Privacy](privacy.md) and the [privacy policy](https://spotnav.sensnology.se/privacy).
 
 ## The hardware test
 
-In the same dialog, **Run hardware test** tests your plant the way SpotNav controls it, then hands everything back.
-Any administrator can run it, beta tester or not.
+**Settings → Support → Hardware test** shows the last result and its day (or "Not run"); its dialog's **Run hardware
+test** tests your plant the way SpotNav controls it, then hands everything back. Any administrator can run it, beta
+tester or not. The row is not shown on a site with nothing to test (no battery or heating control) and no earlier
+test.
 
 - The home battery holds, takes a small charge from the grid (under the fuse cap), discharges to the house and is
   handed back.
@@ -69,6 +73,8 @@ is over, and a plan whose window is open starts again.
 
 It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
 skipped. The result is then **partial**, or **skipped** when nothing ran, and such a test does not use up the day.
+When a part is there but none can run just now (starting, busy, or waiting for an acknowledgement), the dialog says
+the test cannot run right now, rather than asking you to turn control on.
 
 The result goes into the debug info (`hardware_test`). With the beta box ticked it is sent by itself. Otherwise the
-dialog offers **Send**.
+dialog offers **Send the result to the developer** under the result.

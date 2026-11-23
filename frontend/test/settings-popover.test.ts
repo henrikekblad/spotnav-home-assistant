@@ -452,6 +452,24 @@ describe("the popover from the house card", () => {
       { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", set_import_limit: true },
     ]);
     high.element.remove();
+    // Control only watches: nothing is written to the plant, so no button: the limit is set in the app.
+    const watching = withPhase({ why: "not_said_to_act" }) as Record<string, any>;
+    watching["options"]["battery_control_shadow_only"] = true;
+    const shadow = await mount({ battery: "checking.json", status: watching });
+    popover = await open(shadow.root);
+    note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
+    expect(note.querySelector("button")).toBeNull();
+    expect(note.textContent).toContain("Ställ in den i Sigenergy-appen.");
+    shadow.element.remove();
+    // A limit that reads nothing is never written over: no button either.
+    const unread = withPhase({ why: "not_said_to_act", set_kw: null }) as Record<string, any>;
+    unread["grid_charge_cap"]["import_limit"]["value_kw"] = null;
+    const blank = await mount({ battery: "checking.json", status: unread });
+    popover = await open(blank.root);
+    note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
+    expect(note.dataset["code"]).toBe("limit_unread");
+    expect(note.querySelector("button")).toBeNull();
+    blank.element.remove();
     // Not said to act, the limit already low enough: the tap only says it acts (same command, nothing to lower).
     const low = withPhase({ why: "not_said_to_act", set_kw: null }) as Record<string, any>;
     low["grid_charge_cap"]["import_limit"]["value_kw"] = 12.0;

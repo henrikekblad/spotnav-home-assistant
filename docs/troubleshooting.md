@@ -29,7 +29,8 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 ### Send debug info
 
 Instead of downloading the file and emailing it, an administrator can send it from the card: **Settings, Support,
-Send debug info**. Write what happened and roughly when, add an e-mail address if you want an answer, tick the box
+Send debug info**. Write what happened and roughly when, add an e-mail address if you want an answer (it is kept in
+Home Assistant for next time, the same address as under [Beta tester](beta-testing.md), and filled in the next time), tick the box
 to agree that the information is sent to SpotNav's developer, and press **Send**. The card then shows a reference
 such as `SN-7KQ4`: mention it in your forum post, your message in the group or your GitHub issue, so the report can
 be found.

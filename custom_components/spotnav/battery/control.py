@@ -1923,9 +1923,9 @@ class BatteryControl:
 
     def import_limit_write_kw(self) -> float | None:
         """What the administrator's tap would write to the plant's import limit now: `import_limit_target_kw` when the
-        limit reads more than keeps every phase under the fuse (`gate.import_limit_phase_max_kw`, unrounded) or reads
-        nothing, `None` when it already guards (only saying it acts is left), no value guards or the per-phase hold is
-        no way here (`_phase_path_open`). The card shows this
+        limit reads more than keeps every phase under the fuse (`gate.import_limit_phase_max_kw`, unrounded);
+        `None` when it already guards (only saying it acts is left), reads nothing (never written over), no value guards
+        or the per-phase hold is no way here (`_phase_path_open`). The card shows this
         figure, so what it says is what is written."""
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None or not self._phase_path_open():
@@ -1936,16 +1936,20 @@ class BatteryControl:
             margin_a=self._site_margin_a(), cars_a=0.0,
         )
         current = self._import_limit_kw(control)
-        if target is None or most is None or (current is not None and 0.0 <= current <= most + 1e-6):
+        # A limit that reads nothing is not written over: it may hide a lower value set on purpose (a power tariff)
+        # until the integration has polled it.
+        if target is None or most is None or current is None or 0.0 <= current <= most + 1e-6:
             return None
         return target
 
     async def async_set_import_limit(self) -> str | None:
         """The administrator's one tap on the per-phase import-limit line: lower the plant's own grid import limit to
-        `import_limit_target_kw` when it reads more than guards or nothing (`import_limit_write_kw`; never raised: a lower limit only makes the plant more
+        `import_limit_target_kw` when it reads more than guards (`import_limit_write_kw`; never raised: a lower limit only makes the plant more
         careful), read it back, and only then say that it acts (`battery_control_import_limit_acts`). A limit already
         at or under the target is left as it is. Answers a refusal code, `None` when done: `not_enabled` (battery
-        control is off: nothing is written to the plant), `not_supported` (no
+        control is off: nothing is written to the plant), `not_read` (the limit reads nothing yet: never written over),
+        `shadow_only` (a write is needed while control only watches: nothing is written to the plant; saying the limit
+        acts alone is allowed, it is SpotNav's own option), `not_supported` (no
         field-tested per-phase hold here), the site's own refusals of the rule (`_import_limit_refusal`,
         `output_type_not_supported`), `no_value` (no value guards the fuse), `entity_missing` (the limit's entity is
         not there or disabled), `unit_unknown` (it is not in kW), `out_of_range` (the target is outside the entity's
@@ -1961,7 +1965,12 @@ class BatteryControl:
         if target is None:
             return "no_value"
         current = self._import_limit_kw(control)
+        if current is None:
+            return "not_read"
         if self.import_limit_write_kw() is not None:
+            if not self.options().writes:
+                # Shadow only: nothing is written to the plant (the limit also steers the plant's own modes).
+                return "shadow_only"
             entity_id = plant_entity_id(self.hass, self.site.config, control.import_limit)
             state = None if entity_id is None else self.hass.states.get(entity_id)
             if entity_id is None or state is None:

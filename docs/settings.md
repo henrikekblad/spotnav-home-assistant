@@ -34,11 +34,11 @@ Rows marked **site-wide** apply to every charger and card on the same site.
 | **Charger** | Its entities, how SpotNav controls it, phase switching for solar, who may change the plan. | [The charging card](card.md#charger-entities) |
 | **Site** (site-wide) | Main fuse and margin, load balancing, car or battery first, the import target, the meters. | [Site and load balancing](site-and-load-balancing.md) |
 | **Solar** (site-wide) | The solar forecast sources. | [Solar](solar.md) |
-| **Home battery** (site-wide) | The mode, **Battery control**, its checklist and its check. Shown when SpotNav finds a battery. | [Home batteries](home-battery.md) |
+| **Home battery** (site-wide) | The mode (its dialog explains the three and holds the wear cost), **Battery control**, its checklist and its check. Shown when SpotNav finds a battery. | [Home batteries](home-battery.md), [The battery plan](battery-plan.md) |
 | **Heating** (site-wide) | Sensors and their offsets, the control path, **Control the heat**, **Hot water boost**, zones (each with its own switch), the water heater and **Control the water heater**, cooler night, setback when away. | [Heat pumps](heat-pumps.md) |
 | **Notifications** | Which phones are told about what. | [Notifications](notifications.md) |
 | **Display** | Chart time axis and price unit, for this device only. | [The charging card](card.md#display) |
-| **Support** | Automations, debug info, **Beta tester**, the hardware test. | [Troubleshooting](troubleshooting.md), [Beta testing](beta-testing.md) |
+| **Support** | Automations, **Beta tester**, **Hardware test**, then rows to act on: Documentation (SpotNav's site), About this card, download and send debug info, disconnect all phones, and **Support the SpotNav project** (GitHub Sponsors). The same in every card. | [Troubleshooting](troubleshooting.md), [Beta testing](beta-testing.md) |
 
 ## Settings outside the card
 

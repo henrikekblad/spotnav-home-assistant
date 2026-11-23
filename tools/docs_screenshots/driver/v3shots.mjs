@@ -216,6 +216,14 @@ if (wanted("settings-beta")) {
   await sleep(1200);
   await shot("settings-beta", DIALOG(TAGS.house));
 }
+if (wanted("settings-support")) {
+  // Support, drawn the same in every card (support-section.ts): the value rows, then the actions as rows.
+  await open("v3-house", TAGS.house, 900, 1800);
+  await gear(TAGS.house);
+  await b.eval(`${SECTION(TAGS.house, "support")}?.scrollIntoView({ block: "nearest" })`);
+  await sleep(1500);
+  await shot("settings-support", SECTION(TAGS.house, "support"));
+}
 if (wanted("settings-home-battery")) {
   // Battery control on: the plant is checked step by step (about two minutes here: the demo battery obeys and demo_fast.py
   // shortens the check's waits; the driver polls for the result) and the section shows each step's outcome. The battery has to be discharging for the

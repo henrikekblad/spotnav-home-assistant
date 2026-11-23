@@ -2341,14 +2341,14 @@ def _number_service(hass: HomeAssistant, *, echo: bool = True) -> list[float]:
     return written
 
 
-@pytest.mark.parametrize(("margin_a", "start", "target"), [(1.0, "13.8", 13.1), (0.0, None, 13.8)])
+@pytest.mark.parametrize(("margin_a", "start", "target"), [(1.0, "13.8", 13.1), (0.0, "4294967.295", 13.8)])
 async def test_the_tap_lowers_the_plant_s_import_limit_reads_it_back_and_then_says_it_acts(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any],
-    margin_a: float, start: str | None, target: float,
+    margin_a: float, start: str, target: float,
 ) -> None:
     """The site's own margin sets the value (3 x (20 - margin) A x 231 V, rounded down); an unset limit is set too."""
     site, control = await _tap_site(hass, monkeypatch, hass_storage, margin_a)
-    _import_limit(hass, start if start is not None else "unknown")
+    _import_limit(hass, start)
     written = _number_service(hass)
     assert control.import_limit_target_kw() == target
     assert await control.async_set_import_limit() is None
@@ -2415,12 +2415,12 @@ async def test_the_person_s_word_is_asked_last_so_a_closed_way_is_not_shown_as_o
     assert control.status()["grid_charge_cap"]["import_limit"]["per_phase"]["set_kw"] == 13.1
 
 
-@pytest.mark.parametrize(("start", "set_kw"), [("13.8", 13.1), ("13.15", None), ("4294967.295", 13.1), ("unknown", 13.1)])
+@pytest.mark.parametrize(("start", "set_kw"), [("13.8", 13.1), ("13.15", None), ("4294967.295", 13.1)])
 async def test_the_card_s_figure_is_what_the_tap_writes(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], start: str, set_kw: float | None
 ) -> None:
     """A limit that already guards (13.15 kW under 3 x 19 A x 231 V = 13.17) is left as it is, though above the
-    rounded 13.1; "no limit" and an unread one are lowered."""
+    rounded 13.1; "no limit" (the register's 4.3 GW) is lowered."""
     site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
     _import_limit(hass, start)
     written = _number_service(hass)
@@ -2467,3 +2467,38 @@ async def test_the_tap_is_an_administrator_s_and_never_over_the_webhook(
     answer = await async_battery_control_answer(hass, site, None, admin=True, set_import_limit=True)
     assert answer["ok"] is True and written == [13.1]
     assert answer["status"]["options"]["battery_control_import_limit_acts"] is True
+
+
+
+async def test_the_tap_never_writes_over_a_limit_that_reads_nothing_nor_while_control_only_watches(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    written = _number_service(hass)
+    # Not polled yet: it may hide a lower value set on purpose.
+    _import_limit(hass, "unknown")
+    assert control.status()["grid_charge_cap"]["import_limit"]["per_phase"]["set_kw"] is None
+    assert await control.async_set_import_limit() == "not_read"
+    # Shadow only: the plant is not written to ...
+    _options(hass, site, shadow_only=True)
+    _import_limit(hass, "13.8")
+    assert await control.async_set_import_limit() == "shadow_only"
+    assert written == [] and control.options().import_limit_acts is False
+    # ... but a limit that already guards may be said to act (SpotNav's own option).
+    _import_limit(hass, "12.0")
+    assert await control.async_set_import_limit() is None
+    assert written == [] and control.options().import_limit_acts is True
+
+
+async def test_a_refused_change_writes_nothing_to_the_plant_first(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.api.battery_control import async_battery_control_answer
+
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _import_limit(hass, "13.8")
+    written = _number_service(hass)
+    answer = await async_battery_control_answer(
+        hass, site, {"battery_mode": "nonsense"}, admin=True, set_import_limit=True
+    )
+    assert answer["error"] == "spotnav_invalid_value" and written == []

@@ -1797,6 +1797,7 @@
   "battery.cap.phase.turnOn": "Slå til…",
   "battery.cap.phase.open": "Åbn i Home Assistant",
   "battery.cap.phase.setFailed": "Importgrænsen kunne ikke indstilles eller bekræftes endnu. Vent et minut, og prøv igen, eller indstil den i Sigenergy-appen.",
+  "battery.cap.phase.setInApp": "Indstil den i Sigenergy-appen.",
   "battery.cap.phase.checked": "Før hver opladning fra nettet læser SpotNav grænsen og anlæggets indstillinger og holder opladningen tilbage som før, så snart noget ikke stemmer.",
   "battery.cap.phase.setText": "SpotNav sætter Sigenergys importgrænse til {max} kW og stoler derefter på, at den holder hver fase under hovedsikringen, selv hvis Home Assistant stopper. SpotNav hæver aldrig grænsen. Den vises og kan ændres i Sigenergy-appen.",
   "battery.cap.phase.turnOnText": "SpotNav stoler på, at Sigenergys importgrænse ({value} kW) holder hver fase under hovedsikringen, selv hvis Home Assistant stopper, og holder ikke længere opladning fra nettet tilbage for at beskytte sikringen.",
