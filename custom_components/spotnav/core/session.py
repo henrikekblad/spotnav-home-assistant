@@ -21,7 +21,8 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   charge short of the target (`CarEnded`).
 * `balancing_paused`/`paused_origin`: load balancing holds a charge back, and whose it was.
 * `held_for_safety`/`safety_stopped_at`: the hold was a safety stop (not the below-floor pause): resumed no
-  sooner than its gap.
+  sooner than its gap. `safety_stops`: the safety stops of this plug-in so far; each one after the first doubles the
+  gap (`ownership.safety_resume_gap_s`).
 * `hold_stop_*`: the stops sent under a person's Stop of a charge the charger began by itself (C7, R5): when
   they went out, when the last was tried, whether SpotNav gave up, and whether one is on its way.
 * `guest_met`: a guest car's amount is delivered at this plug-in (`events.GuestMet`): nothing automatic starts the
@@ -65,10 +66,11 @@ TRANSIENT_FIELDS: Final = (
     "hold_stop_pending",
     "held_for_safety",
     "safety_stopped_at",
+    "safety_stops",
     "spotnav_resumed",
 )
 #: Fields a serialised record written before they were kept may lack (an older debug bundle): read as their default.
-LATER_FIELDS: Final = frozenset({"spotnav_resumed", "guest_met"})
+LATER_FIELDS: Final = frozenset({"spotnav_resumed", "guest_met", "safety_stops"})
 #: Fields the stored record carries only when they are not their default (`to_store`), so a record without a guest
 #: is the one an older build reads.
 STORED_WHEN_SET: Final = frozenset({"guest_met"})
@@ -199,6 +201,7 @@ class ChargeSession:
     paused_origin: str | None = None
     held_for_safety: bool = False
     safety_stopped_at: datetime | None = None
+    safety_stops: int = 0
     hold_stop_times: tuple[datetime, ...] = field(default=())
     hold_tried_at: datetime | None = None
     hold_gave_up: bool = False
@@ -266,6 +269,7 @@ class ChargeSession:
             "paused_origin": self.paused_origin,
             "held_for_safety": self.held_for_safety,
             "safety_stopped_at": _iso(self.safety_stopped_at),
+            "safety_stops": self.safety_stops,
             "hold_stop_times": [_iso(moment) for moment in self.hold_stop_times],
             "hold_tried_at": _iso(self.hold_tried_at),
             "hold_gave_up": self.hold_gave_up,
@@ -311,6 +315,7 @@ class ChargeSession:
                 paused_origin=_optional_text(raw["paused_origin"], "paused_origin"),
                 held_for_safety=_bool(raw["held_for_safety"], "held_for_safety"),
                 safety_stopped_at=_instant(raw["safety_stopped_at"], "safety_stopped_at"),
+                safety_stops=_count(raw.get("safety_stops", 0), "safety_stops"),
                 hold_stop_times=tuple(_required_instant(value, "hold_stop_times") for value in _list(raw["hold_stop_times"])),
                 hold_tried_at=_instant(raw["hold_tried_at"], "hold_tried_at"),
                 hold_gave_up=_bool(raw["hold_gave_up"], "hold_gave_up"),
@@ -455,6 +460,12 @@ def _member(raw: Any, key: str) -> Any:
     if not isinstance(raw, dict) or key not in raw:
         raise SessionError(f"missing {key!r}")
     return raw[key]
+
+
+def _count(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise SessionError(f"{what} is not a count")
+    return value
 
 
 def _bool(value: Any, what: str) -> bool:

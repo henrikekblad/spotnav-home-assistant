@@ -3892,6 +3892,10 @@ class SiteCapacityController:
         dwell_s = REGULATOR_DWELL_S
         if now - since < dwell_s:
             return False
+        if getattr(charger_controller, "safety_gap_running", False) is True:
+            # A safety stop's gap still runs: the core would refuse the resume. The dwell stands, so the resume goes
+            # out at the first pass after the gap that still has the room.
+            return False
         if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
             return False
         amps = int(min(float(requested), min(margins), math.inf if target_cap is None else target_cap))
@@ -4060,6 +4064,10 @@ class SiteCapacityController:
             currents[phase] + probe_a > PROBE_MAX_FUSE_FACTOR * float(main_fuse_a)
             for phase in PHASES
         ):
+            return False
+        if getattr(charger_controller, "safety_gap_running", False) is True:
+            # A safety stop's gap still runs: the core would refuse the probe's start, which would count as a failed
+            # probe and back the probe off.
             return False
         now = self._yield_now()
         probe = self._probe_for(charger_entry_id)
