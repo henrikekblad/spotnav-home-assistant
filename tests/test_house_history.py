@@ -33,6 +33,7 @@ from tests.test_house_view import facit_for
 
 from custom_components.spotnav.site.spotnav_saving import DaySaving
 from custom_components.spotnav.battery.stored_value import Flow
+from custom_components.spotnav.site.sun_value import BASIS_QUARTER, SunDay
 from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
@@ -580,6 +581,13 @@ def test_contract_fixtures() -> None:
             )
         ),
     )
+    # A site with the sun and no home battery: the sun's value of its own, by the hour in a day (here from the day's
+    # quarter hours) and by the day in a month (the 14th from the night's review, the rest estimated by the hour).
+    alone = dict(reviews=None, has_battery=False, arbitrage_days={}, arbitrage_hours={}, flow_days={}, flow_hours={}, savings={})
+    plain = [replace(item, battery_in=None, battery_out=None) for item in quarters]
+    _fixture("solar_alone_day.json", house_history(month_inputs(period=day, periods=plain, step_min=15, sun_stored={}, **alone)))
+    reviewed = {date(2026, 11, 14): SunDay(date(2026, 11, 14), 912.5, 96, BASIS_QUARTER)}
+    _fixture("solar_alone_month.json", house_history(month_inputs(periods=[replace(villa_hour(h), battery_in=None, battery_out=None) for h in hours_of(*utc_bounds(period_of(PERIOD_MONTH, date(2026, 11, 1)), TZ)) if h < NOW.replace(minute=0)], sun_stored=reviewed, **alone)))
     year = period_of(PERIOD_YEAR, date(2026, 1, 1))
     first, _ = utc_bounds(year, TZ)
     hours = [first + timedelta(hours=offset) for offset in range(0, 24 * 319, 3)]

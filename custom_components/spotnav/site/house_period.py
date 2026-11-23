@@ -16,7 +16,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
               perfect: (`site/perfect_view.py`) | null} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null},
      saving: {total, battery, car, heat, battery_days, car_days, heat_days, days} | null,
-     own_control: {earned, would, days, would_days} | null }
+     own_control: {earned, would, days, would_days} | null,
+     sun: {gave, days, period_days, estimated_days} | null }
 
 * **Energy** (`energy_flow`, `buckets`): the Energy dashboard's meters and the chargers' registers per period (a
   day within the recorder's short-term statistics by the quarter hour, else by the hour), allocated period by
@@ -66,9 +67,18 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
 * **The sun's value** (bucket `sun_gave`): the reviews' `sun_value` (`battery/review_baselines.sun_gave`: the sun's
   energy the house used at the buying price, plus what was sold, over the quarter hours with a production figure)
   over the bucket's reviewed days that have it, for the card's Earnings tab; the period's sum is the review's
-  `sun_gave` (the same reviews, so the two never disagree). `null` where no day of the bucket has it, without a
-  battery (no review), without the sun's production, and on a day's hours (the review is a whole day's). Never inside
-  `saving`: it is the sun's, not something SpotNav did.
+  `sun_gave` (the same reviews, so the two never disagree). `null` where no day of the bucket has it, without the
+  sun's production, and on a battery site's day's hours (the review is a whole day's). Never inside `saving`: it is
+  the sun's, not something SpotNav did.
+* **The sun's value without a battery** (`sun`, and bucket `sun_gave`): on a site with the sun and no home battery
+  (no battery review) each day before today is valued with the same formula and the battery's term 0
+  (`site/sun_value.py`): the nightly sun review's quarter-hour figure where it has the day (`site/sun_review.py`, from
+  the 5-minute statistics; its hours kept 40 days, the day 400), else from the periods read here, by the quarter hour
+  within the short-term statistics and by the hour past them (an estimate: import and export within an hour net
+  against each other; `estimated_days` counts those days). A bucket has the sum of its days, and a day's hours their
+  own figure (none where only the day's figure is kept). `sun`: `{gave, days, period_days, estimated_days}` over the
+  period's valued days, `period_days` the period's days before today; `null` on a battery site (its `review` has the
+  sun's value), without the sun or with no valued day.
 * **Before SpotNav controls the battery** (`own_control`, `site/spotnav_saving.own_control`): over the days (or the
   share of a day) the battery ran under its own control, what it earned (`earned`, over `days`) and what SpotNav's
   plan would have earned on the same days (`would`: `earned` plus what the nightly reviews say the plan would have
@@ -96,6 +106,7 @@ from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
 from .perfect_view import perfect_block
 from .spotnav_saving import DaySaving, own_control, period_sums
+from .sun_value import BASIS_HOUR, SunDay, day_values, period_value
 from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
@@ -117,6 +128,7 @@ HISTORY_KEYS: Final = (
     "forecast",
     "saving",
     "own_control",
+    "sun",
 )
 BUCKET_KEYS: Final = (
     "key",
@@ -189,6 +201,9 @@ class HouseHistoryInputs:
     flow_hours: Mapping[datetime, Any] = field(default_factory=dict)
     #: The car's saving per UTC hour its charges started in (`site/spotnav_saving.car_hours`), for a day's hours.
     car_hours: Mapping[datetime, float] = field(default_factory=dict)
+    #: On a site with the sun and no home battery, the nightly sun review's days (`site/sun_review.py`; the days
+    #: without one are valued from `periods`); `None` elsewhere (no sun value of its own).
+    sun_stored: Mapping[date, SunDay] | None = None
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -272,9 +287,13 @@ def _add(bucket: dict[str, Any], key: str, value: float | None) -> None:
     bucket[key] = (bucket[key] or 0.0) + value
 
 
-def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    """The buckets (see the module) and the period's cost."""
+def energy_and_cost(
+    inputs: HouseHistoryInputs,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, dict[date, SunDay]]:
+    """The buckets (see the module), the period's cost and, without a battery, each day's sun value."""
     period, tz = inputs.period, inputs.tz
+    today = local_date(inputs.now, tz)
+    valued: list[tuple[EnergyHour, float]] = []
     buckets = {key: _empty_bucket(key) for key in bucket_keys(period, tz)}
     slots = _sorted_slots(inputs.prices)
     starts = [slot.start for slot in slots]
@@ -319,6 +338,12 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             weight[0] += item.minutes
             weight[1] += prices[0] * item.minutes
             weight[2] += prices[1] * item.minutes
+            if inputs.sun_stored is not None and local_date(item.start, tz) < today:
+                sun_value = period_value(item, prices[0], prices[1])
+                if sun_value is not None:
+                    valued.append((item, sun_value))
+    sun_days = _own_sun_days(inputs, valued)
+    _add_sun(inputs, buckets, sun_days)
     if period.kind != PERIOD_DAY:
         seen: set[date] = set()
         for review in inputs.reviews or ():
@@ -419,7 +444,49 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             "periods": count,
             "priced": priced,
         }
-    return rows, cost
+    return rows, cost, sun_days
+
+
+def _own_sun_days(inputs: HouseHistoryInputs, valued: Sequence[tuple[EnergyHour, float]]) -> dict[date, SunDay]:
+    """Without a battery, each of the period's days before today with a sun value: the nightly review's where kept,
+    else from the periods read (see the module)."""
+    stored = inputs.sun_stored
+    if stored is None:
+        return {}
+    today = local_date(inputs.now, inputs.tz)
+    found = day_values(valued, inputs.tz)
+    for day, item in stored.items():
+        if inputs.period.contains(day) and day < today:
+            found[day] = item
+    return {day: found[day] for day in sorted(found) if inputs.period.contains(day)}
+
+
+def _add_sun(inputs: HouseHistoryInputs, buckets: dict[str, dict[str, Any]], days: Mapping[date, SunDay]) -> None:
+    """The days' sun values into their buckets: a day's hours where it has them, a month's and a year's by day."""
+    period, tz = inputs.period, inputs.tz
+    for day, item in days.items():
+        if period.kind == PERIOD_DAY:
+            for hour, value in item.hours.items():
+                target = buckets.get(bucket_key(period, hour, tz))
+                if target is not None:
+                    _add(target, "sun_gave", value)
+            continue
+        target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+        if target is not None:
+            _add(target, "sun_gave", item.value)
+
+
+def sun_block(inputs: HouseHistoryInputs, days: Mapping[date, SunDay]) -> dict[str, Any] | None:
+    """The period's sun value without a battery (see the module); `None` without a valued day."""
+    if not days:
+        return None
+    today = local_date(inputs.now, inputs.tz)
+    return {
+        "gave": _r(sum(item.value for item in days.values())),
+        "days": len(days),
+        "period_days": sum(1 for day in inputs.period.days() if day < today),
+        "estimated_days": sum(1 for item in days.values() if item.basis == BASIS_HOUR),
+    }
 
 
 def _period_reviews(inputs: HouseHistoryInputs) -> list[DayReview]:
@@ -553,7 +620,7 @@ def house_history(inputs: HouseHistoryInputs) -> dict[str, Any]:
     """The whole answer (`HISTORY_KEYS`)."""
     period = inputs.period
     today = local_date(inputs.now, inputs.tz)
-    buckets, cost = energy_and_cost(inputs)
+    buckets, cost, sun_days = energy_and_cost(inputs)
     flow = None
     if inputs.periods is not None:
         flow = energy_flow(
@@ -584,4 +651,5 @@ def house_history(inputs: HouseHistoryInputs) -> dict[str, Any]:
         "forecast": forecast_block(inputs),
         "saving": period_sums({day: item for day, item in inputs.savings.items() if period.contains(day)}),
         "own_control": own_control_block(inputs),
+        "sun": sun_block(inputs, sun_days),
     }

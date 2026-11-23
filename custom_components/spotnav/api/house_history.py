@@ -18,6 +18,8 @@ What is read, all off the event loop and kept:
 * The battery's reviewed days: the battery plan's own (30 days), and for an older day of the period its file in the
   day archive (`<config>/spotnav_archive/<site>/<date>.json`, `day_export.py`) where one was exported, read in the
   executor.
+* On a site with the sun and no home battery: the nightly sun review's days (`site/sun_review.py`, in memory); the
+  days without one are valued from the periods read above.
 
 The answer is kept per site and period until the next hour (a period with today in it: the next 5-minute row) or,
 for a finished period, until the next day (a night's review may add to it). Refusals as `spotnav/get_house`, and
@@ -76,6 +78,15 @@ def _arbitrage(controller: Any, has_battery: bool) -> dict[str, Any]:
         "flow_days": {day: money.flow for day, money in stored.days.items() if money.flow is not None},
         "flow_hours": {hour: flow for money in stored.days.values() for hour, flow in money.hour_flows.items()},
     }
+
+
+def _sun_stored(controller: Any, has_battery: bool, ids: Any) -> Any:
+    """The nightly sun review's days on a site with the sun's meter and no home battery; `None` elsewhere (a battery
+    site's reviews value the sun, never both for one day)."""
+    if has_battery or ids is None or not ids.solar:
+        return None
+    review = getattr(controller, "sun_review", None)
+    return {} if review is None else dict(review.days)
 
 
 def read_archived_reviews(folder: Path, days: Sequence[date]) -> dict[date, DayReview]:
@@ -211,6 +222,7 @@ async def history_with_periods(
             forecast_mae=forecast_maes(controller.house_forecast.log),
             savings=savings,
             car_hours=car_hours,
+            sun_stored=_sun_stored(controller, has_battery, ids),
             **_arbitrage(controller, bool(ids is not None and ids.battery_in)),
         )
     )
