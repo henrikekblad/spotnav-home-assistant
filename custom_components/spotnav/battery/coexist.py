@@ -59,10 +59,48 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   option but `off` writes the limits from the P1 meter), Zendure-HA `e67b04e`. Ffunes/Omnibattery drives Zendure too and is
   in the outside integrations. No aggregator is named: none was found
   (`plans/research_integrations/zendure_control_2026-11-23.md`).
+* sonnen's own modes are the options of `sonnenbatterie`'s `operating_mode` (`2` automatic, `10` time-of-use, `11`
+  optimization; weltmeyer `9441b4a`); a mode change is refused while a virtual power plant is active, which is the
+  Tibber VPP (sonnenVPP, since 2024 in Sweden [V]) running the battery
+  (`plans/research_integrations/sonnen_control_2026-11-23.md`).
+* Alpha ESS's own control is the app's two time-window sets (`charging_time_period_control`) and the vendor's dispatch block,
+  whose registers a supplier's cloud writes too: evcc issue 36201 reads a dispatch nobody at the house started on a Frank
+  Energie battery (start 1, mode 2, 1800 s) [F]; no Nordic aggregator was found. The integration domains are senalse's
+  `alphaess_modbus` (v1.15.0) and CharlesGillanders' cloud `alphaess` (v0.9.0)
+  (`plans/research_integrations/alphaess_control_2026-11-23.md`).
+* E3/DC's own control is the portal's AI360 and Smart-Charge (price-driven charging that "overrides external charge
+  commands", the E3DC Maestro README and evcc's template note), the idle periods and the weather-regulated charge;
+  none of them is readable from Home Assistant. `e3dc_maestro` (TommiG1 `72c9754`) is a controller that calls
+  `e3dc_rscp`'s services and exists only to drive the battery: an outside integration that runs it. No aggregator is
+  named: no Nordic E3/DC owner was found (`plans/research_integrations/e3dc_control_2026-11-23.md`).
+* Growatt's own control through `growatt_modbus` (0xAHA `29d6b2b`) is the VPP remote power control, whose registers stay on after
+  its timed command ends, the time-of-use slots (newer firmware reverts a slot write) and ShinePhone's or the portal's
+  schedules, which "take effect regardless" and are invisible over Modbus (issues 373, 448, 460); the ARK and APX
+  batteries also pull a little from the grid by themselves (issue 492). No aggregator is named
+  (`plans/research_integrations/growatt_control_2026-11-23.md`).
+* SENEC's own control is the cloud's (SENEC.Cloud tariffs, the Backup Power Pro reserve, the peak-shaving helper) and the unit's
+  own states, which grid-charge by themselves (initial, maintenance, equalisation, desulfation, safety and emergency charge;
+  `system_state`); one owner's charge switch came back on ten seconds after it was turned off (marq24/ha-senec-v3 issue 115).
+  No aggregator is named: none was found, and no Nordic SENEC owner either
+  (`plans/research_integrations/senec_control_2026-11-23.md`).
+* SAJ's own control is the app's: the `AppMode` options `12` (AI saving) and `10` (peak shaving) are the vendor's optimisers,
+  `1` the time-of-use slots, and the app's limits stay in force after Home Assistant has written the passive entities (stanus74
+  issue 162); EKD's Ampere.IQ rewrites the same registers on an Ampere.StoragePro (issue 18). Tibber lists SAJ among the batteries
+  it runs, from a LinkedIn post only [U]; no other aggregator was found
+  (`plans/research_integrations/saj_control_2026-11-23.md`).
+* SMA's own control is the Sunny Portal's Forecast-based Charging, the Sunny Home Manager's energy management (both must be
+  off for any outside control, evcc's template and SMA's Modbus document say) and the inverter's own protective grid charge at
+  a very low level (10-15 minutes, the SMA manual); none shows in a Home Assistant entity. No aggregator was found, and no
+  Nordic SMA battery owner either (`plans/research_integrations/sma_control_2026-11-23.md`).
+* GivEnergy's own control is the app's and the portal's charge and discharge slots, which the inverter runs every day on its own
+  clock; a tariff of the cloud that writes slots is a field report whose names are not verified (`plans/research_integrations/
+  givenergy_control_2026-11-23.md`). Predbat, GivEnergy's main planner, is already found by its `predbat.*` states
+  (`runtime.external_planner`), and GivTCP, an add-on, shows in no config entry. No aggregator is named: none was found, and
+  GivEnergy is a UK brand with no Nordic owner found.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
-  `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
+  `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1, read on 2026-11-23 at `9441b4a`, 2026.11.6), and the adapters' own (`adapters.py`). No Home
   Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry): its row has no platform, as `modbus`
   is every Modbus device's, and is found by the brand of the facts (`adapters.SUNGROW`, chosen by unique id).
 
@@ -106,12 +144,12 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Bixia, Grid Rewards guarantee plan [V]",)),
     Coexistence("ferroamp", "Ferroamp", ("ferroamp",), "EnergyHub", ("Ntricity / Varberg Energi, FCR-D [V]",)),
     Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
-    Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),
+    Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app: time-of-use and its own optimization mode", ("Tibber VPP [V]",)),
     Coexistence("solax", "SolaX", ("solax_modbus",), "SolaX Cloud", ("Tibber [U]",)),
     # The other plugins of `solax_modbus` that have an adapter, after SolaX so that the integration alone still
     # names SolaX. Their own modes are the ones the plugin's mode select lists.
     Coexistence("sofar", "Sofar", ("solax_modbus",), "Sofar: time-of-use, timing and peak-cut modes"),
-    Coexistence("growatt", "Growatt", ("solax_modbus", "growatt_server"),
+    Coexistence("growatt", "Growatt", ("solax_modbus", "growatt_server", "growatt_modbus"),
                 "Growatt: battery-first and grid-first time slots"),
     Coexistence("solinteg", "Solinteg", ("solax_modbus",), "Solinteg app: economic and time-of-use modes",
                 ("CheckWatt [F]", "Samvolt [F]", "Enequi [F]")),
@@ -134,6 +172,21 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "Deye Cloud or SunSynk Connect: time-of-use programmes and work modes"),
     Coexistence("anker", "Anker SOLIX", ("anker_solix_official",),
                 "Anker app: time-of-use, smart, custom and dynamic-pricing modes, and the backup reserve"),
+    Coexistence("alphaess", "Alpha ESS", ("alphaess_modbus", "alphaess"),
+                "AlphaCloud app: grid-charge and discharge time windows, and supplier dispatch over the same registers",
+                ("Frank Energie VPP (Netherlands) [F]",)),
+    Coexistence("e3dc", "E3/DC", ("e3dc_rscp", "e3dc_rscp_connect"),
+                "E3/DC portal: AI360, Smart-Charge, idle periods and weather-regulated charge"),
+    Coexistence("senec", "SENEC", ("senec",),
+                "SENEC app and SENEC.Cloud: tariff charging, the backup reserve, peak shaving and the unit's own maintenance charges"),
+    Coexistence("saj", "SAJ", ("saj_h2_modbus",),
+                "SAJ app (Elekeeper, eSolar): AI saving, peak shaving, time-of-use and the app's charge and discharge limits",
+                ("Tibber, named for SAJ [U]",)),
+    Coexistence("sma", "SMA", ("sma", "pysmaplus"),
+                "Sunny Portal Forecast-based Charging, the Sunny Home Manager's energy management and the inverter's protective grid charge"),
+    # Not "mqtt", the platform GivTCP is read through: it is every MQTT device's, and the row is found by the brand of the facts.
+    Coexistence("givenergy", "GivEnergy", ("givenergy_local",),
+                "GivEnergy app and portal: charge and discharge schedules (slots 1-10), and tariffs that write the slots"),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
@@ -179,6 +232,13 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     # mbuhansen/kostal_plenticore_battery_control (manifest `domain`, 4.3.0, `3bd84ac`): the Modbus control integration for
     # a Kostal Plenticore, which also reads the inverter, so its presence is only a hint.
     OutsideIntegration("kostal_modbus_control", "Kostal Modbus Control", "hint"),
+    # senalse/ha-alphaess-modbus (`b256f55`, v1.15.0): reads the inverter and also has the force charge, force export and
+    # dispatch switches, so its presence is only a hint (the `dispatch_start` mode names it when it runs).
+    OutsideIntegration("alphaess_modbus", "Alpha ESS Modbus", "hint"),
+    # TommiG1/e3dc-maestro (manifest `domain`, 0.6.0-rc.2, `72c9754`): a price-driven controller on top of `e3dc_rscp`, which
+    # writes its power limits and charge modes. It exists to drive the battery, so its being set up marks it as run by
+    # someone else.
+    OutsideIntegration("e3dc_maestro", "E3DC Maestro", "runs"),
 )
 
 

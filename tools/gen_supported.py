@@ -165,6 +165,13 @@ NAMES: dict[str, str] = {
     "zendure_ha": "Zendure",
     "omnibattery": "Omnibattery",
     "anker_solix": "Anker Solix",
+    "sonnenbatterie": "sonnenBatterie",
+    "alphaess_modbus": "Alpha ESS (Modbus)",
+    "e3dc_rscp": "E3/DC",
+    "growatt_modbus": "Growatt (Modbus)",
+    "senec": "SENEC",
+    "givenergy_local": "GivEnergy (local)",
+    "saj_h2_modbus": "SAJ (Modbus)",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -756,12 +763,14 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Growatt (SPH, SPA, MIN TL-XH, MOD and MID TL3-XH, WIT)",
-        "`solax_modbus`, HACS, its Growatt plugin. Not read: core `growatt_server` (cloud, every 5 minutes) and a "
-        "HACS Modbus integration by 0xAHA",
-        keys=("solax_modbus/growatt",),
+        "`solax_modbus`, HACS, its Growatt plugin; `growatt_modbus`, HACS (0xAHA/Growatt_ModbusTCP). Not read: core "
+        "`growatt_server` (cloud, every 5 minutes) and the other HACS integration that uses the name `growatt_modbus`",
+        keys=("solax_modbus/growatt", "growatt_modbus"),
         adapter="growatt",
         control="Not mapped. What can be controlled locally depends on the model",
-        note="Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read.",
+        note="Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read. From 0xAHA's "
+        "integration the size is the BMS's full-charge capacity times the battery voltage, a second battery cluster is "
+        "not added, and the counters and the floor are read; the apps' schedules cannot be seen.",
     ),
     Overview(
         "Solinteg (MHT, M2HT; also M-TEC Energy Butler, Wattsonic)",
@@ -876,8 +885,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "SMA",
         "`sma`, Home Assistant core; `pysmaplus`, HACS",
         keys=("sma", "pysmaplus"),
-        control="Unknown: Modbus setpoints exist, but no Home Assistant integration for them was found",
-        note="Core does not support ennexOS devices such as the Tripower X.",
+        adapter="sma",
+        control="Not mapped: read only. Modbus setpoints exist, but no Home Assistant integration for them was found",
+        note="Core does not support ennexOS devices such as the Tripower X. The size is not read: the integration's "
+        "Battery Capacity Total is a percentage. The mode is not readable, so SMA's Forecast-based Charging and the "
+        "Sunny Home Manager are not seen.",
     ),
     Overview(
         "Kostal (Plenticore)",
@@ -886,16 +898,75 @@ OVERVIEW: tuple[Overview, ...] = (
         "Assistant integration for it was found",
         note="External control falls back to the inverter's own after a timeout.",
     ),
-    Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
+    Overview(
+        "E3/DC (S10 E, S10 X, S10 mini)",
+        "`e3dc_rscp`, HACS (torbennehmer/hacs-e3dc), also `e3dc_rscp_connect`, HACS (tobias-terhaar/e3dc_rscp_connect): "
+        "only the first is read",
+        keys=("e3dc_rscp",),
+        adapter="e3dc",
+        control="Not mapped: read only. A power setpoint with a charge, discharge or grid-charge mode falls back to "
+        "the unit's own mode by itself when it is not repeated, and the integration repeats it",
+        note="E3/DC's AI360 and Smart-Charge cannot be read, and they override outside charge commands, so they must be "
+        "off. The mode is read from the power limits and manual charge that someone's control leaves on. Run by "
+        "E3DC Maestro where that is installed. The day, month and year energy are not lifetime counters and are not read.",
+    ),
+    Overview(
+        "SENEC (Home V2.1, V3, V4)",
+        "`senec`, HACS (marq24/ha-senec-v3); local for V2.1 and V3, SENEC's cloud for the rest",
+        keys=("senec",),
+        adapter="senec",
+        control="Not mapped: read only. Locally only a \"Load Battery\" switch that charges to full at SENEC's own rate, "
+        "with no power setting and no timeout; a reserve exists through SENEC's cloud",
+        note="The level, the counters and the mode are read; the size and the ratings are learnt, as no route states "
+        "them. SENEC's own maintenance and safety charges grid-charge by themselves. The mode is read from the unit's "
+        "state text, which only English, German and Italian have.",
+    ),
+    Overview(
+        "GivEnergy (Gen 1 to 3, All-in-One, AC, 3-phase)",
+        "GivTCP, a Home Assistant add-on over MQTT discovery (britkat1980/giv_tcp); `givenergy_local`, HACS "
+        "(cdpuk/givenergy-local). Not read: the cloud integration `ge_cloud`",
+        keys=("mqtt/givenergy", "givenergy_local"),
+        adapter="givenergy",
+        control="Not mapped: read only. Control is a charge or discharge time slot on the inverter's own clock, a "
+        "charge rate in percent and a pause mode, and a slot repeats every day until it is switched off",
+        note="A UK brand: no Nordic owner was found. Only devices that name GivEnergy as the maker are read from MQTT. "
+        "The size is not read, as the integration misreports it on some batteries, and the floor is firmware-dependent. "
+        "A charge or discharge schedule, or a mode other than Eco, means the inverter runs its own.",
+    ),
+    Overview(
+        "SAJ (H2, HS2, Ampere.StoragePro)",
+        "`saj_h2_modbus`, HACS (stanus74/home-assistant-saj-h2-modbus). Not read: `saj_modbus` and core `saj` (PV "
+        "inverters without a battery)",
+        keys=("saj_h2_modbus",),
+        adapter="saj",
+        control="Not mapped: read only. A passive mode with a charge or discharge power in permille of the rated "
+        "power exists, and nothing in it ends by itself",
+        note="Which way the battery power counts is not settled between the sources and is not yet confirmed on a "
+        "unit. The mode is free only in self-use. The size and ratings are learnt. Named among the batteries Tibber "
+        "runs (not verified).",
+    ),
     Overview(
         "Alpha ESS",
-        "Not read: `alphaess`, HACS (cloud), and an AlphaESS plugin of `solax_modbus`",
+        "`alphaess_modbus`, HACS (senalse/ha-alphaess-modbus). Not read: `alphaess`, HACS (cloud, entities named by "
+        "their English display names), and an AlphaESS plugin of `solax_modbus`",
+        keys=("alphaess_modbus",),
+        adapter="alphaess",
+        control="Not mapped: read only. The vendor's dispatch block (Modbus 0x0880 and on) has its own lease in the "
+        "command, and the integration has force-charge and dispatch switches",
+        note="Which way the battery power counts is read from the vendor's register list and not yet confirmed on a "
+        "unit. The size is read only when its disabled sensor is enabled, and the ratings are learnt. A supplier's "
+        "dispatch (a virtual power plant) shows as a running dispatch and the battery is then not SpotNav's.",
     ),
     Overview(
         "sonnen",
-        "`sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie): not read",
-        control="Not mapped. Operating mode, charge and discharge power and reserve exist locally",
-        note="Joins Tibber's virtual power plant.",
+        "`sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie)",
+        keys=("sonnenbatterie",),
+        adapter="sonnen",
+        control="Not mapped: read only. Operating mode, charge and discharge power and reserve exist locally, and a "
+        "charge or discharge command lasts about 30 seconds on the unit",
+        note="Joins Tibber's virtual power plant, which refuses mode changes while it runs. The size is read only "
+        "when its disabled sensor is enabled, the energy counters are Home Assistant's own sums and not read, and "
+        "the ratings are one figure, the stack's maximum power.",
     ),
     Overview(
         "Emaldo",

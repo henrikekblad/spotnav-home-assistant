@@ -467,6 +467,22 @@ PLAN_REASON = {
     "sungrow": None,
     # Omnibattery states the system's level and size and no rating: learnt.
     "omnibattery": "no_rated_power",
+    # sonnen states the rating (`max_power`) but its size sensor is disabled by default: learnt until it is enabled.
+    "sonnen": "no_capacity",
+    # Alpha ESS states the size only when its disabled sensor is enabled and no rating: learnt.
+    "alphaess": "no_capacity",
+    # E3/DC states the size and both ratings (the device's specification): the plan has all it needs.
+    "e3dc": None,
+    # 0xAHA's Growatt integration states a size (Ah times the voltage) and no rating: learnt.
+    "growatt_modbus": "no_rated_power",
+    # SENEC states neither a size nor a rating on any route: learnt.
+    "senec": "no_capacity",
+    # SAJ's size has no unit and its ratings are permille of an unread power: learnt.
+    "saj": "no_capacity",
+    # SMA states no size and no rating on any route: learnt.
+    "sma": "no_capacity",
+    # GivEnergy's size is not read (misreported on some packs); the rating is the inverter's maximum battery rate: learnt.
+    "givenergy": "no_capacity",
 }
 
 

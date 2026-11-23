@@ -314,6 +314,144 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   discharge-positive ("negative: Battery charging"), negated by the site. No floor is read: the SoC limits
   (`uid_battery_min_soc`) are the person's, and what the level means against them is open.
 
+* sonnenBatterie, `sonnenbatterie` (weltmeyer/ha_sonnenbatterie `9441b4a`, 2026.11.6, local API, read 2026-11-23,
+  `plans/research_integrations/sonnen_control_2026-11-23.md`): read only. Sensors are `sensor.sonnenbatterie_<serial>_<key>`
+  (the literal `sensor.` is inside the unique id, `sensor.py` line 108), numbers and selects `sonnenbatterie_<serial>_<key>`;
+  the key is the entity's `legacy_key` where one is set, so the level (USOC, the user-visible one) is `state_charge_user`
+  and the size `state_total_capacity_real` (Wh, disabled by default: the size is learnt until it is enabled). The rating
+  `max_power` (W, the stack's or the inverter's, one figure for both directions) is anchored on the serial, as the
+  `tou_max_power` setting also ends in it. The mode is the sensor `operating_mode` (`"1"` manual, `"2"` automatic
+  self-consumption, `"10"` time-of-use, `"11"` optimization), free only in `"2"`: the others are the person's schedule,
+  sonnen's own optimiser or a virtual power plant (Tibber), and a mode change is refused while a VPP is active. The floor
+  is the reserve, the number `battery_reserve` (`EM_USOC`) and the sensor `backup_buffer`, the highest read. Not read: the
+  lifetime counters `energy_battery_charge` and `energy_battery_discharge` (the integration integrates `Pac_total_W` from
+  zero at install, skips what happens while Home Assistant is off and ignores up to 50 W, so they are no device meters
+  and a round trip from them would be wrong); the grid status `systemstatus` (free text, its values are not listed in
+  the code); the firmware, which is the device's `sw_version` (read from the device registry, not an entity). The
+  battery's power is `state_battery_inout` (`Pac_total_W`), discharge-positive, the AC side (the README's table).
+
+* Alpha ESS SMILE, `alphaess_modbus` (senalse/ha-alphaess-modbus `b256f55`, v1.15.0, local Modbus TCP, read 2026-11-23,
+  `plans/research_integrations/alphaess_control_2026-11-23.md`): read only. Unique id `<config entry id>_<key>` on every
+  platform, one entry per inverter, the device's manufacturer "AlphaESS". The level is `soc_battery` (%), the size
+  `battery_capacity_kwh` (disabled by default: learnt until it is enabled), the counters `total_energy_charge_battery` and
+  `total_energy_discharge_battery` (the `_from_grid` one ends otherwise), the firmware the `ems_version` sensor (the EMS
+  that runs the dispatch; the device's `sw_version` is the fallback) and the floor `discharging_cutoff_soc` (the
+  number and its sensor). The ratings are learnt: the registers give the BMS's present current limits and no voltage
+  to multiply by is worked out. The modes are `dispatch_start` (1 while a dispatch runs: a Modbus controller's, an
+  automation's, or a supplier's virtual power plant writing the same registers, evcc issue 36201) and
+  `charging_time_period_control` (the app's grid-charge and discharge windows, 0 = none), each free only at 0. The
+  battery's power is `power_battery` (register 0x0126), whose sign is DISPUTED: the vendor's register list says
+  "-: Charge, +: Discharge", the integration's own house-load formula `pv + battery + grid` and evcc's template
+  (which feeds the raw register as the battery's power) need discharge-positive, but its own description string and
+  its "remaining time" sensor read positive as charging. Read as discharge-positive (the vendor's list); sign
+  unverified on hardware. Not read: the cloud integration `alphaess` (CharlesGillanders), whose unique id is
+  `<entry id>_<serial> - <English display name>`, a name a rename or a translation moves.
+
+* E3/DC, `e3dc_rscp` (torbennehmer/hacs-e3dc `3fd5ab0`, 4.0.0, local RSCP, read 2026-11-23,
+  `plans/research_integrations/e3dc_control_2026-11-23.md`): read only. Unique id `<config entry unique id, the device's
+  serial>_<key>` on every platform, the keys hyphenated: the level `soc`, the size `system-battery-installed-capacity`
+  (Wh) and the ratings `system-battery-charge-max` and `-discharge-max` (W, the device's own specification). The day,
+  month and year statistics carry `db-day-`, `db-month-` and `db-year-` before the same key (`db-day-battery-charge`)
+  and are no lifetime counters, so they are not read: every key is anchored after the `_` that follows the serial. The
+  battery's power is two unsigned sensors, `battery-charge` and `battery-discharge`, the site's pair (the integration
+  splits the signed `battery-netchange`, positive = charging, which is disabled by default). There is no reserve and no
+  floor, and the firmware is the device's `sw_version`, not an entity. The device's own AI360 (price-driven charging),
+  Smart-Charge and the portal's schedules cannot be read at all (open requests in the integration), so the mode reads
+  only the negative evidence: `pset-limit-enabled` (someone's power limits are in force) and `manual-charge-active`, and
+  the two idle-period sensors (disabled by default) where they are enabled. `power-mode` is the EMS's present state
+  (idle, discharge, charge) and says nothing of who runs it. Not read: `e3dc_rscp_connect` (tobias-terhaar), whose
+  size and rating are no entities.
+
+* Growatt hybrids through 0xAHA's `growatt_modbus` (0xAHA/Growatt_ModbusTCP `29d6b2b`, v2.0.7, local Modbus, read 2026-11-23,
+  `plans/research_integrations/growatt_control_2026-11-23.md`): read only, beside the `solax_modbus` Growatt plugin above, which
+  is unchanged. Unique id `<config entry id>_<key>` (`entity.py` line 55), the key the register map's name; the entry
+  id is the 26 lower-case letters and digits of a ULID (32 hex for an old entry). A second HACS repository (jacobbjerregaard)
+  shares the domain with ids `growatt_modbus_<serial>_<key>`, which the entry-id anchor leaves out. The level is
+  `battery_soc` and the size the BMS's full-charge capacity `bms_gauge_fcc` (Ah) times `battery_voltage`, an estimate
+  (`capacity_from_ah`): the second cluster of a MOD or MID (`battery2_full_charge_capacity`) is not added to it, so a
+  two-cluster plant reads small. The counters are `battery_charge_total` and `battery_discharge_total` (all energy into and
+  out of the battery; `ac_charge_energy_total` is grid-charged energy alone). There is no rating: the percent rates and
+  `max_charge_power_from_grid` are settings. The floor is the number `load_first_battery_minimum_soc` (SPH) and
+  `grid_first_discharge_stopped_soc` (register 3067, the working one on MOD and MIN-XH); `discharge_stopped_soc` (1071) is
+  silently ignored on a MOD and is not read. The firmware is the device's `sw_version`, not an entity. The modes are
+  `vpp_control_state` (`released` when no remote control is on, otherwise `charge`, `discharge`, `armed_idle`,
+  `authority_only` or `remote_without_authority`) and `priority_mode` (SPH, free in "Load First"); a schedule made in
+  ShinePhone or the portal is invisible over Modbus. The battery's power is `battery_power`, signed, positive = charging
+  (`sensor.py` line 736).
+
+* SENEC, `senec` (marq24/ha-senec-v3 `32eed20`, 2026.11.3, read 2026-11-23,
+  `plans/research_integrations/senec_control_2026-11-23.md`): read only, V2.1 and V3 over the unit's local `lala.cgi` first, and
+  the same keys on the WebAPI, OpenAPI and SENEC.Connect entries where they exist. Unique id `senec.<config entry title>_<key>`,
+  lower case, and `senec.<title>_<serial>_<key>` where the source has a serial (`__init__.py` lines 986-995): the prefix is the
+  title the person chose (`senec` by default, `senec_WEBAPI`, `senec_OpenAPI`, `Inverter`, or any words with spaces), so every
+  key is matched by suffix inside the battery's own config entry, as the entities are read per entry. The level is
+  `battery_charge_percent` (local, OpenAPI, Connect) or `acculevel_now` (WebAPI), the counters `battery_total_charged` and
+  `battery_total_discharged` (local, kWh; they exist only where the statistics are read) or the WebAPI's `accuexport_total` and
+  `accuimport_total`, which the integration names "Battery charged" and "Battery discharged". The battery's power is the signed
+  `battery_state_power` (positive = charging, `senec_lala.py` line 1158; evcc negates the same raw value), which is in W on the
+  local and OpenAPI entries and so read by its unit; the WebAPI has two unsigned kW sensors, `accuexport_now` ("Battery Charge
+  Power") and `accuimport_now` ("Battery Discharge Power"), the site's pair. The size and the ratings are empty: no route has a
+  size entity (the `battery_soh_remaining_capacity` is a percent) and `ratedPower` of the OpenAPI is usually 0, so both are
+  learnt. The floor is `spare_capacity` (the emergency-power reserve, 0-50 %, a sensor locally and a number on the WebAPI, both
+  disabled by default). The mode is the `system_state` sensor, a text in the Home Assistant language (English, German or
+  Italian; any other language reads `UNKNOWN`, which is no reading, so the mode is unknown), free only in the own-consumption family (battery full,
+  charge, empty, discharge, PV and grid + discharge, own consumption): the unit's own initial, maintenance, equalisation and
+  desulfation, safety and emergency charges, and the manual "Load Battery" force charge are not, and the `safe_charge` switch
+  (`SAFE_CHARGE_FORCE`) must be off. Without a `system_state` the mode is unknown: the WebAPI and OpenAPI entries state none.
+  The firmware is the device's `sw_version`, not an entity.
+
+* SAJ H2, HS2 and Ampere.StoragePro, `saj_h2_modbus` (stanus74/home-assistant-saj-h2-modbus `3f5cd84`, v3.1.3, local Modbus TCP,
+  read 2026-11-23, `plans/research_integrations/saj_control_2026-11-23.md`): read only. Unique id `<entry name>_<key>` for the
+  sensors, a fast copy `<entry name>_fast_<key>`, numbers `<entry name>_<key>_input`; the entry name is the person's (`SAJ` by
+  default) and the keys are camel-cased, so every key is matched lower-cased by suffix. The level is `batEnergyPercent` (the
+  inverter's side; the BMS block's `Bat1SOC` reads 0 % on an HS3, issue 201), the counters `bat_total_charge` and
+  `bat_total_discharge` (disabled by default), the mode the `AppMode` sensor (0 self-use, 1 time-of-use, 2 backup, 3 passive,
+  10 peak shaving and 12 AI saving, the last two the SAJ app's own optimisers), free only in 0: evcc runs its hold in 2
+  (backup, whether it grid-charges is unknown) and its charge in 1. The battery's power is `batteryPower` (0x40A6, the
+  aggregate), whose sign is DISPUTED: the integration's wiki (written with an AI, by the research's reading) says positive =
+  charging, ha-saj-local documents positive = discharge, and evcc's template feeds the same register as the battery's power,
+  its log in issue 34536 reading +441 W while the battery discharged. Read as discharge-positive; sign unverified on
+  hardware. Not read: the size (`BatCapcity` and `BatUserCap` carry no unit, likely Ah, which is unconfirmed, so a size from
+  them times `BatVolt` would be a guess); the ratings (the limits are permille of a rated power that is no entity); the floor
+  (`battery_on_grid_discharge_depth`, register 0x3644, is undocumented as a depth of discharge or a level, and one controller
+  writes it to 100 to charge); the firmware (no entity). Another maker's `saj_modbus` (a PV-only R5 integration) and core `saj`
+  have no battery.
+
+* SMA Sunny Boy Storage and Sunny Tripower Smart Energy, core `sma` (pysma 1.1.9) and HACS `pysmaplus` (littleyoda/ha-pysmaplus
+  `5d74e78`, 0.6.6), over the inverter's webconnect (read 2026-11-23, `plans/research_integrations/sma_control_2026-11-23.md`):
+  read only, and no Home Assistant route can write. Unique id `<config entry unique id, the serial>-<pysma key>_<key index>`
+  (core `sensor.py` lines 891-893, `pysmaplus` line 1231) where the key is pysma's register code, not a name
+  (`definitions/webconnect.py`): the total level `6100_00295A00`, the counters `6400_00496700` (charged) and `6400_00496800`
+  (discharged, kWh), every id anchored after the serial's hyphen so that the per-battery A, B and C sensors (`6100_00498F00`,
+  disabled by default) are not them. The battery's power is two unsigned sensors, charge `6100_00496900` and discharge
+  `6100_00496A00`, the site's pair (found by their names, see `site_detection`). Not read: the size, which no entity states
+  (`Battery Capacity Total`, `6100_00696E00`, has the unit % and is never a size); the ratings and the floor (no entity); the
+  firmware, which is the device's `sw_version`; any mode: the `Operating Mode` sensor is the inverter's status text and not the
+  energy strategy, and SMA's Forecast-based Charging and the Sunny Home Manager's management, which run the battery, show in no
+  entity, so the battery reads as free here whatever they do. The ennexOS devices (Tripower X, Data Manager M) through
+  `pysmaplus` have other keys (`Bat.ChaStt`), whose unique ids are not verified and are not matched.
+
+* GivEnergy hybrids, All-in-Ones and AC units, through the GivTCP add-on's MQTT discovery (britkat1980/giv_tcp `788b53f`, v3.6.14,
+  platform `mqtt`, no config entry of its own) and cdpuk's HACS `givenergy_local` (`782ed42`, 2.5.4), both local Modbus (read
+  2026-11-23, `plans/research_integrations/givenergy_control_2026-11-23.md`): read only. GivTCP's unique id is `<prefix>_<serial>_<Key>`
+  (`HA_Discovery.py` lines 191-218; the prefix `givtcp` by default, the key's case kept), `givenergy_local`'s `<serial>_<key>`
+  (`sensor.py` line 440), the serial the inverter's `SD2345G123` shape: every key is anchored after a serial of that shape, so that
+  another MQTT device's `..._soc` or `..._battery_power` is never one of these (the platform `mqtt` is every device's, and the
+  adapter is chosen only for a device made by GivEnergy, as Deye's kellerza add-on is). The level is `SOC` or `battery_percent`,
+  the rating `Invertor_Max_Bat_Rate` (W, one figure for both directions, at most half the battery's capacity on a low-voltage
+  battery since 3.6.9.1), and GivTCP's counters `Battery_Charge_Energy_Total_kWh` and `Battery_Discharge_Energy_Total_kWh`. The
+  battery's power is `Battery_Power` (GivTCP, DATAPOINTS.md) or `p_battery` (`givenergy_local`, the library's derived
+  discharge minus charge): positive = discharge on both, a sign read from the documents and the library's tests. The modes are
+  GivTCP's `Mode` (free in `Eco`: `Eco (Paused)`, `Timed Demand` and `Timed Export` are someone's), the charge and discharge
+  schedule switches (`Enable_Charge_Schedule`, `Enable_Discharge_Schedule`, or `enable_charge` and `enable_discharge` in
+  `givenergy_local`: a schedule the owner, the GivEnergy app or a tariff set fires every day) and the pause mode. Not read: the
+  size (`Battery_Capacity_kWh` is misreported by the integration on 2.6 and 5.2 kWh packs and by up to 18 % on an All-in-One, 15.9
+  against 13.5 kWh usable, and `givenergy_local` has none for the whole battery); the floor (the reserve and the cutoff are
+  documented as a floor by GivTCP and as for backup power only by `givenergy_local`, firmware-dependent); the counters of
+  `givenergy_local` (per battery module); the firmware (GivTCP gives it as an attribute, `givenergy_local` as the device's
+  `sw_version`, which is read from the registry). The cloud `ge_cloud` has one entity per cloud setting under the cloud's own
+  names and is not read.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1231,9 +1369,192 @@ OMNIBATTERY: Final = Adapter(
     },
 )
 
+#: sonnenBatterie through `sonnenbatterie` (see the module): read only. The sensors' unique ids begin `sensor.`.
+SONNEN: Final = Adapter(
+    brand="sonnen",
+    label="sonnenBatterie",
+    platforms=("sonnenbatterie",),
+    facts={
+        "soc": _key("state_charge_user"),
+        "capacity": _key("state_total_capacity_real"),
+        # One figure for both directions, anchored on the serial: `tou_max_power` is a schedule setting.
+        "rated_charge": Match(("sensor",), re.compile(r"^sensor\.sonnenbatterie_[^_]+_max_power$")),
+        "rated_discharge": Match(("sensor",), re.compile(r"^sensor\.sonnenbatterie_[^_]+_max_power$")),
+    },
+    modes=(
+        # Free in automatic (self-consumption); manual is a setpoint someone else sends, time-of-use the person's
+        # schedule and optimization sonnen's own (a VPP among them). An unknown mode (a newer firmware's) reads unknown.
+        ModeRule(_key("operating_mode", "sensor"), frozenset({"2"}), "operating mode"),
+    ),
+    reserves=(ReserveSource(_key("battery_reserve", "number")), ReserveSource(_key("backup_buffer"))),
+)
+
+#: Alpha ESS SMILE through `alphaess_modbus` (see the module): read only.
+ALPHAESS: Final = Adapter(
+    brand="alphaess",
+    label="Alpha ESS",
+    platforms=("alphaess_modbus",),
+    facts={
+        "soc": _key("soc_battery"),
+        "capacity": _key("battery_capacity_kwh"),
+        "firmware": _key("ems_version"),
+        "charged_total": _key("total_energy_charge_battery"),
+        "discharged_total": _key("total_energy_discharge_battery"),
+    },
+    modes=(
+        # 1 while any dispatch runs, SpotNav's own included: a battery SpotNav is not writing is someone else's then.
+        ModeRule(_key("dispatch_start", "sensor"), frozenset({"0"}), "dispatch"),
+        # The app's windows (0 off, 1 grid charging, 2 discharge control, 3 both); the select of the same key is not it.
+        ModeRule(_key("charging_time_period_control", "sensor"), frozenset({"0"}), "time period control", required=False),
+    ),
+    reserves=(ReserveSource(_key("discharging_cutoff_soc", "number")), ReserveSource(_key("discharging_cutoff_soc"))),
+)
+
+#: E3/DC through `e3dc_rscp` (see the module): read only. The statistics' keys carry `db-day-` and the like before the
+#: key, so each key is anchored on the `_` that follows the serial.
+E3DC: Final = Adapter(
+    brand="e3dc",
+    label="E3/DC",
+    platforms=("e3dc_rscp",),
+    facts={
+        "soc": _key("soc"),
+        "capacity": _key("system-battery-installed-capacity"),
+        "rated_charge": _key("system-battery-charge-max"),
+        "rated_discharge": _key("system-battery-discharge-max"),
+    },
+    modes=(
+        # AI360 and the portal's schedules are unreadable: only what someone's control leaves behind is.
+        ModeRule(_key("pset-limit-enabled", "binary_sensor"), frozenset({"off"}), "power limits"),
+        ModeRule(_key("manual-charge-active", "binary_sensor"), frozenset({"off"}), "manual charge"),
+        ModeRule(_key("system-charge-idle-period-active", "binary_sensor"), frozenset({"off"}), "charge idle period", required=False),
+        ModeRule(_key("system-discharge-idle-period-active", "binary_sensor"), frozenset({"off"}), "discharge idle period", required=False),
+    ),
+)
+
+def _entry_key(key: str, *domains: str) -> Match:
+    """`<config entry id>_<key>`: the id a ULID's 26 lower-case letters and digits (32 hex for an old entry), so that
+    another repository's `growatt_modbus_<serial>_<key>` is not it."""
+    return Match(domains or ("sensor",), re.compile(rf"^[0-9a-z]{{26,32}}_{re.escape(key)}$"))
+
+
+#: Growatt through 0xAHA's `growatt_modbus` (see the module): read only. The `solax_modbus` plugin's adapter is `GROWATT`.
+GROWATT_MODBUS: Final = Adapter(
+    brand="growatt_modbus",
+    label="Growatt (Modbus)",
+    platforms=("growatt_modbus",),
+    facts={
+        "soc": _entry_key("battery_soc"),
+        "capacity_ah": _entry_key("bms_gauge_fcc"),
+        "voltage": _entry_key("battery_voltage"),
+        "charged_total": _entry_key("battery_charge_total"),
+        "discharged_total": _entry_key("battery_discharge_total"),
+    },
+    modes=(
+        # Only the VPP remote control is readable; the apps' schedules are not.
+        ModeRule(_entry_key("vpp_control_state"), frozenset({"released"}), "VPP remote control", required=False),
+        ModeRule(_entry_key("priority_mode"), frozenset({"Load First"}), "priority", required=False),
+    ),
+    reserves=(
+        ReserveSource(_entry_key("load_first_battery_minimum_soc", "number")),
+        ReserveSource(_entry_key("grid_first_discharge_stopped_soc", "number")),
+    ),
+)
+
+#: SENEC through `senec` (see the module): read only. The ids' prefix is the entry's title, so every key is a suffix.
+_SENEC_OWN: Final = frozenset({
+    "BATTERY FULL", "CHARGE", "BATTERY EMPTY", "DISCHARGE", "PV + DISCHARGE", "GRID + DISCHARGE", "OWN CONSUMPTION",
+    "AKKU VOLL", "LADEN", "AKKU LEER", "ENTLADEN", "PV + ENTLADEN", "NETZ + ENTLADEN", "EIGENVERBRAUCH",
+    "ACCUMULATORE CARICO", "CARICA", "ACCUMULATORE SCARICO", "SCARICA", "FV + SCARICA", "RETE + SCARICA", "AUTOCONSUMO",
+})
+SENEC: Final = Adapter(
+    brand="senec",
+    label="SENEC",
+    platforms=("senec",),
+    facts={
+        "soc": _any_key("battery_charge_percent", "acculevel_now"),
+        "charged_total": _any_key("battery_total_charged", "accuexport_total"),
+        "discharged_total": _any_key("battery_total_discharged", "accuimport_total"),
+    },
+    modes=(
+        ModeRule(_key("system_state", "sensor"), _SENEC_OWN, "system state"),
+        ModeRule(_key("safe_charge", "switch"), frozenset({"off"}), "Load Battery", required=False),
+    ),
+    reserves=(ReserveSource(_key("spare_capacity", "sensor", "number")),),
+)
+
+#: SAJ through `saj_h2_modbus` (see the module): read only. The ids begin with the entry's name and the keys are
+#: camel-cased, so a key is the lower-cased suffix.
+SAJ: Final = Adapter(
+    brand="saj",
+    label="SAJ",
+    platforms=("saj_h2_modbus",),
+    facts={
+        "soc": _key("batenergypercent"),
+        "charged_total": _key("bat_total_charge"),
+        "discharged_total": _key("bat_total_discharge"),
+    },
+    modes=(
+        # 3 passive (an outside controller), 1 time-of-use, 2 backup (evcc's hold), 10 and 12 the SAJ app's optimisers.
+        ModeRule(_key("appmode", "sensor"), frozenset({"0"}), "app mode"),
+    ),
+)
+
+def _sma(code: str) -> Match:
+    """pysma's register code, after the serial's hyphen and before the key index: `<serial>-<code>_<idx>`."""
+    return Match(("sensor",), re.compile(rf"^[^-]+-{re.escape(code.lower())}_\d+$"))
+
+
+#: SMA through core `sma` or `pysmaplus` (see the module): read only. No mode is readable and no size is stated.
+SMA: Final = Adapter(
+    brand="sma",
+    label="SMA",
+    platforms=("sma", "pysmaplus"),
+    facts={
+        "soc": _sma("6100_00295A00"),
+        "charged_total": _sma("6400_00496700"),
+        "discharged_total": _sma("6400_00496800"),
+    },
+)
+
+def _giv(*keys: str, domains: tuple[str, ...] = ("sensor",)) -> Match:
+    """`[<prefix>_]<inverter serial>_<key>`, the serial's `SD2345G123` shape being what no other MQTT device has."""
+    return Match(
+        domains, re.compile(rf"^(?:[a-z0-9_]+_)?[a-z]{{2}}\d{{4}}[a-z]\d{{3}}_(?:{'|'.join(re.escape(key) for key in keys)})$")
+    )
+
+
+#: GivEnergy through GivTCP's MQTT discovery or `givenergy_local` (see the module): read only. `mqtt` is shared, so only a
+#: device made by GivEnergy is read.
+GIVENERGY: Final = Adapter(
+    brand="givenergy",
+    label="GivEnergy",
+    platforms=("mqtt", "givenergy_local"),
+    manufacturer="givenergy",
+    facts={
+        "soc": _giv("soc", "battery_percent"),
+        "rated_charge": _giv("invertor_max_bat_rate"),
+        "rated_discharge": _giv("invertor_max_bat_rate"),
+        "charged_total": _giv("battery_charge_energy_total_kwh"),
+        "discharged_total": _giv("battery_discharge_energy_total_kwh"),
+    },
+    modes=(
+        ModeRule(_giv("mode", domains=("select",)), frozenset({"Eco"}), "mode", required=False),
+        # A schedule that fires every day, whoever set it.
+        ModeRule(_giv("enable_charge_schedule", "enable_charge", domains=("switch",)), frozenset({"off"}), "charge schedule"),
+        ModeRule(
+            _giv("enable_discharge_schedule", "enable_discharge", domains=("switch",)),
+            frozenset({"off"}),
+            "discharge schedule",
+            required=False,
+        ),
+        ModeRule(_giv("battery_pause_mode", domains=("select",)), frozenset({"Disabled", "Not Paused"}), "pause mode", required=False),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ, SMA, GIVENERGY,
 )
 
 

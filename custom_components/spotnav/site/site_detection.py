@@ -788,10 +788,12 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         label="SolaX Modbus, Solinteg plugin",
     ),
     # Charge and discharge as two non-negative entities.
-    # Core `sma`: `<entry>-<key>_<idx>` with the keys `battery_power_charge_total` / `_discharge_total` (the
-    # per-phase `_a`/`_b`/`_c` ones are not matched); older releases had no `_total` and no index.
+    # Core `sma` and HACS `pysmaplus` (ha-pysmaplus `5d74e78`, the same entity names): found by the sensors' names
+    # `battery_power_charge_total` / `_discharge_total` (the per-phase `_a`/`_b`/`_c` ones are not matched); older
+    # releases had no `_total` and no index. The unique id is `<serial>-<pysma code>_<idx>` (`6100_00496900`), so the
+    # name is read from the entity id and its original name, never from the id.
     BatteryRow(
-        ("sma",),
+        ("sma", "pysmaplus"),
         _re(r"battery_power_charge(?:_total)?(?:_\d+)?$"),
         discharge_regex=_re(r"battery_power_discharge(?:_total)?(?:_\d+)?$"),
     ),
@@ -836,6 +838,62 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         _re(r"_battery_charging_power$"),
         discharge_regex=_re(r"_battery_discharging_power$"),
         label="Anker Solix (local, official)",
+    ),
+    # sonnenBatterie (`sonnenbatterie`, weltmeyer `9441b4a`): `sensor.sonnenbatterie_<serial>_state_battery_inout`, the unit's
+    # `Pac_total_W`, "positive = discharging" on the AC side (the README's table, `sensor_list.py`). The positive-only
+    # `state_battery_input` and the energy counters end otherwise. Sign from the source, unverified on hardware.
+    BatteryRow(("sonnenbatterie",), _re(r"_state_battery_inout$"), inverted=True, label="sonnenBatterie"),
+    # Alpha ESS (`alphaess_modbus`, senalse `b256f55`): `<entry id>_power_battery`, register 0x0126. The vendor's register
+    # list says "-: Charge, +: Discharge", the integration's house-load formula `pv + battery + grid` needs the same, and
+    # evcc reads it as the battery's power as it is; the integration's own description string says the opposite. Read as
+    # discharge-positive: sign unverified on hardware.
+    BatteryRow(("alphaess_modbus",), _re(r"_power_battery$"), inverted=True, label="Alpha ESS (Modbus)"),
+    # E3/DC (`e3dc_rscp`, torbennehmer `3fd5ab0`): two unsigned sensors, `<serial>_battery-charge` and
+    # `<serial>_battery-discharge`, split from the signed `battery-netchange` (`coordinator.py` L572-L576, positive =
+    # charging). The day, month and year statistics (`<serial>_db-day-battery-charge`) have a hyphen before `battery`.
+    BatteryRow(
+        ("e3dc_rscp",),
+        _re(r"_battery-charge$"),
+        discharge_regex=_re(r"_battery-discharge$"),
+        label="E3/DC",
+    ),
+    # Growatt through 0xAHA's `growatt_modbus` (`29d6b2b`): `<entry id>_battery_power`, the signed power, "positive = charging"
+    # (`sensor.py` L736), so as it is. The entry id is a ULID, which leaves out the other repository's
+    # `growatt_modbus_<serial>_<key>` of the same domain.
+    BatteryRow(("growatt_modbus",), _re(r"^[0-9a-z]{26,32}_battery_power$"), label="Growatt (Modbus)"),
+    # SENEC (`senec`, marq24 `32eed20`): `senec.<entry title>_battery_state_power`, the signed power of the local (V2.1, V3),
+    # OpenAPI and SENEC.Connect entries, "positive when battery is charging" (`senec_lala.py` L1158-L1166; evcc negates the
+    # same value to its discharge-positive). Its unit is the entity's own. The WebAPI entry has two unsigned kW sensors named
+    # by the integration "Battery Charge Power" (`accuexport_now`) and "Battery Discharge Power" (`accuimport_now`), the way
+    # round its totals "Battery charged" and "Battery discharged" agree with; not seen on hardware.
+    BatteryRow(("senec",), _re(r"_battery_state_power$"), label="SENEC"),
+    BatteryRow(
+        ("senec",), _re(r"_accuexport_now$"), discharge_regex=_re(r"_accuimport_now$"), label="SENEC (WebAPI)"
+    ),
+    # SAJ (`saj_h2_modbus`, stanus74 `3f5cd84`): `<entry name>_batteryPower`, the aggregate 0x40A6, whose `fast_` copy is
+    # disabled by default and left out. Sign DISPUTED: ha-saj-local documents positive = discharge and evcc's template reads
+    # the same register so (its log shows +441 W while the battery discharges); the integration's wiki says charging. Read
+    # as discharge-positive: sign unverified on hardware.
+    BatteryRow(
+        ("saj_h2_modbus",),
+        _re(r"_batterypower$"),
+        inverted=True,
+        reject=_re(r"_fast_batterypower$"),
+        label="SAJ (Modbus)",
+    ),
+    # GivEnergy through GivTCP's MQTT discovery (`<prefix>_<serial>_Battery_Power`, britkat1980 `788b53f`): positive = discharge,
+    # negative = charge (DATAPOINTS.md, `read.py`), so negated. `mqtt` is every device's: only a device made by GivEnergy, and
+    # an id with the inverter's serial shape (`SD2345G123`). `givenergy_local` (cdpuk `782ed42`): `<serial>_p_battery`, the
+    # library's derived discharge minus charge, the same sign.
+    BatteryRow(
+        ("mqtt",),
+        _re(r"^(?:[a-z0-9_]+_)?[a-z]{2}\d{4}[a-z]\d{3}_battery_power$"),
+        inverted=True,
+        device_manufacturer="givenergy",
+        label="GivEnergy (GivTCP, MQTT)",
+    ),
+    BatteryRow(
+        ("givenergy_local",), _re(r"^[a-z]{2}\d{4}[a-z]\d{3}_p_battery$"), inverted=True, label="GivEnergy (local Modbus)"
     ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
