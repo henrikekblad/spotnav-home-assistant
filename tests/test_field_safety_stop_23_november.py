@@ -312,3 +312,48 @@ async def test_a_second_safety_stop_in_the_plug_in_doubles_the_gap(hass: HomeAss
     await night.run(2 * _STEP_S + REGULATOR_DWELL_S)
     assert night.starts == starts + 2 and night.on, night.log()
 
+
+async def test_a_battery_probe_waits_out_the_safety_gap(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """A charge held back while a home battery holds the grid at the fuse: within a safety stop's gap the battery probe
+    does not try (the core would refuse its start, counted as a failed probe and backed off for many minutes); once
+    the gap is over it probes (`tests/test_field_night_1_november.py`'s 03:18)."""
+    from .test_field_night_1_november import _the_night as _halo_night
+
+    night = await _halo_night(hass, monkeypatch, freezer, "nov23probe")
+    cc = night.halo.cc
+    night.battery = "fixed"
+    night.fixed_w = 13000.0
+    for _ in range(6):
+        await night.step()
+        if night.halo.turn_off:
+            break
+    await night.step()
+    assert not night.on and cc.paused_by_balancing
+    gap = {"running": True}
+    monkeypatch.setattr(type(cc), "safety_gap_running", property(lambda self: gap["running"]))
+    outcomes = len(night.outcomes())
+    night.battery = "holds"
+    await night.run(120.0)
+    assert night.outcomes()[outcomes:] == [] and not night.on, night.outcomes()
+
+    gap["running"] = False
+    for _ in range(12):
+        await night.step()
+        if night.on:
+            break
+    assert night.outcomes()[outcomes:][:1] == ["probe_started:battery_charging_at_the_fuse"], night.outcomes()
+    assert night.on
+
+
+async def test_the_safety_gap_is_read_from_the_core_session(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """`safety_gap_running` follows the core's gap: on from a safety stop, off once its gap is over."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov23gap")
+    cc = night.cc
+    assert not cc.safety_gap_running
+    await _stopped_for_safety(night)
+    assert cc.safety_gap_running
+    stopped_at = cc.session_runner.session.safety_stopped_at
+    freezer.move_to(stopped_at + timedelta(seconds=SAFETY_RESUME_GAP_S - 1))
+    assert cc.safety_gap_running
+    freezer.move_to(stopped_at + timedelta(seconds=SAFETY_RESUME_GAP_S))
+    assert not cc.safety_gap_running

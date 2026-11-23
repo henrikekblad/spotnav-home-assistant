@@ -4065,6 +4065,10 @@ class SiteCapacityController:
             for phase in PHASES
         ):
             return False
+        if getattr(charger_controller, "safety_gap_running", False) is True:
+            # A safety stop's gap still runs: the core would refuse the probe's start, which would count as a failed
+            # probe and back the probe off.
+            return False
         now = self._yield_now()
         probe = self._probe_for(charger_entry_id)
         if not probe.may_start(now):
