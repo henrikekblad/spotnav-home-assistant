@@ -166,6 +166,7 @@ NAMES: dict[str, str] = {
     "anker_solix": "Anker Solix",
     "ecoflow_cloud": "EcoFlow",
     "marstek_local_api": "Marstek (local API)",
+    "marstek_modbus": "Marstek (Modbus)",
     # vehicles
     "kia_uvo": "Kia Uvo",
     "ha_kia_hyundai": "Kia and Hyundai (community integration)",
@@ -928,8 +929,9 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Marstek",
-        "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api)",
-        keys=("marstek_local_api",),
+        "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS "
+        "(ViperRNMC/marstek_venus_modbus)",
+        keys=("marstek_local_api", "marstek_modbus"),
     ),
 )
 

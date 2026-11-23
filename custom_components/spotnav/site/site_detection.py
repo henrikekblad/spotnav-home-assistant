@@ -836,6 +836,14 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # power", L411-L418, `coordinator.py` L114-L118), which comes first.
     BatteryRow(("marstek_local_api",), _re(r"(?:^|_)system_total_power$"), label="Marstek (local API), all batteries"),
     BatteryRow(("marstek_local_api",), _re(r"(?:^|_)battery_power$"), label="Marstek (local API), one battery"),
+    # Marstek over Modbus (`marstek_modbus`, ViperRNMC 2026.10.1 `cb5a241`), one entry per battery, unique ids
+    # `<entry id>_<key>` (`sensor.py` L62). `battery_power` (32102, or 30001 on E v3, A and D) states no sign, but the
+    # integration's own conversion efficiency takes a positive one as charging (DC below AC: `sensor.py` L502-L509),
+    # and ffunes/Marstek-Venus-Energy-Manager (`410926f`), which reads the same registers, counts a battery as
+    # charging when it is positive (`charge_delay.py` L354, `consumption_tracker.py` L1012) and its AC power, the
+    # other way round, as charging when negative (`aggregate_sensors.py` L355), as evcc reads that AC power as
+    # discharge-positive (`marstek-venus-e.yaml`). Read from the code, not yet seen on a battery.
+    BatteryRow(("marstek_modbus",), _re(r"(?:^|_)battery_power$"), label="Marstek (Modbus)"),
 )
 
 

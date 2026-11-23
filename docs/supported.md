@@ -60,7 +60,7 @@ Every hybrid inverter and home battery we know of in the Nordics and Europe, and
 | Zendure (SolarFlow, Hyper, AIO) | `zendure_ha`, HACS (Zendure/Zendure-HA) | Yes, untested: battery power | Unknown | Nothing yet | With several devices on one account only one is read. |
 | Anker Solix (Solarbank) | `anker_solix`, HACS (thomluther/ha-anker-solix) | Yes, untested: battery power | Unknown | Nothing yet | Read from Anker's cloud, a minute or more between values. |
 | EcoFlow (PowerStream, Ocean Pro) | `ecoflow_cloud`, HACS (tolwi/hassio-ecoflow-cloud) | Yes, untested: battery power | Unknown | Nothing yet | PowerOcean and Stream batteries are not read. |
-| Marstek | `marstek_local_api`, HACS (jaapp/ha-marstek-local-api) | Yes, untested: battery power | Unknown | Nothing yet |  |
+| Marstek | `marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS (ViperRNMC/marstek_venus_modbus) | Yes, untested: battery power | Unknown | Nothing yet |  |
 
 ## Supported EV chargers
 
@@ -239,6 +239,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | EcoFlow Ocean Pro (`ecoflow_cloud`) | Charge-positive, used as it is | PowerOcean and Stream batteries are not detected: which way their power counts is not known. | Detected from the integration's source |
 | Marstek (local API), all batteries (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | Marstek (local API), one battery (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| Marstek (Modbus) (`marstek_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 
 ## Supported heat pumps
 
