@@ -33,6 +33,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   `ecoflow_energy`'s `work_mode` (`self_use`, `ai_schedule`; MaxGrmm `56331de`, shuette42 `771b646`). EcoFlow's planned
   Tibber integration and CheckWatt readiness (Elmia Solar 2026) are announcements, not live [U], so no aggregator is
   named (`plans/research_integrations/ecoflow_control_2026-11-23.md`).
+* Kostal's own modes are the options of core `kostal_plenticore`'s `devices:local` select (`SmartBatteryControl`,
+  `TimeControl`) and its strategy switch (automatic, automatic economical); Tibber's bridge for Kostal (November
+  2025) needs the inverter's "External via protocol (Modbus TCP)" setting, which only one writer may use [U]
+  (`plans/research_integrations/kostal_control_2026-11-23.md`). `kostal_modbus_control` (mbuhansen 4.3.0) is the
+  battery-control integration for it, set up for control but also for readings.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -96,6 +101,9 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "Marstek app: AI mode and Manual time slots"),
     Coexistence("ecoflow", "EcoFlow", ("ef_powerocean_tcpmodbus", "ecoflow_energy"),
                 "EcoFlow app: Self-use, AI schedule and backup reserve"),
+    Coexistence("kostal", "Kostal", ("kostal_plenticore", "kostal_modbus_control"),
+                "Kostal: smart battery control, time control and the automatic strategies",
+                ("Tibber, over its bridge [U]",)),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),
@@ -136,6 +144,9 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     # and Hoymiles batteries (a PD zero-export loop, grid charging, time slots). It exists only to drive a battery, so
     # its being set up marks the battery as run by someone else, as CheckWatt's does.
     OutsideIntegration("omnibattery", "Omnibattery", "runs"),
+    # mbuhansen/kostal_plenticore_battery_control (manifest `domain`, 4.3.0, `3bd84ac`): the Modbus control integration for
+    # a Kostal Plenticore, which also reads the inverter, so its presence is only a hint.
+    OutsideIntegration("kostal_modbus_control", "Kostal Modbus Control", "hint"),
 )
 
 

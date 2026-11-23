@@ -1745,5 +1745,98 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "kostal": {
+  "_source": "Core kostal_plenticore (home-assistant/core 42f4a32, pykoplenti): `<entry id>_<module id>_<data id>` (sensor.py line 867), the select `<entry id>_devices:local` (select.py line 104). Not a real registry; built from the source (the number is enabled here, disabled by default there).",
+  "platform": "kostal_plenticore",
+  "manufacturer": "Kostal",
+  "battery": "sensor.scb_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.scb_battery_power",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local:battery_P",
+    "device": "inv",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.scb_battery_soc",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local:battery_SoC",
+    "device": "inv",
+    "state": "47",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.scb_battery_cycles",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local:battery_Cycles",
+    "device": "inv",
+    "state": "212",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.scb_home_power_from_battery",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local_HomeBat_P",
+    "device": "inv",
+    "state": "300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.scb_battery_discharge_total",
+    "unique_id": "01JKOSTALENTRY000000000_scb:statistic:EnergyFlow_Statistic:EnergyDischarge:Total",
+    "device": "inv",
+    "state": "1250.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.scb_battery_charge_from_grid_total",
+    "unique_id": "01JKOSTALENTRY000000000_scb:statistic:EnergyFlow_Statistic:EnergyChargeGrid:Total",
+    "device": "inv",
+    "state": "400.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.scb_battery_min_soc",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local_Battery:MinSoc",
+    "device": "inv",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.scb_battery_charging_usage_mode",
+    "unique_id": "01JKOSTALENTRY000000000_devices:local",
+    "device": "inv",
+    "state": "None",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "kostal",
+   "soc_pct": 47.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "unknown",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

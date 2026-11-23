@@ -155,6 +155,29 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   `sw_version`. The inverter has a heartbeat dead-man of its own (60 s) and the EcoFlow app locks while Modbus control
   is on; none of it is written here.
 
+* Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
+  one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
+  integrations renew; none of it is written here). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
+  REST): sensors `<entry id>_<module id>_<data id>` (`sensor.py` line 867), the level `devices:local:battery_SoC`
+  (line 237) and the battery power `devices:local:battery_P` (line 229); the module part is why the match is on
+  `battery_soc` after `_` or `:`, and why `P` alone is never matched. The inverter's own floor is the number
+  `devices:local_Battery:MinSoc` (`number.py` line 50, 5-100 %, disabled by default). The firmware is the device's
+  `sw_version` ("IOC: .. MC: ..", `coordinator.py` line 107). Core states no size and no rating; its charge counters are
+  two (`EnergyChargeGrid` and `EnergyChargePv`, kWh, from the grid and from the panels) beside one discharge counter, so
+  no counter pair is read. The mode select `devices:local` (`select.py` line 104: "None", `SmartBatteryControl`,
+  `TimeControl`) reads "None" when the inverter's smart or timed control is off, which SpotNav takes for no reading
+  (`facts._NO_READING`), so core alone reads the mode as unknown. HACS `kostal_modbus_control` (mbuhansen
+  `3bd84ac`, 4.3.0, Modbus TCP): `<config entry id>_<key>` (`sensor.py` line 269), `battery_soc` (register 514),
+  `battery_work_capacity` (1068, Wh, `sensor.py` line 844, disabled by default; its own Predbat sensor says the
+  inverter's figure may be the gross size, so the size is the integration's own and not more), `software_version`
+  (the inverter's UI/SW, `sensor.py` line 1044, disabled by default) and `battery_mgmt_mode` (register 1080, "No external
+  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free only in the
+  first. Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
+  limits the integration itself writes (0 to block, `const.py` lines 37-38), not the battery's 1076/1078 rating: not read.
+  The battery's power is discharge-positive on both, negated by the site (core: Predbat's template uses
+  `scb_battery_power` as the discharge-positive power without inverting it, `templates/kostal.yaml` line 127; Modbus:
+  register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -883,9 +906,31 @@ ECOFLOW: Final = Adapter(
     reserves=(ReserveSource(_key("battery_reserve_effective")),),
 )
 
+#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module): read only.
+KOSTAL: Final = Adapter(
+    brand="kostal",
+    label="Kostal Plenticore",
+    platforms=("kostal_plenticore", "kostal_modbus_control"),
+    facts={
+        "soc": Match(("sensor",), re.compile(r"[_:]battery_soc$")),
+        "capacity": _key("battery_work_capacity"),
+        "firmware": _key("software_version"),
+    },
+    modes=(
+        # Core's select reads "None" when the inverter's own smart or timed control is off, which is no reading to
+        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default).
+        ModeRule(
+            Match(("sensor", "select"), re.compile(r"(?:^|_)(?:battery_mgmt_mode|devices:local)$")),
+            frozenset({"No external battery management"}),
+            "battery management",
+        ),
+    ),
+    reserves=(ReserveSource(Match(("number",), re.compile(r"_devices:local_battery:minsoc$"))),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL,
 )
 
 

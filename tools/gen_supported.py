@@ -165,6 +165,8 @@ NAMES: dict[str, str] = {
     "zendure_ha": "Zendure",
     "anker_solix": "Anker Solix",
     "ecoflow_cloud": "EcoFlow",
+    "kostal_plenticore": "Kostal Plenticore",
+    "kostal_modbus_control": "Kostal Plenticore (Modbus)",
     "ef_powerocean_tcpmodbus": "EcoFlow PowerOcean (Modbus)",
     "ecoflow_energy": "EcoFlow (ecoflow_energy)",
     "marstek_local_api": "Marstek (local API)",
@@ -939,6 +941,16 @@ OVERVIEW: tuple[Overview, ...] = (
         "after a minute, and it locks the EcoFlow app meanwhile; Modbus is first enabled by EcoFlow's support or the "
         "installer",
         note="The ratings are learnt. The size is read over Modbus only.",
+    ),
+    Overview(
+        "Kostal (Plenticore plus)",
+        "`kostal_plenticore`, Home Assistant core; `kostal_modbus_control`, HACS (mbuhansen/kostal_plenticore_battery_control)",
+        keys=("kostal_plenticore", "kostal_modbus_control"),
+        adapter="kostal",
+        control="Not mapped: read only. Control is Modbus (port 1502) and needs the installer's setting \"External via "
+        "protocol\" and its timeout; the inverter hands back by itself when the writes stop",
+        note="The size is read through the Modbus integration only, and the ratings are learnt. The mode is read "
+        "only when the Modbus integration's Battery Management Mode is enabled.",
     ),
     Overview(
         "Marstek (Venus E, C, D, A)",

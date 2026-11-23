@@ -451,6 +451,8 @@ PLAN_REASON = {
     "marstek": "no_rated_power",
     # EcoFlow states its size (Modbus) but no rating: the BMS's limits move with the moment, so they are learnt.
     "ecoflow": "no_rated_power",
+    # Kostal's core integration states no size and no rating (the Modbus one states a size, no rating).
+    "kostal": "no_capacity",
 }
 
 
