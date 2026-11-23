@@ -208,7 +208,7 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   can be compared before control is turned on. The would-be figure is never in the headline, a day not reviewed yet
   counts as it went, and a single day has it in words under the bars (today's comes the night after).
   **Sun**, on a site where the battery's nightly reviews value the sun: the sun's energy the house used, at the price
-  then, plus what was sold. It is the same figure as *What the sun gave* in the details' Money section, from the same
+  then, plus what was sold. It is the same figure as *The sun saved* in the details' Money section, from the same
   reviews, so the two always agree. It is not something SpotNav did and is never part of *SpotNav saved*, but it is
   money the house got, so it is in the headline like the others; hide it with its toggle to see SpotNav's parts alone,
   or keep it shown to compare with a battery maker's earnings figure that counts the sun. It is a whole day's figure:
