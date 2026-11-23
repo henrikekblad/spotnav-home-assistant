@@ -47,7 +47,8 @@ from .import_target import (
     TargetShare,
 )
 from .regulator import RegulatorDecision
-from .shed_order import combine, END_OFF, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
+from .priority import effective_order
+from .shed_order import combine, END_OFF, LOAD_COOLING, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
 from .site_capacity import allocation_order, ChargerRequest, PhaseName, PHASES
 from .site_capacity_controller import (
     _current_write_lock,
@@ -219,7 +220,7 @@ class ImportTargetHold:
             ]
             shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
         # A car the shares pause for the rest of the period: the water heater goes first, now (`_car_pause_due`).
-        offers = self._offers()
+        offers = self._offers(now)
         car_pause_due, deferred = self._car_pause_due(now, budget, members, shares, offers.get(LOAD_WATER_HEATER))
         credit_w = self._shed(now, budget, members, car_pause_due=car_pause_due, offers=offers)
         if deferred and credit_w <= 0:
@@ -367,10 +368,14 @@ class ImportTargetHold:
                     order.update(now, None, {})
                 credit_w = 0.0
             else:
+                # The site's priority list sets the order the loads give way in (`site/priority.py`).
+                order.set_priority(effective_order(self._site.config))
                 projection = replace(
-                    _projection(budget, members, self._planned_w(members, now)), car_pause_due=car_pause_due
+                    _projection(budget, members, self._planned_w(members, now)),
+                    car_pause_due=car_pause_due,
+                    battery_help_w=self._battery_help_w(),
                 )
-                credit_w = order.update(now, projection, self._offers() if offers is None else offers)
+                credit_w = order.update(now, projection, self._offers(now) if offers is None else offers)
         except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
             if not getattr(self, "_shed_failed_logged", False):
                 self._shed_failed_logged = True
@@ -456,12 +461,25 @@ class ImportTargetHold:
             out[member.charger_entry_id] = _plan_power_kw(plan) * 1000.0
         return out
 
-    def _offers(self) -> dict[str, Offer | None]:
-        """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`)."""
+    def _battery_help_w(self) -> float:
+        """What the home battery's discharge covers of the house now (W), where the hold does not count it as import
+        (`Projection.battery_help_w`); 0 without a battery read live or under `battery_first`."""
+        try:
+            counts, _discharge = self._site._battery_first_discharge()
+            if counts:
+                return 0.0
+            configured, battery_w = self._site._battery_live_w()
+        except Exception:  # noqa: BLE001 - no help known: the loads below the battery are judged as the others
+            return 0.0
+        return max(0.0, -battery_w) if configured and battery_w is not None else 0.0
+
+    def _offers(self, now: datetime | None = None) -> dict[str, Offer | None]:
+        """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`); the pool's,
+        the spa's, the sauna's and house cooling's are `would` only (no control of theirs writes yet)."""
         heater_control = getattr(self._site, "water_heater_control", None)
         heat_control = getattr(self._site, "heat_control", None)
         zones_control = getattr(self._site, "zones_control", None)
-        return {
+        offers: dict[str, Offer | None] = {
             LOAD_WATER_HEATER: None if heater_control is None else heater_control.shed_offer(),
             LOAD_HEAT: combine(
                 [
@@ -470,6 +488,30 @@ class ImportTargetHold:
                 ]
             ),
         }
+        if now is None:
+            return offers
+        try:
+            pool_spa = getattr(self._site, "pool_spa", None)
+            if pool_spa is not None:
+                offers.update(pool_spa.shed_offers(now))
+            offers[LOAD_COOLING] = self._cooling_offer(zones_control)
+        except Exception:  # noqa: BLE001 - watched loads never stand in the hold's way
+            _LOGGER.debug("SpotNav site %s: the watched loads' offers could not be read", self._site.entry_id, exc_info=True)
+        return offers
+
+    def _cooling_offer(self, zones_control: Any) -> Offer | None:
+        """House cooling's offer (`would` only): the zones reading `cool`, at their measured power. Its step would be a
+        raise of the setpoint (`pool/rules.COOL_RAISE_C`); nothing is written yet."""
+        if zones_control is None:
+            return None
+        give = 0.0
+        cooling = False
+        for entity_id, kw in dict(getattr(zones_control, "kw", {}) or {}).items():
+            state = self._site.hass.states.get(entity_id)
+            if state is not None and state.state == "cool":
+                cooling = True
+                give += max(0.0, kw or 0.0) * 1000.0
+        return Offer(live=False, ready=True, give_w=give) if cooling else None
 
     def _effective_import_target(self, set_kw: float, now: datetime) -> EffectiveTarget:
         """The import target lifted to the month's free level for the running hour (`effective_target`), from the

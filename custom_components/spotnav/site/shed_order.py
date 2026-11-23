@@ -76,21 +76,40 @@ target's own budget, never above the fuse's ceiling. The power tariff's soft cei
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
 
 from ..heat.relay_control import MIN_LOWER
 from .import_target import raise_lock_s
+from .priority import (
+    default_order,
+    ID_COOLING,
+    ID_POOL_CIRCULATION,
+    ID_POOL_HEAT,
+    ID_SAUNA,
+    ID_SPA,
+    ID_SPA_IDLE,
+    shed_sequence,
+)
 
 LOAD_BATTERY: Final = "home_battery"
 LOAD_WATER_HEATER: Final = "water_heater"
 LOAD_CAR: Final = "car"
 LOAD_HEAT: Final = "heat"
-#: The shed order (fixed in 3.0; a setting may come later).
-ORDER: Final = (LOAD_BATTERY, LOAD_WATER_HEATER, LOAD_CAR, LOAD_HEAT)
+LOAD_COOLING: Final = ID_COOLING
+LOAD_SPA: Final = ID_SPA
+LOAD_SPA_IDLE: Final = ID_SPA_IDLE
+LOAD_SAUNA: Final = ID_SAUNA
+LOAD_POOL_CIRCULATION: Final = ID_POOL_CIRCULATION
+LOAD_POOL_HEAT: Final = ID_POOL_HEAT
+#: Loads without a control of their own yet: their steps are `would` only and never hold another step back.
+WATCH_ONLY: Final = (LOAD_POOL_HEAT, LOAD_POOL_CIRCULATION, LOAD_SPA_IDLE, LOAD_SPA, LOAD_SAUNA, LOAD_COOLING)
 #: The loads this module steps (the battery and the car are counted, not stepped).
-STEPPED: Final = (LOAD_WATER_HEATER, LOAD_HEAT)
+STEPPED: Final = (LOAD_WATER_HEATER, LOAD_HEAT, *WATCH_ONLY)
+#: The shed order of the default priority list (first shed first); a site's own list sets it (`set_priority`).
+ORDER: Final = tuple(shed_sequence(default_order(())))
 
 #: Why a load is paused or lowered by this module (the plan view, the card, the diagnostics).
 REASON_CEILING: Final = "ceiling"
@@ -178,6 +197,9 @@ class Projection:
     #: The hold would pause a car for the rest of the period this pass (its share fell below its minimum): the water
     #: heater, the earlier step, is then taken without the enter delay.
     car_pause_due: bool = False
+    #: What the home battery's discharge covers of the house now (W), where the hold does not count it as import: a
+    #: load below the battery in the list gives way before that help, so it is judged over without it.
+    battery_help_w: float = 0.0
 
     @property
     def excess_w(self) -> float:
@@ -257,9 +279,10 @@ class ShedOrder:
     def __init__(self, started_at: datetime | None = None) -> None:
         self.steps: dict[str, Step] = {}
         self._started_at = started_at
-        #: Since when the period has been over (`excess_w > 0`), and over beyond the cars (`beyond_cars_w > 0`).
-        self._over_since: datetime | None = None
-        self._beyond_since: datetime | None = None
+        #: The loads in the order they give way (`set_priority`), the battery and the car as places.
+        self.order: list[str] = list(ORDER)
+        #: Per stepped load, since when the period has been over by its own measure (`_measure`).
+        self._wait_since: dict[str, datetime] = {}
         #: Per step, since when it could be put back.
         self._under_since: dict[str, datetime] = {}
         #: Per load, the period in which its step ended (not taken again in it) and when (`REST_S`).
@@ -274,6 +297,34 @@ class ShedOrder:
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_SIZE)
         #: How many entries were ever logged (the site forwards the new ones to its change log).
         self.logged = 0
+
+    def set_priority(self, priority: Sequence[str]) -> None:
+        """The site's priority list (`site/priority.py`, top first): the loads give way from its bottom up."""
+        self.order = shed_sequence(priority)
+
+    def _place(self, load: str) -> tuple[bool, bool]:
+        """`(after_cars, before_battery)`: whether the load gives way only after every car (it stands above them all)
+        and before the battery's help (it stands below the battery)."""
+        order = self.order
+        index = order.index(load)
+        return index > order.index(LOAD_CAR), index < order.index(LOAD_BATTERY)
+
+    def _measure(self, load: str, excess: float, beyond: float, help_w: float) -> float:
+        """How far over the period is heading by this load's place in the order (W): above every car, with every car
+        the hold may pause paused (`beyond_cars_w`, as heat); else with the cars at what they want (`excess_w`, as the
+        water heater); below the battery, without the battery's help too."""
+        after_cars, before_battery = self._place(load)
+        return (beyond if after_cars else excess) + (help_w if before_battery else 0.0)
+
+    def _stepped(self) -> list[str]:
+        """The loads this module steps, in the order they give way."""
+        return [load for load in self.order if load in STEPPED]
+
+    @staticmethod
+    def _holds_back(load: str, live: bool) -> bool:
+        """Whether a step of this load holds the next one back: a live one, and the water heater's and heat's as
+        before; a load without a control yet (`WATCH_ONLY`) never does."""
+        return live or load not in WATCH_ONLY
 
     # ---- each pass
 
@@ -300,9 +351,13 @@ class ShedOrder:
         still_in = heater_step.give_w if heater_step is not None and heater_step.live and heater is not None and heater.drawing else 0.0
         excess = projection.excess_w
         beyond = projection.beyond_cars_w - still_in
-        self._over_since = (self._over_since or now) if excess > 0 else None
-        self._beyond_since = (self._beyond_since or now) if beyond > 0 else None
-        self._release(now, excess, beyond)
+        help_w = max(0.0, projection.battery_help_w)
+        for load in self._stepped():
+            if self._measure(load, excess, beyond, help_w) > 0:
+                self._wait_since.setdefault(load, now)
+            else:
+                self._wait_since.pop(load, None)
+        self._release(now, excess, beyond, help_w)
         self._enter(now, projection, offers)
         self.credit_w = self._credit(now, projection, heater)
         return self.credit_w
@@ -334,46 +389,52 @@ class ShedOrder:
             if (now - step.since).total_seconds() >= wait:
                 self._end(now, load, END_RULE)
 
-    def _release(self, now: datetime, excess: float, beyond: float) -> None:
+    def _release(self, now: datetime, excess: float, beyond: float, help_w: float) -> None:
         """The last step taken put back once the period stays under with its give back for `RELEASE_S` (see the
-        module): heat before the water heater, one at a time. A step its control has not taken yet holds none back."""
-        for load, measure in ((LOAD_HEAT, beyond), (LOAD_WATER_HEATER, excess)):
+        module): from the top of the list down (heat before the water heater by default), one at a time. A step its
+        control has not taken yet holds none back, nor a `would` step of a load without a control yet."""
+        for load in reversed(self._stepped()):
             step = self.steps.get(load)
             if step is None or not step.taken:
                 self._under_since.pop(load, None)
                 continue
-            back = measure + (step.give_w if step.live else 0.0)
+            back = self._measure(load, excess, beyond, help_w) + (step.give_w if step.live else 0.0)
             if back < -RELEASE_MARGIN_W:
                 since = self._under_since.setdefault(load, now)
                 if (now - since).total_seconds() >= RELEASE_S:
                     self._end(now, load, END_UNDER)
             else:
                 self._under_since.pop(load, None)
-            # Only the last step taken is looked at: heat goes back before the water heater.
-            return
+            # Only the last step taken is looked at: the higher load goes back before the lower one.
+            if self._holds_back(load, step.live):
+                return
 
     def _enter(self, now: datetime, projection: Projection, offers: dict[str, Offer | None]) -> None:
-        """The next step in the order, where the period has stayed over long enough (see the module)."""
-        if self._over_since is None:
-            return
-        heater = offers.get(LOAD_WATER_HEATER)
-        if LOAD_WATER_HEATER not in self.steps and self._may_take(now, LOAD_WATER_HEATER, heater, projection):
-            if (now - self._over_since).total_seconds() >= ENTER_S or projection.car_pause_due:
-                self._take(now, LOAD_WATER_HEATER, heater, projection)  # type: ignore[arg-type]
-            # The heater is the step due: heat waits for it, and its own delay starts after it.
-            self._beyond_since = None
-            return
-        if heater is not None and heater.give_w >= MIN_GIVE_W and not heater.ready and heater.why is not None:
-            self.blocked[LOAD_WATER_HEATER] = heater.why
-        if self._beyond_since is None or LOAD_HEAT in self.steps:
-            return
-        heat = offers.get(LOAD_HEAT)
-        if not self._may_take(now, LOAD_HEAT, heat, projection):
-            if heat is not None and not heat.ready and heat.why is not None:
-                self.blocked[LOAD_HEAT] = heat.why
-            return
-        if (now - self._beyond_since).total_seconds() >= ENTER_S:
-            self._take(now, LOAD_HEAT, heat, projection)  # type: ignore[arg-type]
+        """The next step in the order, where the period has stayed over by its load's measure long enough (see the
+        module). The step due holds the ones after it back: their own delay starts once it is taken."""
+        stepped = self._stepped()
+        for position, load in enumerate(stepped):
+            since = self._wait_since.get(load)
+            if since is None or load in self.steps:
+                continue
+            offer = offers.get(load)
+            if self._may_take(now, load, offer, projection):
+                after_cars, _before_battery = self._place(load)
+                early = projection.car_pause_due and load == LOAD_WATER_HEATER and not after_cars
+                if (now - since).total_seconds() >= ENTER_S or early:
+                    self._take(now, load, offer, projection)  # type: ignore[arg-type]
+                if self._holds_back(load, offer.live):  # type: ignore[union-attr]
+                    for later in stepped[position + 1 :]:
+                        self._wait_since.pop(later, None)
+                    return
+                continue
+            if (
+                offer is not None
+                and not offer.ready
+                and offer.why is not None
+                and (load == LOAD_HEAT or offer.give_w >= MIN_GIVE_W)
+            ):
+                self.blocked[load] = offer.why
 
     def _may_take(self, now: datetime, load: str, offer: Offer | None, projection: Projection) -> bool:
         ended_at = self._ended_at.get(load)
@@ -420,6 +481,9 @@ class ShedOrder:
         step = self.steps.get(LOAD_WATER_HEATER)
         if step is None or not step.live or heater is None or not heater.live or not heater.ready:
             return 0.0
+        if self._place(LOAD_WATER_HEATER)[0]:
+            # Given way only after the cars: nothing to count ahead for them.
+            return 0.0
         if projection.remaining_s <= raise_lock_s(0.0, projection.period_s):
             return 0.0
         elapsed = (now - step.since).total_seconds()
@@ -441,7 +505,7 @@ class ShedOrder:
         """Every step put back at once (nothing held for good, a failure): the loads' own exits do the rest."""
         for load in list(self.steps):
             self._end(now, load, why)
-        self._over_since = self._beyond_since = None
+        self._wait_since = {}
         self._under_since = {}
         self._budget_at = None
         self.credit_w = 0.0
@@ -469,7 +533,7 @@ class ShedOrder:
         """The site's diagnostics block (`shed_order`)."""
         projection = self.projection
         return {
-            "order": list(ORDER),
+            "order": list(self.order),
             "steps": {load: step.as_dict() for load, step in self.steps.items()},
             "blocked": dict(self.blocked),
             "credit_kw": round(self.credit_w / 1000.0, 2),
