@@ -33,6 +33,7 @@ from ..planning.flexible_load import (
     KIND_HOME_BATTERY,
     KIND_POOL_CIRCULATION,
     KIND_POOL_HEAT,
+    KIND_SAUNA,
     KIND_SPA,
     KIND_WATER_HEATER,
 )
@@ -50,9 +51,9 @@ from .plan_view import (
     history_block,
 )
 
-_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER, KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA)
+_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER, KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
 #: The pool's and the spa's lanes keep the live answer's summary (their figures are the shadow's plan).
-_LIVE_SUMMARY = (KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA)
+_LIVE_SUMMARY = (KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
 
 
 def day_hours(day: date, tz: str) -> list[datetime]:

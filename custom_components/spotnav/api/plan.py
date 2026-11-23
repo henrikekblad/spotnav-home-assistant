@@ -56,6 +56,7 @@ from ..site.plan_view import (
     CarPlan,
     HeatPlan,
     PlanInputs,
+    DeadlinePlanView,
     PoolPlanView,
     PriceHour,
     WaterHeaterPlan,
@@ -246,6 +247,25 @@ def _pool(hass: HomeAssistant, controller: Any) -> PoolPlanView | None:
     )
 
 
+def _deadlines(hass: HomeAssistant, controller: Any) -> tuple[DeadlinePlanView, ...]:
+    """The spa's and the sauna's shadow plans (`spa/runtime.py`)."""
+    shadow = getattr(controller, "pool_spa", None)
+    if shadow is None:
+        return ()
+    return tuple(
+        DeadlinePlanView(
+            kind=lanes["kind"],
+            quarters=lanes["quarters"],
+            hold=lanes["hold"],
+            kw=lanes["kw"],
+            target_c=lanes["target_c"],
+            ready_at=lanes["ready_at"],
+            name=_name(hass, lanes["entity_id"]),
+        )
+        for lanes in shadow.deadline_lanes(shadow.config())
+    )
+
+
 def _shed(controller: Any, load: str) -> tuple[datetime, datetime] | None:
     """The shed order's step for a load (`site/shed_order.py`): `(since, until)`; a live one only once its control
     holds it (the water heater off, the pump lowered), never from the step's existence alone; a `would` one (the
@@ -372,6 +392,7 @@ async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: dat
             zones=zones,
             water_heater=heater,
             pool=_guarded("pool plan", lambda: _pool(hass, controller), None),
+            deadlines=_guarded("spa and sauna plans", lambda: _deadlines(hass, controller), ()),
             hold_kw=_guarded("import target's hold", lambda: site_hour_caps(hass, controller, now), {}),
             hold_kind=CEILING_IMPORT_TARGET if _import_target_kw(controller) is not None else CEILING_POWER_LEVEL,
             soft_kw=_guarded("soft ceiling", lambda: _soft(controller), {}),

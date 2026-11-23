@@ -354,3 +354,30 @@ def test_the_pools_circulation_and_heat_pump_are_watched_lanes_inside_the_house(
     assert circulation["summary"] == {"need_h": 5.0, "planned_h": 6.0} and heat["summary"] == {"heat_h": 2.0, "planned_h": 2.0}
     # In the house: the net is as without them.
     assert [row["net_kw"] for row in answer["hours"]] == [row["net_kw"] for row in plan_view(base)["hours"]]
+
+
+def test_the_spa_and_the_sauna_are_watched_lanes_with_their_heat_up_and_hold() -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.site.plan_view import DeadlinePlanView
+
+    spa = DeadlinePlanView(
+        "spa",
+        {at(30) + timedelta(minutes=15 * q): "cheap" for q in range(6)},
+        hold=(at(31) + timedelta(minutes=30), at(34)),
+        kw=3.0,
+        target_c=38.0,
+        ready_at=at(31) + timedelta(minutes=30),
+        name="Spa",
+    )
+    sauna = DeadlinePlanView("sauna", {at(41) + timedelta(minutes=15 * q): "bath" for q in range(3)}, kw=9.0, target_c=80.0, name="Bastu")
+    answer = plan_view(replace(villa_inputs(), deadlines=(spa, sauna)))
+    _write_or_compare("spa_sauna.json", answer)
+    lane = _load(answer, "spa")
+    assert lane["id"] == "spa" and lane["state"] == "would" and lane["in_house"]
+    assert [(run["what"], run["reason"]) for run in lane["runs"]] == [("heat", "cheap"), ("hold", None)]
+    assert lane["summary"] == {"target_c": 38.0, "ready_at": (at(31) + timedelta(minutes=30)).isoformat(), "heat_h": 1.5}
+    hour = [row["start"] for row in answer["hours"]].index(at(31).isoformat())
+    assert lane["kw"][hour] == 1.5
+    sauna_lane = _load(answer, "sauna")
+    assert [(run["what"], run["kwh"]) for run in sauna_lane["runs"]] == [("heat", 6.75)]
