@@ -68,10 +68,84 @@ const CONFIG = O({
   indoor_offsets: A(O({ entity_id: "string", offset_c: "number" })),
   control_enabled: "boolean",
   water_heater: N(O({ entity_id: "string", control: "boolean", tank_sensor: N("string") })),
+  pool: N(
+    O({
+      heat_pump: N(O({ entity_id: "string", shape: "string", switch_id: N("string"), number_id: N("string") })),
+      circulation_id: N("string"),
+      water_sensor: N("string"),
+      target_c: "number",
+      season_open: "boolean",
+      filter_hours: N("number"),
+      heat_pump_kw: N("number"),
+      circulation_kw: N("number"),
+      control_heat_pump: "boolean",
+      control_circulation: "boolean",
+    }),
+  ),
+  spa: N(
+    O({
+      entity_id: "string",
+      family: "string",
+      bath_c: "number",
+      idle_c: "number",
+      floor_c: "number",
+      baths: A(O({ weekdays: A("number"), time: "string" })),
+      bath_once: N("string"),
+      heater_kw: N("number"),
+      control: "boolean",
+    }),
+  ),
+  sauna: N(
+    O({
+      entity_id: "string",
+      family: "string",
+      target_c: "number",
+      sessions: A(O({ weekdays: A("number"), time: "string" })),
+      session_once: N("string"),
+      heater_kw: N("number"),
+      lock_id: N("string"),
+      safety_declared: "boolean",
+      control: "boolean",
+    }),
+  ),
+  heat_notifications: O({ targets: A("string"), events: A("string") }),
   heat_meter_entity: N("string"),
 });
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
 const ZONE_CHOICE = O({ entity_id: "string", name: "string", value: N("string"), kind: "string" });
+/** A detected candidate: how sure the detection is (`ask`: the settings ask the person once). */
+const RANKED_CHOICE = O({ entity_id: "string", name: "string", value: N("string"), score: "number", ask: "boolean" });
+const POOL_PUMP_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  shape: "string",
+  switch_id: N("string"),
+  number_id: N("string"),
+  cloud: "boolean",
+});
+const SAUNA_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  family: "string",
+  lock_id: N("string"),
+  cloud: "boolean",
+});
+const SPA_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  family: "string",
+  controllable: "boolean",
+  cloud: "boolean",
+});
 const RUN = O({ start: "string", end: "string", kwh: "number" });
 const EFFECT = O({ lower_share: "number", rebound: "number", blocks: "number" });
 const COMFORT = { coldest_min_c: N("number"), minutes_below: "number" } as const;
@@ -221,6 +295,76 @@ export const WATER_HEATER = O({
   automation: N(O({ entity_id: "string", name: "string" })),
   paused_until: N("string"),
 });
+const POOL_PART = { live: "boolean", state: "string", reason: N("string") } as const;
+/** The pool in shadow (`get_heat`'s `pool`, `pool/runtime.py`). */
+const POOL = O({
+  season_open: "boolean",
+  water_c: N("number"),
+  water_source: N("string"),
+  target_c: "number",
+  heat_pump: N(O({ on: N("boolean"), heating: N("boolean"), kw: N("number"), ...POOL_PART })),
+  circulation: N(O({ on: N("boolean"), kw: N("number"), ...POOL_PART })),
+  today: O({
+    need_h: N("number"),
+    need_source: N("string"),
+    done_h: "number",
+    planned_h: "number",
+    heat_h: N("number"),
+    kwh: N("number"),
+  }),
+  planned: A(O({ start: "string", end: "string", what: "string", reason: "string" })),
+  extra: N(O({ hours: "number", until: "string" })),
+  season_hint: "boolean",
+  would: N(O({ action: "string", until: N("string"), reason: "string" })),
+  notes: A(O({ code: "string", params: "any" })),
+});
+const SESSION = O({ weekdays: A("number"), time: "string" });
+const NOT_READY = O({
+  at: "string",
+  cause: "string",
+  reach_c: "number",
+  short_c: "number",
+  short_kwh: "number",
+  later: N("string"),
+});
+/** What the spa's and the sauna's status share (`spa/runtime.py`). */
+const DEADLINE_COMMON = {
+  family: "string",
+  heating: N("boolean"),
+  kw: N("number"),
+  rate_c_h: "number",
+  rate_learned: "boolean",
+  state: N("string"),
+  ready_at: N("string"),
+  live: "boolean",
+  control: O({ state: "string", reason: N("string"), paused_until: N("string") }),
+  would: N(O({ action: "string", until: N("string"), reason: "string" })),
+  not_ready: N(NOT_READY),
+  notes: A(O({ code: "string", params: "any" })),
+} as const;
+const SPA = O({
+  ...DEADLINE_COMMON,
+  water_c: N("number"),
+  bath_c: "number",
+  idle_c: "number",
+  floor_c: "number",
+  next_bath: N(O({ at: "string", source: "string" })),
+  baths: A(SESSION),
+  bath_once: N("string"),
+  bath_now: N(O({ until: "string" })),
+});
+const SAUNA = O({
+  ...DEADLINE_COMMON,
+  temp_c: N("number"),
+  target_c: "number",
+  next_session: N(O({ at: "string", source: "string" })),
+  sessions: A(SESSION),
+  session_once: N("string"),
+  session_now: N(O({ until: "string" })),
+  locked: N("boolean"),
+  lock_id: N("string"),
+  safety_declared: N("boolean"),
+});
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
 
 const ANSWER = O({
@@ -341,6 +485,24 @@ const ANSWER = O({
       meter: N(A(CHOICE)),
       water_heater: A(CHOICE),
       tank_sensor: A(CHOICE),
+      pool: N(
+        O({
+          heat_pump: A(POOL_PUMP_CHOICE),
+          circulation: A(RANKED_CHOICE),
+          water_sensor: A(RANKED_CHOICE),
+          suggested: N(
+            O({
+              heat_pump: O({ entity_id: "string", shape: "string", switch_id: N("string"), number_id: N("string") }),
+              circulation_id: N("string"),
+              water_sensor: N("string"),
+              ask: "boolean",
+            }),
+          ),
+        }),
+      ),
+      spa: A(SPA_CHOICE),
+      sauna: A(SAUNA_CHOICE),
+      phones: A(O({ service: "string", name: "string" })),
     }),
   ),
   relay: N(
@@ -377,6 +539,9 @@ const ANSWER = O({
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
   hot_water: N(HOT_WATER),
   water_heater: N(WATER_HEATER),
+  pool: N(POOL),
+  spa: N(SPA),
+  sauna: N(SAUNA),
 });
 
 const WRITE = O({
@@ -415,7 +580,76 @@ export interface HeatConfig {
   control_enabled: boolean;
   /** A plain water heater's switch, the opt-in to let SpotNav switch it, and an optional tank sensor. */
   water_heater: HeatWaterHeaterConfig | null;
+  /** The pool: its heat pump, circulation pump and water sensor, the wanted temperature and the opt-ins. */
+  pool: HeatPoolConfig | null;
+  /** The spa: its bath and idle temperatures, the bath times and the opt-in. */
+  spa: HeatSpaConfig | null;
+  /** The sauna: its temperature, the session times, its lock and the opt-in (a relay's only with its safety declared). */
+  sauna: HeatSaunaConfig | null;
+  /** The heat card's phones and the events they hear (`plan_at_risk`, `pool_season`). */
+  heat_notifications: { targets: string[]; events: string[] };
   heat_meter_entity: string | null;
+}
+
+export interface HeatPoolHeatPump {
+  entity_id: string;
+  /** "climate" or "switch_number" (core Tuya's pool heat pump: a switch and a temperature number). */
+  shape: string;
+  switch_id: string | null;
+  number_id: string | null;
+}
+
+export interface HeatPoolConfig {
+  heat_pump: HeatPoolHeatPump | null;
+  circulation_id: string | null;
+  water_sensor: string | null;
+  target_c: number;
+  season_open: boolean;
+  /** `null`: the filtering hours follow the water temperature. */
+  filter_hours: number | null;
+  heat_pump_kw: number | null;
+  circulation_kw: number | null;
+  control_heat_pump: boolean;
+  control_circulation: boolean;
+}
+
+export interface HeatSpaConfig {
+  entity_id: string;
+  family: string;
+  bath_c: number;
+  idle_c: number;
+  floor_c: number;
+  /** Weekly bath times: weekdays (Monday 0) and the local time. */
+  baths: { weekdays: number[]; time: string }[];
+  bath_once: string | null;
+  heater_kw: number | null;
+  control: boolean;
+}
+
+export interface HeatSaunaConfig {
+  entity_id: string;
+  family: string;
+  target_c: number;
+  sessions: { weekdays: number[]; time: string }[];
+  session_once: string | null;
+  heater_kw: number | null;
+  lock_id: string | null;
+  safety_declared: boolean;
+  control: boolean;
+}
+
+/** A detected candidate in the settings (`ask`: below 0.9, the person confirms it once). */
+export interface HeatRankedChoice extends HeatChoice {
+  score: number;
+  ask: boolean;
+}
+
+export interface HeatPoolChoices {
+  heat_pump: (HeatRankedChoice & { shape: string; switch_id: string | null; number_id: string | null; cloud: boolean })[];
+  circulation: HeatRankedChoice[];
+  water_sensor: HeatRankedChoice[];
+  /** The one-time grouping the pool block is filled from; `null` once a pool is saved. */
+  suggested: { heat_pump: HeatPoolHeatPump; circulation_id: string | null; water_sensor: string | null; ask: boolean } | null;
 }
 
 export interface HeatWaterHeaterConfig {
@@ -684,6 +918,10 @@ export interface HeatAnswer {
     meter: HeatChoice[] | null;
     water_heater: HeatChoice[];
     tank_sensor: HeatChoice[];
+    pool: HeatPoolChoices | null;
+    spa: (HeatRankedChoice & { family: string; controllable: boolean; cloud: boolean })[];
+    sauna: (HeatRankedChoice & { family: string; lock_id: string | null; cloud: boolean })[];
+    phones: { service: string; name: string }[];
   } | null;
   relay: HeatRelay | null;
   review: HeatReview | null;
@@ -695,6 +933,98 @@ export interface HeatAnswer {
   hot_water: HeatHotWater | null;
   /** A plain water heater on a switch; `null` without one. */
   water_heater: HeatWaterHeater | null;
+  /** The pool in shadow; `null` without one. */
+  pool: HeatPool | null;
+  /** The spa and the sauna in shadow; `null` without one. */
+  spa: HeatSpa | null;
+  sauna: HeatSauna | null;
+}
+
+/** A session that will not be ready: why, what it reaches and the earliest later hour that fits. */
+export interface HeatNotReady {
+  at: string;
+  /** "rate", "import_target", "power_level" or "fuse". */
+  cause: string;
+  reach_c: number;
+  short_c: number;
+  short_kwh: number;
+  later: string | null;
+}
+
+interface HeatDeadlineCommon {
+  family: string;
+  heating: boolean | null;
+  kw: number | null;
+  rate_c_h: number;
+  rate_learned: boolean;
+  /** "idle", "heating", "ready" or "late". */
+  state: string | null;
+  ready_at: string | null;
+  live: boolean;
+  control: { state: string; reason: string | null; paused_until: string | null };
+  would: { action: string; until: string | null; reason: string } | null;
+  not_ready: HeatNotReady | null;
+  notes: { code: string; params: Record<string, unknown> }[];
+}
+
+export interface HeatSpa extends HeatDeadlineCommon {
+  water_c: number | null;
+  bath_c: number;
+  idle_c: number;
+  floor_c: number;
+  next_bath: { at: string; source: string } | null;
+  baths: { weekdays: number[]; time: string }[];
+  bath_once: string | null;
+  bath_now: { until: string } | null;
+}
+
+export interface HeatSauna extends HeatDeadlineCommon {
+  temp_c: number | null;
+  target_c: number;
+  next_session: { at: string; source: string } | null;
+  sessions: { weekdays: number[]; time: string }[];
+  session_once: string | null;
+  session_now: { until: string } | null;
+  /** The door or safety lock reads locked; `null` where nothing reads. */
+  locked: boolean | null;
+  lock_id: string | null;
+  /** A relay's declared safety measure; `null` for an integration's sauna. */
+  safety_declared: boolean | null;
+}
+
+export interface HeatPoolPart {
+  on: boolean | null;
+  kw: number | null;
+  /** SpotNav steers it (never yet: watched). */
+  live: boolean;
+  /** "watched" or "season_closed". */
+  state: string;
+  reason: string | null;
+}
+
+export interface HeatPool {
+  season_open: boolean;
+  water_c: number | null;
+  /** "sensor" or "heat_pump" (its own reading once it has run), `null` while none reads. */
+  water_source: string | null;
+  target_c: number;
+  heat_pump: (HeatPoolPart & { heating: boolean | null }) | null;
+  circulation: HeatPoolPart | null;
+  today: {
+    need_h: number | null;
+    /** "water", "override" or "default". */
+    need_source: string | null;
+    done_h: number;
+    planned_h: number;
+    heat_h: number | null;
+    kwh: number | null;
+  };
+  /** From now on: "filter", "heat" or "extra", with "sun", "cheap", "need" or "extra". */
+  planned: { start: string; end: string; what: string; reason: string }[];
+  extra: { hours: number; until: string } | null;
+  season_hint: boolean;
+  would: { action: string; until: string | null; reason: string } | null;
+  notes: { code: string; params: Record<string, unknown> }[];
 }
 
 /** The Boost button (`hot_water.boost`). */

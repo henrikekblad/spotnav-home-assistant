@@ -26,7 +26,17 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from .. import time_zones
-from ..planning.flexible_load import KIND_CAR, KIND_HEAT, KIND_HEAT_ZONE, KIND_HOME_BATTERY, KIND_WATER_HEATER
+from ..planning.flexible_load import (
+    KIND_CAR,
+    KIND_HEAT,
+    KIND_HEAT_ZONE,
+    KIND_HOME_BATTERY,
+    KIND_POOL_CIRCULATION,
+    KIND_POOL_HEAT,
+    KIND_SAUNA,
+    KIND_SPA,
+    KIND_WATER_HEATER,
+)
 from .decision_ledger import RECORDED_MISSING, HourRow, LoadRow, hour_number
 from .plan_view import (
     HEAT_LEVELS,
@@ -41,7 +51,9 @@ from .plan_view import (
     history_block,
 )
 
-_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER)
+_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER, KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
+#: The pool's and the spa's lanes keep the live answer's summary (their figures are the shadow's plan).
+_LIVE_SUMMARY = (KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
 
 
 def day_hours(day: date, tz: str) -> list[datetime]:
@@ -72,6 +84,8 @@ def _summary(kind: str, kw: Sequence[float | None], what: Sequence[str | None], 
         grid = sum(value for value, item in zip(kw, what, strict=True) if item == WHAT_GRID_CHARGE and value is not None and value > 0)
         covered = -sum(value for value in kw if value is not None and value < 0)
         return {"charge_kwh": _r(charged, 2), "grid_charge_kwh": _r(grid, 2), "cover_kwh": _r(covered, 2)}
+    if kind in _LIVE_SUMMARY:
+        return live_summary
     steps = list(level or ())
     if kind == KIND_HEAT:
         return {"lowered_hours": sum(1 for step in steps if step < 0), "raised_hours": sum(1 for step in steps if step > 0)}

@@ -1,7 +1,8 @@
 """The site's heat loads in the common shape (`planning/flexible_load.py`, plan `plans/v3_flexible_loads_design.md`
-step 1): the heat pump's control path, each floor-heating zone and the plain water heater. Descriptions only: the
+step 1): the heat pump's control path, each floor-heating zone (a zone in cool mode as house cooling, spec
+`plans/v3_pool_spa_spec.md` section 4) and the plain water heater. Descriptions only: the
 numbers are the rules' own constants, the state what the heat shadow and its controls already hold. Nothing is read
-from Home Assistant here beyond the site's settings, and nothing is written.
+from Home Assistant here beyond the site's settings and the zones' modes, and nothing is written.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from ..planning.flexible_load import (
     rule,
     values,
 )
+from ..pool.rules import COOL_CEILING_MAX_C, COOL_RAISE_C, LOAD_COOLING
 from . import paths
 from .config import BAND_C, PATH_OFFSET, HeatConfig, away_target
 from .relay_control import MAX_DAY, MAX_RUN, MAX_WRITES_DAY, MIN_LOWER, MIN_NORMAL, NO_LOWER_AT_C
@@ -142,14 +144,41 @@ def _band(target_c: float, config: HeatConfig, away: datetime | None) -> Goal:
     )
 
 
+def cooling_zone_load(site_id: str, entity_id: str, home: float | None, *, controlled: bool, power_tariff: bool) -> FlexibleLoad:
+    """A zone in cool mode (an air-to-air unit, a heat pump cooling): house cooling (spec section 4). Its shed step is
+    a raise of `COOL_RAISE_C` over the person's setpoint, within the comfort ceiling (never above
+    `COOL_CEILING_MAX_C`), through the zone's own run rules and write cap; its on/off and its mode are never written."""
+    ceiling = None if home is None else round(min(home + COOL_RAISE_C, max(home, COOL_CEILING_MAX_C)), 2)
+    return FlexibleLoad(
+        id=entity_id,
+        kind=KIND_HEAT_ZONE,
+        site=site_id,
+        controlled=controlled,
+        goal=Goal(GOAL_COMFORT_BAND, values=values(target_c=home, high_c=ceiling, mode="cool", load=LOAD_COOLING)),
+        handles=(Handle(HANDLE_SETPOINT_OFFSET, unit="°C", low=0.0, high=COOL_RAISE_C, values=values(step_c=DEFAULT_STEP_C)),),
+        hard_rules=(rule("comfort_ceiling", above_c=ceiling), *_lowering_rules(writes_day=ZONE_WRITES_DAY)),
+        give=Give(GIVE_COMFORT_DEG_H),
+        choices=_comfort_choices(power_tariff),
+    )
+
+
 def zone_loads(
-    site_id: str, config: HeatConfig, home_c: Mapping[str, float | None], *, power_tariff: bool
+    site_id: str,
+    config: HeatConfig,
+    home_c: Mapping[str, float | None],
+    *,
+    power_tariff: bool,
+    modes: Mapping[str, str | None] | None = None,
 ) -> list[FlexibleLoad]:
     """Each chosen floor-heating zone; `home_c` the person's own setpoint per zone where the zones' control has read
-    one (the band is then around it, else it has no temperatures yet)."""
+    one (the band is then around it, else it has no temperatures yet). A zone whose `modes` reads `cool` is house
+    cooling (`cooling_zone_load`)."""
     found = []
     for zone in config.zones:
         home = home_c.get(zone.entity_id)
+        if (modes or {}).get(zone.entity_id) == "cool":
+            found.append(cooling_zone_load(site_id, zone.entity_id, home, controlled=zone.control, power_tariff=power_tariff))
+            continue
         found.append(
             FlexibleLoad(
                 id=zone.entity_id,
@@ -231,7 +260,12 @@ def heat_loads(site: Any, *, power_tariff: bool) -> list[FlexibleLoad]:
         found.append(pump)
     zones = getattr(site, "zones_control", None)
     home = {} if zones is None else {entity_id: state.home_c for entity_id, state in zones.zones.items()}
-    found.extend(zone_loads(site.entry_id, config, home, power_tariff=power_tariff))
+    states = getattr(getattr(site, "hass", None), "states", None)
+    modes = {
+        zone.entity_id: None if states is None or (state := states.get(zone.entity_id)) is None else state.state
+        for zone in config.zones
+    }
+    found.extend(zone_loads(site.entry_id, config, home, power_tariff=power_tariff, modes=modes))
     heater = getattr(site, "water_heater_control", None)
     load = water_heater_load(
         site.entry_id,

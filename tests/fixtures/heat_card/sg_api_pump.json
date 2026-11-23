@@ -523,6 +523,8 @@
       }
     ],
     "outdoor": [],
+    "phones": [],
+    "pool": null,
     "relay": [
       {
         "entity_id": "number.s1155_requested_operating_mode_sg_ready_46009",
@@ -535,7 +537,9 @@
         "value": null
       }
     ],
+    "sauna": [],
     "setpoint": [],
+    "spa": [],
     "tank_sensor": [],
     "water_heater": [],
     "zones": []
@@ -556,6 +560,13 @@
     "control_entity_b": "switch.s1155_activate_sg_ready_via_api_43033",
     "control_path": "sg_ready_api",
     "heat_meter_entity": null,
+    "heat_notifications": {
+      "events": [
+        "plan_at_risk",
+        "pool_season"
+      ],
+      "targets": []
+    },
     "hot_water_entity": null,
     "indoor_offsets": [],
     "indoor_sensors": [],
@@ -567,6 +578,9 @@
       "start": "23:00"
     },
     "outdoor_sensor": null,
+    "pool": null,
+    "sauna": null,
+    "spa": null,
     "target_c": 21.0,
     "water_heater": null,
     "zones": []
@@ -618,6 +632,7 @@
     "source": "pump",
     "value_c": 4.5
   },
+  "pool": null,
   "pump": {
     "brand": "nibe_s",
     "capabilities": [
@@ -650,8 +665,10 @@
   },
   "relay": null,
   "review": null,
+  "sauna": null,
   "shadow": true,
   "site_id": "site_nibe_s",
+  "spa": null,
   "status": {
     "guard": null,
     "kw": null,

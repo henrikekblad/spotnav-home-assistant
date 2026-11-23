@@ -28,6 +28,8 @@ def test_every_listed_integration_has_a_display_name() -> None:
     domains = {platform for row in gen.sd.METER_ROWS for platform in row.platforms}
     domains |= {platform for row in gen.sd.BATTERY_ROWS for platform in row.platforms}
     domains |= {str(case["domain"]) for case in gen.vehicle_cases() if case["soc"] not in (None, "ambiguous")}
+    domains |= set(gen.pool_detect.POOL_DOMAINS) | set(gen.pool_detect.PANEL_DOMAINS) | set(gen.spa_detect.SPA_DOMAINS)
+    domains |= set(gen.sauna_detect.SAUNA_DOMAINS)
     missing = sorted(domain for domain in domains if domain not in gen.NAMES)
     assert not missing, f"add a display name to NAMES in tools/gen_supported.py: {missing}"
 
@@ -40,6 +42,7 @@ def test_page_has_one_section_per_category() -> None:
         "## Supported grid meters",
         "## Supported house batteries",
         "## Supported heat pumps",
+        "## Supported pool heat pumps, spas and saunas",
         "## Supported vehicles",
         "## Supported solar forecast",
     ):

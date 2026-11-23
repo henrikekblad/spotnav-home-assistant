@@ -23,8 +23,15 @@
      indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
                  the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
-     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter, water_heater, tank_sensor} | null
-              (administrators only),
+     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter, water_heater, tank_sensor,
+               pool: {heat_pump: [{entity_id, name, value, score, ask, shape, switch_id, number_id, cloud}],
+                      circulation: [{entity_id, name, value, score, ask}],
+                      water_sensor: [{entity_id, name, value, score, ask}],
+                      suggested: {heat_pump: {entity_id, shape, switch_id, number_id}, circulation_id, water_sensor,
+                                  ask} | null} | null,
+               spa: [{entity_id, name, value, score, ask, family, controllable, cloud}],
+               sauna: [{entity_id, name, value, score, ask, family, lock_id, cloud}],
+               phones: [{service, name}]} | null (administrators only),
      relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,
@@ -48,7 +55,42 @@
                                    live}]} | null},
      water_heater: {entity_id, name, on: bool | null, metered, meter_waiting, mode: "metered" | "unmetered" | "tank", kw, state, reason,
                     check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
-                    automation: {entity_id, name} | null, paused_until} | null}
+                    automation: {entity_id, name} | null, paused_until} | null,
+     pool: {season_open, water_c, water_source: "sensor" | "heat_pump" | null, target_c,
+            heat_pump: {on, heating, kw, live, state, reason} | null, circulation: {on, kw, live, state, reason} | null,
+            today: {need_h, need_source: "water" | "override" | "default", done_h, planned_h, heat_h, kwh},
+            planned: [{start, end, what: "filter" | "heat" | "extra", reason: "sun" | "cheap" | "need" | "extra"}],
+            extra: {hours, until} | null, season_hint, would: {action: "heat" | "filter" | "off", until, reason} | null,
+            notes: [{code, params}]} | null,
+     spa: {family, water_c, bath_c, idle_c, floor_c, heating, kw, rate_c_h, rate_learned,
+           state: "idle" | "heating" | "ready" | "late", ready_at, next_bath: {at, source: "weekly" | "once" | "now"} | null,
+           baths: [{weekdays, time}], bath_once, bath_now: {until} | null, live,
+           control: {state: "watched" | "watch_only", reason: "cloud_slow" | null, paused_until},
+           would: {action: "heat" | "hold" | "idle" | "floor", until, reason} | null,
+           not_ready: {at, cause: "rate" | "import_target" | "power_level" | "fuse", reach_c, short_c, short_kwh,
+                       later} | null, notes} | null,
+     sauna: {family, temp_c, target_c, heating, kw, rate_c_h, rate_learned, state, ready_at,
+             next_session: {at, source} | null, sessions: [{weekdays, time}], session_once, session_now: {until} | null,
+             locked: bool | null, lock_id, safety_declared: bool | null (a relay's), live,
+             control: {state, reason: "cloud_slow" | "no_safety" | null, paused_until},
+             would: {action: "heat" | "hold" | "off" | "blocked" | "start_by_hand", until, reason} | null, not_ready,
+             notes} | null}
+
+`pool` is the pool in shadow (`pool/runtime.py`, spec `plans/v3_pool_spa_spec.md` section 10.1), `null` without one:
+the water now and where it is read (`null` until the heat pump has run long enough to read it), the heat pump and the
+circulation as they are (`state` "watched": SpotNav only watches; "season_closed": it touches nothing), today's
+filtering need and where it comes from, the hours SpotNav would have run so far (`done_h`), would run still today
+(`planned_h`) and would heat (`heat_h`), the energy of those at the entered powers (`kwh`, `null` without them), the
+planned runs from now on (the heat pump's runs are `heat`, the circulation runs under them), the household's extra
+filtering, whether to hint at closing the season (`season_hint`, with the note `pool_season_close`) and what it would
+do now.
+
+`spa` and `sauna` are the deadline heat loads in shadow (`spa/runtime.py`, `spa/plan.py`): the temperature now, the
+learnt rate (`rate_learned` false: the seed), the state and when it will be ready ("Klar 18:40, värmer 2 °C/h"), the next
+session and where it comes from, the household's "now" press, what SpotNav would do now and why, and a session that will
+not be ready (`not_ready`: why, the temperature it reaches, what is short and the earliest later hour that fits). The
+sauna is never heated but for a booked session or a "now" press; a lock that reads `locked` makes a heat-up `blocked`,
+and a relay without its declared safety measure `start_by_hand`.
 
 A zone's `control` is SpotNav setting its thermostat (`heat/zones_control.py`, `ZonesControl.status`), `null` for a
 zone watched only: `home_c` is the person's own setpoint, `held_c` what SpotNav holds now (`null`: nothing), `action`
@@ -126,7 +168,7 @@ HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
     "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
-    "ahead", "hot_water", "water_heater",
+    "ahead", "hot_water", "water_heater", "pool", "spa", "sauna",
 )
 AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
 #: The hours the card's "now" strip shows from the running one on.
@@ -252,6 +294,11 @@ class HeatViewInputs:
     controlled: frozenset[str] = frozenset()
     #: The water heater has not reached its thermostat for two days while SpotNav switched it.
     water_heater_not_full: bool = False
+    #: The pool (`pool/runtime.PoolSpaShadow.pool_status`), `None` without one.
+    pool: Mapping[str, Any] | None = None
+    #: The spa and the sauna (`PoolSpaShadow.spa_status`, `sauna_status`), `None` without one.
+    spa: Mapping[str, Any] | None = None
+    sauna: Mapping[str, Any] | None = None
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -560,5 +607,8 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "ahead": ahead,
         "hot_water": None if inputs.hot_water is None else dict(inputs.hot_water),
         "water_heater": None if inputs.water_heater is None else dict(inputs.water_heater),
+        "pool": None if inputs.pool is None else dict(inputs.pool),
+        "spa": None if inputs.spa is None else dict(inputs.spa),
+        "sauna": None if inputs.sauna is None else dict(inputs.sauna),
     }
 

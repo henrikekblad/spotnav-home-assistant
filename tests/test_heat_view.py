@@ -27,6 +27,10 @@ import pytest
 from custom_components.spotnav.api.heat import config_block
 from custom_components.spotnav.heat.automations import SteeringAutomation
 from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, WaterHeater, Zone
+from custom_components.spotnav.notifications.heat_settings import HeatNotifications
+from custom_components.spotnav.pool.config import PoolConfig, PoolHeatPump
+from custom_components.spotnav.sauna.config import SaunaConfig
+from custom_components.spotnav.spa.config import Bath, SpaConfig
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
@@ -46,6 +50,15 @@ from custom_components.spotnav.heat.view import (
 )
 
 from .test_heat_meter_split import villa_day
+
+#: The villa's pool (the owner's: a Madimack on `tuya_local`, a Fibaro relay for the circulation) and a Balboa spa.
+POOL = PoolConfig(
+    heat_pump=PoolHeatPump("climate.poolpump"),
+    circulation_id="switch.pool_cirkulation",
+    water_sensor="sensor.pool_vatten",
+    heat_pump_kw=1.6,
+)
+SPA = SpaConfig("climate.spa", "balboa", baths=(Bath((4, 5), "19:00"),), heater_kw=3.0)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "heat_card"
 ZONE = ZoneInfo("Europe/Stockholm")
@@ -175,6 +188,10 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
         control_entity="switch.larm_utgang_1",
         control_enabled=True,
         water_heater=WaterHeater("switch.varmvattenberedare", True) if more else None,
+        pool=POOL if more else None,
+        spa=SPA if more else None,
+        sauna=SaunaConfig("switch.bastu", "relay", heater_kw=9.0) if more else None,
+        heat_notifications=HeatNotifications(("mobile_app_pixel",)) if more else HeatNotifications(),
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
     # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
@@ -212,6 +229,35 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
         "meter": [_choice("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", "1128.84 W")],
         "water_heater": [_choice("switch.varmvattenberedare", "Varmvattenberedare", "on"), _choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
         "tank_sensor": [_choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C")],
+        "pool": {
+            "heat_pump": [
+                {
+                    **_choice("climate.poolpump", "Poolpump", "heat"),
+                    "score": 0.95, "ask": False, "shape": "climate", "switch_id": None, "number_id": None, "cloud": False,
+                }
+            ],
+            "circulation": [{**_choice("switch.pool_cirkulation", "Pool cirkulation", "off"), "score": 0.5, "ask": True}],
+            "water_sensor": [{**_choice("sensor.pool_vatten", "Pool vatten", "14.5 °C"), "score": 0.5, "ask": True}],
+            "suggested": {
+                "heat_pump": {"entity_id": "climate.poolpump", "shape": "climate", "switch_id": None, "number_id": None},
+                "circulation_id": "switch.pool_cirkulation",
+                "water_sensor": "sensor.pool_vatten",
+                "ask": True,
+            },
+        },
+        "spa": [
+            {
+                **_choice("climate.spa", "Spa", "heat"),
+                "score": 1.0, "ask": False, "family": "balboa", "controllable": True, "cloud": False,
+            }
+        ],
+        "sauna": [
+            {
+                **_choice("climate.harvia", "Bastu", "off"),
+                "score": 1.0, "ask": False, "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door", "cloud": True,
+            }
+        ],
+        "phones": [{"service": "mobile_app_pixel", "name": "Pixel"}],
     }
     upstairs = (
         {
@@ -397,8 +443,45 @@ def controlled_answer() -> dict[str, Any]:
         ],
         "live": True, "automation": None, "paused_until": None,
     }
+    pool = {
+        "season_open": True, "water_c": 24.6, "water_source": "sensor", "target_c": 27.0,
+        "heat_pump": {"on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting"},
+        "circulation": {"on": False, "kw": None, "live": False, "state": "watched", "reason": "waiting"},
+        "today": {"need_h": 8.25, "need_source": "water", "done_h": 3.0, "planned_h": 4.0, "heat_h": 2.0, "kwh": None},
+        "planned": [
+            {"start": (MIDNIGHT + timedelta(hours=22)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=2)).isoformat(), "what": "filter", "reason": "cheap"},
+            {"start": (MIDNIGHT + timedelta(days=1, hours=12)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=14)).isoformat(), "what": "heat", "reason": "sun"},
+        ],
+        "extra": None, "season_hint": False,
+        "would": {"action": "off", "until": (MIDNIGHT + timedelta(hours=22)).isoformat(), "reason": "waiting"},
+        "notes": [],
+    }
+    spa = {
+        "family": "balboa", "water_c": 36.5, "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heating": True, "kw": 3.0,
+        "rate_c_h": 2.0, "rate_learned": True, "state": "heating", "ready_at": (MIDNIGHT + timedelta(hours=18, minutes=40)).isoformat(),
+        "next_bath": {"at": (MIDNIGHT + timedelta(hours=19)).isoformat(), "source": "weekly"},
+        "baths": [{"weekdays": [4, 5], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
+        "control": {"state": "watched", "reason": None, "paused_until": None},
+        "would": {"action": "heat", "until": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "reason": "cheap"},
+        "not_ready": None, "notes": [],
+    }
+    sauna = {
+        "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "rate_c_h": 80.0,
+        "rate_learned": False, "state": "idle", "ready_at": None, "next_session": None, "sessions": [], "session_once": None,
+        "session_now": None, "locked": None, "lock_id": None, "safety_declared": False, "live": False,
+        "control": {"state": "watch_only", "reason": "no_safety", "paused_until": None},
+        "would": {"action": "off", "until": None, "reason": "no_session"},
+        "not_ready": {
+            "at": (MIDNIGHT + timedelta(days=1, hours=17)).isoformat(), "cause": "fuse", "reach_c": 60.0, "short_c": 20.0,
+            "short_kwh": 2.25, "later": (MIDNIGHT + timedelta(days=1, hours=18)).isoformat(),
+        },
+        "notes": [],
+    }
     return villa_answer(
         more=True,
+        pool=pool,
+        spa=spa,
+        sauna=sauna,
         water_heater=heater,
         controlled=frozenset({"climate.golvvarme_toalett_uppe", "switch.varmvattenberedare"}),
         relay=relay,
@@ -495,6 +578,7 @@ def sg_api_pump_answer() -> dict[str, Any]:
             money=("SEK", "kr", "öre"),
             choices={
                 "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None, "water_heater": [], "tank_sensor": [],
+                "pool": None, "spa": [], "sauna": [], "phones": [],
                 "offset": [{"entity_id": "number.s1155_heating_offset_climate_system_1_40031", "name": "Heating offset climate system 1", "value": "0"}],
                 "relay": [
                     {"entity_id": mode, "name": "Requested operating mode (SG Ready)", "value": None},

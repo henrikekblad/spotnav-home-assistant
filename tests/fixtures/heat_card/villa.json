@@ -561,6 +561,56 @@
         "value": "cloudy"
       }
     ],
+    "phones": [
+      {
+        "name": "Pixel",
+        "service": "mobile_app_pixel"
+      }
+    ],
+    "pool": {
+      "circulation": [
+        {
+          "ask": true,
+          "entity_id": "switch.pool_cirkulation",
+          "name": "Pool cirkulation",
+          "score": 0.5,
+          "value": "off"
+        }
+      ],
+      "heat_pump": [
+        {
+          "ask": false,
+          "cloud": false,
+          "entity_id": "climate.poolpump",
+          "name": "Poolpump",
+          "number_id": null,
+          "score": 0.95,
+          "shape": "climate",
+          "switch_id": null,
+          "value": "heat"
+        }
+      ],
+      "suggested": {
+        "ask": true,
+        "circulation_id": "switch.pool_cirkulation",
+        "heat_pump": {
+          "entity_id": "climate.poolpump",
+          "number_id": null,
+          "shape": "climate",
+          "switch_id": null
+        },
+        "water_sensor": "sensor.pool_vatten"
+      },
+      "water_sensor": [
+        {
+          "ask": true,
+          "entity_id": "sensor.pool_vatten",
+          "name": "Pool vatten",
+          "score": 0.5,
+          "value": "14.5 °C"
+        }
+      ]
+    },
     "relay": [
       {
         "entity_id": "switch.larm_utgang_1",
@@ -573,7 +623,31 @@
         "value": "off"
       }
     ],
+    "sauna": [
+      {
+        "ask": false,
+        "cloud": true,
+        "entity_id": "climate.harvia",
+        "family": "harvia_sauna",
+        "lock_id": "binary_sensor.harvia_door",
+        "name": "Bastu",
+        "score": 1.0,
+        "value": "off"
+      }
+    ],
     "setpoint": [],
+    "spa": [
+      {
+        "ask": false,
+        "cloud": false,
+        "controllable": true,
+        "entity_id": "climate.spa",
+        "family": "balboa",
+        "name": "Spa",
+        "score": 1.0,
+        "value": "heat"
+      }
+    ],
     "tank_sensor": [
       {
         "entity_id": "sensor.inomhus_kok_temperatur",
@@ -636,6 +710,13 @@
     "control_entity_b": null,
     "control_path": "relay",
     "heat_meter_entity": "sensor.varme_effekt",
+    "heat_notifications": {
+      "events": [
+        "plan_at_risk",
+        "pool_season"
+      ],
+      "targets": []
+    },
     "hot_water_entity": null,
     "indoor_offsets": [
       {
@@ -656,6 +737,9 @@
       "start": "23:00"
     },
     "outdoor_sensor": null,
+    "pool": null,
+    "sauna": null,
+    "spa": null,
     "target_c": 21.0,
     "water_heater": null,
     "zones": [
@@ -1362,6 +1446,7 @@
     "source": "house_forecast",
     "value_c": 6.2
   },
+  "pool": null,
   "pump": null,
   "relay": {
     "automation": {
@@ -1408,8 +1493,10 @@
       "value": 158.0
     }
   },
+  "sauna": null,
   "shadow": true,
   "site_id": "site_villa",
+  "spa": null,
   "status": {
     "guard": null,
     "kw": 1.13,

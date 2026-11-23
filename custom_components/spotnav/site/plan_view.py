@@ -34,7 +34,12 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   plan), the home battery (`home_battery`, + charging from the grid or the sun, - covering the house or selling),
   the heat pump (`heat`: `level` -1 lowered, 0 its own curve, +1 raised or pre-heated per hour, `kw` its expected
   heat where the meter's split knows it), each floor-heating zone (`heat_zone`: `level` -1 in its lowered hours, `kw`
-  null), the plain water heater (`water_heater`: on in its windows at its learnt power). `in_house` loads are part of
+  null), the plain water heater (`water_heater`: on in its windows at its learnt power), the pool's circulation
+  (`pool_circulation`: `filter` or `extra`, summary `need_h`, `planned_h`) and heat pump (`pool_heat`: `heat`, summary
+  `heat_h`, `planned_h`), watched, at their entered powers (`kw` null without), with the reasons `sun`, `cheap`, `need`
+  and `extra`; the spa (`spa`) and the sauna (`sauna`), watched: `heat` in their heat-up quarters (reason `sun`,
+  `cheap`, `bath` or `now`) and `hold` at the target after it, summary `target_c`, `ready_at`, `heat_h`; their `id` is
+  their stable load id. `in_house` loads are part of
   `house_kw` (drawn inside it, never added). `state` is `live` where SpotNav steers it now, `would` where it only
   watches (what it would do, never claimed as done). `runs` are the hours in words: contiguous hours with one
   `what` (`charge`, `grid_charge`, `sun_charge`, `cover`, `sell`, `on`, `lower`, `preheat`, `night`, `away`)
@@ -63,7 +68,17 @@ from ..battery.plan_model import (
     ACTION_SHAVE,
 )
 from ..planning.demand_charge import hour_start
-from ..planning.flexible_load import KIND_CAR, KIND_HEAT, KIND_HEAT_ZONE, KIND_HOME_BATTERY, KIND_WATER_HEATER
+from ..planning.flexible_load import (
+    KIND_CAR,
+    KIND_HEAT,
+    KIND_HEAT_ZONE,
+    KIND_HOME_BATTERY,
+    KIND_POOL_CIRCULATION,
+    KIND_POOL_HEAT,
+    KIND_SAUNA,
+    KIND_SPA,
+    KIND_WATER_HEATER,
+)
 
 PLAN_API_VERSION: Final = 1
 #: The window's hours at most (today's evening and all of tomorrow), and without prices.
@@ -137,6 +152,12 @@ WHAT_SELL: Final = "sell"
 WHAT_ON: Final = "on"
 WHAT_LOWER: Final = "lower"
 WHAT_PAUSED: Final = "paused"
+#: The pool's runs: its circulation filtering (or the household's extra filtering) and its heat pump heating.
+WHAT_FILTER: Final = "filter"
+WHAT_EXTRA: Final = "extra"
+WHAT_HEAT: Final = "heat"
+#: The spa or the sauna held at its target after its heat-up.
+WHAT_HOLD: Final = "hold"
 #: The reason of a step the shed order under the ceiling takes (`site/shed_order.REASON_CEILING`).
 REASON_CEILING: Final = "ceiling"
 #: The heat plan's actions shown as levels; `normal` and `return` are the pump's own curve (no run).
@@ -213,6 +234,37 @@ class WaterHeaterPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class PoolPlanView:
+    """The pool's shadow plan (`pool/runtime.py`): the hours each part would run, with their reason."""
+
+    #: The circulation's chosen hours (UTC hour starts) and their reason (`sun`, `cheap`, `need`, `extra`); `None`
+    #: without a circulation pump.
+    circulation: Mapping[datetime, str] | None
+    #: The heat pump's chosen hours; `None` without a heat pump.
+    heat: Mapping[datetime, str] | None
+    circulation_kw: float | None = None
+    heat_pump_kw: float | None = None
+    need_h: float | None = None
+    heat_h: float | None = None
+    circulation_name: str | None = None
+    heat_pump_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DeadlinePlanView:
+    """The spa's or the sauna's shadow plan (`spa/runtime.py`): the quarter hours it would heat up in, with their
+    reason, and the hold at the target after them."""
+
+    kind: str
+    quarters: Mapping[datetime, str]
+    hold: tuple[datetime, datetime] | None = None
+    kw: float | None = None
+    target_c: float | None = None
+    ready_at: datetime | None = None
+    name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PlanInputs:
     site_id: str
     now: datetime
@@ -231,6 +283,8 @@ class PlanInputs:
     heat: HeatPlan | None = None
     zones: tuple[ZonePlan, ...] = ()
     water_heater: WaterHeaterPlan | None = None
+    pool: PoolPlanView | None = None
+    deadlines: tuple[DeadlinePlanView, ...] = ()
     #: The import target's hold per hour (kW) and which it is (`import_target` or `power_level`).
     hold_kw: Mapping[datetime, float] = field(default_factory=dict)
     hold_kind: str = CEILING_IMPORT_TARGET
@@ -536,6 +590,67 @@ def _water_heater(heater: WaterHeaterPlan, hours: Sequence[datetime]) -> dict[st
     )
 
 
+def _pool(pool: PoolPlanView, hours: Sequence[datetime]) -> list[dict[str, Any]]:
+    """The pool's circulation (`filter`, `extra`) and its heat pump (`heat`), watched: drawn in the house."""
+    loads: list[dict[str, Any]] = []
+    if pool.circulation is not None:
+        chosen = pool.circulation
+        what = [None if start not in chosen else (WHAT_EXTRA if chosen[start] == WHAT_EXTRA else WHAT_FILTER) for start in hours]
+        reason = [chosen.get(start) for start in hours]
+        kw = [None if pool.circulation_kw is None else (pool.circulation_kw if start in chosen else 0.0) for start in hours]
+        loads.append(
+            _load(
+                "pool_circulation", KIND_POOL_CIRCULATION, pool.circulation_name, False, True, kw, None,
+                _runs(hours, what, kw, reason),
+                {"need_h": pool.need_h, "planned_h": float(sum(1 for item in what if item is not None))},
+            )
+        )
+    if pool.heat is not None:
+        chosen = pool.heat
+        what = [WHAT_HEAT if start in chosen else None for start in hours]
+        reason = [chosen.get(start) for start in hours]
+        kw = [None if pool.heat_pump_kw is None else (pool.heat_pump_kw if start in chosen else 0.0) for start in hours]
+        loads.append(
+            _load(
+                "pool_heat", KIND_POOL_HEAT, pool.heat_pump_name, False, True, kw, None,
+                _runs(hours, what, kw, reason),
+                {"heat_h": pool.heat_h, "planned_h": float(sum(1 for item in what if item is not None))},
+            )
+        )
+    return loads
+
+
+def _deadline(load: DeadlinePlanView, hours: Sequence[datetime]) -> dict[str, Any]:
+    """The spa or the sauna, watched: its heat-up (`heat`, with the reason of its first quarter in the hour) and its
+    hold at the target (`hold`), drawn in the house."""
+    what: list[str | None] = []
+    reason: list[str | None] = []
+    kw: list[float | None] = []
+    for start in hours:
+        inside = sorted(moment for moment in load.quarters if start <= moment < start + HOUR)
+        if inside:
+            what.append(WHAT_HEAT)
+            reason.append(load.quarters[inside[0]])
+            kw.append(None if load.kw is None else load.kw * len(inside) / 4.0)
+        elif load.hold is not None and _covers(start, [load.hold]) > 0:
+            what.append(WHAT_HOLD)
+            reason.append(None)
+            kw.append(None)
+        else:
+            what.append(None)
+            reason.append(None)
+            kw.append(None if load.kw is None else 0.0)
+    kind = KIND_SPA if load.kind == KIND_SPA else KIND_SAUNA
+    return _load(
+        kind, kind, load.name, False, True, kw, None, _runs(hours, what, kw, reason),
+        {
+            "target_c": load.target_c,
+            "ready_at": None if load.ready_at is None else load.ready_at.isoformat(),
+            "heat_h": float(len(load.quarters)) / 4.0,
+        },
+    )
+
+
 def ceiling_at(inputs: PlanInputs, start: datetime) -> tuple[float | None, str | None]:
     """The lowest limit that applies to the hour, and which it is (see the module)."""
     found: list[tuple[float, str]] = []
@@ -564,6 +679,9 @@ def plan_view(inputs: PlanInputs) -> dict[str, Any]:
     loads.extend(_zone(zone, hours) for zone in inputs.zones)
     if inputs.water_heater is not None:
         loads.append(_water_heater(inputs.water_heater, hours))
+    if inputs.pool is not None:
+        loads.extend(_pool(inputs.pool, hours))
+    loads.extend(_deadline(load, hours) for load in inputs.deadlines)
 
     rows: list[dict[str, Any]] = []
     cost = 0.0

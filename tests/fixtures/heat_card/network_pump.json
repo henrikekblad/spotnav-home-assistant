@@ -528,6 +528,13 @@
     "control_entity_b": null,
     "control_path": "none",
     "heat_meter_entity": null,
+    "heat_notifications": {
+      "events": [
+        "plan_at_risk",
+        "pool_season"
+      ],
+      "targets": []
+    },
     "hot_water_entity": null,
     "indoor_offsets": [],
     "indoor_sensors": [],
@@ -539,6 +546,9 @@
       "start": "23:00"
     },
     "outdoor_sensor": null,
+    "pool": null,
+    "sauna": null,
+    "spa": null,
     "target_c": 20.5,
     "water_heater": null,
     "zones": []
@@ -643,6 +653,7 @@
     "source": "pump",
     "value_c": 4.5
   },
+  "pool": null,
   "pump": {
     "brand": "nibe",
     "capabilities": [
@@ -667,8 +678,10 @@
   },
   "relay": null,
   "review": null,
+  "sauna": null,
   "shadow": true,
   "site_id": "site_nibe",
+  "spa": null,
   "status": {
     "guard": null,
     "kw": null,

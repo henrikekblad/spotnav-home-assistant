@@ -1,8 +1,9 @@
 """Every load of a site the plan can move, in the common shape (`planning/flexible_load.py`, plan
 `plans/v3_flexible_loads_design.md` step 1): each member charger's car, the home battery, the heat pump's control
-path, each floor-heating zone and the plain water heater, in that order. Each is described by the module that owns
-it (`execution/flexible_car.py`, `battery/flexible.py`, `heat/flexible.py`) from what is already held: no new reads,
-no timers, nothing written. Shown in the site's diagnostics (`flexible_loads`) only; no plan reads it yet.
+path, each floor-heating zone, the plain water heater, the pool's heat pump and circulation and the spa, in that order.
+Each is described by the module that owns it (`execution/flexible_car.py`, `battery/flexible.py`, `heat/flexible.py`,
+`pool/flexible.py`) from what is already held: no new reads, no timers, nothing written. Shown in the site's
+diagnostics (`flexible_loads`) only; no plan reads it yet.
 
 Each load's `state` (`with_states`): `running` where SpotNav steers it, `watched` where it only watches; `paused` with
 the reason `ceiling` while the shed order holds it (`site/shed_order.py`: the water heater paused, the heat lowered
@@ -40,11 +41,19 @@ def has_power_tariff(site: Any) -> bool:
     return bool(site_demand_components(site.hass, site.entry_id)) or site_power_level(site.hass, site.entry_id) is not None
 
 
+def has_power_level(site: Any) -> bool:
+    """Whether the site's price has a power level: its hold is a ceiling a peak may be allowed over."""
+    from ..pricing.price_source import site_power_level  # noqa: PLC0415 - it imports the planner
+
+    return site_power_level(site.hass, site.entry_id) is not None
+
+
 def flexible_loads(site: Any) -> list[FlexibleLoad]:
     """The site's loads (see the module). A part that cannot be described is left out and logged; never raises."""
     from ..battery.flexible import site_battery_load  # noqa: PLC0415 - the parts import the site
     from ..execution.flexible_car import site_car_loads  # noqa: PLC0415
     from ..heat.flexible import heat_loads  # noqa: PLC0415
+    from ..pool.flexible import pool_spa_loads  # noqa: PLC0415
 
     try:
         tariff = has_power_tariff(site)
@@ -56,6 +65,7 @@ def flexible_loads(site: Any) -> list[FlexibleLoad]:
         ("car", lambda: site_car_loads(site, power_tariff=tariff, import_target=target)),
         ("home_battery", lambda: [load] if (load := site_battery_load(site)) is not None else []),
         ("heat", lambda: heat_loads(site, power_tariff=tariff)),
+        ("pool_spa", lambda: pool_spa_loads(site, ceiling_choice=target or has_power_level(site))),
     )
     found: list[FlexibleLoad] = []
     for name, part in parts:
@@ -81,6 +91,7 @@ def with_states(site: Any, loads: list[FlexibleLoad]) -> list[FlexibleLoad]:
     budget = getattr(site, "_target_budget", None)
     out: list[FlexibleLoad] = []
     for load in loads:
+        # The pool's and the spa's loads have no step yet (the site's priority list is to come): running or watched.
         shed = {KIND_WATER_HEATER: LOAD_WATER_HEATER, KIND_HEAT: LOAD_HEAT, KIND_HEAT_ZONE: LOAD_HEAT}.get(load.kind)
         state, reason = (STATE_RUNNING if load.controlled else STATE_WATCHED), None
         step = None if shed is None else steps.get(shed)

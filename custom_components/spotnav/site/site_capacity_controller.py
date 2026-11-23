@@ -135,6 +135,7 @@ from .charger_test_hold import ChargerTestHold
 from ..heat.control import HeatControl
 from ..heat.water_heater_control import WaterHeaterControl
 from ..heat.zones_control import ZonesControl
+from ..pool.runtime import PoolSpaShadow
 from ..heat.runtime import HeatShadow
 from .solar_correction_shadow import SiteSolarCorrection
 from .solar_shadow import SiteSolarShadow
@@ -998,6 +999,8 @@ class SiteCapacityController:
         # SpotNav switching a plain water heater (`heat/water_heater_control.py`) behind its opt-in, legionella first;
         # every exit turns it on.
         self.water_heater_control = WaterHeaterControl(hass, self.heat_shadow, self.heat_control)
+        # The pool and the spa in shadow (`pool/runtime.py`): read, planned and logged; nothing is written to them.
+        self.pool_spa = PoolSpaShadow(hass, self)
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
         # never on a timer. Shut down first, before the battery and the heat control.
         self.hardware_test = HardwareTest(hass, self)
@@ -1068,6 +1071,7 @@ class SiteCapacityController:
         await self.heat_control.async_start()
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
+        await self.pool_spa.async_start()
         await self.hardware_test.async_load()
         # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
         await self.charger_test_hold.async_load()
@@ -1159,6 +1163,7 @@ class SiteCapacityController:
             ("solar correction", self.solar_correction.async_shutdown),
             ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
+            ("pool and spa", self.pool_spa.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
             ("charger test hold", self.charger_test_hold.async_close),
         )
@@ -1196,6 +1201,7 @@ class SiteCapacityController:
             ("heat shadow", self.heat_shadow.halt),
             ("zones", self.zones_control.halt),
             ("water heater", self.water_heater_control.halt),
+            ("pool and spa", self.pool_spa.halt),
             ("house forecast", self.house_forecast.halt),
             ("sun review", self.sun_review.halt),
         )

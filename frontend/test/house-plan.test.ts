@@ -50,7 +50,7 @@ describe("decoding the plan", () => {
     const { hours: _hours, ...missing } = read("plan", "villa.json");
     expect(decodePlan(missing).ok).toBe(false);
     const raw = read("plan", "villa.json");
-    const loads = (raw.loads as Record<string, unknown>[]).map((load, index) => (index === 0 ? { ...load, kind: "spa" } : load));
+    const loads = (raw.loads as Record<string, unknown>[]).map((load, index) => (index === 0 ? { ...load, kind: "jacuzzi" } : load));
     expect(decodePlan({ ...raw, loads }).ok).toBe(false);
   });
 });
@@ -154,6 +154,42 @@ describe("the Plan tab", () => {
         const words = runWords(language, battery, { ...run, what, kw: what === "cover" ? -3.3 : 3.3, activeMin: 45 });
         expect(words, `${language} ${what}`).not.toMatch(/house\.plan\./);
         expect(words, `${language} ${what}`).toContain("45 min");
+      }
+    }
+  });
+
+  it("draws the pool's circulation and heat pump as watched lanes, worded in every language", () => {
+    const pool = plan("pool.json");
+    const circulation = pool.loads.find((load) => load.kind === "pool_circulation")!;
+    const heat = pool.loads.find((load) => load.kind === "pool_heat")!;
+    expect(circulation.would && heat.would && circulation.in_house).toBe(true);
+    const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
+    expect(laneReason("sv", ctx, circulation)).toContain("Filtrerar 6 h av 5 h per dygn");
+    expect(laneReason("en", ctx, heat)).toContain("Heats 2 h");
+    expect(runWords("sv", heat, heat.runs[0]!)).toBe("Poolens värmepump värmer: sol");
+    for (const language of LANGUAGES) {
+      for (const load of [circulation, heat]) {
+        for (const run of load.runs) {
+          expect(runWords(language, load, run), language).not.toMatch(/house\.plan\./);
+        }
+      }
+    }
+    expect(body(pool).querySelectorAll("[data-load='pool_circulation']").length).toBeGreaterThan(0);
+  });
+
+  it("draws the spa and the sauna as watched lanes with their heat-up and hold, worded in every language", () => {
+    const value = plan("spa_sauna.json");
+    const spa = value.loads.find((load) => load.kind === "spa")!;
+    const sauna = value.loads.find((load) => load.kind === "sauna")!;
+    expect(spa.would && sauna.would && spa.in_house).toBe(true);
+    const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
+    expect(laneReason("sv", ctx, spa)).toMatch(/38 °C kl\. \d\d:\d\d/u);
+    expect(runWords("sv", spa, spa.runs[0]!)).toBe("Spat värms upp: billig timme");
+    for (const language of LANGUAGES) {
+      for (const load of [spa, sauna]) {
+        for (const run of load.runs) {
+          expect(runWords(language, load, run), language).not.toMatch(/house\.plan\./);
+        }
       }
     }
   });

@@ -19,7 +19,7 @@ Each row says how it is known to work:
 
 Using one of these? Tell us whether it works: [Hardware tested](https://github.com/henrikekblad/spotnav-home-assistant/issues/new?template=hardware_report.yml).
 
-Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
+Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [pool heat pumps, spas and saunas](#supported-pool-heat-pumps-spas-and-saunas), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
 
 ## Hybrid inverters and home batteries: overview
 
@@ -301,6 +301,42 @@ What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table 
 | Any water heater with an immersion element | A switch or smart plug | Local | Yes: Control the water heater | Off in expensive hours, full heat every day, never off over 8 hours, on whenever a reading is missing; the thermostat (at least 60 °C) stays as the safety | Set its thermostat to at least 60 °C: SpotNav cannot see the tank. |
 
 A pump or route missing or wrong here? [Hardware tested](https://github.com/henrikekblad/spotnav-home-assistant/issues/new?template=hardware_report.yml).
+
+## Supported pool heat pumps, spas and saunas
+
+SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are found from the integrations below and chosen once in the heat settings. In this release SpotNav only watches them and shows what it would do; it writes nothing to them. A sauna is only ever heated for a session you booked, and never past its own door or safety lock.
+
+| Kind | Integration | Local or cloud | How SpotNav finds it | SpotNav controls |
+| --- | --- | --- | --- | --- |
+| Pool heat pump | Tuya Local (`tuya_local`) | Local | Its pool heat pump climate (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | Tuya (`tuya`) | Cloud | A temperature number, a switch and a compressor sensor on one device (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | Aquatemp (`aqua_temp`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | Fairland iGarden (`fairland`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | Poolex Silverline (`poolex_silverline`) | Local | The integration (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | PoolSync (`poolsync_custom`) | Local | The integration (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | WarmLink (`warmlink`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Pool heat pump | iAquaLink (`iaqualink`) | Cloud | The integration; you say pool or spa | Not yet: watched and planned in shadow |
+| Pool heat pump | Pentair IntelliCenter (`intellicenter`) | Local | The integration; you say pool or spa | Not yet: watched and planned in shadow |
+| Pool heat pump | Pentair ScreenLogic (`screenlogic`) | Local | The integration; you say pool or spa | Not yet: watched and planned in shadow |
+| Pool heat pump | Any climate entity | Local | A pool brand, an 18 to 40 °C range and no fan modes; you confirm it | Not yet: watched and planned in shadow |
+| Circulation pump | Any switch | Local | You choose it (a pool or pump name is suggested) | Not yet: watched and planned in shadow |
+| Spa | Arctic Spa (`arctic_spa`) | Local | The integration (sure) | No: watched only |
+| Spa | Balboa (`balboa`) | Local | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | Bestway Lay-Z-Spa (`bestway`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | ControlMySpa (`control_my_spa`) | Cloud | The integration (sure) | No: watched only |
+| Spa | Gecko in.touch (`gecko`) | Local | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | Intex PureSpa (`intex_spa`) | Local | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | Joyonway (`joyonway`) | Local | The integration (sure) | No: watched only |
+| Spa | MSpa (`mspa`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | SmartTub (`smarttub`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
+| Spa | Tuya Local (`tuya_local`), Intex | Local | An Intex water heater (sure) | Not yet: watched and planned in shadow |
+| Spa | Any climate or water heater | Local | A spa's range and name; you confirm it | No: watched only |
+| Sauna | Harvia Xenio WiFi (`harvia_sauna`) | Cloud | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Huum (`huum`) | Cloud | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Saunum (`saunum`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Sentio (`sentio`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Tylö Elite (`tylo_sauna`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | A relay or contactor (any switch) | Local | A sauna or bastu name; you confirm it | Not yet; only once you declare the heater's own safety measure for a remote start |
 
 ## Supported vehicles
 
