@@ -208,6 +208,10 @@ async def _the_night(hass: HomeAssistant, monkeypatch, freezer, name: str, *, si
     return night
 
 
+def _resumes_fed(night: _Night) -> int:
+    return sum(1 for event in night.cc.session_runner.events if event["event"]["kind"] == "balancing_resume")
+
+
 async def _stopped_for_safety(night: _Night) -> None:
     """01:00:09 the cut, 01:00:15 the second lowering the charger does not take yet: the safety stop."""
     writes = len(night.writes)
@@ -234,10 +238,12 @@ async def test_the_plans_charge_stopped_for_safety_is_resumed_after_the_gap(
     await night.run(SAFETY_RESUME_GAP_S - 60.0 - 2 * _STEP_S)
     assert night.starts == starts and not night.on, night.log()
     assert cc.paused_by_balancing
+    assert _resumes_fed(night) == 0, "the regulator does not ask for a resume the gap refuses, pass after pass"
 
     # Once the gap is over (the dwell ran within it): resumed, as the plan's charge, at its 12 A.
     await night.run(2 * _STEP_S + REGULATOR_DWELL_S)
     assert night.starts == starts + 1 and night.on, night.log()
+    assert _resumes_fed(night) == 1
     assert cc.charge_origin == "plan_window"
     session = cc.session_runner.session
     assert session.owner == "plan" and not session.balancing_paused and not session.held_for_safety
