@@ -655,6 +655,7 @@
   "now": "2026-09-22T07:00:00+00:00",
   "ok": true,
   "outdoor": null,
+  "pool": null,
   "pump": null,
   "relay": null,
   "review": null,

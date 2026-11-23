@@ -54,7 +54,22 @@
                                    live}]} | null},
      water_heater: {entity_id, name, on: bool | null, metered, meter_waiting, mode: "metered" | "unmetered" | "tank", kw, state, reason,
                     check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
-                    automation: {entity_id, name} | null, paused_until} | null}
+                    automation: {entity_id, name} | null, paused_until} | null,
+     pool: {season_open, water_c, water_source: "sensor" | "heat_pump" | null, target_c,
+            heat_pump: {on, heating, kw, live, state, reason} | null, circulation: {on, kw, live, state, reason} | null,
+            today: {need_h, need_source: "water" | "override" | "default", done_h, planned_h, heat_h, kwh},
+            planned: [{start, end, what: "filter" | "heat" | "extra", reason: "sun" | "cheap" | "need" | "extra"}],
+            extra: {hours, until} | null, season_hint, would: {action: "heat" | "filter" | "off", until, reason} | null,
+            notes: [{code, params}]} | null}
+
+`pool` is the pool in shadow (`pool/runtime.py`, spec `plans/v3_pool_spa_spec.md` section 10.1), `null` without one:
+the water now and where it is read (`null` until the heat pump has run long enough to read it), the heat pump and the
+circulation as they are (`state` "watched": SpotNav only watches; "season_closed": it touches nothing), today's
+filtering need and where it comes from, the hours SpotNav would have run so far (`done_h`), would run still today
+(`planned_h`) and would heat (`heat_h`), the energy of those at the entered powers (`kwh`, `null` without them), the
+planned runs from now on (the heat pump's runs are `heat`, the circulation runs under them), the household's extra
+filtering, whether to hint at closing the season (`season_hint`, with the note `pool_season_close`) and what it would
+do now.
 
 A zone's `control` is SpotNav setting its thermostat (`heat/zones_control.py`, `ZonesControl.status`), `null` for a
 zone watched only: `home_c` is the person's own setpoint, `held_c` what SpotNav holds now (`null`: nothing), `action`
@@ -132,7 +147,7 @@ HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
     "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
-    "ahead", "hot_water", "water_heater",
+    "ahead", "hot_water", "water_heater", "pool",
 )
 AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
 #: The hours the card's "now" strip shows from the running one on.
@@ -258,6 +273,8 @@ class HeatViewInputs:
     controlled: frozenset[str] = frozenset()
     #: The water heater has not reached its thermostat for two days while SpotNav switched it.
     water_heater_not_full: bool = False
+    #: The pool (`pool/runtime.PoolSpaShadow.pool_status`), `None` without one.
+    pool: Mapping[str, Any] | None = None
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -566,5 +583,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "ahead": ahead,
         "hot_water": None if inputs.hot_water is None else dict(inputs.hot_water),
         "water_heater": None if inputs.water_heater is None else dict(inputs.water_heater),
+        "pool": None if inputs.pool is None else dict(inputs.pool),
     }
 

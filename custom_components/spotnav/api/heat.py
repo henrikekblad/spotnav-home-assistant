@@ -348,8 +348,8 @@ def write_heat(
     if controller is not None and (control := getattr(controller, "heat_control", None)) is not None:
         # The heat control looks at once: turned off or the relay changed, it opens what it holds right away.
         control.request_look()
-    for name in ("zones_control", "water_heater_control"):
-        # The zones and the water heater too: an opt-in turned off gives back at once.
+    for name in ("zones_control", "water_heater_control", "pool_spa"):
+        # The zones and the water heater too: an opt-in turned off gives back at once (the pool and spa plan again).
         if controller is not None and (part := getattr(controller, name, None)) is not None:
             part.request_look()
 
@@ -439,9 +439,11 @@ def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[s
                 block[name] = part.diagnostics()
             except Exception:  # noqa: BLE001 - the rest of the diagnostics stands
                 _LOGGER.debug("SpotNav heat: the %s diagnostics could not be read", name, exc_info=True)
+    pool_spa = getattr(controller, "pool_spa", None)
     return {
         "stored": entry.data.get(CONF_HEAT),
         "read": config_block(entry),
+        "pool_spa": None if pool_spa is None else pool_spa.diagnostics(),
         "shadow_log": [] if shadow is None else shadow.log.as_list(),
         "shadow": None if shadow is None else shadow.diagnostics(),
         "control": block,
@@ -942,6 +944,13 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
         [zone.entity_id for zone in config.zones if zone.control]
         + ([config.water_heater.entity_id] if config.water_heater is not None and config.water_heater.control else [])
     )
+    pool_status: dict[str, Any] | None = None
+    pool_spa = getattr(controller, "pool_spa", None)
+    if pool_spa is not None and config.pool is not None:
+        try:
+            pool_status = pool_spa.pool_status(config, now)
+        except Exception:  # noqa: BLE001 - the pool is extra: the card shows the rest
+            _LOGGER.debug("SpotNav heat: the pool could not be read", exc_info=True)
     rooms = await read_indoor(hass, site.entry_id, config, zones, now)
     meter = await read_meter(hass, site.entry_id, controller, now, day_start)
     following = local.date() + timedelta(days=1)
@@ -1017,6 +1026,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             water_heater=water_heater,
             controlled=controlled,
             water_heater_not_full=not_full,
+            pool=pool_status,
         )
     )
     return answer

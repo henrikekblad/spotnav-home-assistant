@@ -630,6 +630,7 @@
     "source": "pump",
     "value_c": 4.5
   },
+  "pool": null,
   "pump": {
     "brand": "nibe_s",
     "capabilities": [

@@ -1447,6 +1447,7 @@
     "source": "house_forecast",
     "value_c": 6.2
   },
+  "pool": null,
   "pump": null,
   "relay": {
     "automation": null,
