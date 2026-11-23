@@ -1,0 +1,62 @@
+"""A recipe's expiry (`commands.Expiry`): how a command ends by itself when Home Assistant stops writing, and its
+validation."""
+
+from __future__ import annotations
+
+import math
+
+import pytest
+
+from custom_components.spotnav.battery.commands import NO_EXPIRY, Expiry
+
+
+def test_no_expiry_is_none_renewed_by_nobody() -> None:
+    assert NO_EXPIRY.kind == "none" and NO_EXPIRY.renewer == "nobody" and NO_EXPIRY.window_s is None
+    assert NO_EXPIRY.renewed_roles == () and NO_EXPIRY.evidence == "stated"
+
+
+def test_valid_expiries() -> None:
+    Expiry("device_deadman", "spotnav", 60.0, ("a", "b"), renew_s=20)
+    Expiry("device_lease", "spotnav", 1800.0, ("forcible",))
+    Expiry("device_lease", "nobody", 1800.0)
+    Expiry("device_deadman", "integration", 30.0, integration="ecoflow")
+    Expiry("soc_bound", "spotnav", 1800.0, ("reserve",))
+    Expiry("clock_window", "nobody", 900.0)
+    Expiry("device_deadman", "spotnav", 60.0, ("a",), evidence="measured", measured_on=frozenset({"fw | x 1"}))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # SpotNav renews: roles needed; nobody or an integration: none.
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0},
+        {"kind": "device_lease", "renewer": "integration", "window_s": 60.0, "renewed_roles": ("a",)},
+        {"kind": "none", "renewer": "spotnav", "renewed_roles": ("a",)},
+        {"kind": "clock_window", "renewer": "spotnav", "window_s": 900.0, "renewed_roles": ("a",)},
+        # A dead-man nobody renews.
+        {"kind": "device_deadman", "renewer": "nobody", "window_s": 60.0},
+        # The window.
+        {"kind": "device_lease", "renewer": "nobody"},
+        {"kind": "device_lease", "renewer": "nobody", "window_s": 0.0},
+        {"kind": "device_lease", "renewer": "nobody", "window_s": -5.0},
+        {"kind": "device_lease", "renewer": "nobody", "window_s": math.inf},
+        {"kind": "device_lease", "renewer": "nobody", "window_s": math.nan},
+        # The renewal inside the window.
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",), "renew_s": 60},
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",), "renew_s": 0},
+        # Measured names its firmware.
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",),
+         "evidence": "measured"},
+    ],
+)
+def test_invalid_expiries_raise(kwargs: dict) -> None:
+    with pytest.raises(ValueError):
+        Expiry(**kwargs)
+
+
+def test_expiry_id_tells_a_phase_expiry_from_a_balanced_one() -> None:
+    phase = Expiry("device_deadman", "spotnav", 60.0, ("phase_l1_target", "phase_l2_target"), renew_s=20)
+    lease = Expiry("device_lease", "spotnav", 1800.0, ("forcible",))
+    assert phase.expiry_id == "device_deadman:60:phase_l1_target,phase_l2_target"
+    assert lease.expiry_id == "device_lease:1800:forcible"
+    assert NO_EXPIRY.expiry_id == "none:-:"

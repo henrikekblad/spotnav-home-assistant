@@ -378,6 +378,72 @@ class Answer:
     taken: frozenset[str]
 
 
+#: How a command ends by itself when nothing renews it: never (`none`), the device's own dead-man on the last write
+#: (`device_deadman`), a lease the command itself carries (`device_lease`: a duration, an autorepeat), a SoC bound the
+#: command stops at (`soc_bound`: a ceiling one block ahead), or the end of a clock window (`clock_window`).
+ExpiryKind = Literal["none", "device_deadman", "device_lease", "soc_bound", "clock_window"]
+#: Who keeps the command alive: SpotNav's own renewals, an integration's own loop (which a stalled SpotNav does not
+#: stop: never counted as an expiry against SpotNav), or nobody.
+Renewer = Literal["spotnav", "integration", "nobody"]
+#: The recipe's own claim (`stated`, never enough to lift a fuse cap) or a field test's (`measured`, per firmware).
+Evidence = Literal["stated", "measured"]
+#: How a write to a role is read back: the device's own register, Home Assistant's echo of the value sent, a value
+#: the device confirms after a delay, the device's answer in the attributes (`Role.answer`), or not at all.
+ReadBack = Literal["register", "echo", "verified", "answer", "none"]
+
+_RENEWED_KINDS: Final = frozenset({"device_deadman", "device_lease", "soc_bound"})
+
+
+@dataclass(frozen=True, slots=True)
+class Expiry:
+    """How a recipe's command ends by itself when Home Assistant stops writing, and what renews it meanwhile. Data
+    only; the gate decides what it is worth (`gate.expiry_lifts`): a `stated` expiry never lifts a fuse cap."""
+
+    kind: ExpiryKind = "none"
+    renewer: Renewer = "nobody"
+    #: The dead-man's or the lease's length (s); for `soc_bound` the block; for `clock_window` the slot's length.
+    window_s: float | None = None
+    #: The roles SpotNav rewrites to keep the command alive (only with `renewer` `spotnav`); for `soc_bound` the
+    #: ceiling's role.
+    renewed_roles: tuple[str, ...] = ()
+    #: How often they are rewritten (s); `None`: `WATCHDOG_RENEW_S`.
+    renew_s: int | None = None
+    evidence: Evidence = "stated"
+    #: The `gate.firmware_key` values a field test saw the fallback act on (only with `evidence` `measured`).
+    measured_on: frozenset[str] = frozenset()
+    #: For `renewer` `integration`: which integration renews it (diagnostics text).
+    integration: str = ""
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        renews = self.renewer == "spotnav" and self.kind in _RENEWED_KINDS
+        if bool(self.renewed_roles) != renews:
+            raise ValueError("renewed_roles are set exactly for an expiry SpotNav renews")
+        if self.kind == "device_deadman" and self.renewer == "nobody":
+            raise ValueError("a dead-man needs something that renews it")
+        if self.kind != "none" and (
+            self.window_s is None or isinstance(self.window_s, bool) or not math.isfinite(self.window_s)
+            or self.window_s <= 0
+        ):
+            raise ValueError("window_s must be a positive finite number")
+        if self.renew_s is not None and (
+            self.renew_s <= 0 or (self.window_s is not None and self.renew_s >= self.window_s)
+        ):
+            raise ValueError("renew_s must be positive and shorter than window_s")
+        if self.evidence == "measured" and not self.measured_on:
+            raise ValueError("a measured expiry names the firmware it was measured on")
+
+    @property
+    def expiry_id(self) -> str:
+        """What a verification row names the expiry it measured by (`<kind>:<window>:<roles>`): a measured phase
+        expiry never counts for a balanced one."""
+        window = "-" if self.window_s is None else f"{self.window_s:g}"
+        return f"{self.kind}:{window}:{','.join(self.renewed_roles)}"
+
+
+NO_EXPIRY: Final = Expiry()
+
+
 @dataclass(frozen=True, slots=True)
 class Role:
     """One entity the control writes (or, for a service, reads back)."""
