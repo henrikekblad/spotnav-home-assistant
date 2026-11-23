@@ -170,6 +170,7 @@ NAMES: dict[str, str] = {
     "e3dc_rscp": "E3/DC",
     "growatt_modbus": "Growatt (Modbus)",
     "senec": "SENEC",
+    "givenergy_local": "GivEnergy (local)",
     "saj_h2_modbus": "SAJ (Modbus)",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
@@ -919,6 +920,18 @@ OVERVIEW: tuple[Overview, ...] = (
         note="The level, the counters and the mode are read; the size and the ratings are learnt, as no route states "
         "them. SENEC's own maintenance and safety charges grid-charge by themselves. The mode is read from the unit's "
         "state text, which only English, German and Italian have.",
+    ),
+    Overview(
+        "GivEnergy (Gen 1 to 3, All-in-One, AC, 3-phase)",
+        "GivTCP, a Home Assistant add-on over MQTT discovery (britkat1980/giv_tcp); `givenergy_local`, HACS "
+        "(cdpuk/givenergy-local). Not read: the cloud integration `ge_cloud`",
+        keys=("mqtt/givenergy", "givenergy_local"),
+        adapter="givenergy",
+        control="Not mapped: read only. Control is a charge or discharge time slot on the inverter's own clock, a "
+        "charge rate in percent and a pause mode, and a slot repeats every day until it is switched off",
+        note="A UK brand: no Nordic owner was found. Only devices that name GivEnergy as the maker are read from MQTT. "
+        "The size is not read, as the integration misreports it on some batteries, and the floor is firmware-dependent. "
+        "A charge or discharge schedule, or a mode other than Eco, means the inverter runs its own.",
     ),
     Overview(
         "SAJ (H2, HS2, Ampere.StoragePro)",

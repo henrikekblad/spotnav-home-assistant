@@ -881,6 +881,20 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         reject=_re(r"_fast_batterypower$"),
         label="SAJ (Modbus)",
     ),
+    # GivEnergy through GivTCP's MQTT discovery (`<prefix>_<serial>_Battery_Power`, britkat1980 `788b53f`): positive = discharge,
+    # negative = charge (DATAPOINTS.md, `read.py`), so negated. `mqtt` is every device's: only a device made by GivEnergy, and
+    # an id with the inverter's serial shape (`SD2345G123`). `givenergy_local` (cdpuk `782ed42`): `<serial>_p_battery`, the
+    # library's derived discharge minus charge, the same sign.
+    BatteryRow(
+        ("mqtt",),
+        _re(r"^(?:[a-z0-9_]+_)?[a-z]{2}\d{4}[a-z]\d{3}_battery_power$"),
+        inverted=True,
+        device_manufacturer="givenergy",
+        label="GivEnergy (GivTCP, MQTT)",
+    ),
+    BatteryRow(
+        ("givenergy_local",), _re(r"^[a-z]{2}\d{4}[a-z]\d{3}_p_battery$"), inverted=True, label="GivEnergy (local Modbus)"
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

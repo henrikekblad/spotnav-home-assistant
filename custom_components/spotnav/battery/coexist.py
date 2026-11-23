@@ -92,6 +92,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   off for any outside control, evcc's template and SMA's Modbus document say) and the inverter's own protective grid charge at
   a very low level (10-15 minutes, the SMA manual); none shows in a Home Assistant entity. No aggregator was found, and no
   Nordic SMA battery owner either (`plans/research_integrations/sma_control_2026-11-23.md`).
+* GivEnergy's own control is the app's and the portal's charge and discharge slots, which the inverter runs every day on its own
+  clock; a tariff of the cloud that writes slots is a field report whose names are not verified (`plans/research_integrations/
+  givenergy_control_2026-11-23.md`). Predbat, GivEnergy's main planner, is already found by its `predbat.*` states
+  (`runtime.external_planner`), and GivTCP, an add-on, shows in no config entry. No aggregator is named: none was found, and
+  GivEnergy is a UK brand with no Nordic owner found.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -179,6 +184,9 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Tibber, named for SAJ [U]",)),
     Coexistence("sma", "SMA", ("sma", "pysmaplus"),
                 "Sunny Portal Forecast-based Charging, the Sunny Home Manager's energy management and the inverter's protective grid charge"),
+    # Not "mqtt", the platform GivTCP is read through: it is every MQTT device's, and the row is found by the brand of the facts.
+    Coexistence("givenergy", "GivEnergy", ("givenergy_local",),
+                "GivEnergy app and portal: charge and discharge schedules (slots 1-10), and tariffs that write the slots"),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),

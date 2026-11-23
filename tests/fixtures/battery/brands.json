@@ -3671,5 +3671,197 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "givenergy": {
+  "_source": "britkat1980/giv_tcp 788b53f (v3.6.14), MQTT discovery (`GivTCP/HA_Discovery.py` lines 191-218, `entity_lut.py`): `<ha_device_prefix>_<serial>_<Key>` with the prefix `givtcp` by default and the keys' case kept, the device's manufacturer \"GivEnergy\"; the inverter's serial has the shape `SD2345G123`. Platform `mqtt` (no config entry of its own): the two unrelated MQTT entities of another device are in it on purpose. Not a real registry; built from the source and DATAPOINTS.md.",
+  "platform": "mqtt",
+  "manufacturer": "GivEnergy",
+  "battery": "sensor.givtcp_sd2345g123_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_battery_power",
+    "unique_id": "givtcp_SD2345G123_Battery_Power",
+    "device": "inv",
+    "state": "1000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_charge_power",
+    "unique_id": "givtcp_SD2345G123_Charge_Power",
+    "device": "inv",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_discharge_power",
+    "unique_id": "givtcp_SD2345G123_Discharge_Power",
+    "device": "inv",
+    "state": "1000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_soc",
+    "unique_id": "givtcp_SD2345G123_SOC",
+    "device": "inv",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_soc_kwh",
+    "unique_id": "givtcp_SD2345G123_SOC_kWh",
+    "device": "inv",
+    "state": "6.1",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_battery_capacity_kwh",
+    "unique_id": "givtcp_SD2345G123_Battery_Capacity_kWh",
+    "device": "inv",
+    "state": "9.5",
+    "unit": "kWh",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_invertor_max_bat_rate",
+    "unique_id": "givtcp_SD2345G123_Invertor_Max_Bat_Rate",
+    "device": "inv",
+    "state": "2600",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_battery_charge_energy_total_kwh",
+    "unique_id": "givtcp_SD2345G123_Battery_Charge_Energy_Total_kWh",
+    "device": "inv",
+    "state": "3100.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_battery_discharge_energy_total_kwh",
+    "unique_id": "givtcp_SD2345G123_Battery_Discharge_Energy_Total_kWh",
+    "device": "inv",
+    "state": "2900.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_battery_charge_energy_today_kwh",
+    "unique_id": "givtcp_SD2345G123_Battery_Charge_Energy_Today_kWh",
+    "device": "inv",
+    "state": "8.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.givtcp_sd2345g123_mode",
+    "unique_id": "givtcp_SD2345G123_Mode",
+    "device": "inv",
+    "state": "Eco",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_sd2345g123_system_mode",
+    "unique_id": "givtcp_SD2345G123_System_Mode",
+    "device": "inv",
+    "state": "Grid_tied",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.givtcp_sd2345g123_enable_charge_schedule",
+    "unique_id": "givtcp_SD2345G123_Enable_Charge_Schedule",
+    "device": "inv",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.givtcp_sd2345g123_enable_discharge_schedule",
+    "unique_id": "givtcp_SD2345G123_Enable_Discharge_Schedule",
+    "device": "inv",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.givtcp_sd2345g123_battery_pause_mode",
+    "unique_id": "givtcp_SD2345G123_Battery_pause_mode",
+    "device": "inv",
+    "state": "Disabled",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.givtcp_sd2345g123_battery_power_reserve",
+    "unique_id": "givtcp_SD2345G123_Battery_Power_Reserve",
+    "device": "inv",
+    "state": "4",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.givtcp_bg2134g000_battery_soc",
+    "unique_id": "givtcp_BG2134G000_Battery_SOC",
+    "device": "mod",
+    "state": "63",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.other_soc",
+    "unique_id": "esp32cam_abc123_soc",
+    "device": "oth",
+    "state": "12",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.other_battery_power",
+    "unique_id": "teslamate_1_battery_power",
+    "device": "oth",
+    "state": "7",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "givenergy",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": 2.6,
+   "rated_discharge_kw": 2.6,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

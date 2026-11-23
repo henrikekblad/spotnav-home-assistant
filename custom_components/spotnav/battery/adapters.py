@@ -431,6 +431,27 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   entity, so the battery reads as free here whatever they do. The ennexOS devices (Tripower X, Data Manager M) through
   `pysmaplus` have other keys (`Bat.ChaStt`), whose unique ids are not verified and are not matched.
 
+* GivEnergy hybrids, All-in-Ones and AC units, through the GivTCP add-on's MQTT discovery (britkat1980/giv_tcp `788b53f`, v3.6.14,
+  platform `mqtt`, no config entry of its own) and cdpuk's HACS `givenergy_local` (`782ed42`, 2.5.4), both local Modbus (read
+  2026-11-23, `plans/research_integrations/givenergy_control_2026-11-23.md`): read only. GivTCP's unique id is `<prefix>_<serial>_<Key>`
+  (`HA_Discovery.py` lines 191-218; the prefix `givtcp` by default, the key's case kept), `givenergy_local`'s `<serial>_<key>`
+  (`sensor.py` line 440), the serial the inverter's `SD2345G123` shape: every key is anchored after a serial of that shape, so that
+  another MQTT device's `..._soc` or `..._battery_power` is never one of these (the platform `mqtt` is every device's, and the
+  adapter is chosen only for a device made by GivEnergy, as Deye's kellerza add-on is). The level is `SOC` or `battery_percent`,
+  the rating `Invertor_Max_Bat_Rate` (W, one figure for both directions, at most half the battery's capacity on a low-voltage
+  battery since 3.6.9.1), and GivTCP's counters `Battery_Charge_Energy_Total_kWh` and `Battery_Discharge_Energy_Total_kWh`. The
+  battery's power is `Battery_Power` (GivTCP, DATAPOINTS.md) or `p_battery` (`givenergy_local`, the library's derived
+  discharge minus charge): positive = discharge on both, a sign read from the documents and the library's tests. The modes are
+  GivTCP's `Mode` (free in `Eco`: `Eco (Paused)`, `Timed Demand` and `Timed Export` are someone's), the charge and discharge
+  schedule switches (`Enable_Charge_Schedule`, `Enable_Discharge_Schedule`, or `enable_charge` and `enable_discharge` in
+  `givenergy_local`: a schedule the owner, the GivEnergy app or a tariff set fires every day) and the pause mode. Not read: the
+  size (`Battery_Capacity_kWh` is misreported by the integration on 2.6 and 5.2 kWh packs and by up to 18 % on an All-in-One, 15.9
+  against 13.5 kWh usable, and `givenergy_local` has none for the whole battery); the floor (the reserve and the cutoff are
+  documented as a floor by GivTCP and as for backup power only by `givenergy_local`, firmware-dependent); the counters of
+  `givenergy_local` (per battery module); the firmware (GivTCP gives it as an attribute, `givenergy_local` as the device's
+  `sw_version`, which is read from the registry). The cloud `ge_cloud` has one entity per cloud setting under the cloud's own
+  names and is not read.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1495,10 +1516,45 @@ SMA: Final = Adapter(
     },
 )
 
+def _giv(*keys: str, domains: tuple[str, ...] = ("sensor",)) -> Match:
+    """`[<prefix>_]<inverter serial>_<key>`, the serial's `SD2345G123` shape being what no other MQTT device has."""
+    return Match(
+        domains, re.compile(rf"^(?:[a-z0-9_]+_)?[a-z]{{2}}\d{{4}}[a-z]\d{{3}}_(?:{'|'.join(re.escape(key) for key in keys)})$")
+    )
+
+
+#: GivEnergy through GivTCP's MQTT discovery or `givenergy_local` (see the module): read only. `mqtt` is shared, so only a
+#: device made by GivEnergy is read.
+GIVENERGY: Final = Adapter(
+    brand="givenergy",
+    label="GivEnergy",
+    platforms=("mqtt", "givenergy_local"),
+    manufacturer="givenergy",
+    facts={
+        "soc": _giv("soc", "battery_percent"),
+        "rated_charge": _giv("invertor_max_bat_rate"),
+        "rated_discharge": _giv("invertor_max_bat_rate"),
+        "charged_total": _giv("battery_charge_energy_total_kwh"),
+        "discharged_total": _giv("battery_discharge_energy_total_kwh"),
+    },
+    modes=(
+        ModeRule(_giv("mode", domains=("select",)), frozenset({"Eco"}), "mode", required=False),
+        # A schedule that fires every day, whoever set it.
+        ModeRule(_giv("enable_charge_schedule", "enable_charge", domains=("switch",)), frozenset({"off"}), "charge schedule"),
+        ModeRule(
+            _giv("enable_discharge_schedule", "enable_discharge", domains=("switch",)),
+            frozenset({"off"}),
+            "discharge schedule",
+            required=False,
+        ),
+        ModeRule(_giv("battery_pause_mode", domains=("select",)), frozenset({"Disabled", "Not Paused"}), "pause mode", required=False),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ, SMA,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ, SMA, GIVENERGY,
 )
 
 

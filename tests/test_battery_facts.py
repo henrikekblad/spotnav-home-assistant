@@ -481,6 +481,8 @@ PLAN_REASON = {
     "saj": "no_capacity",
     # SMA states no size and no rating on any route: learnt.
     "sma": "no_capacity",
+    # GivEnergy's size is not read (misreported on some packs); the rating is the inverter's maximum battery rate: learnt.
+    "givenergy": "no_capacity",
 }
 
 
