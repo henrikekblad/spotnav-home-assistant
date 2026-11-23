@@ -188,8 +188,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never a brand's wake-up (Kia Uvo may still ask the car itself, see [target SoC](target-soc.md)). |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
-| `update_site_settings` | Change car or home battery first (`solar_priority`), forecast sources or the import target of the charger's site (see below). |
-| `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
+| `update_site_settings` | Change car or home battery first (`solar_priority`, kept for older apps: it moves the battery in the site's priority list), forecast sources or the import target of the charger's site (see below). The priority list itself is not written over a webhook. |
+| `update_charger_priority` | Kept for older apps: move this charger in its site's priority list: `{"priority", "expected"}` (see below). |
 | `update_phase_switching` | Turn phase switching for solar on or off for this charger: `{"enabled", "expected"}` (see below). |
 | `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
 | `answer_price_duplicate` | Answer the same-area question: `{"area_id", "keep_entry_id"}` (see below). |
@@ -523,7 +523,12 @@ the same empty wake-up: the app tells them apart by reading `identification`. A 
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.
 
-**Charger priority.** `update_charger_priority` takes `priority` and `expected`, each `"first"`,
+**Charger priority.** Since 3.0 a charger's place is its row in the site's
+[priority list](site-and-load-balancing.md#the-priority-list), and `charger_priority` is kept for older apps only:
+its value is derived from the list (the top car `"first"`, the bottom one `"last"`, the others and a car alone
+`"normal"`; before the list is first saved, the value stored on the charger), and a write moves the charger's row
+("first" to the top of the cars, "last" to their bottom, "normal" by its class among the others), storing the list
+and dropping every old value. `update_charger_priority` takes `priority` and `expected`, each `"first"`,
 `"normal"` or `"last"`, and an optional `api_version` (`1`); `expected` is the value the caller last
 saw (the dashboard's `charger_priority.value`). It is validated and written by the same core as
 `spotnav/update_entity_config`'s `charger_priority` field, and the charger is not reloaded for it. The
@@ -812,6 +817,21 @@ ends with `get_house`, `get_heat`, `battery_control` and `get_site_settings_view
 webhook answers the site's actions (the charger is in a loaded site), `false` for a charger in no site, and absent
 from a 2.x Home Assistant (see [the site over the webhook](#the-site-over-the-webhook)).
 
+**The priority list.** Since 3.0 a site has one priority list (`site/priority.py`; see
+[the priority list](site-and-load-balancing.md#the-priority-list)): load ids, top first, the top gets energy first
+and gives way last. `spotnav/get_site_settings_view` (and the webhooks' `get_site_settings_view`) answers it as
+`priority: {"order": [{"id", "name"}], "writable"}`: the rows of the loads the site has; `id` is `heat`,
+`charger:<entry id>`, `spa` (a booked bath), `sauna`, `cooling`, `water_heater`, `battery`, `spa_idle` (the spa
+between baths), `pool_circulation` or `pool_heat` (a reader skips an id it does not know); `name` is a charger's
+title, `null` for the other rows. `writable` is true for an administrator's socket only; an app shows the list read
+only. `spotnav/update_site_settings` takes `priority` in `changes`: exactly the ids of `order` in a new order (else
+`spotnav_invalid_value`), with `expected.priority` the order last read (another is `spotnav_conflict`); naming
+`solar_priority` beside it is `spotnav_invalid_value`. Stored without a reload; rows of loads the site does not have
+keep their places; the old `solar_priority` and each charger's `charger_priority` are dropped. The answer carries
+`priority` (as the view states it) beside `site`. Over the webhook it is `spotnav_not_permitted_over_webhook`. The
+`site` block's `solar_priority` stays, derived from the list: `battery_first` where the battery stands above every
+car (with no car, above the water heater), else `car_first`; a write of it moves the battery's row.
+
 **Where a meter belongs.** Since 3.0 `spotnav/update_site_settings` takes `meter_belongs` in `changes`: `{statistic
 id: "house" | "heat" | "car" | "none"}` for Energy dashboard individual devices, merged into the site's stored choices
 (`house`, the default, removes one; at most 64 kept), written without a reload. `expected` may name the whole stored
@@ -1033,7 +1053,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one; `entity_name`, `state_name`, `value_name`: Home Assistant's name of the entity and the display names of `state` and `value` in its configured language, for a client without its frontend, the id or the raw value where it names none, `value_name` `null` with `value`) and `charger_disabled` (`entity`: its own enable switch, turned on; `entity_name` its name, `null` with `entity`). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
-| `spotnav/update_site_settings` | Car or home battery first (`solar_priority`), forecast sources, the import target, active load balancing, where meters of the house pie belong (`meter_belongs`, below). With `site_id` in place of `charger_id` (a site with or without chargers), the site itself; the answer's `site` block is then the site's own. |
+| `spotnav/update_site_settings` | The site's priority list (`priority`, below), car or home battery first (`solar_priority`, derived from the list and kept for older apps), forecast sources, the import target, active load balancing, where meters of the house pie belong (`meter_belongs`, below). With `site_id` in place of `charger_id` (a site with or without chargers), the site itself; the answer's `site` block is then the site's own. |
 | `spotnav/get_market_options`, `spotnav/choose_price_source` | The area list with the stored area, and the electricity price a charger uses. With `site_id` in place of `charger_id` (or `entry_id`): the area of the price the site reads, and pointing the site at a price (its chargers follow). |
 | `spotnav/update_price` | The area and fees of the electricity price a site reads (administrators only): `{"site_id", "expected_write_revision", "price": {"area_id", "vat", "tax", "transfer"}}`, the row as the settings body states it, compare-and-set on the price's write counter (`grid_tariff.write_revision`). Answers `{"ok": true}`, or the codes `revision_conflict`, `invalid_area`, `invalid_fiscal`, `invalid_number`, `missing_field`, `unknown_field`, `spotnav_no_price_entry`, `spotnav_unknown_site`, `spotnav_not_admin`. The charger card writes these through the charger's settings; the app has no twin. |
 | `spotnav/update_grid_tariff` | The grid tariff of the charger's electricity price (administrators only): `{"charger_id", "expected_write_revision", "grid_tariff"}` as the webhook's `update_grid_tariff` (see **Grid tariff** under [Charger webhook](#charger-webhook)). Answers `{"ok": true, "grid_tariff": {...}}` with the block re-read, or the error codes `invalid_fiscal`, `invalid_number`, `revision_conflict`, `spotnav_no_price_entry`, `spotnav_not_admin` and the charger lookup's. With `site_id` in place of `charger_id`, the price the site reads (a site without chargers too), answered with the site's block. |
@@ -1305,7 +1325,8 @@ need reads met or another departure passes; there is no notification. The webhoo
 (`"reads": ["charging_after_departure"]`). An older client that does not know the codes refuses the document.
 
 The additive `charger_priority` block is this charger's place in its site's order, which capacity
-allocation and solar surplus both follow: `null` for a charger on no site, else `{"value": "first" |
+allocation and solar surplus both follow (since 3.0 derived from the site's priority list, for older apps; see
+**Charger priority** above): `null` for a charger on no site, else `{"value": "first" |
 "normal" | "last", "choices": ["first", "normal", "last"], "writable": bool}`. `writable` is true over
 the webhook (`update_charger_priority`) and for an administrator's socket (`spotnav/update_entity_config`),
 false for a reader. An older backend has no block; a client then shows no priority.

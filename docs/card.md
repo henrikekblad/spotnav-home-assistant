@@ -439,8 +439,8 @@ For administrators. Lists the charger's entities (**Charge control**, **Current 
 starts and stops a charge, how the current is set, where the charging state is read, the charger's
 write limits, and whether load balancing can change the current during a charge. If the charger's
 own smart mode is on, the card warns because it can fight SpotNav. **Change charger entities** opens
-the editor, where a charger on a site also has its **Charger priority** (first, normal or last; see
-[site and load balancing](site-and-load-balancing.md)). Under **Energy**, **None** is kept as your
+the editor. A charger's place among the site's chargers is its row in the site's
+[priority list](site-and-load-balancing.md#the-priority-list), set in the house card's settings. Under **Energy**, **None** is kept as your
 choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
 under **To check**.
 
@@ -473,10 +473,12 @@ several. A charger with no site says so.
 
 ![The site settings with active load balancing](images/card-settings-site.png)
 
-- **Car or home battery first** (beside the home battery row, formerly *Solar priority* in the Solar section): **Car first** or **Battery first**. It decides who gets the sun's surplus, who
-  goes first at the main fuse while the battery charges from the grid (under *car first*, with *Car may take the
-  home battery's share* on, the battery gives way; under *battery first* the car backs off), and what the import
-  target counts as import (under *battery first* the battery's discharge counts too).
+- **Car or home battery first** is no longer a row here: it is the home battery's place in the site's
+  [priority list](site-and-load-balancing.md#the-priority-list) (above the cars is *battery first*), which the house
+  card's settings edit. It decides who gets the sun's surplus, who goes first at the main fuse while the battery
+  charges from the grid (under *car first*, with *Car may take the home battery's share* on, the battery gives way;
+  under *battery first* the car backs off), and what the import target counts as import (under *battery first* the
+  battery's discharge counts too).
 - **Solar forecast sources** (the only row left in the Solar section): the forecast integrations the site may use for Hybrid. Without one,
   Hybrid plans like Cheapest.
 - **Load balancing**: a switch for administrators, best effort and not a protective

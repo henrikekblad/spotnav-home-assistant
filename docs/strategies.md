@@ -364,12 +364,13 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - **A target does not stop the sun.** Solar charges on surplus until the car ends the charge at its own
   limit. With a target set, once the car is at it and below a limit its integration states, the status
   says so: *Target reached – the sun tops up to the car's limit of 90 %*.
-- **Car or home battery first** (a site setting, formerly *Solar priority*): *car first* uses surplus before the house battery;
-  *battery first* leaves the surplus to the battery and charges the car from what it does not
-  take. A house battery power sensor can be set on the site.
-- Several chargers on one site share the surplus by their
-  [charger priority](site-and-load-balancing.md#charger-priority): the first in the order is
-  offered it all, the next only what the first cannot use.
+- **Car or home battery first** is the battery's place in the site's
+  [priority list](site-and-load-balancing.md#the-priority-list): below the cars (the default, *car first*) the car
+  uses surplus before the house battery; above them (*battery first*) the surplus goes to the battery and the car
+  charges from what it does not take. A house battery power sensor can be set on the site.
+- Several chargers on one site share the surplus down the
+  [priority list](site-and-load-balancing.md#the-priority-list): the highest is offered it all, the next only what
+  the first cannot use.
 - Every site has a **Solar surplus** sensor (in W) on its device: the power a car could
   take from the sun there right now, on the same basis solar charges on. It is the export to the grid,
   plus a charging house battery under *car first*, plus what the site's chargers already draw (a charger
@@ -402,7 +403,7 @@ cheapest.
 - **The target is what must be in the car; the sun may fill past it.** The grid part of the plan stops
   at the target. Once the target is reached, surplus keeps charging the car up to its own charge limit
   (the limit its integration states), by the sun's rules above only: the start and stop delays, phase
-  switching, load balancing and the charger priority all apply, and nothing is bought from the grid
+  switching, load balancing and the priority list all apply, and nothing is bought from the grid
   for it. The status says *Target reached – the sun tops up to the car's limit of 90 %*. When the car
   is at its limit, the sun stands down again. Without a known limit or a reading of the car's level,
   or with an amount of energy instead of a target, hybrid stops at the need as before. The energy
