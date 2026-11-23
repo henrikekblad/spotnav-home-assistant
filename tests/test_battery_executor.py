@@ -1833,9 +1833,15 @@ def test_a_renewal_owed_when_the_action_changes_within_the_gap_is_still_written(
 # --- the expiry test (`ExecInputs.expiry_probe`) ---------------------------------------------------------------------
 
 
-def _probed_hold() -> tuple[Executor, FakeBattery, datetime]:
-    executor = Executor(SOLAREDGE_CONTROL)
-    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+#: SolarEdge as if its maker documented the command mode's own fallback (the shipped recipe documents none).
+_DOCUMENTED = replace(SOLAREDGE_CONTROL, expiry=replace(
+    SOLAREDGE_CONTROL.expiry, fallback_values=(("command_mode", "Maximize Self Consumption"),)
+))
+
+
+def _probed_hold(control: Any = _DOCUMENTED) -> tuple[Executor, FakeBattery, datetime]:
+    executor = Executor(control)
+    battery = FakeBattery(control, dict(SOLAREDGE_STATES))
     now, _ = run(executor, battery, T0, 8, "hold")
     assert executor.state.phase == "active" and executor.state.pending is None
     return executor, battery, now
@@ -1865,6 +1871,18 @@ def test_a_renewed_role_that_falls_back_in_an_expiry_test_is_expired_not_someone
     now, results = run(executor, battery, now, 12, "self_consume")
     assert executor.state.phase == "idle" and executor.state.blocked is None
     assert battery.states["command_mode"] == SOLAREDGE_STATES["command_mode"]
+
+
+def test_a_renewed_role_that_changes_to_anything_but_the_documented_fallback_is_another_writer() -> None:
+    for control, value in ((SOLAREDGE_CONTROL, "Discharge to Minimize Import"), (_DOCUMENTED, "Discharge to Maximize Export")):
+        executor, battery, now = _probed_hold(control)
+        battery.states["command_mode"] = value
+        now, results = run(executor, battery, now, 3, "hold", expiry_probe=True)
+        assert [event["reason"] for event in events(results, "diverged")] == ["command_mode"]
+        assert not events(results, "expired") and written(results) == []
+        # Handed back: the change is someone else's, as outside the test.
+        now, results = run(executor, battery, now, 12, "self_consume")
+        assert events(results, "external")
 
 
 def test_the_same_fallback_outside_an_expiry_test_is_someone_elses_change() -> None:

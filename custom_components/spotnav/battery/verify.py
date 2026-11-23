@@ -835,6 +835,11 @@ class Verification:
         assert expiry is not None and expiry.window_s is not None
         phase = self.steps[0][0] if result.scope == "phase" else None
         result.expired += [str(event["reason"]) for event in step.events if event["kind"] == "expired"]
+        if any(event["kind"] == "diverged" for event in step.events):
+            # A renewed role changed to anything but the device's documented fallback: another writer, which would
+            # also keep a command alive that the plant itself never ends. Never a pass.
+            self._expiry_outcome(now, result, "not_judgeable:other_writer")
+            return
         stale = sample.power_kw is None or sample.age_s is None or sample.age_s > READING_MAX_AGE_S
         plant = sample.plant_phase_kw
         if stale or (phase is not None and plant is None) or (phase is None and sample.grid_kw is None):

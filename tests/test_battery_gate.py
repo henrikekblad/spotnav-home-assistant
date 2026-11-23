@@ -608,6 +608,8 @@ def _expiry(kind: str, renewer: str, window: float | None, *, evidence: str = "m
     from custom_components.spotnav.battery.commands import Expiry  # noqa: PLC0415
 
     roles = ("r",) if renewer == "spotnav" and kind in ("device_deadman", "device_lease", "soc_bound") else ()
+    if roles and kind != "soc_bound" and window is not None and window <= 900:
+        kwargs.setdefault("renew_s", 20)
     return Expiry(kind, renewer, window, roles, evidence=evidence,  # type: ignore[arg-type]
                   measured_on=frozenset({_KEY}) if evidence == "measured" else frozenset(), **kwargs)
 
@@ -682,7 +684,7 @@ def test_the_energy_a_grid_charge_may_take_after_home_assistant_dies() -> None:
     from custom_components.spotnav.battery.commands import NO_EXPIRY, Expiry  # noqa: PLC0415
     from custom_components.spotnav.battery.gate import expiry_energy_kwh, expiry_note  # noqa: PLC0415
 
-    deadman = Expiry("device_deadman", "spotnav", 60.0, ("r",))
+    deadman = Expiry("device_deadman", "spotnav", 60.0, ("r",), renew_s=20)
     lease = Expiry("device_lease", "spotnav", 1800.0, ("forcible",))
     block = Expiry("soc_bound", "spotnav", 1800.0, ("reserve",))
     window = Expiry("clock_window", "nobody", 900.0)

@@ -414,6 +414,10 @@ class Expiry:
     #: For `renewer` `integration`: which integration renews it (diagnostics text).
     integration: str = ""
     note: str = ""
+    #: What a renewed role reads once the device itself fell back, where the maker documents it (`(role, value)`):
+    #: only such a reading in the verification's silence is the device's own (`expired`); any other change of a
+    #: renewed role there is another writer. Empty: the device leaves them as written (Victron's setpoints).
+    fallback_values: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         renews = self.renewer == "spotnav" and self.kind in _RENEWED_KINDS
@@ -432,6 +436,13 @@ class Expiry:
             raise ValueError("renew_s must be positive and shorter than window_s")
         if self.evidence == "measured" and not self.measured_on:
             raise ValueError("a measured expiry names the firmware it was measured on")
+        if (
+            renews and self.kind != "soc_bound" and self.renew_s is None and self.window_s is not None
+            and self.window_s <= WATCHDOG_RENEW_S
+        ):
+            raise ValueError("a window shorter than the shared renewal needs its own renew_s")
+        if any(role not in self.renewed_roles for role, _value in self.fallback_values):
+            raise ValueError("a documented fallback value is for a renewed role")
 
     @property
     def expiry_id(self) -> str:

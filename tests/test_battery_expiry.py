@@ -23,7 +23,9 @@ def test_valid_expiries() -> None:
     Expiry("device_deadman", "integration", 30.0, integration="ecoflow")
     Expiry("soc_bound", "spotnav", 1800.0, ("reserve",))
     Expiry("clock_window", "nobody", 900.0)
-    Expiry("device_deadman", "spotnav", 60.0, ("a",), evidence="measured", measured_on=frozenset({"fw | x 1"}))
+    Expiry("device_deadman", "spotnav", 60.0, ("a",), renew_s=20, evidence="measured",
+           measured_on=frozenset({"fw | x 1"}))
+    Expiry("device_lease", "spotnav", 60.0, ("a",), renew_s=20, fallback_values=(("a", "Disabled"),))
 
 
 @pytest.mark.parametrize(
@@ -45,6 +47,10 @@ def test_valid_expiries() -> None:
         # The renewal inside the window.
         {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",), "renew_s": 60},
         {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",), "renew_s": 0},
+        # A window under the shared renewal needs its own; a fallback value is for a renewed role.
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",)},
+        {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",), "renew_s": 20,
+         "fallback_values": (("b", "x"),)},
         # Measured names its firmware.
         {"kind": "device_deadman", "renewer": "spotnav", "window_s": 60.0, "renewed_roles": ("a",),
          "evidence": "measured"},

@@ -446,8 +446,9 @@ class ExecInputs:
     phase_point_kw: Phases | None = None
     #: The verification's expiry test (`verify.MODE_EXPIRY`) runs on the active command: no renewal round starts,
     #: nothing else is written for it (a change of action or rate is refused for the span; a peak cover and every
-    #: hand-back still write), and a renewed role (`BrandControl.watchdog_roles`) that diverges is the device's own
-    #: fallback (`expired`), never someone else's change. The effect is not judged meanwhile (the test judges it),
+    #: hand-back still write), and a renewed role (`BrandControl.watchdog_roles`) that reads the device's documented
+    #: fallback (`Expiry.fallback_values`) is its own (`expired`), never someone else's change; one that reads
+    #: anything else is another writer (`diverged`), left to the ledger as any outside change. The effect is not judged meanwhile (the test judges it),
     #: except a charge per phase over its targets.
     expiry_probe: bool = False
     #: What the plant may import by itself on the most loaded phase now (A, `commands.AutonomousImport`), only while
@@ -1175,9 +1176,11 @@ class Executor:
         self._soc_pct: float | None = None
         self._rated_kw: float | None = None
         self._capacity_kwh: float | None = None
-        #: The renewed roles read as expired in the running expiry test (`ExecInputs.expiry_probe`); not stored: a
-        #: restart ends the test.
+        #: The renewed roles read as expired in the running expiry test (`ExecInputs.expiry_probe`), and those that
+        #: changed there to anything but the device's documented fallback (`diverged`: another writer); not stored:
+        #: a restart ends the test.
         self.expired: tuple[str, ...] = ()
+        self.diverged: tuple[str, ...] = ()
         self._absent: frozenset[str] = frozenset()
 
     def _sense(self, inputs: ExecInputs) -> None:
@@ -1272,7 +1275,7 @@ class Executor:
         now = inputs.now
         self._sense(inputs)
         if not self._probing(inputs):
-            self.expired = ()
+            self.expired = self.diverged = ()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1352,10 +1355,21 @@ class Executor:
             if entity_id is None or claim is None:
                 continue
             read = inputs.reads.get(role.name)
-            expiring = self._probing(inputs) and role.name in self.control.watchdog_roles
-            event = self.ledger.observe(
-                entity_id, reading(role, None if read is None else read.state), now, expiring=expiring
-            )
+            now_read = reading(role, None if read is None else read.state)
+            expiring = False
+            if self._probing(inputs) and role.name in self.control.watchdog_roles and claim.owned is not None:
+                step = None if read is None else _tolerance(role, read)
+                if now_read is not None and same(claim.owned, now_read, step) is False:
+                    fallback = self._fallback_values().get(role.name)
+                    if fallback is not None and same(fallback, now_read, step):
+                        # The device's own documented fallback.
+                        expiring = True
+                    elif role.name not in self.diverged:
+                        # Changed to something else in the silence: another writer, never the expiry. Left to the
+                        # ledger's dwell as any outside change; the test ends on it.
+                        self.diverged = (*self.diverged, role.name)
+                        events.append(_event(now, "diverged", role.name, entity_id=entity_id, read=now_read))
+            event = self.ledger.observe(entity_id, now_read, now, expiring=expiring)
             if event is None:
                 continue
             if event.kind == "expired":
@@ -2746,6 +2760,15 @@ class Executor:
         if wait is None or state.phase == "restoring" or self._covering(state, name):
             return READBACK_DEADLINE_S
         return wait
+
+    def _fallback_values(self) -> dict[str, str]:
+        """The values the device documents its renewed roles fall back to (`Expiry.fallback_values`), the control's
+        own and, on a phased control, the phase spec's."""
+        spec = self.control.phase_control
+        pairs = (*self.control.expiry.fallback_values, *(
+            spec.expiry.fallback_values if self.control.phased and spec is not None else ()
+        ))
+        return dict(pairs)
 
     def _probing(self, inputs: ExecInputs) -> bool:
         """Whether the verification's expiry test runs on the active command (`ExecInputs.expiry_probe`): only on a
