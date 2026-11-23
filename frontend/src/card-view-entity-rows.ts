@@ -55,12 +55,16 @@ import {
 } from "./settings";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
+import { priorityEditor, prioritySummary } from "./priority-list";
+import type { SitePriority } from "./site-model";
 import type { EntityViewState } from "./card-view";
 import type { PageHelpers, SettingsPageState, ViewContext } from "./card-view-context";
 
 export interface EntityRowsDeps extends PageHelpers {
   siteFollowsSolar: (rows: ReadonlyArray<{ id: string; available: boolean }>) => boolean;
   importTargetShown: (demand: { available: boolean; reason: string | null } | null, value: number | null) => boolean;
+  /** The site's priority list as the site sections last read it (`SiteSections.priority`). */
+  sitePriority: () => SitePriority | null;
 }
 
 export function createEntityRowsSection(ctx: ViewContext, settingsPage: SettingsPageState, deps: EntityRowsDeps) {
@@ -75,6 +79,7 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
     editSingle,
     editMulti,
     importTargetShown,
+    sitePriority,
   } = deps;
 
   /** The vehicle's charge as the header line spells it: `~36 %` for an estimate, `No reading` for none. */
@@ -747,6 +752,43 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
    * The site's setup: the main fuse in its own number editor; the measurement and the battery in short words,
    * opening the site's entity dialog.
    */
+  /**
+   * The site's priority list (`priority-list.ts`), an administrator's: read with the site's settings view when
+   * Settings opens (`SiteSections.loadSite`), then the top row as the value and the whole list in its editor (up and
+   * down buttons). Nothing before that read, or where the site states none.
+   */
+  function sitePriorityRows(): HTMLElement[] {
+    const block = input.isAdmin && model.site !== null ? sitePriority() : null;
+    if (block === null || block.order.length === 0) {
+      return [];
+    }
+    const label = translate(model.language, "site.priority.title");
+    const value = prioritySummary(model.language, block);
+    const confirmed = block.order.map((row) => row.id);
+    const writable = block.writable && block.order.length > 1;
+    return [
+      overviewRow(
+        "priority",
+        label,
+        value,
+        writable
+          ? () =>
+              openValueEditor(label, (handlers) =>
+                priorityEditor(
+                  doc,
+                  model.language,
+                  block,
+                  idPrefix,
+                  async (order) => await writeValue({ kind: "priority", confirmed, order }),
+                  handlers,
+                ),
+              )
+          : undefined,
+      ),
+      rowHelp("priority", translate(model.language, "site.priority.intro")),
+    ];
+  }
+
   function siteRows(config: EntityConfig): HTMLElement[] {
     const nodes: HTMLElement[] = [];
     const fuse = fieldsOf(config, "site").find((entry) => entry.field === "main_fuse_a");
@@ -835,6 +877,7 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
         ),
       );
     }
+    nodes.push(...sitePriorityRows());
     if (config.site !== null) {
       nodes.push(...siteWarningRows(doc, model.language, config.site));
     }

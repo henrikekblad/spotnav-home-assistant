@@ -92,6 +92,7 @@ import {
   reportOutcomes,
   type BatteryPreheat,
   type BatteryStatus,
+  type SitePriority,
   type ImportLimit,
   type PlanCosts,
   type SitePriceSettings,
@@ -586,6 +587,8 @@ export interface SiteSectionsInput {
  * from what was read. A failed read leaves the section out (battery) or says so (heat).
  */
 export class SiteSections {
+  /** The site's priority list from the same view read (`loadSite`), `null` before it or where none is stated. */
+  priority: SitePriority | null = null;
   battery: BatteryStatus | null = null;
   batteryFound = false;
   heat: HeatAnswer | null = null;
@@ -613,6 +616,7 @@ export class SiteSections {
     try {
       const decoded = decodeSiteView(await getSiteSettingsView(hass, target));
       battery = decoded.ok && decoded.value.battery.found;
+      this.priority = decoded.ok ? decoded.value.priority : null;
     } catch {
       // No site view: the battery section stays as it was.
     }

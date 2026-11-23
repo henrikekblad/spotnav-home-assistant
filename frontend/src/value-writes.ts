@@ -33,6 +33,8 @@ export type ValueWrite =
   | { kind: "vehicleSource"; vehicleId: string; source: "plug" | "location"; entityId: string | null }
   /** One field of the charger's or the site's entity configuration (`spotnav/update_entity_config`). */
   | { kind: "entity"; scope: EntityScope; draft: EntityDraft }
+  /** The site's priority list in a new order, against the order last read (`spotnav/update_site_settings`). */
+  | { kind: "priority"; confirmed: string[]; order: string[] }
   /** The site's solar priority or forecast sources (`spotnav/update_site_settings`). */
   | { kind: "solar"; priority?: string; forecast?: string[] }
   /** A settings replacement built from a freshly read record (`spotnav/update_settings`). */

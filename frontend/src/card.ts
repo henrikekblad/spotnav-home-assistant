@@ -91,6 +91,7 @@ import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugReport, sendFailureText, type SendOutcome } from "./send-debug";
 import { runDisconnectPhones, runMakeHome } from "./phones";
 import { decodeSiteList } from "./site-model";
+import { decodePriorityAnswer, priorityChange } from "./priority-list";
 import type { BetaRequest } from "./beta";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
@@ -2575,6 +2576,14 @@ export class SpotnavCard extends HTMLElement {
         }
         const first = decoded.value.fieldErrors[0];
         return first === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(first.code);
+      }
+      case "priority": {
+        const request = priorityChange(write.confirmed, write.order);
+        if (request === null) {
+          return null;
+        }
+        const answer = decodePriorityAnswer(await updateSiteSettings(hass, charger, request));
+        return answer.ok ? null : answer.code === null ? "settings.error.generic" : siteSettingsErrorKey(answer.code);
       }
       case "solar": {
         const site = this.siteFacts();
