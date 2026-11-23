@@ -10,6 +10,9 @@
 //   house got) and, beside it in a lane of its own and hatched, what SpotNav's plan would have earned on the same days
 //   (`would`, never in the headline: nothing was done). The plan's figure is the nightly review's, a whole day's, so a
 //   day's hours have the battery's own bars and the plan's figure in words.
+// * Where the nightly reviews value the sun, the sun has a part of its own (`sun`): the same figure as Details → Money's
+//   (each reviewed day's `sun_value`: the sun's energy the house used at the price then, plus what was sold). It is
+//   money the house got, so it is in the headline, but it is not SpotNav's doing; a whole day's figure, like the heat.
 // * The car's saving is counted where its charge started: on that day, and in a day's hours in that hour. The heat's
 //   is an estimate for a whole day: in a day's view it is in the headline and its toggle, not in an hour's bar.
 // * Hours are kept 40 days: an older day has its sums and says its hours are no longer kept.
@@ -23,9 +26,9 @@ import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
 
-export type EarnPart = "battery" | "own" | "would" | "heat" | "car";
+export type EarnPart = "battery" | "own" | "would" | "heat" | "car" | "sun";
 /** In the order they stack, bottom up; the plan's figure stands beside the stack. */
-export const EARN_PARTS: readonly EarnPart[] = ["battery", "own", "heat", "car", "would"];
+export const EARN_PARTS: readonly EarnPart[] = ["battery", "own", "heat", "car", "sun", "would"];
 
 const PART_WORDS: Record<EarnPart, TranslationKey> = {
   battery: "house.earn.part.battery",
@@ -33,7 +36,16 @@ const PART_WORDS: Record<EarnPart, TranslationKey> = {
   would: "house.earn.part.would",
   heat: "house.earn.part.heat",
   car: "house.earn.part.car",
+  sun: "house.earn.part.sun",
 };
+
+/** What a part counts, as the toggle's tooltip, where it needs saying. */
+const PART_INFO: Partial<Record<EarnPart, TranslationKey>> = {
+  sun: "house.earn.part.sunInfo",
+};
+
+/** The parts that are a whole day's figure: in a day's view in the headline and the toggles, never in an hour's bar. */
+const DAY_PARTS: ReadonlySet<EarnPart> = new Set(["heat", "sun", "would"]);
 
 export function isEarnPart(value: unknown): value is EarnPart {
   return typeof value === "string" && (EARN_PARTS as readonly string[]).includes(value);
@@ -75,6 +87,8 @@ export function bucketPart(bucket: HouseBucket, part: EarnPart): number | null {
       return bucket.saving_heat;
     case "car":
       return bucket.saving_car;
+    case "sun":
+      return bucket.sun_gave;
   }
 }
 
@@ -91,6 +105,8 @@ export function partTotal(answer: HouseHistory, part: EarnPart): number | null {
       return answer.saving?.heat ?? null;
     case "car":
       return answer.saving?.car ?? null;
+    case "sun":
+      return answer.review?.sun_gave ?? null;
   }
 }
 
@@ -133,6 +149,10 @@ export function earnLegend(
     button.type = "button";
     button.dataset["legend"] = `earn-${part}`;
     button.setAttribute("aria-pressed", String(!hidden.has(part)));
+    const info = PART_INFO[part];
+    if (info !== undefined) {
+      button.title = translate(language, info);
+    }
     const swatch = element(doc, "span", "spotnav-house-earn-swatch");
     swatch.dataset["series"] = `earn-${part}`;
     swatch.setAttribute("aria-hidden", "true");
@@ -226,13 +246,14 @@ export function earnBars(input: EarnBarsInput): HTMLElement | null {
 }
 
 /** The notes under the bars, each a plain sentence: where the car's saving is counted, the heat's whole-day estimate,
- * the plan's would-be figure for a day, and an older day's hours. */
+ * what the sun's part counts, the plan's would-be figure for a day, and an older day's hours. */
 export function earnNotes(language: Language, answer: HouseHistory, hidden: ReadonlySet<string>, money: (minor: number) => string): string[] {
   const parts = earnParts(answer).filter((part) => !hidden.has(part));
   const day = answer.period === "day";
   const running = answer.today >= answer.date && answer.today < answer.end;
   const notes: string[] = [];
-  if (day && !hasBars(answer, parts.filter((part) => part !== "heat" && part !== "would")) && parts.some((part) => part !== "heat" && part !== "would") && !running) {
+  const hourly = parts.filter((part) => !DAY_PARTS.has(part));
+  if (day && !hasBars(answer, hourly) && hourly.length > 0 && !running) {
     notes.push(translate(language, "house.earn.note.noHours"));
   }
   if (parts.includes("own")) {
@@ -253,6 +274,9 @@ export function earnNotes(language: Language, answer: HouseHistory, hidden: Read
   if (parts.includes("heat")) {
     notes.push(translate(language, day ? "house.earn.note.heatDay" : "house.earn.note.heat"));
   }
+  if (parts.includes("sun")) {
+    notes.push(translate(language, day ? "house.earn.note.sunDay" : "house.earn.note.sun"));
+  }
   return notes;
 }
 
@@ -261,6 +285,7 @@ export const EARN_STYLES = `
   [data-series="earn-own"] { --spotnav-tile-colour: color-mix(in srgb, var(--spotnav-battery-colour) 50%, var(--secondary-text-color, #727272)); }
   [data-series="earn-heat"] { --spotnav-tile-colour: var(--spotnav-heat-colour); }
   [data-series="earn-car"] { --spotnav-tile-colour: var(--spotnav-flow-car); }
+  [data-series="earn-sun"] { --spotnav-tile-colour: var(--spotnav-sun-colour); }
   [data-series="earn-would"] { --spotnav-tile-colour: var(--spotnav-battery-colour); }
   /* What the plan would have earned: hatched and lighter, never a solid bar (nothing was done). */
   .spotnav-house-pbar-lane > .spotnav-house-pbar-part[data-series="earn-would"], .spotnav-house-earn-swatch[data-series="earn-would"] {

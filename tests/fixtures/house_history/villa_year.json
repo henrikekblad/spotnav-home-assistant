@@ -24,6 +24,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -50,6 +51,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -76,6 +78,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -102,6 +105,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -128,6 +132,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -154,6 +159,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -180,6 +186,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -206,6 +213,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -232,6 +240,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -258,6 +267,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -284,6 +294,7 @@
       "saving_heat": 120.0,
       "sell": 60.0,
       "solar": 96.0,
+      "sun_gave": 9100.0,
       "use": 421.8,
       "would_battery": 3225.0
     },
@@ -310,6 +321,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     }

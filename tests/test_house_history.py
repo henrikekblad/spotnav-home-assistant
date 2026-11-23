@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -408,6 +409,35 @@ def test_a_year_bucket_sums_the_month_and_the_hours_of_a_day_have_none() -> None
     day = period_of(PERIOD_DAY, date(2026, 11, 15))
     hourly = house_history(month_inputs(period=day, reviews=[review(date(2026, 11, 15))]))["buckets"]
     assert all(bucket["battery_saving"] is None and bucket["battery_days"] == 0 for bucket in hourly)
+
+
+def test_a_bucket_has_the_suns_value_of_its_reviewed_days_and_the_period_the_reviews_sum() -> None:
+    # Each day's figure is the review's `sun_value`, the same the Money section sums (`review.sun_gave`).
+    reviews = [review(date(2026, 11, day), sun_gave=100.0 * day) for day in (3, 4, 5)] + [review(date(2026, 11, 6), sun_quarters=None)]
+    answer = house_history(month_inputs(reviews=reviews))
+    by_key = {bucket["key"]: bucket for bucket in answer["buckets"]}
+    assert [by_key[f"2026-11-0{day}"]["sun_gave"] for day in (3, 4, 5)] == [pytest.approx(300.0), pytest.approx(400.0), pytest.approx(500.0)]
+    assert by_key["2026-11-06"]["sun_gave"] is None and by_key["2026-11-07"]["sun_gave"] is None
+    assert sum(bucket["sun_gave"] or 0.0 for bucket in answer["buckets"]) == pytest.approx(answer["review"]["sun_gave"]) == pytest.approx(1200.0)
+    for item in reviews:
+        if item.sun_value is not None:
+            assert by_key[item.day.isoformat()]["sun_gave"] == pytest.approx(item.sun_value)
+    # A year's month sums its days; a day's hours have none (the review is a whole day's).
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 1, 1)), periods=[], reviews=reviews + [review(date(2026, 10, 30), sun_gave=50.0)]))
+    months = {bucket["key"]: bucket for bucket in year["buckets"]}
+    assert months["2026-11"]["sun_gave"] == pytest.approx(1200.0) and months["2026-10"]["sun_gave"] == pytest.approx(50.0)
+    assert months["2026-01"]["sun_gave"] is None and year["review"]["sun_gave"] == pytest.approx(1250.0)
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 4)), reviews=reviews))
+    assert all(bucket["sun_gave"] is None for bucket in day["buckets"]) and day["review"]["sun_gave"] == pytest.approx(400.0)
+    # Without the sun's production, or without a battery's reviews, there is no sun figure anywhere.
+    dark = house_history(month_inputs(reviews=[review(date(2026, 11, day), sun_quarters=None) for day in (3, 4)]))
+    assert all(bucket["sun_gave"] is None for bucket in dark["buckets"]) and dark["review"]["sun_gave"] is None
+    none = house_history(month_inputs(reviews=None, has_battery=False, has_solar=False))
+    assert all(bucket["sun_gave"] is None for bucket in none["buckets"]) and none["review"] is None
+    # Never inside what SpotNav saved.
+    sunless = house_history(month_inputs(reviews=[replace(item, sun_quarters=None) for item in reviews]))
+    assert answer["saving"] == sunless["saving"]
+    assert [bucket["saving"] for bucket in answer["buckets"]] == [bucket["saving"] for bucket in sunless["buckets"]]
 
 
 def test_forecast_errors_are_the_mean_over_the_period() -> None:

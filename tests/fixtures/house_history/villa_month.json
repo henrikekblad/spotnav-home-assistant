@@ -24,6 +24,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": null,
       "use": 27.0,
       "would_battery": null
     },
@@ -50,6 +51,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": null,
       "use": 27.0,
       "would_battery": null
     },
@@ -76,6 +78,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -108,6 +111,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -140,6 +144,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -172,6 +177,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -204,6 +210,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -236,6 +243,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -268,6 +276,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": null
     },
@@ -300,6 +309,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -332,6 +342,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -364,6 +375,7 @@
       "saving_heat": 60.0,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -396,6 +408,7 @@
       "saving_heat": 60.0,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -428,6 +441,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -460,6 +474,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": 700.0,
       "use": 27.0,
       "would_battery": 475.0
     },
@@ -492,6 +507,7 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 6.0,
+      "sun_gave": null,
       "use": 16.8,
       "would_battery": null
     },
@@ -518,6 +534,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -544,6 +561,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -570,6 +588,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -596,6 +615,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -622,6 +642,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -648,6 +669,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -674,6 +696,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -700,6 +723,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -726,6 +750,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -752,6 +777,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -778,6 +804,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -804,6 +831,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -830,6 +858,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     },
@@ -856,6 +885,7 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
+      "sun_gave": null,
       "use": 0.0,
       "would_battery": null
     }
