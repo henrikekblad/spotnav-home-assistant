@@ -12,6 +12,7 @@ from typing import Final
 LOAD_POOL_HEAT: Final = "pool_heat"
 LOAD_POOL_CIRCULATION: Final = "pool_circulation"
 LOAD_SPA: Final = "spa"
+LOAD_SAUNA: Final = "sauna"
 LOAD_COOLING: Final = "cooling"
 
 #: The heat pump goes on only after the circulation has read on this long (and flow, where a flow sensor reads).

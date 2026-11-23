@@ -36,6 +36,10 @@ from ..core.parse import number_from_state
 from ..heat.config import HeatConfig
 from ..loads.switch_load import RunHistory
 from ..planning.demand_charge import hour_start
+from ..sauna.config import FAMILY_HARVIA, FAMILY_RELAY, FAMILY_TYLO, SaunaConfig
+from ..spa.config import SpaConfig
+from ..spa.plan import HeatHour
+from ..spa.runtime import DeadlineShadow, Reading, new_sauna, new_spa
 from .config import SHAPE_CLIMATE, PoolConfig
 from .plan import (
     EXTRA_HOURS,
@@ -130,6 +134,9 @@ class PoolSpaShadow:
         self.water_c: float | None = None
         self.water_source: str | None = None
         self.would: dict[str, Any] | None = None
+        # ---- the spa and the sauna
+        self.spa = new_spa()
+        self.sauna = new_sauna()
         self._pump_on_since: datetime | None = None
         self._run_start: tuple[datetime, float | None] | None = None
         self._night_start: tuple[datetime, float] | None = None
@@ -189,6 +196,8 @@ class PoolSpaShadow:
         for row in pool.get("fall_samples") or ():
             if isinstance(row, list) and len(row) == 3 and all(_float(v) is not None for v in row):
                 self.fall_samples.append((float(row[0]), float(row[1]), float(row[2])))
+        self.spa.restore(self.book.section("spa"))
+        self.sauna.restore(self.book.section("sauna"))
 
     def _look_failed(self) -> None:
         if self._look_failed_logged:
@@ -242,6 +251,8 @@ class PoolSpaShadow:
                 "fall_samples": [list(row) for row in self.fall_samples],
             },
         )
+        self.book.set_section("spa", self.spa.as_dict())
+        self.book.set_section("sauna", self.sauna.as_dict())
         return self.book.as_dict()
 
     # ---- reads
@@ -377,11 +388,86 @@ class PoolSpaShadow:
 
     def tick(self, now: datetime) -> None:
         config = self.config()
-        if config.pool is None and config.spa is None:
+        if config.pool is None and config.spa is None and config.sauna is None:
             return
+        if not self._closed and (self._sun_read is None or now - self._sun_read >= SUN_REFRESH):
+            self._sun_read = now
+            self._sun_task = self.hass.async_create_background_task(
+                self._async_read_sun(now), name=f"{DOMAIN} pool sun {self.site.entry_id}"
+            )
         if config.pool is not None:
             self._pool_tick(now, config.pool)
+        if config.spa is not None or config.sauna is not None:
+            hours = self._heat_hours(now)
+            if config.spa is not None:
+                self.spa.look(now, self.tz, config.spa, self._read_deadline(config.spa), hours)
+            if config.sauna is not None:
+                self.sauna.look(now, self.tz, config.sauna, self._read_deadline(config.sauna), hours)
         self._save()
+
+    def _heat_hours(self, now: datetime) -> list[HeatHour]:
+        """The priced hours with the sun's surplus, the room under the ceiling and which ceiling it is."""
+        from ..site.flexible_loads import has_power_level  # noqa: PLC0415 - it imports the site
+        from ..site.import_target import stored_import_target_kw  # noqa: PLC0415
+
+        prices = self._prices(now)
+        try:
+            room = self._room(now, [hour.start for hour in prices])
+        except Exception:  # noqa: BLE001 - without the room nothing is kept out
+            _LOGGER.debug("SpotNav spa: the room could not be read", exc_info=True)
+            room = {}
+        try:
+            ceiling = (
+                "import_target"
+                if stored_import_target_kw(self.site.config) is not None
+                else "power_level" if has_power_level(self.site) else "fuse"
+            )
+        except Exception:  # noqa: BLE001
+            ceiling = "fuse"
+        return [
+            HeatHour(hour.start, hour.buy, hour.sell, self._surplus.get(hour.start), room.get(hour.start), ceiling)
+            for hour in prices
+        ]
+
+    def _read_deadline(self, config: SpaConfig | SaunaConfig) -> Reading:
+        """The spa or the sauna as it is: its temperature, whether it heats, its lock and its own longest run."""
+        state = self.hass.states.get(config.entity_id)
+        system = self.hass.config.units.temperature_unit
+        if state is None or state.state in _UNREADABLE:
+            return Reading(None, None)
+        if state.domain in ("switch", "input_boolean"):
+            current, heating = None, state.state == "on"
+        else:
+            current = self._celsius(_float(state.attributes.get("current_temperature")), system)
+            action = state.attributes.get("hvac_action")
+            heating = action == "heating" if action is not None else state.state not in ("off", "idle")
+        locked: bool | None = None
+        max_on: timedelta | None = None
+        if isinstance(config, SaunaConfig):
+            if config.lock_id is not None:
+                lock = self.hass.states.get(config.lock_id)
+                locked = None if lock is None or lock.state in _UNREADABLE else lock.state == "on"
+            if config.family == FAMILY_TYLO and state.attributes.get("door_fault_pending") is True:
+                locked = True
+            if config.family == FAMILY_HARVIA:
+                max_on = self._harvia_on_time(config.entity_id)
+        return Reading(current, heating, locked, max_on)
+
+    def _harvia_on_time(self, entity_id: str) -> timedelta | None:
+        """Harvia's own on time (its `on_time` number on the sauna's device, minutes), where it reads."""
+        from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+        registry = er.async_get(self.hass)
+        entry = registry.async_get(entity_id)
+        if entry is None or entry.device_id is None:
+            return None
+        for item in er.async_entries_for_device(registry, entry.device_id):
+            if item.domain == "number" and item.translation_key == "on_time":
+                state = self.hass.states.get(item.entity_id)
+                minutes = None if state is None else number_from_state(state.state)
+                if minutes is not None and minutes > 0:
+                    return timedelta(minutes=minutes)
+        return None
 
     def _pool_tick(self, now: datetime, pool: PoolConfig) -> None:
         on, heating, reading = self._pump_state(pool)
@@ -401,11 +487,6 @@ class PoolSpaShadow:
         self._account(now)
         if self.extra is not None and self.extra.until <= now:
             self.extra = None
-        if not self._closed and (self._sun_read is None or now - self._sun_read >= SUN_REFRESH):
-            self._sun_read = now
-            self._sun_task = self.hass.async_create_background_task(
-                self._async_read_sun(now), name=f"{DOMAIN} pool sun {self.site.entry_id}"
-            )
         self._replan(now, pool)
         self._decide(now, pool)
 
@@ -545,7 +626,81 @@ class PoolSpaShadow:
         }
 
     def spa_facts(self) -> dict[str, Any]:
-        return {}
+        config = self.config()
+        return {} if config.spa is None else self.spa.facts(config.spa)
+
+    def sauna_facts(self) -> dict[str, Any]:
+        config = self.config()
+        return {} if config.sauna is None else self.sauna.facts(config.sauna)
+
+    def spa_status(self, config: HeatConfig, now: datetime) -> dict[str, Any] | None:
+        """`get_heat`'s `spa` (`heat/view.py`), `None` without a spa."""
+        spa = config.spa
+        if spa is None:
+            return None
+        common = self.spa.common(spa, now)
+        current = self.spa.reading.current_c
+        return {
+            "family": common["family"],
+            "water_c": None if current is None else round(current, 1),
+            "bath_c": spa.bath_c,
+            "idle_c": spa.idle_c,
+            "floor_c": spa.floor_c,
+            "heating": common["heating"],
+            "kw": common["kw"],
+            "rate_c_h": common["rate_c_h"],
+            "rate_learned": common["rate_learned"],
+            "state": common["state"],
+            "ready_at": common["ready_at"],
+            "next_bath": common["next"],
+            "baths": [bath.as_dict() for bath in spa.baths],
+            "bath_once": spa.bath_once,
+            "bath_now": common["now"],
+            "live": common["live"],
+            "control": common["control"],
+            "would": common["would"],
+            "not_ready": common["not_ready"],
+            "notes": common["notes"],
+        }
+
+    def sauna_status(self, config: HeatConfig, now: datetime) -> dict[str, Any] | None:
+        """`get_heat`'s `sauna` (`heat/view.py`), `None` without a sauna."""
+        sauna = config.sauna
+        if sauna is None:
+            return None
+        common = self.sauna.common(sauna, now)
+        current = self.sauna.reading.current_c
+        return {
+            "family": common["family"],
+            "temp_c": None if current is None else round(current, 1),
+            "target_c": sauna.target_c,
+            "heating": common["heating"],
+            "kw": common["kw"],
+            "rate_c_h": common["rate_c_h"],
+            "rate_learned": common["rate_learned"],
+            "state": common["state"],
+            "ready_at": common["ready_at"],
+            "next_session": common["next"],
+            "sessions": [session.as_dict() for session in sauna.sessions],
+            "session_once": sauna.session_once,
+            "session_now": common["now"],
+            "locked": self.sauna.reading.locked,
+            "lock_id": sauna.lock_id,
+            "safety_declared": sauna.safety_declared if sauna.family == FAMILY_RELAY else None,
+            "live": common["live"],
+            "control": common["control"],
+            "would": common["would"],
+            "not_ready": common["not_ready"],
+            "notes": common["notes"],
+        }
+
+    def deadline_lanes(self, config: HeatConfig) -> list[dict[str, Any]]:
+        """What the Plan tab draws of the spa and the sauna."""
+        out = []
+        for part, block in ((self.spa, config.spa), (self.sauna, config.sauna)):
+            if block is not None and (lanes := part.lanes(block)) is not None:
+                out.append(lanes)
+        return out
 
     def pool_status(self, config: HeatConfig, now: datetime) -> dict[str, Any] | None:
         """`get_heat`'s `pool` (`heat/view.py`), `None` without a pool."""
@@ -660,5 +815,7 @@ class PoolSpaShadow:
             "extra": None if self.extra is None else self.extra.as_dict(),
             "history": self.history.as_dict(),
             "surplus_hours": len(self._surplus),
+            "spa": None if self.spa.plan is None else self.spa.plan.as_dict(),
+            "sauna": None if self.sauna.plan is None else self.sauna.plan.as_dict(),
             "log": [entry.as_dict() for entry in self.book.entries],
         }

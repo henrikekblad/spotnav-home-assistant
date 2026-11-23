@@ -151,3 +151,20 @@ async def test_the_sites_diagnostics_list_the_pool_and_the_spa(hass: HomeAssista
     ]
     assert [load["state"] for load in loads[1:]] == ["watched", "watched", "watched"]
     assert [FlexibleLoad.from_dict(load).as_dict() for load in loads] == loads
+
+
+def test_the_sauna_heats_only_for_a_booked_session_and_respects_its_lock() -> None:
+    from custom_components.spotnav.pool.flexible import sauna_load
+    from custom_components.spotnav.sauna.config import SaunaConfig
+
+    relay = SaunaConfig("switch.bastu", "relay", heater_kw=9.0, control=True)
+    load = sauna_load(SITE, relay, next_session=BATH, ceiling_choice=True, max_on_min=60.0)
+    assert (load.id, load.kind, load.goal.by) == ("sauna", "sauna", BATH)
+    # A relay without its declared safety measure is never controlled.
+    assert not load.controlled
+    assert [rule.code for rule in load.hard_rules] == ["booked_session_only", "remote_start_lock", "max_on", "write_cap", "hand_back"]
+    assert _rule(load, "remote_start_lock") == {"lock": None, "declared": False} and _rule(load, "max_on") == {"minutes": 60.0}
+    assert load.handles[0].high == 9.0 and [c.sets for c in load.choices][-1] == "sauna_accept_peak"
+    _round_trip(load)
+    declared = sauna_load(SITE, SaunaConfig("switch.bastu", "relay", safety_declared=True, control=True))
+    assert declared.controlled

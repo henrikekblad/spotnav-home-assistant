@@ -1,10 +1,11 @@
 """The pool's and the spa's loads in the common shape (`planning/flexible_load.py`, spec section 4): the pool's
 circulation (a run time per day, moved never dropped), the pool's heat pump (a temperature, inside the circulation's
-hours) and the spa (a bath temperature by the next bath, else held at its idle temperature). Descriptions only: the
+hours), the spa (a bath temperature by the next bath, else held at its idle temperature) and the sauna (a temperature
+by the next session it was booked for, else off). Descriptions only: the
 numbers are the rules' own constants (`pool/rules.py`), the need and the next bath what the shadow holds. Nothing is
 written.
 
-Each load's `id` is its stable load id (`pool_heat`, `pool_circulation`, `spa`), the name the site's priority list
+Each load's `id` is its stable load id (`pool_heat`, `pool_circulation`, `spa`, `sauna`), the name the site's priority list
 refers to; the entity it would steer is in its handle's values. A pool whose season is closed is not described (there is
 nothing to move: SpotNav touches nothing then).
 """
@@ -27,6 +28,7 @@ from ..planning.flexible_load import (
     HANDLE_SETPOINT_OFFSET,
     KIND_POOL_CIRCULATION,
     KIND_POOL_HEAT,
+    KIND_SAUNA,
     KIND_SPA,
     Choice,
     FlexibleLoad,
@@ -46,6 +48,7 @@ from ..spa.config import (
     FAMILY_TUYA_INTEX,
     SpaConfig,
 )
+from ..sauna.config import SaunaConfig
 from .config import PoolConfig
 from .rules import (
     CIRCULATION_MIN_OFF_MIN,
@@ -58,6 +61,7 @@ from .rules import (
     HEAT_PUMP_STARTS_DAY,
     LOAD_POOL_CIRCULATION,
     LOAD_POOL_HEAT,
+    LOAD_SAUNA,
     LOAD_SPA,
     ON_OFF_WRITES_DAY,
     RUN_ON_MIN,
@@ -192,6 +196,44 @@ def spa_load(
     )
 
 
+def sauna_load(
+    site_id: str, sauna: SaunaConfig, *, next_session: datetime | None = None, ceiling_choice: bool = False,
+    kw: float | None = None, max_on_min: float | None = None,
+) -> FlexibleLoad:
+    """The sauna: its temperature by `next_session` (`None`: off, nothing booked). Never started but for a booked
+    session; a readable lock is respected; a relay without its declared safety measure is never controlled."""
+    choices = [
+        Choice(CHOICE_TAKES_WHAT_FITS, "sauna_take_what_fits", sets="sauna_take_what_fits"),
+        Choice(CHOICE_LATER, "sauna_later_session", sets="sauna_later_session"),
+    ]
+    if ceiling_choice:
+        choices.append(Choice(CHOICE_ACCEPT_PEAK, "sauna_accept_peak", sets="sauna_accept_peak"))
+    return FlexibleLoad(
+        id=LOAD_SAUNA,
+        kind=KIND_SAUNA,
+        site=site_id,
+        controlled=sauna.control and sauna.controllable,
+        goal=Goal(GOAL_TEMPERATURE_BY, by=next_session, values=values(target_c=sauna.target_c)),
+        handles=(
+            Handle(
+                HANDLE_ON_OFF,
+                unit="kW",
+                high=kw if kw is not None else sauna.heater_kw,
+                values=values(entity_id=sauna.entity_id, family=sauna.family),
+            ),
+        ),
+        hard_rules=(
+            rule("booked_session_only"),
+            rule("remote_start_lock", lock=sauna.lock_id, declared=sauna.safety_declared),
+            rule("max_on", minutes=max_on_min),
+            rule("write_cap", per_day=ON_OFF_WRITES_DAY),
+            rule("hand_back", confirm_s=FOREIGN_CONFIRM_S),
+        ),
+        give=Give(GIVE_MINUTES_LATE),
+        choices=tuple(choices),
+    )
+
+
 def pool_spa_loads(site: Any, *, ceiling_choice: bool) -> list[FlexibleLoad]:
     """The site's pool and spa loads from its heat settings and what its pool and spa shadow holds (`pool/runtime.py`,
     absent: no need read yet)."""
@@ -215,5 +257,13 @@ def pool_spa_loads(site: Any, *, ceiling_choice: bool) -> list[FlexibleLoad]:
         facts = {} if shadow is None else shadow.spa_facts()
         found.append(
             spa_load(site.entry_id, config.spa, next_bath=facts.get("next_bath"), ceiling_choice=ceiling_choice, kw=facts.get("kw"))
+        )
+    if config.sauna is not None:
+        facts = {} if shadow is None else shadow.sauna_facts()
+        found.append(
+            sauna_load(
+                site.entry_id, config.sauna, next_session=facts.get("next_session"), ceiling_choice=ceiling_choice,
+                kw=facts.get("kw"), max_on_min=facts.get("max_on_min"),
+            )
         )
     return found
