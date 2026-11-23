@@ -83,6 +83,9 @@ longer the plan's is refused.
   in the app), another departure is planned, or the target is gone.
 
 The block is any flexible load's (plan step 3c's evening notice reuses it): `chosen` `None` and choices to offer.
+Where more than this car will not be ready in time (another car, a spa's bath, a sauna's session), the site's combined
+notice (`site_notice.py`) tells it instead: this charger's own notice is taken off, its departure counts as told
+(`mark_fit_told`) and its `plan_at_risk` is held back behind the site's as behind its own (`hold_for_site`).
 
 No notice about the plan is told while a person's Stop holds (the core's person intent, `held_off_by_person`): no
 `plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place) and no `plan_stopped`, but

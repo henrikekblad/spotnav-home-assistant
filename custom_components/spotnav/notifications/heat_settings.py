@@ -3,10 +3,10 @@
 
     {targets: [notify services] (up to 10, none by default), events: ["plan_at_risk", "pool_season"] (both by default)}
 
-`plan_at_risk` is a spa bath that will not be ready in time (the site's combined "Blir inte klart i tid" notice, to come);
-`pool_season` the once-a-season hint to close the pool. The targets are services of Home Assistant's `notify` domain, as a
-charger's (`notifications/settings.py`); a target that no longer exists is kept and skipped when sending. Nothing is sent
-by this release: the settings are kept for the notices to come.
+`plan_at_risk` is a spa bath or a sauna session that will not be ready in time (the site's combined "Blir inte klart i
+tid" notice, `site_notice.py`); `pool_season` the once-a-season hint to close the pool. The targets are services of Home
+Assistant's `notify` domain, as a charger's (`notifications/settings.py`); a target that no longer exists is kept and
+skipped when sending.
 """
 
 from __future__ import annotations
