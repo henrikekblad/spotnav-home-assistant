@@ -921,7 +921,9 @@ for once on opening a tab and then about once a minute.
 and what SpotNav would do or does), `band` (the day's plan by the hour), `control`, `relay`, `review`, `indoor_day`,
 `notes`, `ahead` (the next 12 hours of the plan), `water_heater` (a plain water heater on a switch, `null` without
 one: its state, windows and whether SpotNav switches it), each zone's `control` (SpotNav setting its thermostat, `null`
-while watched only) and `shadow` (`false` only while SpotNav's heat control runs). Over the webhook `writable` is `false` and
+while watched only), `pool`, `spa` and `sauna` (each part's `state`, `reason`, `paused_until` and `failures`: watched
+until its own opt-in is on, then `controlled`, `paused` or `handed_back`; see [Pool, spa and sauna](pool-spa.md)) and
+`shadow` (`false` only while SpotNav's heat control runs). Over the webhook `writable` is `false` and
 `choices` is `null`: they describe the configuration (sensors, zones, control path), which is set in Home Assistant.
 The dial and home or away are everyone's, whatever `writable` says.
 
