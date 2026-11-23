@@ -34,6 +34,8 @@ from custom_components.spotnav.battery import commands as bc  # noqa: E402
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
 from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
 from custom_components.spotnav.pool import detect as pool_detect  # noqa: E402
+from custom_components.spotnav.sauna import config as sauna_config  # noqa: E402
+from custom_components.spotnav.sauna import detect as sauna_detect  # noqa: E402
 from custom_components.spotnav.spa import config as spa_config  # noqa: E402
 from custom_components.spotnav.spa import detect as spa_detect  # noqa: E402
 from custom_components.spotnav.site import site_detection as sd  # noqa: E402
@@ -142,6 +144,11 @@ NAMES: dict[str, str] = {
     "control_my_spa": "ControlMySpa",
     "arctic_spa": "Arctic Spa",
     "joyonway": "Joyonway",
+    "huum": "Huum",
+    "saunum": "Saunum",
+    "harvia_sauna": "Harvia Xenio WiFi",
+    "tylo_sauna": "Tylö Elite",
+    "sentio": "Sentio",
     # chargers: taken from the profiles themselves; see `charger_name`
     "ocpp": "OCPP (Home Assistant OCPP integration)",
     # meters and batteries
@@ -1441,16 +1448,26 @@ def pool_spa_rows() -> list[tuple[str, ...]]:
     rows.append(
         ("Spa", "Any climate or water heater", "Local", "A spa's range and name; you confirm it", "No: watched only")
     )
+    for domain in sorted(sauna_detect.SAUNA_DOMAINS):
+        local = "Cloud" if domain in sauna_config.CLOUD else "Local"
+        rows.append(("Sauna", f"{name_of(domain)} (`{domain}`)", local, "The integration (sure); a door or safety state it shows is respected", WATCHED))
+    rows.append(
+        (
+            "Sauna", "A relay or contactor (any switch)", "Local", "A sauna or bastu name; you confirm it",
+            "Not yet; only once you declare the heater's own safety measure for a remote start",
+        )
+    )
     return rows
 
 
 def pool_spa_section() -> list[str]:
     return [
-        "## Supported pool heat pumps and spas",
+        "## Supported pool heat pumps, spas and saunas",
         "",
-        "SpotNav 3.0 plans a pool (its circulation pump and its heat pump) and a spa as flexible loads. They are found "
-        "from the integrations below and chosen once in the heat settings. In this release SpotNav only watches them "
-        "and shows what it would do; it writes nothing to them.",
+        "SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are "
+        "found from the integrations below and chosen once in the heat settings. In this release SpotNav only watches "
+        "them and shows what it would do; it writes nothing to them. A sauna is only ever heated for a session you "
+        "booked, and never past its own door or safety lock.",
         "",
         *table(POOL_SPA_HEADER, pool_spa_rows()),
         "",
@@ -1723,7 +1740,7 @@ def render() -> str:
         "Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), "
         "[chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
         "[house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), "
-        "[pool heat pumps and spas](#supported-pool-heat-pumps-and-spas), [vehicles](#supported-vehicles), "
+        "[pool heat pumps, spas and saunas](#supported-pool-heat-pumps-spas-and-saunas), [vehicles](#supported-vehicles), "
         "[solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).",
         "",
         *overview_section(),

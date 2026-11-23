@@ -19,7 +19,7 @@ Each row says how it is known to work:
 
 Using one of these? Tell us whether it works: [Hardware tested](https://github.com/henrikekblad/spotnav-home-assistant/issues/new?template=hardware_report.yml).
 
-Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [pool heat pumps and spas](#supported-pool-heat-pumps-and-spas), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
+Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [pool heat pumps, spas and saunas](#supported-pool-heat-pumps-spas-and-saunas), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
 
 ## Hybrid inverters and home batteries: overview
 
@@ -302,9 +302,9 @@ What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table 
 
 A pump or route missing or wrong here? [Hardware tested](https://github.com/henrikekblad/spotnav-home-assistant/issues/new?template=hardware_report.yml).
 
-## Supported pool heat pumps and spas
+## Supported pool heat pumps, spas and saunas
 
-SpotNav 3.0 plans a pool (its circulation pump and its heat pump) and a spa as flexible loads. They are found from the integrations below and chosen once in the heat settings. In this release SpotNav only watches them and shows what it would do; it writes nothing to them.
+SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are found from the integrations below and chosen once in the heat settings. In this release SpotNav only watches them and shows what it would do; it writes nothing to them. A sauna is only ever heated for a session you booked, and never past its own door or safety lock.
 
 | Kind | Integration | Local or cloud | How SpotNav finds it | SpotNav controls |
 | --- | --- | --- | --- | --- |
@@ -331,6 +331,12 @@ SpotNav 3.0 plans a pool (its circulation pump and its heat pump) and a spa as f
 | Spa | SmartTub (`smarttub`) | Cloud | The integration (sure) | Not yet: watched and planned in shadow |
 | Spa | Tuya Local (`tuya_local`), Intex | Local | An Intex water heater (sure) | Not yet: watched and planned in shadow |
 | Spa | Any climate or water heater | Local | A spa's range and name; you confirm it | No: watched only |
+| Sauna | Harvia Xenio WiFi (`harvia_sauna`) | Cloud | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Huum (`huum`) | Cloud | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Saunum (`saunum`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Sentio (`sentio`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | Tylö Elite (`tylo_sauna`) | Local | The integration (sure); a door or safety state it shows is respected | Not yet: watched and planned in shadow |
+| Sauna | A relay or contactor (any switch) | Local | A sauna or bastu name; you confirm it | Not yet; only once you declare the heater's own safety measure for a remote start |
 
 ## Supported vehicles
 

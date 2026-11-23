@@ -124,6 +124,12 @@ UPSTREAMS: dict[str, Source] = {
     "mspa": _hacs("DTekNO/mspa-homeassistant"),
     "arctic_spa": _hacs("jensenbox/ha-arctic-spa"),
     "joyonway": _hacs("alexbde/ha-joyonway"),
+    # Saunas (`sauna/detect.py`; read 2026-11-23).
+    "huum": CORE,
+    "saunum": CORE,
+    "harvia_sauna": _hacs("WiesiDeluxe/ha-harvia-sauna"),
+    "tylo_sauna": _hacs("skyer/home-assistant-tylo-sauna"),
+    "sentio": _hacs("astrandb/sentio"),
     # Meters.
     "shelly": CORE,
     "homewizard": CORE,
