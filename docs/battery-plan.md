@@ -43,6 +43,7 @@ brand's integration offers:
 | Growatt (the Growatt plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read: the SPH and SPA storage inverters and the TL-XH, TL3-XH and WIT hybrids. The off-grid SPF is not read. Not yet tested on a battery. |
 | FoxESS (FoxESS Modbus; also 1KOMMA5's `1K5-HI` units) | Runs once the size and the ratings are learnt | The level is read; on the H3-Pro and H3-Smart it is combined from the battery packs' levels. The size is learnt. The H1 and KH give their BMS's charge and discharge current, disabled in Home Assistant by default: once you enable *BMS Charge Rate* and *BMS Discharge Rate* the ratings are that current times the battery voltage (an estimate), else they are learnt. Read only. Not yet tested on a battery. |
 | Solis (Solis Modbus) | Runs once the size is learnt | The level is read. The ratings are the BMS's charge and discharge current limits times the BMS's battery voltage (an estimate, low near full or empty, where the BMS lowers its limits), never above the inverter's rated output that the integration states (from the model chosen in its setup; not there with "essential sensors only"). The integration's *Battery Rated Capacity* is a setting, not the BMS's own bank, so the size is learnt. Read only. Not yet tested on a battery. |
+| Marstek Venus E, C, D, A (Marstek Local API, Marstek Venus Modbus) | Runs once the ratings are learnt | The level and the size are read (*Rated capacity* over the local API, or *Total rated capacity* and *Average state of charge* for several batteries in one entry; *Battery Total Energy* over Modbus). No rating is an entity: the Modbus *Max Charge Power* and *Max Discharge Power* are settings, not the battery's rating, so the ratings are learnt. Read only. Not yet tested on a battery. |
 | Solinteg (the Solinteg plugin of SolaX Modbus; also M-TEC Energy Butler and Wattsonic) | Runs when the battery's BMS reports its limits | The size is read where the inverter's firmware states it (V27.52.3.0 and later), else learnt. The ratings are the BMS's allowed charge and discharge current times the battery voltage; the plan says it is an estimate. Not yet tested on a battery. |
 
 A battery from any other brand has no adapter in SpotNav yet and gets no plan: the integrations above are the whole list. Where the integration also gives the plant's maximum output (Sigenergy does), the plan uses the lower of the battery's rating and that maximum.
@@ -65,8 +66,9 @@ SpotNav reads a reserve only where it knows the integration's entity for it: Sol
 installer password in the integration. Sofar's is its depth of discharge (*BatConfig: Depth of Discharge*) and Growatt's
 TL-XH and TL3-XH's is *EMS Discharging Stop SOC (on grid)*; both are disabled in Home Assistant by default and are read
 once you enable them. Growatt's SPH and SPA give *Load First Battery Minimum SOC*, and Solinteg *Battery SOC Min On Grid*,
-which the inverter applies only while its *Battery SOC Protection On Grid* is on. FoxESS gives *Min SoC (On Grid)*, and Solis
-*Overdischarge SOC* (the on-grid one).
+which the inverter applies only while its *Battery SOC Protection On Grid* is on. FoxESS gives *Min SoC (On Grid)*, Solis
+*Overdischarge SOC* (the on-grid one), and Marstek over Modbus *Discharging Cutoff Capacity* (Venus E v1 and v2 only,
+disabled in Home Assistant by default); the Marstek local API gives none.
 The lowest level is said to be assumed in the card's details while it is.
 
 **The round trip is learnt from your battery's own meters.** Until it is known the plan assumes 90 %: of each kWh

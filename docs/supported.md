@@ -60,7 +60,7 @@ Every hybrid inverter and home battery we know of in the Nordics and Europe, and
 | Zendure (SolarFlow, Hyper, AIO) | `zendure_ha`, HACS (Zendure/Zendure-HA) | Yes, untested: battery power | Unknown | Nothing yet | With several devices on one account only one is read. |
 | Anker Solix (Solarbank) | `anker_solix`, HACS (thomluther/ha-anker-solix) | Yes, untested: battery power | Unknown | Nothing yet | Read from Anker's cloud, a minute or more between values. |
 | EcoFlow (PowerStream, Ocean Pro) | `ecoflow_cloud`, HACS (tolwi/hassio-ecoflow-cloud) | Yes, untested: battery power | Unknown | Nothing yet | PowerOcean and Stream batteries are not read. |
-| Marstek | `marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS (ViperRNMC/marstek_venus_modbus) | Yes, untested: battery power | Unknown | Nothing yet |  |
+| Marstek (Venus E, C, D, A) | `marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS (ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek) | Yes, untested: battery power, battery level, size | Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time slots; Modbus has RS485 control with force charge and discharge and charge and discharge limits | Nothing yet | The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with several batteries in one entry it is not read at all. |
 
 ## Supported EV chargers
 

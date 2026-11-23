@@ -928,10 +928,15 @@ OVERVIEW: tuple[Overview, ...] = (
         note="PowerOcean and Stream batteries are not read.",
     ),
     Overview(
-        "Marstek",
+        "Marstek (Venus E, C, D, A)",
         "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS "
-        "(ViperRNMC/marstek_venus_modbus)",
+        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek)",
         keys=("marstek_local_api", "marstek_modbus"),
+        adapter="marstek",
+        control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "
+        "slots; Modbus has RS485 control with force charge and discharge and charge and discharge limits",
+        note="The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with several "
+        "batteries in one entry it is not read at all.",
     ),
 )
 
