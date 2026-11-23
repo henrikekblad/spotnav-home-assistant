@@ -4542,6 +4542,10 @@ class SiteCapacityController:
         dwell_s = REGULATOR_DWELL_S
         if now - since < dwell_s:
             return False
+        if getattr(charger_controller, "safety_gap_running", False) is True:
+            # A safety stop's gap still runs: the core would refuse the resume. The dwell stands, so the resume goes
+            # out at the first pass after the gap that still has the room.
+            return False
         if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
             return False
         amps = amps_at_floor(

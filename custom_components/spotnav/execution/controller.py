@@ -164,6 +164,7 @@ from ..core.ownership import (
     PERSON_HOLD_MAX_STOPS,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_STOP_GAP_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     PERSON_HOLD_WINDOW_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
+    safety_resume_gap_s,
     SOC_DROP_PCT,
     SENT_START,
     SENT_STOP,
@@ -274,8 +275,9 @@ START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 #: (`_async_unheld_check_callback`): off by that pause, with no pause on record for the regulator to resume and nothing
 #: else holding it, the window's start is decided again (its retries, `START_RETRY_AFTER_S`), at most once per window.
 #: While a command of ours is still on its way it is looked at again, at most `UNHELD_CHECK_TRIES` times; a charger
-#: still reading on is looked at once more. Never after a safety stop: a plan's charge it stopped is held back on
-#: purpose, so a fuse that keeps needing the stop never cycles the charger.
+#: still reading on is looked at once more. Never after a safety stop: the core holds a plan's charge it stopped back
+#: for the regulator's resume (its gap, margin, dwell and resume limit), so a fuse that keeps needing the stop never
+#: cycles the charger.
 UNHELD_CHECK_S: Final = 90.0
 UNHELD_CHECK_TRIES: Final = 3
 # The stops under a person's Stop (`PERSON_HOLD_STOP_GAP_S`, `PERSON_HOLD_MAX_STOPS`, `PERSON_HOLD_WINDOW_S`) are
@@ -965,6 +967,9 @@ class ChargingController:
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
+        # Load balancing's stop (`_regulated_stop`) between its decision and its result: the watches of a person's and
+        # the plan's charge read the charger turned off then as balancing's pause, never as the car ending the charge.
+        self._balancing_stop_in_flight = False
         # A start of ours on its way (`_start_locked`, from the moment the charge is SpotNav's until the start
         # returns): an observation of the command, not ownership. The hold counts such a charge SpotNav's
         # (`_spotnav_owned`) before the start's result gives the session its owner.
@@ -2331,7 +2336,7 @@ class ChargingController:
             ),
             connector_status=facts.connector_status,
             held=self.adapter.held_by_charger(),
-            balancing_paused=self._balancing.paused,
+            balancing_paused=self._balancing.paused or self.balancing_stop_on_its_way,
             start_pending=self.start_pending,
             phase_switch_settling=self.phase_switch_settling,
         )
@@ -3803,6 +3808,24 @@ class ChargingController:
         return self._balancing.paused and not self.charging
 
     @property
+    def safety_gap_running(self) -> bool:
+        """Whether the charge load balancing holds back was stopped for safety less than its gap ago
+        (`safety_resume_gap_s`, growing with each safety stop of the plug-in): the core refuses its resume until then,
+        so the regulator does not ask, nor does the battery probe (one refused resume per pass otherwise)."""
+        session = self._runner.session
+        if not session.held_for_safety or session.safety_stopped_at is None:
+            return False
+        since = (dt_util.utcnow() - session.safety_stopped_at).total_seconds()
+        return 0 <= since < safety_resume_gap_s(session)
+
+    @property
+    def balancing_stop_on_its_way(self) -> bool:
+        """Whether load balancing's stop is on its way (`_regulated_stop`, from its decision to its result). The core
+        holds the charge back only once that result comes, so a look at the charge in between (the charger already
+        reads off) must take it for balancing's pause, as after the result."""
+        return self._balancing_stop_in_flight
+
+    @property
     def paused_charge_origin(self) -> str | None:
         """What the charge load balancing holds back was (`manual` for a person's), or `None`."""
         return None if self._balancing.charge is None else self._balancing.charge[0]
@@ -4530,6 +4553,7 @@ class ChargingController:
                 token = self._runner.begin(early=pause)
                 outcome = CommandOutcome(False)
                 stop_sent_before = self._stop_sent_at
+                self._balancing_stop_in_flight = True
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
                     # A safety stop is never taken for a pause on its way (`_stop_settling`): the fuse needs it now.
@@ -4537,11 +4561,13 @@ class ChargingController:
                     outcome = self._core_stop_outcome(True)
                 finally:
                     self._runner.end(token, pause, outcome=outcome)
+                    self._balancing_stop_in_flight = False
                 # Saved soon once decided: the core's session keeps the balancing pause.
                 self._save_memory_soon()
                 # Looked at again later: a charge this paused in an open window is either held back for the
-                # regulator's resume or started again by its window. Never after a safety stop, which the core
-                # holds nothing back for on purpose: starting it again would cycle the charger against the fuse.
+                # regulator's resume or started again by its window. Never after a safety stop: the core holds a
+                # person's, the plan's or a top-off's charge back for the regulator's resume, no sooner than its
+                # gap, and starting any other again would cycle the charger against the fuse.
                 if code == "pause":
                     self._arm_unheld_check()
                 else:

@@ -75,12 +75,14 @@ async def test_a_safety_stop_of_a_start_on_its_way_stops_it_as_a_running_charge(
     hass: HomeAssistant, monkeypatch, manual: bool
 ) -> None:
     """A safety stop (a current the charger would not take) of a start on its way goes out, and holds back what it
-    holds back of a running charge: a person's charge, not the plan's (P3)."""
+    holds back of a running charge: a person's charge (P3), and the plan's too (2.5.7), each for its safety gap."""
     halo = await _start_on_its_way(hass, monkeypatch, f"onwaysafety{int(manual)}", manual=manual)
     write = await halo.cc._regulated_stop("safety_stop", cause="refused")  # noqa: SLF001
     assert write.outcome == "stopped" and write.stop_sent
     assert len(halo.turn_off) == 1 and not halo.cc.start_pending
-    assert halo.cc.paused_by_balancing is manual
+    assert halo.cc.paused_by_balancing
+    assert halo.cc.paused_charge_origin == ("manual" if manual else "plan_window")
+    assert halo.cc.session_runner.session.held_for_safety
 
 
 async def test_a_pause_of_a_person_s_start_on_its_way_is_theirs_to_resume(hass: HomeAssistant, monkeypatch) -> None:

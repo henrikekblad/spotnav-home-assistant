@@ -6,9 +6,10 @@ the plan's charge control on, it draws nothing for `PLAN_CAR_IDLE_S` in a row: b
 `top_off.DRAWING_ABOVE_A`, whatever the status says), else by the connector saying it is not charging (OCPP's
 `SuspendedEV`: the car asks for no current).
 
-Not the car: load balancing pausing the charge, the charger's own scheduler or load balancer holding it (or its
-connector saying `SuspendedEVSE`, in any case: a charger other than OCPP reports its status lower-cased), a Start not
-yet answered, a control that is off, a charge that is not the plan's, and a car whose drawing cannot be read at all.
+Not the car: load balancing pausing the charge (also while its stop is on its way), the charger's own scheduler or
+load balancer holding it (or its connector saying `SuspendedEVSE`, in any case: a charger other than OCPP reports its
+status lower-cased), a Start not yet answered, a control that is off, a charge that is not the plan's, and a car whose
+drawing cannot be read at all.
 A phase switch that settles (`phase_switching.SETTLE_S`: the charger interrupts the charge itself) is not the car
 either. Each of these starts the clock again. Before a charge has drawn at all since its start, only the car's own refusal
 counts (its status says `SuspendedEV`, or the profile's value for it: a full car refusing at once): a start the charger
