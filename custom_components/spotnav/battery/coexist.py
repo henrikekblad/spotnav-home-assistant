@@ -63,7 +63,8 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
   `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
-  Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry).
+  Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry): its row has no platform, as `modbus`
+  is every Modbus device's, and is found by the brand of the facts (`adapters.SUNGROW`, chosen by unique id).
 
 Pure: no Home Assistant import.
 """

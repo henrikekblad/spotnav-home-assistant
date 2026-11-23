@@ -51,7 +51,7 @@ from .commands import ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, BrandControl, cont
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
-from .adapters import Match
+from .adapters import Match, package_of
 from .facts import BatteryFacts, EntityFact, battery_facts, device_firmware, find_entity, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
 from .ledger import Ledger
@@ -219,13 +219,24 @@ def read_battery_facts(
     battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
     if battery_entry is None:
         return battery_facts(None, [], power_kw=power_kw)
-    if battery_entry.config_entry_id is not None:
+    package = package_of(battery_entry.platform, str(battery_entry.unique_id or ""))
+    if package is not None and battery_entry.config_entry_id is None and battery_entry.device_id is None:
+        # A YAML package (Sungrow's): its entities have no config entry and no device, so they are the registry's
+        # entities of the package's platforms with the inverter's suffix.
+        scope, suffix = package
+        entries = [
+            entry for entry in registry.entities.values()
+            if scope.admits(entry.platform, str(entry.unique_id or ""), suffix)
+        ]
+    elif battery_entry.config_entry_id is not None:
         entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
     elif battery_entry.device_id is not None:
         entries = er.async_entries_for_device(registry, battery_entry.device_id, include_disabled_entities=True)
     else:
         entries = [battery_entry]
-    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
+    if package is None:
+        entries = [entry for entry in entries if entry.platform == battery_entry.platform]
+    entities = [_entity_fact(entry, hass) for entry in entries]
     devices = dr.async_get(hass)
     device = None if battery_entry.device_id is None else devices.async_get(battery_entry.device_id)
     return battery_facts(
