@@ -154,7 +154,7 @@ from ..core.ownership import (
     automatic_allowed,
     owner_as_sent,
     REASON_BALANCING,
-    SAFETY_RESUME_GAP_S,
+    safety_resume_gap_s,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -3704,13 +3704,14 @@ class ChargingController:
 
     @property
     def safety_gap_running(self) -> bool:
-        """Whether the charge load balancing holds back was stopped for safety less than `SAFETY_RESUME_GAP_S` ago: the
-        core refuses its resume until then, so the regulator does not ask (one refused resume per pass otherwise)."""
-        hold = self._safety
-        if not hold.held or hold.stopped_at is None:
+        """Whether the charge load balancing holds back was stopped for safety less than its gap ago
+        (`safety_resume_gap_s`, growing with each safety stop of the plug-in): the core refuses its resume until then,
+        so the regulator does not ask, nor does the battery probe (one refused resume per pass otherwise)."""
+        session = self._runner.session
+        if not session.held_for_safety or session.safety_stopped_at is None:
             return False
-        since = (dt_util.utcnow() - hold.stopped_at).total_seconds()
-        return 0 <= since < SAFETY_RESUME_GAP_S
+        since = (dt_util.utcnow() - session.safety_stopped_at).total_seconds()
+        return 0 <= since < safety_resume_gap_s(session)
 
     @property
     def balancing_stop_on_its_way(self) -> bool:
