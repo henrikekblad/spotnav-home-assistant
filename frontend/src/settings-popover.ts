@@ -1573,6 +1573,13 @@ export class SettingsPopover {
     dialog.show({ title: built.title, body: form, actions: takeActions(form, `${this.input.idPrefix}-popover-value`) });
   }
 
+  /** A form of the heat card's own on its own (the spa's times, its idle temperature): Save or Cancel closes the dialog. */
+  openFormAlone(title: string, build: (handlers: EditorHandlers) => HTMLFormElement): void {
+    const dialog = this.ensureDialog();
+    const form = build({ onDone: () => dialog.hide(), onCancel: () => dialog.hide() });
+    dialog.show({ title, body: form, actions: takeActions(form, `${this.input.idPrefix}-popover-value`) });
+  }
+
   /** One value's editor in the same dialog; Save or Cancel returns to the page as it was, read again after a save. */
   openEditor(title: string, build: (handlers: EditorHandlers) => HTMLElement): void {
     const dialog = this.ensureDialog();

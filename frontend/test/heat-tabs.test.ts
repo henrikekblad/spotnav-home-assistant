@@ -77,14 +77,15 @@ function body(ui: Partial<HeatUi>, value: HeatAnswer = answer(), tabs?: { histor
 }
 
 describe("the tab row", () => {
-  it("is a tablist of Now, Plan and Use with one tab in the tab order and its panel labelled", () => {
+  it("is a tablist of Now, Plan and Use (and the pool, spa and sauna found) with one tab in the tab order and its panel labelled", () => {
     const card = body({ tab: "plan" });
     const list = card.querySelector<HTMLElement>("[role='tablist']")!;
     expect(list.getAttribute("aria-label")).toBe("Värmens vyer");
     const tabs = [...list.querySelectorAll<HTMLElement>("[role='tab']")];
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Plan", "Förbrukning"]);
-    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true", "false"]);
-    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0, -1]);
+    // The villa's administrator sees the detected pool, spa and sauna, to set them up.
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Plan", "Förbrukning", "Pool", "Spa", "Bastu"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true", "false", "false", "false", "false"]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0, -1, -1, -1, -1]);
     const panel = card.querySelector<HTMLElement>("[role='tabpanel']")!;
     expect(panel.id).toBe(tabs[1]!.getAttribute("aria-controls"));
     expect(panel.getAttribute("aria-labelledby")).toBe(tabs[1]!.id);
@@ -173,9 +174,12 @@ describe("the card's YAML and editor", () => {
     expect(parseHeatConfig({ site: "s", tab: "use" }).tab).toBe("use");
     expect(parseHeatConfig({ site: "s", tab: "all" }).tab).toBeUndefined();
     expect(parseHeatConfig({ site: "s", tab: "" }).tab).toBeUndefined();
-    expect(() => parseHeatConfig({ site: "s", tab: "flow" })).toThrow("tab must be one of now, plan, use");
+    expect(parseHeatConfig({ site: "s", tab: "pool" }).tab).toBe("pool");
+    expect(() => parseHeatConfig({ site: "s", tab: "flow" })).toThrow("tab must be one of now, plan, use, pool, spa, sauna");
     const form = heatConfigForm("sv");
-    expect(JSON.stringify(form.schema)).toContain('"options":[{"value":"all","label":"(alla)"},{"value":"now","label":"Nu"},{"value":"plan","label":"Plan"},{"value":"use","label":"Förbrukning"}]');
+    expect(JSON.stringify(form.schema)).toContain(
+      '"options":[{"value":"all","label":"(alla)"},{"value":"now","label":"Nu"},{"value":"plan","label":"Plan"},{"value":"use","label":"Förbrukning"},{"value":"pool","label":"Pool"},{"value":"spa","label":"Spa"},{"value":"sauna","label":"Bastu"}]',
+    );
     expect(form.computeLabel({ name: "tab" })).toBe("Visa bara flik");
     expect(typeof SpotnavHeatCard.getConfigForm().computeLabel).toBe("function");
   });
@@ -568,9 +572,10 @@ describe("the element", () => {
     now.focus();
     now.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     await vi.advanceTimersByTimeAsync(0);
-    const use = root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='use']")!;
-    expect(use.getAttribute("aria-selected")).toBe("true");
-    expect(root.activeElement).toBe(use);
+    // The last tab shown: the sauna found on the villa.
+    const last = root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='sauna']")!;
+    expect(last.getAttribute("aria-selected")).toBe("true");
+    expect(root.activeElement).toBe(last);
   });
 
   it("keeps the focus on a dial step across the redraw its tap makes", async () => {

@@ -367,6 +367,11 @@ const SAUNA = O({
   safety_declared: N("boolean"),
 });
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
+const LOAD_ANSWERS = {
+  pool: O({ api_version: "number", ok: "boolean", error: N("string"), pool: N(POOL) }),
+  spa: O({ api_version: "number", ok: "boolean", error: N("string"), spa: N(SPA) }),
+  sauna: O({ api_version: "number", ok: "boolean", error: N("string"), sauna: N(SAUNA) }),
+} as const;
 
 const ANSWER = O({
   api_version: "number",
@@ -724,7 +729,8 @@ export interface HeatRelay {
   effect: HeatEffect;
 }
 
-/** Whether anything heat-related was found: a heat pump, a meter, climate zones, or settings already made. The
+/** Whether anything heat-related was found: a heat pump, a meter, climate zones, a pool, spa or sauna (set up, or
+ * detected for an administrator), or settings already made. The
  * heat card shows one line in place of its body without it; the settings popover collapses its heat section. */
 export function heatFound(answer: HeatAnswer): boolean {
   return (
@@ -735,7 +741,13 @@ export function heatFound(answer: HeatAnswer): boolean {
     answer.config.control_path !== "none" ||
     answer.config.indoor_sensors.length > 0 ||
     answer.config.water_heater !== null ||
-    answer.config.heat_meter_entity !== null
+    answer.config.heat_meter_entity !== null ||
+    answer.config.pool !== null ||
+    answer.config.spa !== null ||
+    answer.config.sauna !== null ||
+    answer.choices?.pool?.suggested != null ||
+    (answer.choices?.spa ?? []).some((choice) => !choice.ask) ||
+    (answer.choices?.sauna ?? []).some((choice) => !choice.ask)
   );
 }
 
@@ -1205,6 +1217,24 @@ export function decodeHeatBoost(raw: unknown): Decoded<HeatBoostAnswer> {
     return { ok: false, failure: typeof versionOf(raw) === "number" ? "unsupported" : "malformed" };
   }
   return fits(raw, BOOST_ANSWER) ? { ok: true, value: raw as HeatBoostAnswer } : { ok: false, failure: "malformed" };
+}
+
+/** `spotnav/pool`'s, `spotnav/spa`'s or `spotnav/sauna`'s answer: whether it took, and the refusal's code. */
+export interface HeatLoadAnswer {
+  ok: boolean;
+  error: string | null;
+}
+
+/** A pool, spa or sauna press's answer, or why it cannot be read (the load's block itself is read again with `get_heat`). */
+export function decodeLoadAnswer(kind: "pool" | "spa" | "sauna", raw: unknown): Decoded<HeatLoadAnswer> {
+  if (versionOf(raw) !== HEAT_API_VERSION) {
+    return { ok: false, failure: typeof versionOf(raw) === "number" ? "unsupported" : "malformed" };
+  }
+  if (!fits(raw, LOAD_ANSWERS[kind])) {
+    return { ok: false, failure: "malformed" };
+  }
+  const answer = raw as HeatLoadAnswer;
+  return { ok: true, value: { ok: answer.ok, error: answer.error } };
 }
 
 /** A room's name without the sensor's trailing "temperature" word ("Ovanvåning temperatur" → "Ovanvåning"). */

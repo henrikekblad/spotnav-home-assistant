@@ -5,7 +5,8 @@
 import { updateHeat, type SiteTarget } from "./api";
 import { decodeHeatWrite, isRelayPath, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
+import { HEAT_EVENTS, instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
+import { onceFields, weekdayShort, type DeadlineKind } from "./spa-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { multiEditor, numberEditor, onOffEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
@@ -185,6 +186,10 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
   }
   if (choices === null) {
     return null;
+  }
+  const loads = loadEditor(input, key, prefix, handlers, pick);
+  if (loads !== undefined) {
+    return loads;
   }
   switch (key) {
     case "indoor":
@@ -458,4 +463,455 @@ function awayDeltaEditor(input: HeatEditorInput, handlers: EditorHandlers): HTML
     return await input.write({ away_delta_c: value });
   });
   return editor.form;
+}
+
+type Pick = (
+  title: string,
+  options: ChoiceOption[],
+  selected: string | null,
+  save: (value: string | null) => Promise<string | null>,
+  intro?: string,
+) => { title: string; body: HTMLElement };
+
+/** A kW figure's editor ("Inte angiven" as its none). */
+function kwEditor(
+  input: HeatEditorInput,
+  prefix: string,
+  handlers: EditorHandlers,
+  title: string,
+  help: string,
+  current: number | null,
+  range: [number, number],
+  decimals: number,
+  save: (value: number | null) => Promise<string | null>,
+): { title: string; body: HTMLElement } {
+  const { doc, language } = input;
+  return {
+    title,
+    body: numberEditor(
+      doc,
+      language,
+      {
+        help,
+        unit: "kW",
+        current,
+        min: range[0],
+        max: range[1],
+        decimals,
+        noneLabel: translate(language, "heat.settings.kwNone"),
+        rangeMessage: translate(language, "heat.error.range"),
+        idPrefix: prefix,
+      },
+      save,
+      handlers,
+    ),
+  };
+}
+
+/** A figure in half degrees or half hours: the step's sentence when it is not one. */
+function halfStep(language: Language, value: number | null): string | null {
+  return value !== null && Math.abs(value * 2 - Math.round(value * 2)) > 1e-9 ? translate(language, "heat.error.step") : null;
+}
+
+/**
+ * The pool's, the spa's, the sauna's and the heat card's phones' editors (`undefined` for another key). The detected
+ * pool is confirmed once as a group; a new heat pump, circulation, spa or sauna starts watched only (`pool/config.py`,
+ * `spa/config.py`, `sauna/config.py`).
+ */
+function loadEditor(input: HeatEditorInput, key: HeatSettingKey | "away", prefix: string, handlers: EditorHandlers, pick: Pick): { title: string; body: HTMLElement } | null | undefined {
+  const { doc, language, answer } = input;
+  const config = answer.config;
+  const choices = answer.choices!;
+  const t = (k: TranslationKey, params?: Record<string, string>): string => translate(language, k, params);
+  const names = namesOf(answer);
+  const nameOf = (id: string | null): string => (id === null ? t("heat.settings.none") : names.get(id) ?? id);
+  const none: ChoiceOption = { value: "", label: t("heat.settings.none") };
+  const ranked = (choice: HeatChoice & { ask?: boolean; cloud?: boolean }): ChoiceOption => {
+    const help = [choice.value, choice.ask === true ? t("heat.settings.unsure") : null, choice.cloud === true ? t("heat.settings.cloud") : null].filter((part): part is string => part !== null && part !== "");
+    return { value: choice.entity_id, label: choice.name, ...(help.length === 0 ? {} : { help: help.join(" · ") }) };
+  };
+  const pool = config.pool;
+  const poolChoices = choices.pool;
+  switch (key) {
+    case "poolSuggested": {
+      const found = poolChoices?.suggested ?? null;
+      if (found === null) {
+        return null;
+      }
+      const parts = [t("heat.settings.poolFoundPump", { name: nameOf(found.heat_pump.entity_id) })];
+      if (found.circulation_id !== null) {
+        parts.push(t("heat.settings.poolFoundCirculation", { name: nameOf(found.circulation_id) }));
+      }
+      if (found.water_sensor !== null) {
+        parts.push(t("heat.settings.poolFoundSensor", { name: nameOf(found.water_sensor) }));
+      }
+      return {
+        title: t("heat.settings.pool"),
+        body: singleEditor(
+          doc,
+          language,
+          {
+            intro: `${parts.join(" ")} ${t("heat.settings.poolConfirm")}`,
+            options: [
+              { value: "yes", label: t("heat.settings.poolYes") },
+              { value: "no", label: t("heat.settings.poolNo") },
+            ],
+            selected: null,
+            idPrefix: prefix,
+          },
+          async (value) =>
+            value === "yes"
+              ? await input.write({ pool: { heat_pump: found.heat_pump, circulation_id: found.circulation_id, water_sensor: found.water_sensor } })
+              : null,
+          handlers,
+        ),
+      };
+    }
+    case "poolHeatPump": {
+      const options = poolChoices?.heat_pump ?? [];
+      // A pool not set up yet starts from the detected heat pump.
+      const selected = pool?.heat_pump?.entity_id ?? poolChoices?.suggested?.heat_pump.entity_id ?? null;
+      return pick(t("heat.settings.poolHeatPump"), [none, ...options.map(ranked)], selected, async (value) => {
+        if (value === null) {
+          return pool === null ? null : await input.write({ pool: { heat_pump: null } });
+        }
+        const chosen = options.find((choice) => choice.entity_id === value);
+        if (chosen === undefined) {
+          return null;
+        }
+        const heatPump = { entity_id: chosen.entity_id, shape: chosen.shape, switch_id: chosen.switch_id, number_id: chosen.number_id };
+        const found = poolChoices?.suggested ?? null;
+        // The first choice of a pool brings the circulation and the sensor detected with it.
+        const group = pool === null && found !== null && found.heat_pump.entity_id === value ? { circulation_id: found.circulation_id, water_sensor: found.water_sensor } : {};
+        return await input.write({ pool: { heat_pump: heatPump, ...group } });
+      }, t("heat.settings.poolHeatPumpHelp"));
+    }
+    case "poolCirculation":
+      return pool === null
+        ? null
+        : pick(t("heat.settings.poolCirculation"), [none, ...(poolChoices?.circulation ?? []).map(ranked)], pool.circulation_id, (value) =>
+            input.write({ pool: { circulation_id: value } }),
+          t("heat.settings.poolCirculationHelp"));
+    case "poolSensor":
+      return pool === null
+        ? null
+        : pick(
+            t("heat.settings.poolSensor"),
+            [{ value: "", label: t("heat.settings.poolSensorPump"), help: t("heat.settings.poolSensorPumpHelp") }, ...(poolChoices?.water_sensor ?? []).map(ranked)],
+            pool.water_sensor,
+            (value) => input.write({ pool: { water_sensor: value } }),
+          );
+    case "poolFilterHours":
+      return pool === null
+        ? null
+        : {
+            title: t("heat.settings.poolFilterHours"),
+            body: numberEditor(
+              doc,
+              language,
+              {
+                help: t("heat.settings.poolFilterHelp"),
+                unit: "h",
+                current: pool.filter_hours,
+                min: 1,
+                max: 24,
+                decimals: 1,
+                noneLabel: t("heat.settings.poolFilterAuto"),
+                rangeMessage: t("heat.error.range"),
+                idPrefix: prefix,
+              },
+              async (value) => halfStep(language, value) ?? (await input.write({ pool: { filter_hours: value } })),
+              handlers,
+            ),
+          };
+    case "poolHeatPumpKw":
+      return pool === null
+        ? null
+        : kwEditor(input, prefix, handlers, t("heat.settings.poolHeatPumpKw"), t("heat.settings.kwHelp"), pool.heat_pump_kw, [0.3, 15], 1, (value) =>
+            input.write({ pool: { heat_pump_kw: value } }),
+          );
+    case "poolCirculationKw":
+      return pool === null
+        ? null
+        : kwEditor(input, prefix, handlers, t("heat.settings.poolCirculationKw"), t("heat.settings.kwHelp"), pool.circulation_kw, [0.05, 3], 2, (value) =>
+            input.write({ pool: { circulation_kw: value } }),
+          );
+    case "spa":
+      return pick(
+        t("heat.settings.spa"),
+        [none, ...choices.spa.map((choice) => {
+          const option = ranked(choice);
+          return choice.controllable ? option : { ...option, help: [option.help, t("heat.settings.watchOnly")].filter(Boolean).join(" · ") };
+        })],
+        config.spa?.entity_id ?? null,
+        async (value) => {
+          if (value === null) {
+            return config.spa === null ? null : await input.write({ spa: null });
+          }
+          const chosen = choices.spa.find((choice) => choice.entity_id === value);
+          return chosen === undefined ? null : await input.write({ spa: { entity_id: chosen.entity_id, family: chosen.family } });
+        },
+        t("heat.settings.spaHelp"),
+      );
+    case "spaFloor": {
+      const spa = config.spa;
+      return spa === null
+        ? null
+        : {
+            title: t("heat.settings.spaFloor"),
+            body: numberEditor(
+              doc,
+              language,
+              { help: t("heat.settings.spaFloorHelp"), unit: "°C", current: spa.floor_c, min: 5, max: 30, decimals: 1, rangeMessage: t("heat.error.range"), idPrefix: prefix },
+              async (value) => (value === null ? t("heat.error.range") : halfStep(language, value) ?? (await input.write({ spa: { floor_c: value } }))),
+              handlers,
+            ),
+          };
+    }
+    case "spaKw":
+      return config.spa === null
+        ? null
+        : kwEditor(input, prefix, handlers, t("heat.settings.spaKw"), t("heat.settings.kwHelp"), config.spa.heater_kw, [0.5, 12], 1, (value) =>
+            input.write({ spa: { heater_kw: value } }),
+          );
+    case "sauna":
+      return pick(
+        t("heat.settings.sauna"),
+        [none, ...choices.sauna.map(ranked)],
+        config.sauna?.entity_id ?? null,
+        async (value) => {
+          if (value === null) {
+            return config.sauna === null ? null : await input.write({ sauna: null });
+          }
+          const chosen = choices.sauna.find((choice) => choice.entity_id === value);
+          return chosen === undefined ? null : await input.write({ sauna: { entity_id: chosen.entity_id, family: chosen.family, lock_id: chosen.lock_id } });
+        },
+        t("heat.settings.saunaHelp"),
+      );
+    case "saunaKw":
+      return config.sauna === null
+        ? null
+        : kwEditor(input, prefix, handlers, t("heat.settings.saunaKw"), t("heat.settings.kwHelp"), config.sauna.heater_kw, [2, 15], 1, (value) =>
+            input.write({ sauna: { heater_kw: value } }),
+          );
+    case "saunaSafety": {
+      const sauna = config.sauna;
+      if (sauna === null || sauna.family !== "relay") {
+        return null;
+      }
+      return {
+        title: t("heat.settings.saunaSafety"),
+        body: singleEditor(
+          doc,
+          language,
+          {
+            intro: t("heat.settings.saunaSafetyHelp"),
+            options: [
+              { value: "yes", label: t("heat.settings.saunaSafetyYes") },
+              { value: "no", label: t("heat.settings.saunaSafetyNo") },
+            ],
+            selected: sauna.safety_declared ? "yes" : "no",
+            idPrefix: prefix,
+          },
+          (value) => input.write({ sauna: { safety_declared: value === "yes" } }),
+          handlers,
+        ),
+      };
+    }
+    case "heatPhones": {
+      const chosen = config.heat_notifications.targets;
+      const options = [
+        ...choices.phones.map((phone) => ({ value: phone.service, label: phone.name })),
+        ...chosen.filter((service) => !choices.phones.some((phone) => phone.service === service)).map((service) => ({ value: service, label: service })),
+      ];
+      return {
+        title: t("heat.settings.phones"),
+        body: multiEditor(doc, language, { intro: t("heat.settings.phonesHelp"), options, checked: chosen }, (values) =>
+          input.write({ heat_notifications: { targets: values } }),
+        handlers),
+      };
+    }
+    case "heatEvents":
+      return {
+        title: t("heat.settings.events"),
+        body: multiEditor(
+          doc,
+          language,
+          {
+            intro: t("heat.settings.eventsHelp"),
+            options: HEAT_EVENTS.map((event) => ({ value: event, label: t(`heat.settings.event.${event}` as TranslationKey), help: t(`heat.settings.eventHelp.${event}` as TranslationKey) })),
+            checked: config.heat_notifications.events,
+          },
+          (values) => input.write({ heat_notifications: { events: values } }),
+          handlers,
+        ),
+      };
+    default:
+      return undefined;
+  }
+}
+
+/** The most weekly times a spa or sauna takes (`spa/config.py`). */
+export const MAX_SESSIONS = 4;
+
+/** What the times editor saves: the weekly times and the one-off (an ISO instant, or `null`). */
+export interface SessionsChoice {
+  weekly: { weekdays: number[]; time: string }[];
+  once: string | null;
+}
+
+/**
+ * The spa's bath times or the sauna's sessions, like a car's departures: up to four weekly times, each on its weekdays
+ * (Monday first), and one one-off date and time. Written by the household's own command (`spotnav/spa`,
+ * `spotnav/sauna`), not the administrator's settings.
+ */
+export function sessionsEditor(
+  doc: Document,
+  language: Language,
+  answer: HeatAnswer,
+  kind: DeadlineKind,
+  current: SessionsChoice,
+  save: (choice: SessionsChoice) => Promise<string | null>,
+  handlers: EditorHandlers,
+): HTMLFormElement {
+  const t = (k: TranslationKey, params?: Record<string, string>): string => translate(language, k, params);
+  const editor = shell(doc, language, `${kind}-times`, handlers);
+  const help = doc.createElement("p");
+  help.className = VISUAL_CLASSES.entityHelp;
+  help.textContent = t(`heat.${kind}.timesHelp` as TranslationKey);
+  const list = doc.createElement("div");
+  list.dataset["part"] = "weekly";
+  type Row = { time: HTMLInputElement; days: HTMLInputElement[]; node: HTMLElement };
+  const rows: Row[] = [];
+  const add = doc.createElement("button");
+  add.type = "button";
+  add.className = VISUAL_CLASSES.button;
+  add.dataset["action"] = "add-time";
+  add.textContent = t(`heat.${kind}.addTime` as TranslationKey);
+  const paintAdd = (): void => {
+    add.disabled = rows.length >= MAX_SESSIONS;
+  };
+  const addRow = (item: { weekdays: number[]; time: string }): void => {
+    const node = doc.createElement("fieldset");
+    node.className = VISUAL_CLASSES.siteFieldset;
+    node.dataset["part"] = "weekly-time";
+    const legend = doc.createElement("legend");
+    legend.className = VISUAL_CLASSES.siteLegend;
+    legend.textContent = t(`heat.${kind}.weeklyTime` as TranslationKey);
+    const time = doc.createElement("input");
+    time.type = "time";
+    time.value = item.time;
+    time.dataset["field"] = "time";
+    time.setAttribute("aria-label", t("heat.spa.time"));
+    const dayRow = doc.createElement("div");
+    dayRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px";
+    const days: HTMLInputElement[] = [];
+    for (let day = 0; day < 7; day += 1) {
+      const check = doc.createElement("input");
+      check.type = "checkbox";
+      check.checked = item.weekdays.includes(day);
+      check.dataset["weekday"] = String(day);
+      const label = doc.createElement("label");
+      label.className = VISUAL_CLASSES.siteChoice;
+      label.append(check, doc.createTextNode(weekdayShort(language, day)));
+      dayRow.append(label);
+      days.push(check);
+    }
+    const remove = doc.createElement("button");
+    remove.type = "button";
+    remove.className = VISUAL_CLASSES.button;
+    remove.dataset["action"] = "remove-time";
+    remove.textContent = t("heat.spa.removeTime");
+    const row: Row = { time, days, node };
+    remove.addEventListener("click", () => {
+      rows.splice(rows.indexOf(row), 1);
+      node.remove();
+      paintAdd();
+    });
+    node.append(legend, field(doc, t("heat.spa.time"), time), dayRow, remove);
+    rows.push(row);
+    list.append(node);
+    paintAdd();
+  };
+  for (const item of current.weekly) {
+    addRow(item);
+  }
+  add.addEventListener("click", () => addRow({ weekdays: [0, 1, 2, 3, 4, 5, 6], time: kind === "spa" ? "19:00" : "18:00" }));
+  paintAdd();
+  // The one-off: a date and a time, or none.
+  const fields = onceFields(answer, current.once);
+  const onceBox = doc.createElement("input");
+  onceBox.type = "checkbox";
+  onceBox.checked = fields !== null;
+  onceBox.dataset["field"] = "once";
+  const onceLabel = doc.createElement("label");
+  onceLabel.className = VISUAL_CLASSES.siteChoice;
+  onceLabel.append(onceBox, doc.createTextNode(t(`heat.${kind}.onceLabel` as TranslationKey)));
+  const date = doc.createElement("input");
+  date.type = "date";
+  date.dataset["field"] = "date";
+  const time = doc.createElement("input");
+  time.type = "time";
+  time.dataset["field"] = "once-time";
+  const tomorrow = instantToLocal(Date.parse(answer.now) + 86_400_000, answer.time_zone).date;
+  date.value = fields?.date ?? tomorrow;
+  time.value = fields?.time ?? (kind === "spa" ? "19:00" : "18:00");
+  const onceFieldsBlock = doc.createElement("div");
+  onceFieldsBlock.append(field(doc, t("heat.away.date"), date), field(doc, t("heat.spa.time"), time));
+  const paintOnce = (): void => {
+    onceFieldsBlock.hidden = !onceBox.checked;
+  };
+  onceBox.addEventListener("change", paintOnce);
+  paintOnce();
+  editor.body.append(help, list, add, onceLabel, onceFieldsBlock);
+  editor.submit(async () => {
+    const weekly: { weekdays: number[]; time: string }[] = [];
+    for (const row of rows) {
+      const weekdays = row.days.filter((check) => check.checked).map((check) => Number(check.dataset["weekday"]));
+      if (!/^\d{2}:\d{2}$/.test(row.time.value) || weekdays.length === 0) {
+        return t("heat.spa.timesInvalid");
+      }
+      weekly.push({ weekdays, time: row.time.value });
+    }
+    let once: string | null = null;
+    if (onceBox.checked) {
+      const instant = localToInstant(date.value, time.value, answer.time_zone);
+      if (instant === null) {
+        return t("heat.spa.timesInvalid");
+      }
+      if (instant <= Date.now()) {
+        return t("heat.error.past");
+      }
+      once = new Date(instant).toISOString();
+    }
+    return await save({ weekly, once });
+  });
+  return editor.form;
+}
+
+/** The spa's idle temperature between baths (10 to 40 °C in half degrees; never below its lowest, `floor_c`). */
+export function idleEditor(
+  doc: Document,
+  language: Language,
+  idPrefix: string,
+  current: number,
+  save: (value: number) => Promise<string | null>,
+  handlers: EditorHandlers,
+): HTMLFormElement {
+  return numberEditor(
+    doc,
+    language,
+    {
+      help: translate(language, "heat.spa.idleHelp"),
+      unit: "°C",
+      current,
+      min: 10,
+      max: 40,
+      decimals: 1,
+      rangeMessage: translate(language, "heat.error.range"),
+      idPrefix: `${idPrefix}-spa-idle`,
+    },
+    async (value) => (value === null ? translate(language, "heat.error.range") : halfStep(language, value) ?? (await save(value))),
+    handlers,
+  );
 }

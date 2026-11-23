@@ -1,0 +1,394 @@
+// The heat card's Pool, Spa and Sauna tabs (`pool-view.ts`, `spa-view.ts`), their place in the Plan tab, their settings
+// rows and editors, and the card's presses through `spotnav/pool`, `spotnav/spa` and `spotnav/sauna`. The answer is the
+// backend's contract fixture (`tests/fixtures/heat_card/controlled.json`: a pool, a Balboa spa and a relay sauna, all
+// watched).
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { HEAT_CARD_ELEMENT, loadErrorKey, type SpotnavHeatCard } from "../src/heat-card";
+import type { HeatPart } from "../src/heat-history";
+import { partSeries, partWord } from "../src/heat-use";
+import { heatEditor, sessionsEditor } from "../src/heat-editors";
+import { decodeHeat, decodeLoadAnswer, heatFound, type HeatAnswer } from "../src/heat-model";
+import { heatBody, heatSettingsSection, heatTabsOf, loadFound, type HeatHandlers, type HeatUi } from "../src/heat-view";
+import { registerTranslation } from "../src/i18n";
+import { TRANSLATIONS } from "../src/i18n/all";
+import { defineCard } from "../src/index";
+import { poolExtraLine, poolPlanLine, poolStatusLine, poolTodayLines, poolWouldLine } from "../src/pool-view";
+import { deadlineStatusLine, deadlineWouldLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
+
+const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
+/** The fixtures' moment: 16 November 2026, 17:20 in Stockholm. */
+const NOW = Date.parse("2026-11-16T16:20:00+00:00");
+
+function raw(name = "controlled.json"): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(FIXTURES, "heat_card", name), "utf8")) as Record<string, unknown>;
+}
+
+function answer(change: (value: Record<string, unknown>) => void = () => undefined): HeatAnswer {
+  const value = raw();
+  change(value);
+  const decoded = decodeHeat(value);
+  if (!decoded.ok) {
+    throw new Error("the fixture must decode");
+  }
+  return decoded.value;
+}
+
+function handlers(extra: Partial<HeatHandlers> = {}): HeatHandlers {
+  return { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), ...extra };
+}
+
+function body(ui: Partial<HeatUi>, value: HeatAnswer = answer(), extra: Partial<HeatHandlers> = {}): HTMLElement {
+  return heatBody({
+    doc: document,
+    language: "sv",
+    state: { kind: "ready", answer: value },
+    ui: { pendingTarget: null, error: null, ...ui },
+    handlers: handlers(extra),
+    width: 330,
+    nowMs: NOW,
+    idPrefix: "t",
+  });
+}
+
+function lineOf(root: ParentNode, key: string): string | null {
+  return root.querySelector<HTMLElement>(`[data-line='${key}']`)?.textContent ?? null;
+}
+
+beforeAll(() => {
+  registerTranslation("sv", TRANSLATIONS.sv);
+});
+
+describe("the tabs a site has", () => {
+  it("adds Pool, Spa and Sauna where they are set up, in that order, and a remembered one gone falls back to Now", () => {
+    const value = answer();
+    expect(heatTabsOf(value)).toEqual(["now", "plan", "use", "pool", "spa", "sauna"]);
+    const none = answer((v) => {
+      v["pool"] = null;
+      v["sauna"] = null;
+      (v["config"] as Record<string, unknown>)["pool"] = null;
+      (v["config"] as Record<string, unknown>)["sauna"] = null;
+      v["choices"] = null;
+    });
+    expect(heatTabsOf(none)).toEqual(["now", "plan", "use", "spa"]);
+    const card = body({ tab: "pool" }, none);
+    expect(card.dataset["tab"]).toBe("now");
+    // Locked by the YAML to a load that is not there: one line, no dial.
+    const locked = body({ locked: "pool" }, none);
+    expect(lineOf(locked, "pool-none")).toBe("Ingen pool är inställd.");
+  });
+
+  it("shows a detected load, not set up yet, to an administrator with the way to set it up", () => {
+    const detected = answer((v) => {
+      v["pool"] = null;
+      (v["config"] as Record<string, unknown>)["pool"] = null;
+    });
+    expect(loadFound(detected, "pool")).toBe("detected");
+    expect(heatFound(detected)).toBe(true);
+    const onSettings = vi.fn();
+    const card = body({ tab: "pool" }, detected, { onSettings });
+    expect(lineOf(card, "pool-none")).toBe("SpotNav hittade en poolvärmepump. Ställ in den i inställningarna under Värme.");
+    card.querySelector<HTMLButtonElement>("button[data-action='pool-set-up']")!.click();
+    expect(onSettings).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the Pool tab", () => {
+  it("says what the pool does, what SpotNav would do, today's hours and the plan", () => {
+    const value = answer();
+    const pool = value.pool!;
+    expect(poolStatusLine("sv", pool)).toBe("Cirkulation och värmepump står still");
+    expect(poolWouldLine("sv", value, pool)).toBe("Skulle stå still till 22:00");
+    expect(poolTodayLines("sv", pool).map((line) => line.text)).toEqual([
+      "Filtrering i dag: 3 h klart, 4 h planerat av 8,3 h",
+      "Värmepumpen: 2 h planerat",
+    ]);
+    expect(poolPlanLine("sv", value, pool)).toBe("Filtrerar 22:00–02:00 · Värmer tis 17 nov. 12:00–14:00");
+    expect(poolExtraLine("sv", value, pool)).toBeNull();
+  });
+
+  it("draws the dial, the season, the extra filtering and the band, and sends each press", () => {
+    const onPool = vi.fn();
+    const onLoadStep = vi.fn();
+    const card = body({ tab: "pool" }, answer(), { onPool, onLoadStep });
+    const panel = card.querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(panel.querySelector("svg[role='img']")!.getAttribute("aria-label")).toBe("Poolvattnets mål, 27,0 °C, 24,6 °C");
+    expect(lineOf(panel, "band")).toBe("Vattnet 24,6 °C");
+    panel.querySelector<HTMLButtonElement>("button[data-step='up']")!.click();
+    expect(onLoadStep).toHaveBeenCalledWith("pool", 0.5);
+    expect(panel.querySelector("button[data-mode='season-open']")!.getAttribute("aria-pressed")).toBe("true");
+    panel.querySelector<HTMLButtonElement>("button[data-mode='season-closed']")!.click();
+    expect(onPool).toHaveBeenLastCalledWith({ action: "season", open: false });
+    panel.querySelector<HTMLButtonElement>("button[data-action='pool-extra-4']")!.click();
+    expect(onPool).toHaveBeenLastCalledWith({ action: "extra_filtering", hours: 4 });
+    // The band from the running hour: idle until 22:00, then filtering.
+    const cells = [...panel.querySelectorAll<HTMLElement>("[data-block='pool-band'] .spotnav-heat-ahead-cell")];
+    expect(cells).toHaveLength(24);
+    expect(cells.slice(0, 5).every((cell) => cell.dataset["run"] === undefined)).toBe(true);
+    expect(cells[5]!.dataset["run"]).toBe("filter");
+    expect(lineOf(panel, "pool-watched")).toContain("SpotNav bevakar bara poolen");
+  });
+
+  it("with the season closed says SpotNav leaves it alone, and offers no extra filtering or plan", () => {
+    const closed = answer((v) => {
+      (v["pool"] as Record<string, unknown>)["season_open"] = false;
+      (v["pool"] as Record<string, unknown>)["would"] = null;
+    });
+    const panel = body({ tab: "pool" }, closed).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "pool-status")).toBe("Säsongen är stängd: SpotNav rör inte poolen.");
+    expect(lineOf(panel, "pool-would")).toBeNull();
+    expect(panel.querySelector("[data-block='pool-extra']")).toBeNull();
+    expect(panel.querySelector("[data-block='pool-band']")).toBeNull();
+  });
+
+  it("shows an extra filtering asked for with when it would run and its cancel, and the season hint", () => {
+    const onPool = vi.fn();
+    const extra = answer((v) => {
+      const pool = v["pool"] as Record<string, unknown>;
+      pool["extra"] = { hours: 2, until: "2026-11-17T16:20:00+00:00" };
+      pool["planned"] = [...(pool["planned"] as unknown[]), { start: "2026-11-17T02:00:00+00:00", end: "2026-11-17T04:00:00+00:00", what: "extra", reason: "extra" }];
+      pool["season_hint"] = true;
+    });
+    const panel = body({ tab: "pool" }, extra, { onPool }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "pool-extra")).toBe("Extra filtrering 2 h: tis 17 nov. 03:00–05:00");
+    panel.querySelector<HTMLButtonElement>("button[data-action='pool-extra-cancel']")!.click();
+    expect(onPool).toHaveBeenLastCalledWith({ action: "cancel_extra" });
+    expect(lineOf(panel, "pool-season-hint")).toBe("Vattnet har legat runt 10 °C i tre dagar – dags att stänga poolsäsongen?");
+  });
+
+  it("leaves the explaining lines out in a box of fixed height, the dial taking the height", () => {
+    const panel = body({ tab: "pool", fill: 180 }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(panel.querySelector<SVGElement>("svg[role='img']")!.style.height).toBe("180px");
+    expect(lineOf(panel, "pool-today")).toBeNull();
+    expect(lineOf(panel, "pool-watched")).toBeNull();
+    expect(lineOf(panel, "pool-status")).not.toBeNull();
+  });
+});
+
+describe("the Spa and Sauna tabs", () => {
+  it("words weekdays and times like departures", () => {
+    expect(weekdaysText("sv", [0, 1, 2, 3, 4])).toBe("mån–fre");
+    expect(weekdaysText("sv", [4, 5])).toBe("fre, lör");
+    expect(weekdaysText("sv", [0, 1, 2, 3, 4, 5, 6])).toBe("varje dag");
+    const value = answer();
+    expect(sessionsText("sv", value, "spa", [{ weekdays: [4, 5], time: "19:00" }], "2026-11-17T17:00:00+00:00")).toBe("fre, lör 19:00 · en gång tis 17 nov. 18:00");
+    expect(sessionsText("sv", value, "sauna", [], null)).toBe("Inga bastupass");
+  });
+
+  it("says the spa's status with its learnt rate and what SpotNav would do", () => {
+    const value = answer();
+    expect(deadlineStatusLine("sv", value, "spa", value.spa!)).toBe("Klar 18:40, värmer 2 °C/h");
+    expect(deadlineWouldLine("sv", value, "spa", value.spa!)).toBe("Skulle värma till 18:45: billiga timmar");
+  });
+
+  it("draws the spa's dial, Bada nu, the bath times and the idle temperature, and sends each press", () => {
+    const onDeadline = vi.fn();
+    const onLoadEdit = vi.fn();
+    const onLoadStep = vi.fn();
+    const panel = body({ tab: "spa" }, answer(), { onDeadline, onLoadEdit, onLoadStep }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(panel.querySelector("svg[role='img']")!.getAttribute("aria-label")).toBe("Badtemperatur, 38,0 °C, 36,5 °C");
+    panel.querySelector<HTMLButtonElement>("button[data-step='down']")!.click();
+    expect(onLoadStep).toHaveBeenCalledWith("spa", -0.5);
+    panel.querySelector<HTMLButtonElement>("button[data-action='spa-now']")!.click();
+    expect(onDeadline).toHaveBeenLastCalledWith("spa", "bath_now");
+    expect(lineOf(panel, "spa-times")).toBe("Badtider: fre, lör 19:00Ändra");
+    panel.querySelector<HTMLButtonElement>("button[data-action='spa-times-change']")!.click();
+    expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "times");
+    panel.querySelector<HTMLButtonElement>("button[data-action='spa-idle-change']")!.click();
+    expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "idle");
+    expect(lineOf(panel, "spa-band")).toBe("Värms 17:20–18:45 · Hålls varmt till 21:00");
+  });
+
+  it("offers a bath pressed now its end and a cancel", () => {
+    const onDeadline = vi.fn();
+    const now = answer((v) => {
+      (v["spa"] as Record<string, unknown>)["bath_now"] = { until: "2026-11-16T19:00:00+00:00" };
+    });
+    const panel = body({ tab: "spa" }, now, { onDeadline }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "spa-now")).toBe("Bada nu: skulle värma och hålla till 20:00");
+    panel.querySelector<HTMLButtonElement>("button[data-action='spa-cancel-now']")!.click();
+    expect(onDeadline).toHaveBeenLastCalledWith("spa", "cancel_now");
+  });
+
+  it("says a sauna session that will not be ready, with only the choices its cause allows, and the relay's safety plainly", () => {
+    const value = answer();
+    const sauna = value.sauna!;
+    expect(notReadyLine("sv", value, "sauna", sauna.not_ready!)).toBe(
+      "Bastupasset tis 17 nov. 17:00 blir inte klart i tid: det når 60,0 °C. Säkringen ger för lite utrymme.",
+    );
+    // The fuse: no peak to allow.
+    expect(notReadyChoices("sv", value, "sauna", sauna.not_ready!).map((choice) => choice.action)).toEqual(["take_what_fits", "later_session"]);
+    const onDeadline = vi.fn();
+    const panel = body({ tab: "sauna" }, value, { onDeadline }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(panel.querySelector("svg[role='img']")!.getAttribute("aria-label")).toBe("Bastutemperatur, 80 °C");
+    panel.querySelector<HTMLButtonElement>("button[data-action='sauna-later_session']")!.click();
+    expect(onDeadline).toHaveBeenLastCalledWith("sauna", "later_session");
+    expect(lineOf(panel, "sauna-control")).toContain("SpotNav startar aldrig ett aggregat på relä utan eget säkerhetsskydd");
+    expect(panel.querySelector("[data-action='sauna-now']")!.textContent).toBe("Värm nu");
+  });
+
+  it("says a locked sauna and one that must be started by hand plainly", () => {
+    const locked = answer((v) => {
+      const sauna = v["sauna"] as Record<string, unknown>;
+      sauna["locked"] = true;
+      sauna["would"] = { action: "blocked", until: null, reason: "lock" };
+    });
+    const panel = body({ tab: "sauna" }, locked).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "sauna-locked")).toBe("Låst: dörren eller säkerhetsbrytaren hindrar bastun från att starta.");
+    expect(lineOf(panel, "sauna-would")).toBe("Skulle inte starta: dörren eller säkerhetslåset hindrar");
+    const byHand = answer((v) => {
+      const sauna = v["sauna"] as Record<string, unknown>;
+      sauna["would"] = { action: "start_by_hand", until: null, reason: "no_safety" };
+      sauna["next_session"] = { at: "2026-11-16T18:00:00+00:00", source: "weekly" };
+    });
+    expect(deadlineWouldLine("sv", byHand, "sauna", byHand.sauna!)).toBe("Starta för hand nu för att vara klar 19:00: SpotNav säger bara när");
+  });
+});
+
+describe("the Plan tab", () => {
+  it("draws the pool's, the spa's and the sauna's next hours under the day's chart, each named", () => {
+    const panel = body({ tab: "plan" }).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "plan-pool")).toBe("Pool: Filtrerar 22:00–02:00 · Värmer tis 17 nov. 12:00–14:00");
+    expect(lineOf(panel, "plan-spa")).toBe("Spa: Värms 17:20–18:45 · Hålls varmt till 21:00");
+    expect(lineOf(panel, "plan-sauna")).toBe("Bastu: Inget planerat de närmaste 24 timmarna");
+  });
+});
+
+describe("the Use tab", () => {
+  it("names and colours the pool, the spa and the sauna as parts of their own", () => {
+    const parts: HeatPart[] = (["pump", "pool", "spa", "sauna"] as const).map((kind) => ({ key: kind, kind, name: null, kwh: 1, cost: null }));
+    expect(parts.map((part) => partWord("sv", part))).toEqual(["Värmepump", "Pool", "Spa", "Bastu"]);
+    expect(parts.map((part) => partSeries(parts, part))).toEqual(["use-pump", "use-pool", "use-spa", "use-sauna"]);
+  });
+});
+
+describe("the settings rows and editors", () => {
+  it("lists the pool's, the spa's and the sauna's settings and the heat card's phones, with what SpotNav would do", () => {
+    const section = heatSettingsSection(document, "sv", answer(), () => undefined);
+    const rows = [...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]);
+    const from = rows.indexOf("poolHeatPump");
+    expect(rows.slice(from, from + 14)).toEqual([
+      "poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw",
+      "spa", "spaFloor", "spaKw", "sauna", "saunaKw", "saunaSafety", "heatPhones", "heatEvents",
+    ]);
+    expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Skulle stå still till 22:00");
+    expect(section.querySelector("[data-row='poolFilterHours']")!.textContent).toBe("Filtrering per dygnEfter vattentemperaturen");
+    expect(section.querySelector("[data-row='saunaSafety']")!.textContent).toBe("Aggregatets eget säkerhetsskyddNej, eller vet inte");
+  });
+
+  it("confirms a detected pool once as a group", async () => {
+    const detected = answer((v) => {
+      v["pool"] = null;
+      (v["config"] as Record<string, unknown>)["pool"] = null;
+      (v["choices"] as Record<string, unknown>)["pool"] = (raw("villa.json")["choices"] as Record<string, unknown>)["pool"];
+    });
+    const write = vi.fn(async () => null);
+    const built = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: detected, write }, "poolSuggested", { onDone: vi.fn(), onCancel: vi.fn() })!;
+    expect(built.title).toBe("Pool");
+    expect(built.body.textContent).toContain("SpotNav hittade poolvärmepumpen Poolpump.");
+    document.body.append(built.body);
+    built.body.querySelector<HTMLInputElement>("input[value='yes']")!.click();
+    built.body.dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(write).toHaveBeenCalled());
+    expect(write).toHaveBeenCalledWith({
+      pool: {
+        heat_pump: { entity_id: "climate.poolpump", shape: "climate", switch_id: null, number_id: null },
+        circulation_id: "switch.pool_cirkulation",
+        water_sensor: "sensor.pool_vatten",
+      },
+    });
+    document.body.replaceChildren();
+  });
+
+  it("edits the bath times as weekly times and one date", async () => {
+    const value = answer();
+    const save = vi.fn(async () => null);
+    const form = sessionsEditor(document, "sv", value, "spa", { weekly: value.spa!.baths, once: null }, save, { onDone: vi.fn(), onCancel: vi.fn() });
+    document.body.append(form);
+    const days = [...form.querySelectorAll<HTMLInputElement>("input[data-weekday]")];
+    expect(days.filter((day) => day.checked).map((day) => day.dataset["weekday"])).toEqual(["4", "5"]);
+    days[6]!.click();
+    form.querySelector<HTMLButtonElement>("button[data-action='add-time']")!.click();
+    expect(form.querySelectorAll("[data-part='weekly-time']")).toHaveLength(2);
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith({
+      weekly: [
+        { weekdays: [4, 5, 6], time: "19:00" },
+        { weekdays: [0, 1, 2, 3, 4, 5, 6], time: "19:00" },
+      ],
+      once: null,
+    });
+    document.body.replaceChildren();
+  });
+});
+
+describe("the card's presses", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(NOW);
+    defineCard();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  });
+
+  function mount(reply: (message: Record<string, unknown>) => unknown = () => ({ api_version: 1, ok: true, error: null })) {
+    const messages: Record<string, unknown>[] = [];
+    const hass = {
+      language: "sv",
+      locale: { language: "sv" },
+      states: {},
+      user: { is_admin: false },
+      callWS: async (message: Record<string, unknown>): Promise<unknown> => {
+        messages.push(message);
+        if (message["type"] === "spotnav/get_heat") {
+          return raw();
+        }
+        return reply(message);
+      },
+    };
+    const element = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    element.store = () => null;
+    element.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa", tab: "pool" });
+    element.hass = hass as never;
+    document.body.append(element);
+    const sent = (type: string) => messages.filter((message) => message["type"] === type);
+    return { element, sent, root: element.shadowRoot! };
+  }
+
+  it("writes the pool's dial once after a run of taps, and sends the extra filtering", async () => {
+    const { root, sent } = mount(() => ({ api_version: 1, ok: true, error: null, pool: null }));
+    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector<HTMLButtonElement>("button[data-step='up']")!.click();
+    root.querySelector<HTMLButtonElement>("button[data-step='up']")!.click();
+    expect(root.querySelector(".spotnav-heat-dial-figure")!.textContent).toBe("28,0°");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent("spotnav/pool")).toEqual([{ type: "spotnav/pool", api_version: 1, site_id: "site_villa", action: "target", target_c: 28 }]);
+    root.querySelector<HTMLButtonElement>("button[data-action='pool-extra-2']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent("spotnav/pool").at(-1)).toEqual({ type: "spotnav/pool", api_version: 1, site_id: "site_villa", action: "extra_filtering", hours: 2 });
+  });
+
+  it("says a refused press in the tab", async () => {
+    const { root } = mount(() => ({ api_version: 1, ok: false, error: "spotnav_rate_limited", pool: null }));
+    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector<HTMLButtonElement>("button[data-action='pool-extra-2']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[role='alert']")!.textContent).toBe("Trycktes nyss; försök igen om några minuter.");
+  });
+
+  it("decodes the presses' answers and words their refusals", () => {
+    expect(decodeLoadAnswer("spa", { api_version: 1, ok: true, error: null, spa: null })).toEqual({ ok: true, value: { ok: true, error: null } });
+    expect(decodeLoadAnswer("spa", { api_version: 1, ok: true, error: null }).ok).toBe(false);
+    expect(decodeLoadAnswer("pool", { api_version: 2, ok: true, error: null, pool: null })).toEqual({ ok: false, failure: "unsupported" });
+    expect(loadErrorKey("spotnav_no_later_bath")).toBe("heat.load.noLater");
+    expect(loadErrorKey("other")).toBe("heat.error.generic");
+  });
+});

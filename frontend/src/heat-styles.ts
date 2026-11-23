@@ -1,7 +1,7 @@
 // The heat card's own classes and styles, on top of the charging card's (`visual-styles.ts`) and the house card's
 // (`house-styles.ts`: the header, the chip, the lines and notes), which the heat card loads too. The day chart's
 // colours are custom properties a theme may set (`--spotnav-heat-lower-colour`, `--spotnav-heat-relay-colour`, `--spotnav-heat-raise-colour`,
-// `--spotnav-heat-water-colour`, `--spotnav-heat-indoor-colour`), each with its own fallback.
+// `--spotnav-heat-water-colour`, `--spotnav-heat-indoor-colour`, `--spotnav-heat-pool-colour`), each with its own fallback.
 
 export const HEAT_CLASSES = {
   card: "spotnav-heat",
@@ -250,6 +250,11 @@ export const HEAT_STYLES = `
   .${X.aheadCell}[data-action="preheat"],
   .${X.aheadCell}[data-action="raise"],
   .${X.aheadCell}[data-action="return"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 70%, transparent); }
+  /* The pool's, the spa's and the sauna's day band: filtering, the extra filtering, a heat-up, the hold. */
+  .${X.aheadCell}[data-run="filter"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, #2fa39a) 55%, transparent); }
+  .${X.aheadCell}[data-run="extra"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, #2fa39a) 90%, transparent); }
+  .${X.aheadCell}[data-run="heat"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 70%, transparent); }
+  .${X.aheadCell}[data-run="hold"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 30%, transparent); }
   .${X.aheadCell}[data-action="open"] {
     background: none;
     box-shadow: inset 0 0 0 1px var(--divider-color, #e0e0e0);
@@ -407,7 +412,8 @@ export const HEAT_STYLES = `
   }
   @media (forced-colors: active) {
     .${X.aheadCell} { background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
-    .${X.aheadCell}[data-action="lower"], .${X.aheadCell}[data-action="preheat"], .${X.aheadCell}[data-action="raise"] { background: CanvasText; }
+    .${X.aheadCell}[data-action="lower"], .${X.aheadCell}[data-action="preheat"], .${X.aheadCell}[data-action="raise"],
+    .${X.aheadCell}[data-run] { background: CanvasText; }
     .${X.indoorLine}, .${X.indoorSetpoint} { stroke: CanvasText; }
     .${X.dayColumn}, .${X.dayMark}, .${X.dayDot}, .${X.dialValue}, .${X.swatch} {
       fill: CanvasText;

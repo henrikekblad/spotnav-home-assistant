@@ -140,7 +140,7 @@ describe("the battery's words", () => {
 function bareHeat(): Record<string, unknown> {
   const villa = read("heat_card", "villa.json");
   const config = { ...(villa["config"] as Record<string, unknown>), control_path: "none", indoor_sensors: [], zones: [], heat_meter_entity: null };
-  const choices = { ...(villa["choices"] as Record<string, unknown>), zones: [] };
+  const choices = { ...(villa["choices"] as Record<string, unknown>), zones: [], pool: null, spa: [], sauna: [] };
   return { ...villa, pump: null, meter: null, zones: [], config, choices };
 }
 
