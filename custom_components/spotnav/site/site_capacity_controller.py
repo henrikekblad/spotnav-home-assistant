@@ -110,6 +110,7 @@ from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepp
 from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from .does_not_fit import site_does_not_fit
+from .not_ready import site_not_ready
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
     IF_NOT_READY_HOLD,
@@ -1000,6 +1001,17 @@ class SiteCapacityController:
         self.water_heater_control = WaterHeaterControl(hass, self.heat_shadow, self.heat_control)
         # The pool and the spa in shadow (`pool/runtime.py`): read, planned and logged; nothing is written to them.
         self.pool_spa = PoolSpaShadow(hass, self)
+        # The site's combined "not ready in time" notice and the pool's season notice (`notifications/site_notice.py`).
+        from ..notifications.site_notice import SiteNotice  # noqa: PLC0415 - the notifier imports the planner
+
+        self.site_notice = SiteNotice(
+            hass,
+            entry_id,
+            site=self,
+            notifier_of=self._notifier_of,
+            heat_notifications=lambda: self.heat_shadow.config().heat_notifications,
+            recheck=self._tell_target_risk,
+        )
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
         # never on a timer. Shut down first, before the battery and the heat control.
         self.hardware_test = HardwareTest(hass, self)
@@ -1070,6 +1082,8 @@ class SiteCapacityController:
         await self.heat_control.async_start()
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
+        await self.site_notice.async_load()
+        self.site_notice.async_start()
         await self.pool_spa.async_start()
         await self.hardware_test.async_load()
         # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
@@ -1201,6 +1215,7 @@ class SiteCapacityController:
             ("zones", self.zones_control.halt),
             ("water heater", self.water_heater_control.halt),
             ("pool and spa", self.pool_spa.halt),
+            ("combined notice", self.site_notice.async_shutdown),
             ("house forecast", self.house_forecast.halt),
             ("sun review", self.sun_review.halt),
         )
@@ -5989,14 +6004,19 @@ class SiteCapacityController:
             task.add_done_callback(partial(_log_replan_failure, self.entry_id, charger_entry_id))
         self._recompute()
 
+    def _notifier_of(self, charger_entry_id: str) -> Any:
+        data = charger_data(self.hass, charger_entry_id)
+        return None if data is None else data.notifier
+
     def _tell_target_risk(self) -> None:
-        """Give each charger's notifier its "does not fit" block where the plan asks the person, or none
-        (`ChargerNotifier.does_not_fit`): told once per departure in the daytime, and taken off the phones once it
-        fits again or a choice is made."""
+        """Tell what will not be ready in time (`notifications/site_notice.py`): a car alone as its charger's notifier
+        tells it (`ChargerNotifier.does_not_fit`, where the plan asks the person), several deadlines (cars, the spa's
+        baths, the sauna's sessions) as the site's one combined notice; told once per deadline in the daytime, and
+        taken off the phones once it fits again or a choice is made."""
+        blocks: dict[str, dict[str, Any] | None] = {}
+        risks: dict[str, Any] = {}
         for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
-            data = charger_data(self.hass, charger_entry_id)
-            notifier = None if data is None else data.notifier
-            if notifier is None:
+            if self._notifier_of(charger_entry_id) is None:
                 continue
             risk = self._target_risk.get(charger_entry_id)
             # Asked only where the plan asks; `hold` and `release` (the person's lasting answer, or a choice for this
@@ -6009,16 +6029,24 @@ class SiteCapacityController:
                 except Exception:  # noqa: BLE001 - the phones keep what they were told; the hold goes on
                     _LOGGER.debug("SpotNav site %s: the does-not-fit block could not be made", self.entry_id, exc_info=True)
                     continue
-            outcome = notifier.does_not_fit(block, recheck=self._tell_target_risk)
-            if outcome is not None:
-                # What the phones were told, for the change log: told, or taken off (with the departure and shortfall
-                # last told).
-                if outcome == "told" and told is not None:
-                    self._target_noticed[charger_entry_id] = (told.departure, told.missing_kwh)
-                    departure, missing_kwh = told.departure, told.missing_kwh
-                else:
-                    departure, missing_kwh = self._target_noticed.pop(charger_entry_id, (None, None))
-                self._log_target(charger_entry_id, f"notice_{outcome}", departure=departure, missing_kwh=missing_kwh)
+            blocks[charger_entry_id] = block
+            risks[charger_entry_id] = told
+        try:
+            site_block = site_not_ready(self, blocks)
+        except Exception:  # noqa: BLE001 - the cars are told on their own as before
+            _LOGGER.debug("SpotNav site %s: what will not be ready could not be reckoned", self.entry_id, exc_info=True)
+            site_block = None
+        outcomes = self.site_notice.update(site_block, blocks)
+        for charger_entry_id, outcome in outcomes.items():
+            # What the phones were told, for the change log: told, or taken off (with the departure and shortfall last
+            # told).
+            told = risks.get(charger_entry_id)
+            if outcome == "told" and told is not None:
+                self._target_noticed[charger_entry_id] = (told.departure, told.missing_kwh)
+                departure, missing_kwh = told.departure, told.missing_kwh
+            else:
+                departure, missing_kwh = self._target_noticed.pop(charger_entry_id, (None, None))
+            self._log_target(charger_entry_id, f"notice_{outcome}", departure=departure, missing_kwh=missing_kwh)
 
     # -- a person sets the import target aside until a charge's departure
 

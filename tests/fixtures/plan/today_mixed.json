@@ -1468,6 +1468,7 @@
     "kw": 5.4,
     "start": "2026-11-12T17:00:00+00:00"
   },
+  "not_ready": null,
   "past": true,
   "power_tariff": true,
   "site_id": "site_villa",

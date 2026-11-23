@@ -331,4 +331,5 @@ def past_view(
         "past": True,
         "date": day.isoformat(),
         "history": history_block(history_first),
+        "not_ready": None if live is None else live.get("not_ready"),
     }

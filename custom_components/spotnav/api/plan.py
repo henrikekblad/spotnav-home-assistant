@@ -7,8 +7,9 @@ cars' installed plans (`ChargingPlan`), the battery plan in force (`battery_shad
 (`heat_shadow.plan`), the water heater's windows (`WaterHeaterControl.status`), the zones' lowerings
 (`ZonesControl.lowerings_ahead`), the house forecast with the heat plan's change (`heat_delta`), the prices with
 their fees as the plans read them (`buy_slots`), the import target's hold per hour (`site_hour_caps`), the soft
-ceiling under the demand charge (`demand_ceiling`), the main fuse, the month's measured hours
-and each car's "does not fit" block (`site/does_not_fit.py`, from the import target's status). The one thing read
+ceiling under the demand charge (`demand_ceiling`), the main fuse, the month's measured hours, each car's "does not
+fit" block (`site/does_not_fit.py`, from the import target's status) and what will not be ready in time across every
+deadline (`site/not_ready.py`). The one thing read
 is the solar forecast (the integrations' own forecast platform, as the battery plan reads it, then corrected as the
 plan corrects it). Nothing is planned anew and nothing is written. A part that cannot be read is left out, never the
 whole answer.
@@ -43,6 +44,7 @@ from ..runtime import controller_for, site_controller_for
 from ..site.flexible_loads import has_power_tariff
 from ..site.house_forecast import BASIS_GROSS
 from ..site.does_not_fit import site_does_not_fit
+from ..site.not_ready import site_not_ready
 from ..site.import_target import stored_import_target_kw
 from ..site.shed_order import LOAD_HEAT, LOAD_WATER_HEATER
 from ..site.decision_recorder import set_plan_reader
@@ -375,6 +377,8 @@ async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: dat
     house, basis, sun_in_house = _guarded("house forecast", lambda: _house(controller, now), ({}, "net", True))
     heat, zones, heater = _guarded("heat plan", lambda: _heat(hass, controller), (None, (), None))
     config = controller.config
+    cars = _guarded("cars' plans", lambda: _cars(hass, controller), ())
+    blocks = {car.id: car.does_not_fit for car in cars}
     return plan_view(
         PlanInputs(
             site_id=site.entry_id,
@@ -386,7 +390,7 @@ async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: dat
             house_basis=basis,
             sun_in_house=sun_in_house,
             sun=await _sun(hass, controller, now),
-            cars=_guarded("cars' plans", lambda: _cars(hass, controller), ()),
+            cars=cars,
             battery=_guarded("battery plan", lambda: _battery(controller), None),
             heat=heat,
             zones=zones,
@@ -400,6 +404,7 @@ async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: dat
             power_tariff=bool(_guarded("power tariff", lambda: has_power_tariff(controller), False)),
             month_peak=_guarded("month's peak", lambda: _month_peak(controller, now), None),
             history_first=_guarded("decision history", lambda: controller.decision_history.first_hour, None),
+            not_ready=_guarded("not ready in time", lambda: site_not_ready(controller, blocks), None),
         )
     )
 

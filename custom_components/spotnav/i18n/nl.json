@@ -42,7 +42,20 @@
     "does_not_fit.later": "Later vertrek ({time})",
     "does_not_fit.peak": "Piek toestaan",
     "does_not_fit.peak.kw": "Piek toestaan (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Piek toestaan (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Piek toestaan (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Niet op tijd klaar",
+    "not_ready.line.car": "{name} {time}: er ontbreekt {kwh} kWh onder het afnamedoel van {target} kW",
+    "not_ready.line.spa": "Spa {time}: bereikt {reach} °C",
+    "not_ready.line.sauna": "Sauna {time}: bereikt {reach} °C",
+    "not_ready.later.spa": "Later badtijdstip ({time})",
+    "not_ready.later.sauna": "Latere sessie ({time})",
+    "not_ready.take.c": "Neem wat past (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Zwembad",
+    "pool_season.message": "Het water is al drie dagen rond 10 °C – tijd om het zwembadseizoen te sluiten?",
+    "pool_season.close": "Seizoen sluiten"
   },
   "add_charger": {
     "hint": "Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."

@@ -413,6 +413,67 @@
   ],
   "money": null,
   "month_peak": null,
+  "not_ready": {
+    "items": [
+      {
+        "cause": "import_target",
+        "choices": [
+          {
+            "code": "takes_what_fits",
+            "cost": null,
+            "frees_kwh": 9.1,
+            "kwh": 7.1,
+            "later": null,
+            "peak_kw": null,
+            "reach_c": null
+          },
+          {
+            "code": "later",
+            "cost": null,
+            "frees_kwh": 9.1,
+            "kwh": null,
+            "later": "2026-11-02T16:00:00+00:00",
+            "peak_kw": null,
+            "reach_c": null
+          },
+          {
+            "code": "accept_peak",
+            "cost": null,
+            "frees_kwh": 9.1,
+            "kwh": null,
+            "later": null,
+            "peak_kw": 12.0,
+            "reach_c": null
+          }
+        ],
+        "chosen": null,
+        "deadline": "2026-11-02T13:30:35+00:00",
+        "kind": "car",
+        "load_id": "<charger_id>",
+        "name": "HALO",
+        "reach_c": null,
+        "short_c": null,
+        "short_kwh": 9.1
+      }
+    ],
+    "ranked": [
+      {
+        "code": "later",
+        "frees_kwh": 9.1,
+        "load_id": "<charger_id>"
+      },
+      {
+        "code": "takes_what_fits",
+        "frees_kwh": 9.1,
+        "load_id": "<charger_id>"
+      },
+      {
+        "code": "accept_peak",
+        "frees_kwh": 9.1,
+        "load_id": null
+      }
+    ]
+  },
   "ok": true,
   "past": false,
   "power_tariff": false,

@@ -42,7 +42,20 @@
     "does_not_fit.later": "Later departure ({time})",
     "does_not_fit.peak": "Allow the peak",
     "does_not_fit.peak.kw": "Allow the peak (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Allow the peak (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Allow the peak (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Not ready in time",
+    "not_ready.line.car": "{name} {time}: {kwh} kWh short under the {target} kW import target",
+    "not_ready.line.spa": "Spa {time}: reaches {reach} °C",
+    "not_ready.line.sauna": "Sauna {time}: reaches {reach} °C",
+    "not_ready.later.spa": "Later bath ({time})",
+    "not_ready.later.sauna": "Later session ({time})",
+    "not_ready.take.c": "Take what fits (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Pool",
+    "pool_season.message": "The water has been around 10 °C for three days: time to close the pool season?",
+    "pool_season.close": "Close the season"
   },
   "add_charger": {
     "hint": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."

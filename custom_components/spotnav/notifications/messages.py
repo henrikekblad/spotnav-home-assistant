@@ -192,3 +192,51 @@ def does_not_fit_choice_text(
     if cost is None:
         return text["does_not_fit.peak.kw"].format(kw=kw)
     return text["does_not_fit.peak.cost"].format(kw=kw, cost=money_text(language, cost, 0))
+
+
+def not_ready_title(language: str) -> str:
+    """The combined notice's title (`site_notice.py`): "SpotNav · Blir inte klart i tid"."""
+    return table(language, NAMESPACE)["not_ready.title"]
+
+
+def not_ready_car_line(language: str, name: str, *, time: str, short_kwh: float, ceiling_kw: float) -> str:
+    """A car's line in the combined notice: "Garage 07:00: 4 kWh saknas under effektmålet 6,0 kW"."""
+    return table(language, NAMESPACE)["not_ready.line.car"].format(
+        name=name, time=time, kwh=_number(language, short_kwh, 0), target=_number(language, ceiling_kw, 1)
+    )
+
+
+def not_ready_heat_line(language: str, kind: str, *, time: str, reach_c: float) -> str:
+    """A bath's or a session's line in the combined notice: "Spa 19:00: når 35 °C" (`kind` `spa` or `sauna`)."""
+    return table(language, NAMESPACE)[f"not_ready.line.{kind}"].format(time=time, reach=_number(language, reach_c, 0))
+
+
+def not_ready_heat_choice(language: str, kind: str, code: str, *, time: str | None = None, reach_c: float | None = None) -> str:
+    """A bath's or a session's button: "Senare badtid (20:00)", "Senare bastupass (20:00)", "Ta det som ryms (≈ 35 °C)"."""
+    text = table(language, NAMESPACE)
+    if code == "later":
+        return text[f"not_ready.later.{kind}"].format(time=time or "")
+    if reach_c is None:
+        return text["does_not_fit.take"]
+    return text["not_ready.take.c"].format(reach=_number(language, reach_c, 0))
+
+
+def not_ready_button(language: str, load: str, choice: str) -> str:
+    """A button of one load among several: "Spa: Ta det som ryms"."""
+    return table(language, NAMESPACE)["not_ready.button"].format(load=load, choice=choice)
+
+
+def not_ready_load(language: str, kind: str) -> str:
+    """The spa's or the sauna's word in a button ("Spa", "Bastu")."""
+    return table(language, NAMESPACE)[f"not_ready.load.{kind}"]
+
+
+def site_peak_choice(language: str) -> str:
+    """The combined notice's "Allow the peak" for every item under the ceiling."""
+    return table(language, NAMESPACE)["does_not_fit.peak"]
+
+
+def pool_season_text(language: str) -> tuple[str, str, str]:
+    """The pool's season notice: its title, message and button ("Stäng säsongen")."""
+    text = table(language, NAMESPACE)
+    return text["pool_season.title"], text["pool_season.message"], text["pool_season.close"]

@@ -211,7 +211,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `get_house_loads` | The pie behind House or Heat: `{"period", "date", "kind"}`, the answer of `spotnav/get_house_loads`. |
 | `get_heat` | The heat card's view of the site: `{}`, the answer of `spotnav/get_heat` as someone who is no administrator reads it. |
 | `get_heat_history` | One day, month or year of the heating: `{"period", "date"}`, the answer of `spotnav/get_heat_history`. |
-| `get_plan` | The house card's Plan tab for this charger's site: `{}`, or `{"date"}` / `{"start"}` to step back (since 3.0.0b4), the answer of `spotnav/get_plan`, each car's `does_not_fit` block in its lane. |
+| `get_plan` | The house card's Plan tab for this charger's site: `{}`, or `{"date"}` / `{"start"}` to step back (since 3.0.0b4), the answer of `spotnav/get_plan`, each car's `does_not_fit` block in its lane, and the top-level `not_ready` (what will not be ready in time across the site's deadlines, the choices ranked by what they free; `null` when all fits). |
 | `update_heat` | The dial, home or away, the away setback, the cooler night and each zone's and indoor sensor's offset: `{"changes": {"target_c", "mode", "away_until", "away_delta_c", "night", "zones", "indoor_offsets"}, "expected"}`, the envelope of `spotnav/update_heat`. Nothing else may be named. |
 | `heat_boost` | The heat card's **Hot water now** button: `{"boost_action": "start" \| "stop"}`, the answer of `spotnav/heat_boost` (see below). Any paired phone may press it, as anyone who sees the card may. |
 | `battery_control` | The site's battery control status; with `{"changes": {"battery_mode"}}` the battery mode is written first. Nothing else may be named. |

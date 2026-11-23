@@ -42,7 +42,20 @@
     "does_not_fit.later": "Spätere Abfahrt ({time})",
     "does_not_fit.peak": "Spitze zulassen",
     "does_not_fit.peak.kw": "Spitze zulassen (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Spitze zulassen (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Spitze zulassen (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Nicht rechtzeitig fertig",
+    "not_ready.line.car": "{name} {time}: es fehlen {kwh} kWh unter dem Bezugsziel von {target} kW",
+    "not_ready.line.spa": "Whirlpool {time}: erreicht {reach} °C",
+    "not_ready.line.sauna": "Sauna {time}: erreicht {reach} °C",
+    "not_ready.later.spa": "Spätere Badezeit ({time})",
+    "not_ready.later.sauna": "Späterer Saunagang ({time})",
+    "not_ready.take.c": "Nehmen, was passt (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Whirlpool",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Pool",
+    "pool_season.message": "Das Wasser liegt seit drei Tagen bei etwa 10 °C – Zeit, die Poolsaison zu schließen?",
+    "pool_season.close": "Saison schließen"
   },
   "add_charger": {
     "hint": "Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."

@@ -42,7 +42,20 @@
     "does_not_fit.later": "Myöhempi lähtö ({time})",
     "does_not_fit.peak": "Salli huippu",
     "does_not_fit.peak.kw": "Salli huippu (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Salli huippu (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Salli huippu (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Ei valmistu ajoissa",
+    "not_ready.line.car": "{name} {time}: {kwh} kWh puuttuu {target} kW:n tehotavoitteella",
+    "not_ready.line.spa": "Poreallas {time}: saavuttaa {reach} °C",
+    "not_ready.line.sauna": "Sauna {time}: saavuttaa {reach} °C",
+    "not_ready.later.spa": "Myöhempi kylpyaika ({time})",
+    "not_ready.later.sauna": "Myöhempi saunavuoro ({time})",
+    "not_ready.take.c": "Ota mikä mahtuu (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Poreallas",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Allas",
+    "pool_season.message": "Vesi on ollut noin 10 °C kolme päivää – aika sulkea allaskausi?",
+    "pool_season.close": "Sulje kausi"
   },
   "add_charger": {
     "hint": "Lisää latauslaite: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."

@@ -381,3 +381,28 @@ def test_the_spa_and_the_sauna_are_watched_lanes_with_their_heat_up_and_hold() -
     assert lane["kw"][hour] == 1.5
     sauna_lane = _load(answer, "sauna")
     assert [(run["what"], run["kwh"]) for run in sauna_lane["runs"]] == [("heat", 6.75)]
+
+
+def test_what_will_not_be_ready_across_every_deadline_is_one_block_for_the_site() -> None:
+    """The car 3 kWh short of 07:00 under the import target and the spa's 19:00 bath reaching 35 °C: one site block
+    (`site/not_ready.py`), the card's choice sheet reads it."""
+    from dataclasses import replace
+
+    from custom_components.spotnav.site.not_ready import car_item, deadline_item, site_block
+
+    base = villa_inputs()
+    car = base.cars[0]
+    spa = {
+        "at": at(43).isoformat(), "cause": "import_target", "reach_c": 35.0, "short_c": 3.0, "short_kwh": 6.0,
+        "later": at(44).isoformat(),
+    }
+    block = site_block(
+        [car_item(car.id, car.name, car.does_not_fit), deadline_item("spa", "Spa", spa)],
+        ["heat", f"charger:{car.id}", "spa"],
+    )
+    answer = plan_view(replace(base, not_ready=block))
+    _write_or_compare("not_ready.json", answer)
+    assert [item["kind"] for item in answer["not_ready"]["items"]] == ["car", "spa"]
+    # The peak frees both; then the spa's own choices (more short than the car's).
+    assert answer["not_ready"]["ranked"][0] == {"load_id": None, "code": "accept_peak", "frees_kwh": 9.0}
+    assert plan_view(base)["not_ready"] is None

@@ -9,7 +9,8 @@
 import { formatNumber } from "./format";
 import type { HeatAnswer, HeatNotReady, HeatSauna, HeatSpa } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { degrees, dialBlock, heatClock, instantToLocal, runBand, runsText, whenLabel } from "./heat-view";
+import { context, degrees, dialBlock, heatClock, instantToLocal, runBand, runsText, whenLabel } from "./heat-view";
+import { notReadySheet } from "./not-ready-sheet";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { LoadPanelInput } from "./pool-view";
@@ -269,8 +270,12 @@ export function deadlinePanel(input: LoadPanelInput, kind: DeadlineKind, load: D
     lines.append(line(doc, X.status, would, `${kind}-would`));
   }
   panel.append(lines);
-  // A session that will not be ready: its words and the choices that answer it.
-  if (load.not_ready !== null) {
+  // A session that will not be ready: its words and the choices that answer it. Where more than this one deadline
+  // will not be ready in time across the site, the sheet of them all in its place (the phones' combined notice opens it).
+  const sheet = input.notReady ?? null;
+  if (load.not_ready !== null && sheet !== null && sheet.items.length > 1 && sheet.items.some((item) => item.kind === kind)) {
+    panel.append(notReadySheet(doc, context(language, answer), sheet, answer.today?.money ?? null, handlers.onNotReady === undefined ? undefined : (press) => handlers.onNotReady?.(press)));
+  } else if (load.not_ready !== null) {
     const block = element(doc, "div", X.boost);
     block.dataset["block"] = `${kind}-not-ready`;
     block.append(line(doc, X.boostLine, notReadyLine(language, answer, kind, load.not_ready), `${kind}-not-ready`));

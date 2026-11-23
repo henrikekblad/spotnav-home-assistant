@@ -16,7 +16,21 @@
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | use | pool | spa | sauna` to show only that tab (no tab row).
 
-import { deadlineAction, getHeat, getPeriodHistory, heatBoost, poolAction, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import {
+  deadlineAction,
+  getHeat,
+  getPeriodHistory,
+  getPlan,
+  heatBoost,
+  laterDeparture,
+  poolAction,
+  releaseImportTarget,
+  SpotnavApiError,
+  takeWhatFits,
+  UNSUPPORTED_API_VERSION,
+} from "./api";
+import { decodePlan } from "./house-plan";
+import { NOT_READY_STYLES, openedForNotReady, type NotReady, type NotReadyPress } from "./not-ready-sheet";
 import { browserStore, type PreferenceStore } from "./chart-preference";
 import { idleEditor, sessionsEditor, writeError, writeHeat, type HeatWriteOptions, type SessionsChoice } from "./heat-editors";
 import { decodeHeat, decodeHeatBoost, decodeLoadAnswer, type HeatAnswer, type HeatConfig } from "./heat-model";
@@ -184,6 +198,10 @@ export class SpotnavHeatCard extends HTMLElement {
   private state: HeatState = { kind: "unconfigured" };
   private ui: HeatUi = { pendingTarget: null, error: null, tab: "now", locked: null, choice: { period: "day", date: null }, fill: null };
   private readonly periods = new Map<string, HeatLoadable<HeatHistory>>();
+  /** What will not be ready in time across the site (`get_plan`'s `not_ready`), read while a bath or a session is not
+   * ready; `null` otherwise. */
+  private notReady: NotReady | null = null;
+  private notReadySeq = 0;
   /** The pointer is over the card: a refresh waits for it to leave, so a hover's readout is not swept away. */
   private hovering = false;
   private pendingRender = false;
@@ -217,7 +235,7 @@ export class SpotnavHeatCard extends HTMLElement {
     this.idPrefix = `spotnav-heat-${instances}`;
     const doc = this.ownerDocument;
     const style = doc.createElement("style");
-    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + TAB_STYLES + PERIOD_VIEW_STYLES + USE_STYLES;
+    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + TAB_STYLES + PERIOD_VIEW_STYLES + USE_STYLES + NOT_READY_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -421,12 +439,20 @@ export class SpotnavHeatCard extends HTMLElement {
     }
     const first = this.state.kind !== "ready";
     this.state = next;
+    if (first && next.kind === "ready" && this.ui.locked == null && openedForNotReady()) {
+      // A tap on the phones' "not ready in time" notice: the tab of the bath or the session not ready, with the sheet.
+      const kind = next.answer.spa?.not_ready ? "spa" : next.answer.sauna?.not_ready ? "sauna" : null;
+      if (kind !== null) {
+        this.ui = { ...this.ui, tab: kind };
+      }
+    }
     if (first) {
       this.render();
     } else {
       this.renderSoon();
     }
     this.ensureData();
+    void this.loadNotReady();
     // The running periods are read again with the answer, the old ones shown until the new are in; past ones stay.
     if (!first) {
       for (const key of [...this.periods.keys()].filter((key) => key.endsWith(":now"))) {
@@ -434,6 +460,63 @@ export class SpotnavHeatCard extends HTMLElement {
         void this.loadPeriod({ period, date: null }, true);
       }
     }
+  }
+
+  // -------------------------------------------------------------------------------------------- not ready in time
+
+  /** Read what will not be ready in time across the site while the spa or the sauna says one of theirs will not be. */
+  private async loadNotReady(): Promise<void> {
+    const answer = this.answer();
+    const hass = this.hassObject;
+    const target = this.target();
+    const seq = ++this.notReadySeq;
+    if (answer === null || hass === null || target === null || (answer.spa?.not_ready ?? answer.sauna?.not_ready ?? null) === null) {
+      if (this.notReady !== null) {
+        this.notReady = null;
+        this.renderSoon();
+      }
+      return;
+    }
+    let found: NotReady | null = null;
+    try {
+      const decoded = decodePlan(await getPlan(hass, target));
+      found = decoded.ok ? decoded.value.not_ready : null;
+    } catch {
+      found = null;
+    }
+    if (seq !== this.notReadySeq) {
+      return;
+    }
+    this.notReady = found;
+    this.renderSoon();
+  }
+
+  /** A choice on the sheet: a car's to its charger, a bath's or a session's to the spa or the sauna. */
+  private async notReadyChoice(press: NotReadyPress): Promise<void> {
+    const hass = this.hassObject;
+    const target = this.target();
+    if (hass === null || target === null) {
+      return;
+    }
+    for (const load of press.loads) {
+      try {
+        if (load.kind === "car") {
+          if (press.code === "accept_peak") {
+            await releaseImportTarget(hass, load.load_id);
+          } else if (press.code === "takes_what_fits") {
+            await takeWhatFits(hass, load.load_id);
+          } else {
+            await laterDeparture(hass, load.load_id);
+          }
+        } else {
+          const action = press.code === "later" ? (load.kind === "spa" ? "later_bath" : "later_session") : press.code;
+          await deadlineAction(hass, target, load.kind, action);
+        }
+      } catch {
+        // Not written: the sheet stays until the next read says otherwise.
+      }
+    }
+    await this.refresh();
   }
 
   // -------------------------------------------------------------------------------------------- the tabs' data
@@ -873,7 +956,9 @@ export class SpotnavHeatCard extends HTMLElement {
         nowMs: Date.now(),
         idPrefix: this.idPrefix,
         ...(tabs === undefined ? {} : { tabs }),
+        notReady: this.notReady,
         handlers: {
+          onNotReady: (press) => void this.notReadyChoice(press),
           onStep: (delta) => this.step(delta),
           onHome: () => {
             if (this.answer()?.config.mode === "home") {
