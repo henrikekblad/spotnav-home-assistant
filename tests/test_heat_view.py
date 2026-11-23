@@ -435,8 +435,22 @@ def controlled_answer() -> dict[str, Any]:
         ],
         "live": True, "automation": None, "paused_until": None,
     }
+    pool = {
+        "season_open": True, "water_c": 24.6, "water_source": "sensor", "target_c": 27.0,
+        "heat_pump": {"on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting"},
+        "circulation": {"on": False, "kw": None, "live": False, "state": "watched", "reason": "waiting"},
+        "today": {"need_h": 8.25, "need_source": "water", "done_h": 3.0, "planned_h": 4.0, "heat_h": 2.0, "kwh": None},
+        "planned": [
+            {"start": (MIDNIGHT + timedelta(hours=22)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=2)).isoformat(), "what": "filter", "reason": "cheap"},
+            {"start": (MIDNIGHT + timedelta(days=1, hours=12)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=14)).isoformat(), "what": "heat", "reason": "sun"},
+        ],
+        "extra": None, "season_hint": False,
+        "would": {"action": "off", "until": (MIDNIGHT + timedelta(hours=22)).isoformat(), "reason": "waiting"},
+        "notes": [],
+    }
     return villa_answer(
         more=True,
+        pool=pool,
         water_heater=heater,
         controlled=frozenset({"climate.golvvarme_toalett_uppe", "switch.varmvattenberedare"}),
         relay=relay,

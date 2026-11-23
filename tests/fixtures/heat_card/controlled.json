@@ -1447,7 +1447,57 @@
     "source": "house_forecast",
     "value_c": 6.2
   },
-  "pool": null,
+  "pool": {
+    "circulation": {
+      "kw": null,
+      "live": false,
+      "on": false,
+      "reason": "waiting",
+      "state": "watched"
+    },
+    "extra": null,
+    "heat_pump": {
+      "heating": false,
+      "kw": 1.6,
+      "live": false,
+      "on": true,
+      "reason": "waiting",
+      "state": "watched"
+    },
+    "notes": [],
+    "planned": [
+      {
+        "end": "2026-11-17T01:00:00+00:00",
+        "reason": "cheap",
+        "start": "2026-11-16T21:00:00+00:00",
+        "what": "filter"
+      },
+      {
+        "end": "2026-11-17T13:00:00+00:00",
+        "reason": "sun",
+        "start": "2026-11-17T11:00:00+00:00",
+        "what": "heat"
+      }
+    ],
+    "season_hint": false,
+    "season_open": true,
+    "target_c": 27.0,
+    "today": {
+      "done_h": 3.0,
+      "heat_h": 2.0,
+      "kwh": null,
+      "need_h": 8.25,
+      "need_source": "water",
+      "planned_h": 4.0
+    },
+    "water_c": 24.6,
+    "water_source": "sensor",
+    "would": {
+      "action": "off",
+      "reason": "waiting",
+      "until": "2026-11-16T21:00:00+00:00"
+    }
+  },
   "pump": null,
   "relay": {
     "automation": null,
