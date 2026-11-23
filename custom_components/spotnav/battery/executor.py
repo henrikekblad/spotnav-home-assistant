@@ -2692,13 +2692,13 @@ class Executor:
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
 
     def _readback_s(self, state: ExecState, name: str) -> float:
-        """How long this write may take to read back: the brand's longer wait (`BrandControl.readback_s`) only for a
-        write that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link
-        dropped is sent again soon (both are idempotent, and the house stands on the grid without the battery
-        meanwhile)."""
-        if self.control.readback_s is None or state.phase == "restoring" or self._covering(state, name):
+        """How long this write may take to read back: the role's longer wait (`Role.readback_s`) only for a write
+        that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link dropped
+        is sent again soon (both are idempotent, and the house stands on the grid without the battery meanwhile)."""
+        wait = self.control.role(name).readback_s
+        if wait is None or state.phase == "restoring" or self._covering(state, name):
             return READBACK_DEADLINE_S
-        return self.control.readback_s
+        return wait
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval

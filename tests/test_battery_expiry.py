@@ -4,6 +4,7 @@ validation."""
 from __future__ import annotations
 
 import math
+import re
 
 import pytest
 
@@ -60,3 +61,28 @@ def test_expiry_id_tells_a_phase_expiry_from_a_balanced_one() -> None:
     assert phase.expiry_id == "device_deadman:60:phase_l1_target,phase_l2_target"
     assert lease.expiry_id == "device_lease:1800:forcible"
     assert NO_EXPIRY.expiry_id == "none:-:"
+
+
+def test_a_role_is_read_back_by_the_devices_answer_exactly_where_it_has_one() -> None:
+    from custom_components.spotnav.battery.adapters import Match  # noqa: PLC0415
+    from custom_components.spotnav.battery.commands import Answer, Role  # noqa: PLC0415
+
+    match = Match(("number",), re.compile("x"))
+    answer = Answer("t", "s", frozenset({"ack"}))
+    Role("a", "service", match, answer=answer, readback="answer")
+    with pytest.raises(ValueError):
+        Role("a", "service", match, answer=answer)
+    with pytest.raises(ValueError):
+        Role("a", "number", match, readback="answer")
+
+
+def test_read_back_kinds_per_brand_keep_the_old_control_facts() -> None:
+    from custom_components.spotnav.battery.commands import CONTROLS  # noqa: PLC0415
+
+    kinds = {control.brand: {role.name: role.readback for role in control.roles} for control in CONTROLS}
+    assert set(kinds["sigenergy"].values()) == {"register"} and set(kinds["solinteg"].values()) == {"register"}
+    assert kinds["solax"] == {"autorepeat": "echo", "active_power": "echo", "power_control": "echo", "trigger": "none"}
+    assert set(kinds["goodwe"].values()) == {"echo"} and set(kinds["tesla"].values()) == {"echo"}
+    assert kinds["ferroamp"] == {"command": "answer"}
+    local = {control.brand for control in CONTROLS if control.local_readback}
+    assert local == {"solax", "goodwe", "tesla", "ferroamp"}

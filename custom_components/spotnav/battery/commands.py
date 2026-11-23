@@ -477,6 +477,19 @@ class Role:
     #: A role whose state shows the last request, not that the device took it (Ferroamp's last command): the
     #: device's answer in the attributes, without which the state is no reading (`answered`).
     answer: Answer | None = None
+    #: How a write to it is read back (`ReadBack`): the device's `register` (the default), Home Assistant's `echo` of
+    #: the value sent (the battery's power then judges the effect), the device's `answer` (exactly where `answer` is
+    #: set), or `none` (a button).
+    readback: ReadBack = "register"
+    #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
+    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`) or a cloud, and only
+    #: for a write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped
+    #: one is sent again soon.
+    readback_s: float | None = None
+    #: How long after a hand-back a write to it is watched (s): where the read-back is only Home Assistant's own echo
+    #: a device or a cloud that refused the restore shows SpotNav's value again on a later poll, and the restore is
+    #: then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
+    settle_s: float = 0.0
     #: How near a read must be to a value to count as it (in the entity's unit), where the entity's own step is too
     #: coarse for that: a value one unit off means something else (Victron's -1, no limit, beside 0). `None`: the
     #: entity's step, else `step`.
@@ -489,6 +502,10 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.readback == "answer") != (self.answer is not None):
+            raise ValueError(f"{self.name}: read back by the device's answer exactly where the role has one")
 
 
 @dataclass(frozen=True, slots=True)
@@ -719,8 +736,6 @@ class BrandControl:
     #: Extra requirements for one action (`(action, role, forbidden states, reason)`); a forbidden state that is a
     #: number matches a read of the same number ("0" matches "0.0"), `forbidden_read`.
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
-    #: Whether the effect can only be judged by the battery's power (no read-back from the device).
-    local_readback: bool = False
     #: Per action that adds import, the roles that let the battery cover a peak again, written first (`executor`'s
     #: peak cover under a hold, and the first writes of every hand-back of that action).
     peak_first: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
@@ -759,11 +774,6 @@ class BrandControl:
     #: Writes a day per class (`WriteClass`), where they differ from `SETTING_WRITES`: only for a class the brand's
     #: own documents were read for (see the module).
     write_caps: Mapping[str, int] = field(default_factory=dict)
-    #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
-    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`), and only for a
-    #: write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped one is
-    #: sent again soon.
-    readback_s: float | None = None
     #: Per action, the state as a function of the rate and of the house's net load now (kW, the site's import less
     #: the battery's charge), where the brand sets the **grid's** power and not the battery's: used instead of
     #: `states` when the load is known (`wanted`'s `house_kw`). An action in it does not run without that load.
@@ -804,10 +814,6 @@ class BrandControl:
     #: sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is a `soc_bound` expiry, commanded in
     #: blocks of its window (`charge_block_s`).
     expiry_by_action: Mapping[str, Expiry] = field(default_factory=dict)
-    #: How long after a hand-back its writes are watched (s): where the read-back is only Home Assistant's own echo
-    #: (`local_readback`) a device or a cloud that refused the restore shows SpotNav's value again on a later poll,
-    #: and the restore is then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
-    settle_s: float = 0.0
     #: How often a restore given up is tried again while the control is blocked (s), where each write costs (a
     #: cloud's billed commands); `None`: `executor.BLOCKED_RESTORE_S`.
     restore_retry_s: float | None = None
@@ -832,6 +838,23 @@ class BrandControl:
         if self.phased and spec is not None and spec.expiry.renew_s is not None:
             return spec.expiry.renew_s
         return self.expiry.renew_s
+
+    @property
+    def local_readback(self) -> bool:
+        """Whether the effect can only be judged by the battery's power: a role read back by Home Assistant's echo,
+        by the device's answer to a request, or not at all (`Role.readback`)."""
+        return any(role.readback in ("echo", "none", "answer") for role in self.roles)
+
+    @property
+    def readback_s(self) -> float | None:
+        """The longest read-back wait of the control's roles (`Role.readback_s`); `None`: the ledger's own for all."""
+        waits = [role.readback_s for role in self.roles if role.readback_s is not None]
+        return max(waits) if waits else None
+
+    @property
+    def settle_s(self) -> float:
+        """The longest a hand-back's writes are watched (`Role.settle_s`); 0: not watched."""
+        return max((role.settle_s for role in self.roles), default=0.0)
 
     @property
     def charge_block_s(self) -> float | None:
@@ -1377,12 +1400,17 @@ HUAWEI_CONTROL: Final = BrandControl(
     note="Services and numbers need the installer password; a forcible charge ends by itself after its duration.",
 )
 
+# The select and the numbers are the integration's own local values (sent on the trigger): read back as its echo.
 _SX_CONTROL = Role(
-    "power_control", "select", _key("remotecontrol_power_control", "select"),
+    "power_control", "select", _key("remotecontrol_power_control", "select"), readback="echo",
 )
-_SX_POWER = Role("active_power", "number", _key("remotecontrol_active_power", "number"), scale=1000.0, step=100.0)
-_SX_REPEAT = Role("autorepeat", "number", _key("remotecontrol_autorepeat_duration", "number"), step=1.0)
-_SX_TRIGGER = Role("trigger", "button", _key("remotecontrol_trigger", "button"), restored=False)
+_SX_POWER = Role(
+    "active_power", "number", _key("remotecontrol_active_power", "number"), scale=1000.0, step=100.0, readback="echo"
+)
+_SX_REPEAT = Role(
+    "autorepeat", "number", _key("remotecontrol_autorepeat_duration", "number"), step=1.0, readback="echo"
+)
+_SX_TRIGGER = Role("trigger", "button", _key("remotecontrol_trigger", "button"), restored=False, readback="none")
 
 
 def _sx(option: str, sign: float = 0.0) -> Callable[[float, int], tuple[Want, ...]]:
@@ -1416,7 +1444,6 @@ SOLAX_CONTROL: Final = BrandControl(
     expiry=Expiry("device_lease", "spotnav", float(WATCHDOG_S), ("trigger",)),
     requires=(("power_control", frozenset({"Disabled"}), "remote_control_in_use"),),
     peak_first={ACTION_HOLD: ("power_control", "trigger"), ACTION_GRID_CHARGE: ("power_control", "trigger")},
-    local_readback=True,
     note="The integration holds the values and sends them on the trigger; only the battery's power shows the"
     " effect.",
 )
@@ -1426,24 +1453,30 @@ _SOL_BATTCTRL: Final = "EMS BattCtrl"  # 0x0303: the battery follows 50207
 _SOL_ACCTRL: Final = "EMS ACCtrl"  # 0x0301: the inverter's AC power follows 50203 or 50204-50206
 _SOL_EACH_PHASE: Final = "Power Setting on each Phase"  # 50202 = 2
 
-_SOL_MODE = Role("working_mode", "select", _key("working_mode", "select"), restored=False)
+# Every Solinteg role waits `READBACK_STALL_S` for its read-back: the dongle's link stalls now and then.
+_SOL_MODE = Role(
+    "working_mode", "select", _key("working_mode", "select"), restored=False, readback_s=READBACK_STALL_S
+)
 # 50207: the battery's power target (kW, negative charges). Handed back as 0, never as the value found.
 _SOL_TARGET = Role(
     "battery_target", "number", _key("battery_charge_discharge_power_target", "number"), step=0.01, restored=False,
-    write_class="setpoint",
+    write_class="setpoint", readback_s=READBACK_STALL_S,
 )
 # 50202: written only by the control per phase, and left as written (it acts only in EMS ACCtrl).
-_SOL_AC_MODE = Role("acctrl_mode", "select", _key("ems_acctrl_mode", "select"), restored=False)
+_SOL_AC_MODE = Role(
+    "acctrl_mode", "select", _key("ems_acctrl_mode", "select"), restored=False, readback_s=READBACK_STALL_S
+)
 _SOL_UNBALANCED: Final = Role(
-    "unbalanced_output", "select", _key("grid_unbalanced_output", "select"), restored=False
+    "unbalanced_output", "select", _key("grid_unbalanced_output", "select"), restored=False,
+    readback_s=READBACK_STALL_S,
 )
 _SOL_PHASE_TARGETS: Final = (
     Role("phase_l1_target", "number", _key("ems_acctrl_phase_a_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
     Role("phase_l2_target", "number", _key("ems_acctrl_phase_b_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
     Role("phase_l3_target", "number", _key("ems_acctrl_phase_c_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
 )
 
 
@@ -1517,7 +1550,6 @@ SOLINTEG_CONTROL: Final = BrandControl(
     # A target left standing would run in the seconds between the mode's write and the target's own.
     watched=((_SOL_TARGET, 0.0, "stale_target"),),
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
-    readback_s=READBACK_STALL_S,
 )
 
 _SOLINTEG_NORMAL: Final = {
@@ -1674,10 +1706,17 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
 
 # --- GoodWe (the HACS fork) ---------------------------------------------------------------------------------------
 
-_GW_MODE = Role("operation_mode", "select", _goodwe("operation_mode", "select"))
-_GW_ECO_POWER = Role("eco_power", "number", _goodwe("eco_mode_power", "number"), step=1.0)
-_GW_ECO_SOC = Role("eco_soc", "number", _goodwe("eco_mode_soc", "number"), step=1.0)
-_GW_DEPTH = Role("depth_of_discharge", "number", _goodwe("battery_discharge_depth", "number"), step=1.0)
+# The numbers and the select do not poll, so only a reload shows a refused restore: Home Assistant's echo, watched
+# after a hand-back as any echo is.
+_GW_MODE = Role("operation_mode", "select", _goodwe("operation_mode", "select"), readback="echo", settle_s=900.0)
+_GW_ECO_POWER = Role(
+    "eco_power", "number", _goodwe("eco_mode_power", "number"), step=1.0, readback="echo", settle_s=900.0
+)
+_GW_ECO_SOC = Role("eco_soc", "number", _goodwe("eco_mode_soc", "number"), step=1.0, readback="echo", settle_s=900.0)
+_GW_DEPTH = Role(
+    "depth_of_discharge", "number", _goodwe("battery_discharge_depth", "number"), step=1.0, readback="echo",
+    settle_s=900.0,
+)
 
 
 def _gw_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
@@ -1706,9 +1745,6 @@ GOODWE_CONTROL: Final = BrandControl(
     own_states={"operating mode": frozenset({"eco_charge"})},
     # A grid charge stops with the mode back to general; no peak cover under a hold (the cut-off is a stored setting).
     peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
-    local_readback=True,
-    # The numbers and the select do not poll, so only a reload shows a refused restore; watched as any echo is.
-    settle_s=900.0,
     hacs_roles=("eco_power", "eco_soc"),
     hacs_repo="mletenay/home-assistant-goodwe-inverter",
     # Unconfirmed whether the inverter charges from the grid to a cut-off at the SoC: a hold that does is handed back.
@@ -1719,11 +1755,16 @@ GOODWE_CONTROL: Final = BrandControl(
 
 # --- Tesla Powerwall (cloud, slow) --------------------------------------------------------------------------------
 
-_TS_RESERVE = Role("reserve", "number", _tesla("backup_reserve_percent", "number"), step=1.0)
+# tesla_fleet echoes a write at once and polls the cloud every 60 s: the read-back waits for the cloud, and fifteen
+# polls after a hand-back show a refused restore.
+_TS_RESERVE = Role(
+    "reserve", "number", _tesla("backup_reserve_percent", "number"), step=1.0, readback="echo", readback_s=420.0,
+    settle_s=900.0,
+)
 #: Inverted by the integration: on means grid charging is allowed. Only on a site with battery and solar.
 _TS_GRID = Role(
     "grid_charging", "switch", _tesla("components_disallow_charge_from_grid_with_solar_installed", "switch"),
-    optional=True,
+    optional=True, readback="echo", readback_s=420.0, settle_s=900.0,
 )
 #: Tesla's cloud is slow and its energy settings may be limited to a few writes a day (unconfirmed): few writes.
 TESLA_WRITES_PER_DAY: Final = 24
@@ -1750,10 +1791,8 @@ TESLA_CONTROL: Final = BrandControl(
     # The reserve first: it stops a forced charge at once.
     restore_order=("reserve", "grid_charging"),
     peak_first={ACTION_GRID_CHARGE: ("reserve",)},
-    local_readback=True,
     slow=True,
     min_change_s=900.0,
-    readback_s=420.0,
     rearm_s=900.0,
     fixed_charge=True,
     fixed_charge_kw=5.0,
@@ -1763,9 +1802,7 @@ TESLA_CONTROL: Final = BrandControl(
     hold_charges_without=("grid_charging",),
     # The reserve one block ahead of the SoC, set again each block by SpotNav: a SoC bound, never a fuse argument.
     expiry_by_action={ACTION_GRID_CHARGE: Expiry("soc_bound", "spotnav", TESLA_CHARGE_BLOCK_S, ("reserve",))},
-    # tesla_fleet echoes a write at once and polls the cloud every 60 s: fifteen polls show a refused restore. A
-    # restore given up is tried hourly, not every 15 minutes (each is a billed command).
-    settle_s=900.0,
+    # A restore given up is tried hourly, not every 15 minutes (each is a billed command).
     restore_retry_s=3600.0,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
@@ -1778,7 +1815,7 @@ _FA_CMD = Role(
     device_field="target",
     normalize=ferroamp_last_cmd, write_class="setpoint",
     # The state is the request as published; only the hub's ack for that transaction shows it was taken.
-    answer=Answer("transId", "status", frozenset({"ack"})),
+    answer=Answer("transId", "status", frozenset({"ack"})), readback="answer",
 )
 
 
@@ -1815,7 +1852,6 @@ FERROAMP_CONTROL: Final = BrandControl(
     peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
     # The strategy set in EnergyCloud (peak shaving, FerroAI, a grid service) is not shown in Home Assistant.
     strategy_unread=True,
-    local_readback=True,
     # The cap counts the whole charge on one phase (the default): the API takes the system's total and nobody
     # documents how the hub spreads it, nor whether ACE acts on it. Raise it only once a hub has shown the split
     # (the adapter reads the inverter's power per phase).
