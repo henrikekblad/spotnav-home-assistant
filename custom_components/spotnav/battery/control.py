@@ -2031,7 +2031,7 @@ class BatteryControl:
                 return "foreign_pv"
         return None
 
-    def _import_limit_refusal(self, *, dc_charger: bool = True) -> str | None:
+    def _import_limit_refusal(self, *, dc_charger: bool = True, action: str = ACTION_GRID_CHARGE) -> str | None:
         """Why the plant's own import limit cannot be the fuse's guard on this site whatever it reads, as a stable
         code; `None` when it can. The rule (`gate.import_limit_max_kw`) rests on the plant seeing every source and
         spreading its charge evenly over three phases, so it is refused where the recipe does not trust the limit here
@@ -2044,7 +2044,7 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return "not_supported"
-        if not self._import_limit_trusted(control):
+        if not self._import_limit_trusted(control, action):
             return "not_trusted"
         if self._plant_phases(control) != 3:
             return "plant_not_three_phase"
@@ -2059,12 +2059,13 @@ class BatteryControl:
                     return "dc_charger"
         return None
 
-    def _import_limit_trusted(self, control: BrandControl) -> bool:
+    def _import_limit_trusted(self, control: BrandControl, action: str = ACTION_GRID_CHARGE) -> bool:
         """Whether the recipe trusts the plant's own import limit here (`commands.ImportLimitTrust`): not marked
-        untrusted, shown to act in the recipe's grid charge, and on the plant's firmware as read (the last reading,
+        untrusted, shown to act in the state the caller relies on (`action`: the recipe's grid charge for the battery's
+        two rules, the plant's own mode for a charger's lift), and on the plant's firmware as read (the last reading,
         `firmware_key`; one never read is not trusted where the recipe names its firmwares)."""
         trust = control.import_limit_trust
-        if trust is None or trust.untrusted or ACTION_GRID_CHARGE not in trust.acts_in:
+        if trust is None or trust.untrusted or action not in trust.acts_in:
             return False
         if trust.firmware is None:
             return True
@@ -2231,7 +2232,11 @@ class BatteryControl:
         try:
             now = dt_util.now()
             options = self.options()
-            if not options.import_limit_acts or self._import_limit_refusal(dc_charger=False) is not None:
+            # The charger's lift runs while the plant is in its own mode, not in the recipe's grid charge: the limit
+            # must have been shown to act there (`commands.ImportLimitTrust.acts_in`).
+            if not options.import_limit_acts or self._import_limit_refusal(
+                dc_charger=False, action=ACTION_SELF_CONSUME
+            ) is not None:
                 return False
             value = self._import_limit_kw(control_for(self.facts.brand))
             peaks = getattr(self.site, "phase_peaks", None)

@@ -1154,6 +1154,7 @@ async def test_the_import_limit_rule_is_refused_where_the_plant_does_not_see_eve
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str, why: str
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _charger_lift_trusted(monkeypatch)
     _import_limit(hass, "4.0")
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     _options(hass, site, import_limit_acts=True)
@@ -1210,6 +1211,7 @@ async def test_the_import_limit_guards_a_charger_only_while_it_holds_now_countin
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _charger_lift_trusted(monkeypatch)
     control = await _started(hass, site, controller, plan_source=lambda _now: None)
     await control._async_read_sources(dt_util.now())
     charger = (controller.config.get("charger_entry_ids") or [])[0]
@@ -1261,6 +1263,18 @@ def _per_phase_plant(hass: HomeAssistant, **states: str | None) -> None:
     _sigen_entity(hass, "sensor", "plant_grid_sensor_status", "sigen_plant_grid_sensor_status",
                   readings["grid_sensor"])
     _sigen_entity(hass, "sensor", "inverter_output_type", "sigen_inverter_output_type", readings["output_type"])
+
+
+def _charger_lift_trusted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sigenergy's import limit as if also shown to act in the plant's own mode, where a charger's lift runs (the
+    shipped recipe records it in the grid charge only: `commands.ImportLimitTrust`)."""
+    trust = replace(
+        commands_module.SIGENERGY_IMPORT_LIMIT_TRUST,
+        acts_in=commands_module.SIGENERGY_IMPORT_LIMIT_TRUST.acts_in | {"self_consume"},
+    )
+    monkeypatch.setattr(commands_module, "CONTROLS", tuple(
+        replace(c, import_limit_trust=trust) if c.brand == "sigenergy" else c for c in commands_module.CONTROLS
+    ))
 
 
 def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
@@ -1416,6 +1430,21 @@ async def test_a_plants_own_import_comes_off_the_ha_down_cap(
         assert after == pytest.approx(max(before - 2.3, 0.0)) if phases == 3 else after < before
     else:
         assert after == 0.0
+
+
+async def test_the_shipped_trust_does_not_license_a_chargers_lift_in_the_plants_own_mode(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _import_limit(hass, "4.0")
+    control = await _started(hass, site, controller)
+    await control._async_read_sources(dt_util.now())
+    _options(hass, site, import_limit_acts=True)
+    assert control._import_limit_refusal() is None
+    assert control._import_limit_refusal(dc_charger=False, action="self_consume") == "not_trusted"
+    assert not control.import_limit_guards()
+    _charger_lift_trusted(monkeypatch)
+    assert control._import_limit_refusal(dc_charger=False, action="self_consume") is None
 
 
 def test_every_recipe_with_an_import_limit_says_where_it_was_shown_to_act() -> None:
@@ -1622,6 +1651,7 @@ async def test_a_standing_boost_or_raise_counts_where_the_import_limit_lifts_a_c
     """What SpotNav itself leaves standing in the house if Home Assistant stops (a boost it started, a raise held)
     counts against the plant's import limit as the chargers' last currents do, in the guard and in its status."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _charger_lift_trusted(monkeypatch)
     control = await _started(hass, site, controller, plan_source=lambda _now: None)
     await control._async_read_sources(dt_util.now())
     charger = (controller.config.get("charger_entry_ids") or [])[0]
