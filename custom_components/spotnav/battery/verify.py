@@ -73,6 +73,22 @@ what it shows of the sign and the mapping is the capability's too (`gate.per_pha
 allows a grid charge only as a charge per phase, once the mode `per_phase` passed as well (`gate.allowed_actions`,
 `gate.charge_by_phases`). No phase with room either: `not_judgeable:no_phase_room`.
 
+**The expiry** (the mode `expiry`, only where a run names it: `control.BatteryControl._expiry_due`). Does a
+command's own expiry (`commands.Expiry`) end it when nothing renews it? Tried only for an expiry whose pass would lift
+the HA-down cap (`gate.expiry_testable`: a dead-man or lease SpotNav renews, within `gate.SILENCE_FALLBACK_MAX_S`),
+not yet measured on this firmware, after a hold that passed in the same run. Its command is that hold for the
+recipe's own expiry, or for the phase spec's (Victron) the per-phase probe's **discharge** on L1 (`PROBE_KW`, the
+others at 0), once `per_phase` passed: never a charge, so a fallback can never add import. Once the command is
+taken, settled (`Timing.phase_settle_s`) and seen obeyed, the executor stops renewing it
+(`ExecInputs.expiry_probe`: no renewal, no change, a renewed role that falls back read as expired, not as someone
+else's change) and the battery is sampled every look until it leaves the command or `expiry_deadline_s` (the window
+plus `max(15 s, half the window)`, at most `EXPIRY_TEST_MAX_S`): `obeyed` (left in time: the gate may lift the cap,
+`gate.expiry_measured`), `partial:early` (sooner than the renewal: the recipe is wrong), `ignored` (not by the
+deadline), `not_judgeable:*` (tried again at a later run) or `aborted:*` (near the fuse or a peak cover due:
+`fuse_headroom`; the battery taking from the grid in the silence: `charge_in_silence`; any hand-back of the
+executor's own). The battery is then handed back at once. Its row never decides the report (`gate.allowed_actions`
+and `gate.report_status` ignore it); only a pass changes anything. The hardware test never runs it.
+
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
 + import), judged as a hold judges the battery's: the export must stop. It can be judged only while the site exports
@@ -103,9 +119,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal
 
-from .commands import ACTION_CURTAIL_EXPORT, Phases
-from .executor import RATE_UP_DWELL_S, Executor, StepResult
-from .gate import MODE_PER_PHASE, PHASE_NAMES, mode_verdict
+from .commands import ACTION_CURTAIL_EXPORT, WATCHDOG_RENEW_S, Expiry, Phases
+from .executor import HEADROOM_MARGIN_A, RATE_UP_DWELL_S, Executor, StepResult
+from .gate import MODE_EXPIRY, MODE_PER_PHASE, PHASE_NAMES, mode_verdict
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     DISCHARGE_MARGIN_PCT,
@@ -158,15 +174,33 @@ PROBE_HOUSE_TOLERANCE_KW: Final = 0.4
 PHASE_CHARGE_MIN_KW: Final = 0.5
 #: What the mode `charge` tried per phase records in its row (`ModeResult.via`).
 VIA_PER_PHASE: Final = "per_phase"
+#: The mode `expiry`: the longest its silence may run (s), whatever the window and the margin.
+EXPIRY_TEST_MAX_S: Final = 120.0
+#: The least margin past the window a fallback may take (s); half the window where that is more.
+EXPIRY_MARGIN_MIN_S: Final = 15.0
 
-#: The modes, in order: (name, the plan action commanded). `per_phase` runs only when a run names it.
+
+def expiry_margin_s(window_s: float) -> float:
+    """How long past its window a fallback still counts as the expiry acting (s): `max(15 s, half the window)`."""
+    return max(EXPIRY_MARGIN_MIN_S, 0.5 * window_s)
+
+
+def expiry_deadline_s(window_s: float) -> float:
+    """How long the mode `expiry` stays silent at most (s): the window and its margin, at most `EXPIRY_TEST_MAX_S`."""
+    return min(window_s + expiry_margin_s(window_s), EXPIRY_TEST_MAX_S)
+
+#: The modes, in order: (name, the plan action commanded). `per_phase` and `expiry` run only when a run names them
+#: (`expiry` commands a hold, or on a phased control the probe's discharge on one phase).
 MODES: Final[tuple[tuple[str, str], ...]] = (
     ("hold", ACTION_HOLD),
     ("charge", ACTION_GRID_CHARGE),
     ("discharge_house", ACTION_DISCHARGE_HOUSE),
     (MODE_PER_PHASE, ACTION_GRID_CHARGE),
+    (MODE_EXPIRY, ACTION_HOLD),
     ("normal", ACTION_SELF_CONSUME),
 )
+#: Modes a run without a list of its own (the hardware test) leaves out.
+_NAMED_ONLY: Final = frozenset({MODE_PER_PHASE, MODE_EXPIRY})
 
 #: The export limit's modes: the export stopped, then handed back.
 EXPORT_MODES: Final[tuple[tuple[str, str], ...]] = (
@@ -222,6 +256,8 @@ class Sample:
     #: The site's export limit is held at 0 now (`export_curtail.py`), and the battery's own floor (%).
     curtailing: bool = False
     soc_min_pct: float = 0.0
+    #: The least headroom on any phase now (A), `None` when unknown (the mode `expiry` aborts near the fuse).
+    headroom_a: float | None = None
 
 
 @dataclass(slots=True)
@@ -242,11 +278,20 @@ class ModeResult:
     phases: list[dict[str, Any]] = field(default_factory=list)
     #: `charge` tried as a charge on one phase (`VIA_PER_PHASE`), `None` for the brand's own balanced charge.
     via: str | None = None
+    #: The mode `expiry`: the expiry tried (`Expiry.expiry_id`), its window (s), `hold` or `phase` (`scope`), when the
+    #: plant left the command after the last write (s; `None`: it did not) and the renewed roles read as expired.
+    expiry_id: str | None = None
+    window_s: float | None = None
+    scope: str | None = None
+    fallback_s: float | None = None
+    expired: list[str] = field(default_factory=list)
 
     @property
     def phased(self) -> bool:
         """Whether this mode commands targets per phase (`Verification.probe`)."""
-        return self.mode == MODE_PER_PHASE or self.via == VIA_PER_PHASE
+        return self.mode == MODE_PER_PHASE or self.via == VIA_PER_PHASE or (
+            self.mode == MODE_EXPIRY and self.scope == "phase"
+        )
 
     def as_dict(self) -> dict[str, Any]:
         extra: dict[str, Any] = {}
@@ -254,6 +299,9 @@ class ModeResult:
             extra = {"variant": self.variant, "variants": [dict(row) for row in self.variants]}
         if self.via is not None:
             extra["via"] = self.via
+        if self.mode == MODE_EXPIRY:
+            extra |= {"expiry_id": self.expiry_id, "window_s": self.window_s, "scope": self.scope,
+                      "fallback_s": self.fallback_s, "expired": list(self.expired)}
         if self.phased:
             extra["phases"] = [dict(row) for row in self.phases]
         return extra | {
@@ -275,8 +323,16 @@ class Verification:
         self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW,
         modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
         timing: Timing | None = None, stop_on_fail: bool = False, charge_soc_max_pct: float = CHARGE_TAPER_SOC_PCT,
+        expiry: Expiry | None = None, expiry_phased: bool = False, phase_mapped: bool = False,
     ) -> None:
         self.executor = executor
+        #: The mode `expiry`: the expiry it tries, whether it is the phase spec's (tried on the per-phase probe's
+        #: discharge on one phase) or the hold's own, and whether `per_phase` passed on this firmware before the run.
+        self.expiry = expiry
+        self.expiry_phased = expiry_phased
+        self.phase_mapped = phase_mapped
+        #: When the mode `expiry`'s silence began (`ExecInputs.expiry_probe` from then on), `None` before and after.
+        self.expiry_since: datetime | None = None
         self.timing = timing or Timing()
         #: Up to which state of charge the mode `charge` is tried (`TEST_CHARGE_SOC_MAX_PCT` for the hardware test; see
         #: the module). From `CHARGE_TAPER_SOC_PCT` on, a step taken short is `not_judgeable:battery_full`.
@@ -299,7 +355,7 @@ class Verification:
         table = EXPORT_MODES if executor.control.kind == "export" else MODES
         self.results: list[ModeResult] = [
             ModeResult(name, action) for name, action in table
-            if (modes is None and name != MODE_PER_PHASE) or (modes is not None and name in modes)
+            if (modes is None and name not in _NAMED_ONLY) or (modes is not None and name in modes)
             or action == ACTION_SELF_CONSUME
         ]
         #: The phased modes: the steps (phase index, charge kW, negative a discharge), the step now (-1: every
@@ -336,6 +392,13 @@ class Verification:
         result = self.current
         if result is None or self.stage == "hand_back":
             return ACTION_SELF_CONSUME, 0.0
+        if result.commanded_at is None and result.mode == MODE_EXPIRY:
+            refusal = self._expiry_refusal(sample)
+            if refusal is not None:
+                if refusal != "wait":
+                    result.outcome = f"not_judgeable:{refusal}"
+                    self._next(now)
+                return ACTION_SELF_CONSUME, 0.0
         if result.commanded_at is None:
             if result.action == ACTION_HOLD and result.variant is not None and not self.executor.use_variant(result.variant):
                 # Only while the executor holds nothing; the next look tries again.
@@ -371,6 +434,52 @@ class Verification:
             if result.action == ACTION_GRID_CHARGE:
                 result.rate_kw = min(self.charge_kw, rated_charge_kw) if rated_charge_kw else self.charge_kw
         return result.action, result.rate_kw
+
+    def _expiry_refusal(self, sample: Sample) -> str | None:
+        """Before the mode `expiry` commands anything (see the module): why it cannot be tried now (a `not_judgeable`
+        reason, or `wait` while the executor still holds something), `None` once it is set up. Its hold is the one
+        that passed in this run, with that run's variant; on a phased control the probe's discharge on L1 once
+        `per_phase` passed (before, or in this run)."""
+        result = self.current
+        assert result is not None
+        expiry = self.expiry
+        if expiry is None:
+            return "not_supported"
+        hold = next((row for row in self.results if row.mode == "hold"), None)
+        if hold is None or hold.outcome != "obeyed":
+            return "hold_not_passed"
+        result.expiry_id, result.window_s = expiry.expiry_id, expiry.window_s
+        result.scope = "phase" if self.expiry_phased else "hold"
+        if not self.expiry_phased:
+            if hold.variant is not None and not self.executor.use_variant(hold.variant):
+                return "wait"
+            # A hold shows its expiry only against a discharge it stops.
+            if sample.power_kw is None or sample.power_kw > -FLOOR_KW:
+                return "battery_not_discharging"
+            return None
+        per_phase = next((row for row in self.results if row.mode == MODE_PER_PHASE), None)
+        if not (self.phase_mapped or (per_phase is not None and per_phase.outcome == "obeyed")):
+            return "per_phase_not_verified"
+        if not self.executor.use_phases(True):
+            return "wait" if self.executor.control.phase_control is not None else "not_supported"
+        if _house_kw(sample) is None:
+            return "readings_stale"
+        unfit = _probe_unfit(sample, before=True)
+        if unfit is not None:
+            return unfit
+        # A discharge: a fallback can never add import.
+        result.action = ACTION_GRID_CHARGE
+        self.steps = [(0, -PROBE_KW)]
+        self.probe_index, self.probe_house = 0, _house_kw(sample)
+        return None
+
+    def expiry_probe(self) -> bool:
+        """Whether the executor is to stop renewing the command now (`ExecInputs.expiry_probe`): the mode `expiry`'s
+        silence, from the battery seen obeying to an outcome."""
+        result = self.current
+        return (
+            result is not None and result.mode == MODE_EXPIRY and self.stage == "read" and self.expiry_since is not None
+        )
 
     def charge_per_phase(
         self, now: datetime, sample: Sample, step: tuple[int, float] | None, *, mapped: bool = False
@@ -479,6 +588,13 @@ class Verification:
         if result.action != ACTION_SELF_CONSUME and self.stage != "hand_back":
             hand_back = next((event for event in step.events if event["kind"] == "hand_back"), None)
             not_started = next((event for event in step.events if event["kind"] == "not_started"), None)
+            if hand_back is not None and result.mode == MODE_EXPIRY:
+                # The executor's own hand-back ends the test: a charge seen in the silence is said as such.
+                reason = str(hand_back["reason"])
+                charging = reason.endswith(":phase_over") or reason.endswith(":charging")
+                self.expiry_since = None
+                self._abort(now, "aborted:charge_in_silence" if charging else f"aborted:{reason}")
+                return
             if hand_back is not None and result.phased and str(hand_back["reason"]).endswith(":phase_over"):
                 # The executor's runaway on a target of this mode's: its answer, and the block is its own finding.
                 self._runaway(now, result, sample)
@@ -530,7 +646,9 @@ class Verification:
             else:
                 return
         if self.stage == "read":
-            if result.phased:
+            if result.mode == MODE_EXPIRY:
+                self._read_expiry(now, result, sample, step)
+            elif result.phased:
                 self._read_phase(now, result, sample, state.phase_kw)
             else:
                 self._read(now, result, sample, capability)
@@ -556,6 +674,9 @@ class Verification:
     def _settle_s(self, result: ModeResult) -> float:
         """How long the step just taken settles before its readings (s): the step with every target at 0 at least
         `ZERO_SETTLE_S`, so a battery that was charging just before cannot show in the house per phase."""
+        if result.mode == MODE_EXPIRY:
+            # Its command already passed in this run: it settles as a target does.
+            return self.timing.phase_settle_s
         if not result.phased:
             return self.timing.settle_s
         if self.probe_index < 0:
@@ -705,6 +826,87 @@ class Verification:
             self._enter(now, "command")
             return
         result.outcome = "partial" if outcome in ("wrong_phase", "wrong_sign") else outcome
+        self._enter(now, "hand_back")
+
+    def _read_expiry(self, now: datetime, result: ModeResult, sample: Sample, step: StepResult) -> None:
+        """One look of the mode `expiry` (see the module): first the battery seen obeying, then the silence, sampled
+        every look until the plant leaves the command or the deadline (`expiry_deadline_s`)."""
+        expiry = self.expiry
+        assert expiry is not None and expiry.window_s is not None
+        phase = self.steps[0][0] if result.scope == "phase" else None
+        result.expired += [str(event["reason"]) for event in step.events if event["kind"] == "expired"]
+        stale = sample.power_kw is None or sample.age_s is None or sample.age_s > READING_MAX_AGE_S
+        plant = sample.plant_phase_kw
+        if stale or (phase is not None and plant is None) or (phase is None and sample.grid_kw is None):
+            self._expiry_outcome(now, result, "not_judgeable:readings_stale")
+            return
+        assert sample.power_kw is not None
+        if self.expiry_since is None:
+            # The command as written, obeyed, before the silence.
+            if phase is not None:
+                assert plant is not None
+                unfit = _probe_unfit(sample, before=False)
+                others = max(abs(plant[other]) for other in range(3) if other != phase)
+                if unfit is not None:
+                    self._expiry_outcome(now, result, f"not_judgeable:{unfit}")
+                elif abs(plant[phase] - PROBE_KW) > PROBE_POWER_TOLERANCE_KW or others > PROBE_POWER_TOLERANCE_KW:
+                    self._expiry_outcome(now, result, "not_judgeable:not_obeying")
+                else:
+                    self.expiry_since = now
+                return
+            assert sample.grid_kw is not None
+            if sample.power_kw < -FLOOR_KW:
+                self._expiry_outcome(now, result, "not_judgeable:not_obeying")
+            elif sample.grid_kw <= FLOOR_KW:
+                # Nothing for the battery to cover: a fallback could not show.
+                self._expiry_outcome(now, result, "not_judgeable:battery_not_discharging")
+            else:
+                self.expiry_since = now
+            return
+        elapsed = (now - self.expiry_since).total_seconds()
+        result.readings.append({
+            "at": now.isoformat(), "since_s": round(elapsed, 1), "power_kw": round(sample.power_kw, 3),
+            "grid_kw": None if sample.grid_kw is None else round(sample.grid_kw, 3),
+            "plant_kw": None if plant is None else [round(value, 3) for value in plant],
+        })
+        if any(event["kind"] == "peak_cover" for event in step.events) or (
+            sample.headroom_a is not None and sample.headroom_a < HEADROOM_MARGIN_A
+        ):
+            # Near the fuse: a peak cover would write (and renew the command); the test gives way.
+            self._expiry_outcome(now, result, "aborted:fuse_headroom")
+            return
+        charging = (
+            sample.grid_kw is not None and min(sample.power_kw, sample.grid_kw) > FLOOR_KW
+        ) or (phase is not None and plant is not None and plant[phase] < -PROBE_POWER_TOLERANCE_KW)
+        if charging:
+            # The battery took from the grid in the silence: never a fallback, handed back at once.
+            self._expiry_outcome(now, result, "aborted:charge_in_silence")
+            return
+        if phase is not None:
+            assert plant is not None
+            fell_back = plant[phase] < PROBE_KW - PROBE_POWER_TOLERANCE_KW
+        else:
+            fell_back = sample.power_kw < -FLOOR_KW
+        if fell_back:
+            result.fallback_s = round(elapsed, 1)
+            renew_s = expiry.renew_s or WATCHDOG_RENEW_S
+            # Sooner than the renewal: the renewals would not keep the command alive (the recipe is wrong).
+            self._expiry_outcome(now, result, "partial:early" if elapsed < renew_s else "obeyed")
+            return
+        if phase is None and sample.grid_kw is not None and sample.grid_kw <= FLOOR_KW:
+            # The house stopped drawing: a fallback could no longer show.
+            self._expiry_outcome(now, result, "not_judgeable:house_changed")
+            return
+        if sample.grid_kw is not None and sample.grid_kw < -FLOOR_KW:
+            self._expiry_outcome(now, result, "not_judgeable:sun_surplus")
+            return
+        if elapsed >= expiry_deadline_s(expiry.window_s):
+            self._expiry_outcome(now, result, "ignored")
+
+    def _expiry_outcome(self, now: datetime, result: ModeResult, outcome: str) -> None:
+        """The mode `expiry` decided (or left for a later run): the silence ends and the battery is handed back."""
+        result.outcome = outcome
+        self.expiry_since = None
         self._enter(now, "hand_back")
 
     def _runaway(self, now: datetime, result: ModeResult, sample: Sample) -> None:

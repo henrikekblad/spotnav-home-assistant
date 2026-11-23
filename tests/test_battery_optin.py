@@ -309,6 +309,14 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
         expiry=replace(expiry, evidence="measured", measured_on=frozenset({"other | victron 0"})),
     ))
     assert not control._expiry_lifts(elsewhere, phased=True)
+    # The routine's mode `expiry` may try Victron's phase dead-man here (stated, within the minute) once control passed.
+    assert control._expiry_to_test() == (expiry, True)
+    passed = {"key": control.firmware_key(), "attempts": 1,
+              "modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+                        "per_phase": {"outcome": "obeyed"}}}
+    assert control._expiry_due(passed) and not control._expiry_due(None)
+    measured_row = {**passed, "modes": {**passed["modes"], "expiry": {"outcome": "obeyed", "expiry_id": expiry.expiry_id}}}
+    assert not control._expiry_due(measured_row)
 
     # A sensor that reads nothing: no charge per phase.
     hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")

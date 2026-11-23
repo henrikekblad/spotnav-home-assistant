@@ -804,3 +804,70 @@ def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_n
     now, _ = _run(executor, plant, T0, 4, "export_discharge", 6.0)
     assert float(plant.states["grid_setpoint"]) < -200 and "grid_setpoint" in executor.state.snapshot
     assert executor.told_problems(plant.reads(executor, now)) == ()
+
+
+# --- the expiry measured through the per-phase probe -------------------------------------------------------------------
+
+
+def _verify_expiry(plant: Plant, looks: int = 900) -> tuple[Verification, Executor, list[dict[str, Any]]]:
+    executor = Executor(VICTRON_CONTROL)
+    now = T0
+    verification = Verification(
+        executor, now, firmware="v3.60", modes=("hold", "per_phase", "expiry"), expiry=VICTRON_PHASES.expiry,
+        expiry_phased=True,
+    )
+    capability = Capability(rated_charge_kw=plant.rating_kw, rated_discharge_kw=plant.rating_kw)
+    seen_looks: list[dict[str, Any]] = []
+    for _ in range(looks):
+        seen = plant.inputs(executor, now, None)
+        deficit = max((seen.grid_import_kw or 0.0) - (seen.facts.power_kw or 0.0), 0.0)
+        sample = Sample(
+            seen.facts.power_kw, 5.0, 50.0, deficit, seen.grid_import_kw, seen.grid_phase_kw, seen.plant_phase_kw,
+            headroom_a=seen.headroom_a,
+        )
+        action, rate = verification.command(now, sample, plant.rating_kw)
+        probe = verification.expiry_probe()
+        result = executor.step(plant.inputs(
+            executor, now, action, rate, phase_probe_kw=verification.probe(), house_deficit_kw=deficit,
+            expiry_probe=probe,
+        ))
+        for op in result.ops:
+            plant.apply(now, op)
+        seen_looks.append({"probe": probe, "ops": [op.role for op in result.ops]})
+        verification.after(now, result, sample, capability)
+        assert max(plant.amps(now)) <= FUSE_A + 1e-6
+        now += TICK
+        if verification.done and executor.state.phase in ("idle", "blocked") and not result.ops:
+            break
+    return verification, executor, seen_looks
+
+
+def test_victrons_dead_man_is_measured_on_the_probes_discharge_on_one_phase() -> None:
+    verification, executor, looks = _verify_expiry(Plant())
+    assert verification.done
+    modes = verification.report()["modes"]
+    assert {mode: row["outcome"] for mode, row in modes.items()} == {
+        "hold": "obeyed", "per_phase": "obeyed", "expiry": "obeyed", "normal": "restored"
+    }
+    row = modes["expiry"]
+    assert row["scope"] == "phase" and row["expiry_id"] == VICTRON_PHASES.expiry.expiry_id
+    # The last renewal was at most `VICTRON_RENEW_S` and three looks before the silence began.
+    assert VICTRON_SILENCE_S - VICTRON_RENEW_S - 30 <= row["fallback_s"] <= VICTRON_SILENCE_S + 10
+    assert all(look["ops"] == [] for look in looks if look["probe"])
+    assert executor.state.blocked is None
+    # Recorded in the report for this firmware, it lifts a charge per phase only.
+    key = "v3.60 | victron_gx 1"
+    report = {"key": key, "modes": modes}
+    assert gate.expiry_measured(VICTRON_PHASES.expiry, key, report)
+    assert not gate.expiry_measured(VICTRON_CONTROL.expiry, key, report)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.70 | victron_gx 1", report)
+
+
+def test_a_multi_that_never_falls_back_leaves_the_dead_man_stated() -> None:
+    verification, _executor, _looks = _verify_expiry(Plant(fallback=False))
+    modes = verification.report()["modes"]
+    assert modes["expiry"]["outcome"] == "ignored" and modes["per_phase"]["outcome"] == "obeyed"
+    report = {"key": "v3.60 | victron_gx 1", "modes": modes}
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.60 | victron_gx 1", report)
+    # A failed expiry never fails the report.
+    assert gate.report_status({**report, "modes": {**modes, "normal": {"outcome": "restored"}}}) == "passed"

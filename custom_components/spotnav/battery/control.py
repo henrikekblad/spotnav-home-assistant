@@ -1331,8 +1331,14 @@ class BatteryControl:
         modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous)
         if self._per_phase_due(previous):
             modes = (*modes, gate.MODE_PER_PHASE)
+        expiry = self._expiry_to_test() if self._expiry_due(previous) else None
+        if expiry is not None:
+            # Tried only after a hold that passed in this same run.
+            modes = (*modes, *(() if "hold" in modes else ("hold",)), gate.MODE_EXPIRY)
         self.verification = Verification(
             executor, now, firmware=self.facts.firmware, modes=modes, tried=gate.variants_tried(previous),
+            expiry=None if expiry is None else expiry[0], expiry_phased=expiry is not None and expiry[1],
+            phase_mapped=gate.per_phase(previous) == "verified",
         )
         # The attempt counts from its start: a restart in the middle neither forgets it nor runs again at once.
         self._keep_report(key, gate.merge_report(
@@ -1384,6 +1390,7 @@ class BatteryControl:
             inputs.grid_import_kw if inputs.measurement_ok else None,
             self._grid_phase_kw() if inputs.measurement_ok else None, inputs.plant_phase_kw,
             curtailing=self._curtailing(), soc_min_pct=inputs.facts.reserve_soc_pct or 0.0,
+            headroom_a=inputs.headroom_a,
         )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         probe = verification.probe()
@@ -1417,6 +1424,8 @@ class BatteryControl:
             inputs, action=action, rate_kw=rate, slot_end=None,
             phase_caps_kw=self._phase_caps_kw(now, held_off=self._hw_run) if charging else None, phase_probe_kw=probe,
             reads=self._reads(executor.control),
+            # The mode `expiry`'s silence: nothing renews the command (`verify.Verification.expiry_probe`).
+            expiry_probe=verification.expiry_probe(),
         )
         result = await self._async_step(executor, inputs, allowed=True)
         capability = Capability(
@@ -1434,7 +1443,9 @@ class BatteryControl:
         """Start a run at a suitable moment when the report for this firmware still needs one."""
         report = self.report()
         state = self.state(options)
-        if state not in ("waiting", "on") or not (gate.needs_run(report) or self._per_phase_due(report)):
+        if state not in ("waiting", "on") or not (
+            gate.needs_run(report) or self._per_phase_due(report) or self._expiry_due(report)
+        ):
             self.waiting_for = None
             return
         if not self.firmware_known():
@@ -1823,9 +1834,47 @@ class BatteryControl:
         )
 
     def _expiry_measured(self, expiry: Expiry) -> bool:
-        """Whether the expiry was seen to act on the firmware read now (`gate.expiry_measured`)."""
+        """Whether the expiry was seen to act on the firmware read now (`gate.expiry_measured`): recorded in the
+        recipe, or the routine's mode `expiry` obeyed for it in this firmware's report (never the hardware test's)."""
         key = self.firmware_key() if self.firmware_known() else None
-        return gate.expiry_measured(expiry, key)
+        return gate.expiry_measured(expiry, key, self.report())
+
+    def _expiry_to_test(self) -> tuple[Expiry, bool] | None:
+        """The expiry the verification's mode `expiry` may try on this plant, and whether it is the phase spec's
+        (`gate.expiry_testable`: one whose pass would lift a cap), not yet measured on this firmware: the hold's own
+        where its renewed roles are all in the hold's writes, else the phase spec's where a charge per phase can run
+        here. `None` for every other plant (Sigenergy: no expiry)."""
+        control = control_for(self.facts.brand)
+        if control is None:
+            return None
+        testable = {"slow": control.slow, "fixed_charge": control.fixed_charge}
+        hold = control.states.get(ACTION_HOLD)
+        expiry = control.expiry
+        if hold is not None and gate.expiry_testable(expiry, **testable) and not self._expiry_measured(expiry):
+            written = {want.role for want in hold(0.0, int(expiry.window_s or 0))}
+            if set(expiry.renewed_roles) <= written:
+                return expiry, False
+        spec = control.phase_control
+        if spec is not None and gate.expiry_testable(spec.expiry, **testable) and not self._expiry_measured(
+            spec.expiry
+        ) and self._phase_missing() is None:
+            return spec.expiry, True
+        return None
+
+    def _expiry_due(self, report: dict[str, Any] | None) -> bool:
+        """Whether a run should try the mode `expiry`: there is one to try (`_expiry_to_test`), still undecided for
+        it on this firmware, control has passed here, the routine has runs left, and for the phase spec's the mode
+        `per_phase` passed or is still to be tried."""
+        found = self._expiry_to_test()
+        if found is None or gate.report_status(report) != "passed":
+            return False
+        attempts = (report or {}).get("attempts")
+        if isinstance(attempts, int) and attempts >= gate.MAX_ATTEMPTS:
+            return False
+        expiry, phased = found
+        if not gate.expiry_due(report, expiry):
+            return False
+        return not phased or gate.per_phase(report) == "verified" or self._per_phase_due(report)
 
     def _expiry_block(self) -> dict[str, Any] | None:
         """The grid charge's own expiry, balanced and per phase, for the diagnostics only (the card does not know

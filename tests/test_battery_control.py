@@ -308,6 +308,8 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     assert expiry["balanced"]["kind"] == "none" and expiry["per_phase"]["kind"] == "none"
     assert not expiry["balanced"]["lifts"] and expiry["balanced"]["ha_down_energy_kwh"] is None
     assert "expiry" not in control.status()
+    # Nothing for the routine's mode `expiry` to try on Sigenergy: a run never lists it.
+    assert control._expiry_to_test() is None and not control._expiry_due(control.report())
 
     # HA stops without handing back; the next start restores before anything else.
     again = BatteryControl(hass, controller, plan_source=_hold)

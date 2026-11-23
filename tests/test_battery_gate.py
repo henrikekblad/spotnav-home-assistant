@@ -700,3 +700,36 @@ def test_the_energy_a_grid_charge_may_take_after_home_assistant_dies() -> None:
     assert expiry_note(looped, measured=True) == "continues while HA runs"
     assert expiry_note(block, measured=False) == "charges at most one block"
     assert expiry_note(lease, measured=False) is None and expiry_note(NO_EXPIRY, measured=False) is None
+
+
+def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_report() -> None:
+    from custom_components.spotnav.battery.gate import (  # noqa: PLC0415
+        MODE_EXPIRY,
+        expiry_due,
+        expiry_measured,
+        merge_report,
+        report_status,
+    )
+
+    phase = _expiry("device_deadman", "spotnav", 60.0, evidence="stated", renew_s=20)
+    other = _expiry("device_lease", "spotnav", 60.0, evidence="stated", renew_s=20)
+    now = datetime(2026, 11, 23, 20, 0, tzinfo=timezone.utc)
+    passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}
+    run = {"started_at": now.isoformat(), "modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": phase.expiry_id}}}
+    report = merge_report({"modes": passed}, run, key=_KEY, attempts=2, now=now)
+    assert expiry_measured(phase, _KEY, report) and not expiry_measured(other, _KEY, report)
+    assert not expiry_measured(phase, "fw2 | brand 1.0", report)
+    assert not expiry_due(report, phase) and expiry_due(report, other)
+    # Ignored: decided, never lifts, and the report still passes.
+    failed = merge_report(
+        {"modes": passed}, {"modes": {MODE_EXPIRY: {"outcome": "ignored", "expiry_id": phase.expiry_id}}},
+        key=_KEY, attempts=2, now=now,
+    )
+    assert report_status(failed) == "passed" and not expiry_due(failed, phase)
+    assert allowed_actions(failed, Options()) == allowed_actions({"modes": passed}, Options())
+    # A run for another expiry (the recipe changed) replaces the decided row.
+    again = merge_report(
+        failed, {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id}}}, key=_KEY, attempts=3,
+        now=now,
+    )
+    assert expiry_measured(other, _KEY, again) and not expiry_measured(phase, _KEY, again)

@@ -138,6 +138,9 @@ BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
 MODE_NORMAL: Final = "normal"
 #: The capability a plant with targets per phase is checked for (`verify.py`); never needed for control to run.
 MODE_PER_PHASE: Final = "per_phase"
+#: Whether a command's own expiry (`commands.Expiry`) acts on this firmware (`verify.py`): never needed for control to
+#: run, and never failing the report; only a pass changes anything (`expiry_measured`: the HA-down cap may lift).
+MODE_EXPIRY: Final = "expiry"
 #: Outcomes that pass.
 PASSING: Final = frozenset({"obeyed", "restored"})
 #: Outcomes that fail outright.
@@ -334,7 +337,11 @@ def merge_report(
         if not isinstance(row, Mapping):
             continue
         kept = modes.get(name)
-        if kept is not None and mode_verdict(kept.get("outcome")) != "pending":
+        if (
+            kept is not None and mode_verdict(kept.get("outcome")) != "pending"
+            # An expiry decided for another expiry than the one this run tried (the recipe changed) is not kept.
+            and not (name == MODE_EXPIRY and kept.get("expiry_id") != row.get("expiry_id"))
+        ):
             continue
         modes[name] = dict(row)
     return {
@@ -703,12 +710,39 @@ def import_limit_phase_holds(
     )
 
 
-def expiry_measured(expiry: Expiry, key: str | None) -> bool:
+def expiry_measured(expiry: Expiry, key: str | None, report: Mapping[str, Any] | None = None) -> bool:
     """Whether the expiry's fallback was seen to act on this firmware (`firmware_key`): the recipe records a field
-    test on it (`Expiry.evidence` `measured`, `measured_on`). A key not read is never measured."""
-    return (
-        key is not None and firmware_known(key) and expiry.evidence == "measured" and key in expiry.measured_on
-    )
+    test on it (`Expiry.evidence` `measured`, `measured_on`), or the routine's report for this key has the mode
+    `expiry` obeyed for this very expiry (`Expiry.expiry_id`: a measured phase expiry never counts for a balanced
+    one). A key not read is never measured; a report kept under another key never counts."""
+    if key is None or not firmware_known(key):
+        return False
+    if expiry.evidence == "measured" and key in expiry.measured_on:
+        return True
+    return expiry_row_passed(report, expiry) and report is not None and report.get("key") == key
+
+
+def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
+    """Whether the report's mode `expiry` is `obeyed` for this very expiry (`Expiry.expiry_id`)."""
+    row = _modes(report).get(MODE_EXPIRY)
+    return isinstance(row, Mapping) and row.get("outcome") == "obeyed" and row.get("expiry_id") == expiry.expiry_id
+
+
+def expiry_due(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
+    """Whether the report has the mode `expiry` still undecided for this very expiry (no row, a row for another
+    expiry, or a row still pending)."""
+    row = _modes(report).get(MODE_EXPIRY)
+    if not isinstance(row, Mapping) or row.get("expiry_id") != expiry.expiry_id:
+        return True
+    return mode_verdict(row.get("outcome")) == "pending"
+
+
+def expiry_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
+    """Whether the verification's mode `expiry` may try this expiry: one whose pass would lift the HA-down cap
+    (`expiry_lifts` once measured): a dead-man or lease SpotNav renews, within `SILENCE_FALLBACK_MAX_S`, on a control
+    the live clamp can lower. An integration's own renewal or nobody's is never tried (a field test recorded in the
+    recipe is its only route, and it still never lifts)."""
+    return expiry_lifts(expiry, measured=True, slow=slow, fixed_charge=fixed_charge)
 
 
 def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bool) -> bool:
