@@ -3293,5 +3293,125 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "senec": {
+  "_source": "marq24/ha-senec-v3 32eed20 (2026.11.3), local lala.cgi entry (V2.1 and V3): `senec.<entry title>_<key>`, lower case (the title is the person's, `senec` by default; `__init__.py` lines 986-995), the keys from const.py `MAIN_SENSOR_TYPES` and `MAIN_SWITCH_TYPES`. Not a real registry; built from the source, `spare_capacity` disabled by default as there.",
+  "platform": "senec",
+  "manufacturer": "SENEC GmbH",
+  "battery": "sensor.senec_battery_state_power",
+  "entities": [
+   {
+    "entity_id": "sensor.senec_battery_state_power",
+    "unique_id": "senec.senec_battery_state_power",
+    "device": "s",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_charge_power",
+    "unique_id": "senec.senec_battery_charge_power",
+    "device": "s",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_discharge_power",
+    "unique_id": "senec.senec_battery_discharge_power",
+    "device": "s",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_charge_percent",
+    "unique_id": "senec.senec_battery_charge_percent",
+    "device": "s",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_soh_remaining_capacity",
+    "unique_id": "senec.senec_battery_soh_remaining_capacity",
+    "device": "s",
+    "state": "97",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_total_charged",
+    "unique_id": "senec.senec_battery_total_charged",
+    "device": "s",
+    "state": "3200.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_battery_total_discharged",
+    "unique_id": "senec.senec_battery_total_discharged",
+    "device": "s",
+    "state": "2900.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_system_state",
+    "unique_id": "senec.senec_system_state",
+    "device": "s",
+    "state": "OWN CONSUMPTION",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.senec_safe_charge",
+    "unique_id": "senec.senec_safe_charge",
+    "device": "s",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.senec_spare_capacity",
+    "unique_id": "senec.senec_spare_capacity",
+    "device": "s",
+    "state": "20",
+    "unit": "%",
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.senec_grid_state_power",
+    "unique_id": "senec.senec_grid_state_power",
+    "device": "s",
+    "state": "-300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "senec",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

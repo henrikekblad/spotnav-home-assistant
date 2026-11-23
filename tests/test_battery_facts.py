@@ -475,6 +475,8 @@ PLAN_REASON = {
     "e3dc": None,
     # 0xAHA's Growatt integration states a size (Ah times the voltage) and no rating: learnt.
     "growatt_modbus": "no_rated_power",
+    # SENEC states neither a size nor a rating on any route: learnt.
+    "senec": "no_capacity",
 }
 
 

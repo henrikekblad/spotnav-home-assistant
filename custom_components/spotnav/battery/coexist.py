@@ -78,6 +78,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   schedules, which "take effect regardless" and are invisible over Modbus (issues 373, 448, 460); the ARK and APX
   batteries also pull a little from the grid by themselves (issue 492). No aggregator is named
   (`plans/research_integrations/growatt_control_2026-11-23.md`).
+* SENEC's own control is the cloud's (SENEC.Cloud tariffs, the Backup Power Pro reserve, the peak-shaving helper) and the unit's
+  own states, which grid-charge by themselves (initial, maintenance, equalisation, desulfation, safety and emergency charge;
+  `system_state`); one owner's charge switch came back on ten seconds after it was turned off (marq24/ha-senec-v3 issue 115).
+  No aggregator is named: none was found, and no Nordic SENEC owner either
+  (`plans/research_integrations/senec_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -158,6 +163,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Frank Energie VPP (Netherlands) [F]",)),
     Coexistence("e3dc", "E3/DC", ("e3dc_rscp", "e3dc_rscp_connect"),
                 "E3/DC portal: AI360, Smart-Charge, idle periods and weather-regulated charge"),
+    Coexistence("senec", "SENEC", ("senec",),
+                "SENEC app and SENEC.Cloud: tariff charging, the backup reserve, peak shaving and the unit's own maintenance charges"),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),

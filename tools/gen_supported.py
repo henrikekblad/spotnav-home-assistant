@@ -169,6 +169,7 @@ NAMES: dict[str, str] = {
     "alphaess_modbus": "Alpha ESS (Modbus)",
     "e3dc_rscp": "E3/DC",
     "growatt_modbus": "Growatt (Modbus)",
+    "senec": "SENEC",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -903,6 +904,17 @@ OVERVIEW: tuple[Overview, ...] = (
         note="E3/DC's AI360 and Smart-Charge cannot be read, and they override outside charge commands, so they must be "
         "off. The mode is read from the power limits and manual charge that someone's control leaves on. Run by "
         "E3DC Maestro where that is installed. The day, month and year energy are not lifetime counters and are not read.",
+    ),
+    Overview(
+        "SENEC (Home V2.1, V3, V4)",
+        "`senec`, HACS (marq24/ha-senec-v3); local for V2.1 and V3, SENEC's cloud for the rest",
+        keys=("senec",),
+        adapter="senec",
+        control="Not mapped: read only. Locally only a \"Load Battery\" switch that charges to full at SENEC's own rate, "
+        "with no power setting and no timeout; a reserve exists through SENEC's cloud",
+        note="The level, the counters and the mode are read; the size and the ratings are learnt, as no route states "
+        "them. SENEC's own maintenance and safety charges grid-charge by themselves. The mode is read from the unit's "
+        "state text, which only English, German and Italian have.",
     ),
     Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
     Overview(

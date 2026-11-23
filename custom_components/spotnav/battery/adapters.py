@@ -379,6 +379,27 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   ShinePhone or the portal is invisible over Modbus. The battery's power is `battery_power`, signed, positive = charging
   (`sensor.py` line 736).
 
+* SENEC, `senec` (marq24/ha-senec-v3 `32eed20`, 2026.11.3, read 2026-11-23,
+  `plans/research_integrations/senec_control_2026-11-23.md`): read only, V2.1 and V3 over the unit's local `lala.cgi` first, and
+  the same keys on the WebAPI, OpenAPI and SENEC.Connect entries where they exist. Unique id `senec.<config entry title>_<key>`,
+  lower case, and `senec.<title>_<serial>_<key>` where the source has a serial (`__init__.py` lines 986-995): the prefix is the
+  title the person chose (`senec` by default, `senec_WEBAPI`, `senec_OpenAPI`, `Inverter`, or any words with spaces), so every
+  key is matched by suffix inside the battery's own config entry, as the entities are read per entry. The level is
+  `battery_charge_percent` (local, OpenAPI, Connect) or `acculevel_now` (WebAPI), the counters `battery_total_charged` and
+  `battery_total_discharged` (local, kWh; they exist only where the statistics are read) or the WebAPI's `accuexport_total` and
+  `accuimport_total`, which the integration names "Battery charged" and "Battery discharged". The battery's power is the signed
+  `battery_state_power` (positive = charging, `senec_lala.py` line 1158; evcc negates the same raw value), which is in W on the
+  local and OpenAPI entries and so read by its unit; the WebAPI has two unsigned kW sensors, `accuexport_now` ("Battery Charge
+  Power") and `accuimport_now` ("Battery Discharge Power"), the site's pair. The size and the ratings are empty: no route has a
+  size entity (the `battery_soh_remaining_capacity` is a percent) and `ratedPower` of the OpenAPI is usually 0, so both are
+  learnt. The floor is `spare_capacity` (the emergency-power reserve, 0-50 %, a sensor locally and a number on the WebAPI, both
+  disabled by default). The mode is the `system_state` sensor, a text in the Home Assistant language (English, German or
+  Italian; any other language reads `UNKNOWN`, which is no reading, so the mode is unknown), free only in the own-consumption family (battery full,
+  charge, empty, discharge, PV and grid + discharge, own consumption): the unit's own initial, maintenance, equalisation and
+  desulfation, safety and emergency charges, and the manual "Load Battery" force charge are not, and the `safe_charge` switch
+  (`SAFE_CHARGE_FORCE`) must be off. Without a `system_state` the mode is unknown: the WebAPI and OpenAPI entries state none.
+  The firmware is the device's `sw_version`, not an entity.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1387,10 +1408,32 @@ GROWATT_MODBUS: Final = Adapter(
     ),
 )
 
+#: SENEC through `senec` (see the module): read only. The ids' prefix is the entry's title, so every key is a suffix.
+_SENEC_OWN: Final = frozenset({
+    "BATTERY FULL", "CHARGE", "BATTERY EMPTY", "DISCHARGE", "PV + DISCHARGE", "GRID + DISCHARGE", "OWN CONSUMPTION",
+    "AKKU VOLL", "LADEN", "AKKU LEER", "ENTLADEN", "PV + ENTLADEN", "NETZ + ENTLADEN", "EIGENVERBRAUCH",
+    "ACCUMULATORE CARICO", "CARICA", "ACCUMULATORE SCARICO", "SCARICA", "FV + SCARICA", "RETE + SCARICA", "AUTOCONSUMO",
+})
+SENEC: Final = Adapter(
+    brand="senec",
+    label="SENEC",
+    platforms=("senec",),
+    facts={
+        "soc": _any_key("battery_charge_percent", "acculevel_now"),
+        "charged_total": _any_key("battery_total_charged", "accuexport_total"),
+        "discharged_total": _any_key("battery_total_discharged", "accuimport_total"),
+    },
+    modes=(
+        ModeRule(_key("system_state", "sensor"), _SENEC_OWN, "system state"),
+        ModeRule(_key("safe_charge", "switch"), frozenset({"off"}), "Load Battery", required=False),
+    ),
+    reserves=(ReserveSource(_key("spare_capacity", "sensor", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC,
 )
 
 

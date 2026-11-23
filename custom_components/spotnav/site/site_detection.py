@@ -859,6 +859,15 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # (`sensor.py` L736), so as it is. The entry id is a ULID, which leaves out the other repository's
     # `growatt_modbus_<serial>_<key>` of the same domain.
     BatteryRow(("growatt_modbus",), _re(r"^[0-9a-z]{26,32}_battery_power$"), label="Growatt (Modbus)"),
+    # SENEC (`senec`, marq24 `32eed20`): `senec.<entry title>_battery_state_power`, the signed power of the local (V2.1, V3),
+    # OpenAPI and SENEC.Connect entries, "positive when battery is charging" (`senec_lala.py` L1158-L1166; evcc negates the
+    # same value to its discharge-positive). Its unit is the entity's own. The WebAPI entry has two unsigned kW sensors named
+    # by the integration "Battery Charge Power" (`accuexport_now`) and "Battery Discharge Power" (`accuimport_now`), the way
+    # round its totals "Battery charged" and "Battery discharged" agree with; not seen on hardware.
+    BatteryRow(("senec",), _re(r"_battery_state_power$"), label="SENEC"),
+    BatteryRow(
+        ("senec",), _re(r"_accuexport_now$"), discharge_regex=_re(r"_accuimport_now$"), label="SENEC (WebAPI)"
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery
