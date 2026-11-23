@@ -155,7 +155,8 @@ CONF_METER_BELONGS = "meter_belongs"
 CONF_MEASUREMENT_MODE = "measurement_mode"
 CONF_CHARGER_ENTRY_IDS = "charger_entry_ids"
 # A charger's place in its site's allocation order, on the charger entry: "first" is served before
-# "normal" (the default), "last" after it. Chargers of one rank keep the site's own charger order.
+# "normal" (the default), "last" after it. Chargers of one rank keep the site's own charger order. Read only while
+# the site stores no `priority` list (`site/priority.py`); no longer written.
 CONF_CHARGER_PRIORITY = "charger_priority"
 CHARGER_PRIORITY_FIRST = "first"
 CHARGER_PRIORITY_NORMAL = "normal"
@@ -243,7 +244,12 @@ DEFAULT_YIELD_STEPPING_ENABLED = False
 YIELD_CEILING_FUSE_FACTOR = 1.15
 
 
-# Per-site solar priority: `car_first` (default) or `battery_first`.
+# The site's one priority list (`site/priority.py`, since 3.0): load ids, top = gets energy first and gives way last.
+# It replaces `solar_priority` and each charger's `charger_priority`, which are read only while no list is stored.
+CONF_PRIORITY = "priority"
+
+# Per-site solar priority: `car_first` (default) or `battery_first`. Read only while no `priority` list is stored
+# (`site/priority.py` derives it from the list otherwise); no longer written.
 CONF_SOLAR_PRIORITY = "solar_priority"
 SOLAR_PRIORITY_CAR_FIRST = "car_first"
 SOLAR_PRIORITY_BATTERY_FIRST = "battery_first"
