@@ -208,6 +208,8 @@ describe("the popover from the house card", () => {
           }
           case "spotnav/get_entity_config":
             return options.entity ?? { api_version: 1, ok: false, error: "spotnav_unknown_site", field_errors: [], config: null };
+          case "spotnav/update_site_settings":
+            return { api_version: 1, ok: true, error: null, site: null, restore: null };
           case "spotnav/disconnect_phones":
             return { api_version: 1, ok: true, error: null, chargers: 0, sites: 1 };
           case "spotnav/beta":
@@ -256,6 +258,71 @@ describe("the popover from the house card", () => {
     document.body.innerHTML = "";
     const measured = await open((await mount({ entity })).root);
     expect(measured.querySelector("[data-section='site'] [data-row='import_target_kw']")).not.toBeNull();
+  });
+
+  it("shows the priority list in the site's settings and saves a new order with what was shown", async () => {
+    const priority = {
+      order: [
+        { id: "heat", name: null },
+        { id: "charger:garage", name: "Garage" },
+        { id: "battery", name: null },
+      ],
+      writable: true,
+    };
+    const view = { ...read("site_view", "villa.json"), priority };
+    const { root, messages } = await mount({ view });
+    const popover = await open(root);
+    const row = popover.querySelector<HTMLElement>("[data-section='site'] [data-row='priority']")!;
+    expect(row.textContent).toContain("Prioritet");
+    expect(row.textContent).toContain("Husets värme först");
+    expect(popover.querySelector("[data-section='site']")!.textContent).toContain("Överst får energi först och backar sist.");
+    row.querySelector<HTMLButtonElement>("[data-edit='priority']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const form = root.querySelector<HTMLFormElement>("[data-value-editor='priority']")!;
+    const names = () => [...form.querySelectorAll<HTMLElement>("[data-priority-row]")].map((node) => node.dataset["priorityRow"]);
+    expect(names()).toEqual(["heat", "charger:garage", "battery"]);
+    expect(form.textContent).toContain("Garage");
+    expect(form.textContent).toContain("Husbatteri");
+    // The top row has no up, the bottom no down.
+    expect(form.querySelector<HTMLButtonElement>("[data-priority-row='heat'] [data-move='up']")!.disabled).toBe(true);
+    expect(form.querySelector<HTMLButtonElement>("[data-priority-row='battery'] [data-move='down']")!.disabled).toBe(true);
+    form.querySelector<HTMLButtonElement>("[data-priority-row='battery'] [data-move='up']")!.click();
+    expect(names()).toEqual(["heat", "battery", "charger:garage"]);
+    root.querySelector<HTMLButtonElement>(`button[type='submit'][form='${form.id}']`)!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["type"] === "spotnav/update_site_settings")).toEqual([
+      {
+        type: "spotnav/update_site_settings",
+        api_version: 1,
+        site_id: "site_villa",
+        expected: { priority: ["heat", "charger:garage", "battery"] },
+        changes: { priority: ["heat", "battery", "charger:garage"] },
+      },
+    ]);
+  });
+
+  it("shows the priority list read-only where it cannot be written, and nothing from a Home Assistant before it", async () => {
+    const priority = { order: [{ id: "heat", name: null }, { id: "pool_heat", name: null }], writable: false };
+    const readOnly = await open((await mount({ view: { ...read("site_view", "villa.json"), priority } })).root);
+    const row = readOnly.querySelector<HTMLElement>("[data-section='site'] [data-row='priority']")!;
+    expect(row.querySelector("[data-edit='priority']")).toBeNull();
+    document.body.innerHTML = "";
+    const before = await open((await mount()).root);
+    expect(before.querySelector("[data-row='priority']")).toBeNull();
+  });
+
+  it("names every row of the priority list in every language", () => {
+    for (const language of Object.keys(TRANSLATIONS) as (keyof typeof TRANSLATIONS)[]) {
+      for (const key of [
+        "site.priority.title", "site.priority.intro", "site.priority.summary", "site.priority.up", "site.priority.down",
+        "site.priority.row.heat", "site.priority.row.charger", "site.priority.row.spa", "site.priority.row.sauna",
+        "site.priority.row.cooling", "site.priority.row.waterHeater", "site.priority.row.battery",
+        "site.priority.row.spaIdle", "site.priority.row.poolCirculation", "site.priority.row.poolHeat",
+      ] as const) {
+        expect(TRANSLATIONS[language][key], `${language} ${key}`).toBeTruthy();
+      }
+    }
+    expect(translate("sv", "site.priority.intro")).toBe("Överst får energi först och backar sist.");
   });
 
   it("has no gear for a household member", async () => {

@@ -557,12 +557,13 @@ describe("phase switching for solar", () => {
     return answer;
   }
 
-  it("is a row after the priority, Off or Automatic, and writes the flag through the entity config", async () => {
+  it("is a row after the wiring, Off or Automatic, and writes the flag through the entity config", async () => {
     const { hass, element } = await openSettings("en", true, payload(), offered(false));
     const rows = Array.from(
       dialog(element).querySelectorAll<HTMLElement>("[data-section='entities'] [data-row]"),
     ).map((row) => row.dataset["row"]);
-    expect(rows.indexOf("phase_switching")).toBe(rows.indexOf("charger_priority") + 1);
+    expect(rows).not.toContain("charger_priority");
+    expect(rows.indexOf("phase_switching")).toBeGreaterThan(-1);
     const row = dialog(element).querySelector<HTMLElement>("[data-row='phase_switching']")!;
     expect(row.textContent).toContain("Phase switching for solar");
     expect(row.textContent).toContain("Off");

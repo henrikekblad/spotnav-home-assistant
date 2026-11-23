@@ -92,9 +92,9 @@ const choose = (element: Element, label: RegExp): HTMLInputElement =>
     .find((node) => label.test(node.textContent ?? ""))!
     .querySelector<HTMLInputElement>("input")!;
 
-/** Open the Site section's priority (one of two) or the Solar section's forecast sources (several). */
+/** Open the Solar section's forecast sources (several). Car or battery first is the site's priority list now. */
 async function openSolar(
-  which: "solar_priority" | "solar_forecast" = "solar_priority",
+  which: "solar_forecast" = "solar_forecast",
   payload = dashboard((raw) => {
     withSources(["forecast_solar:roof"])(raw);
     solarSite(raw);
@@ -102,7 +102,7 @@ async function openSolar(
   options = {},
 ) {
   const opened = await open(payload, options);
-  (which === "solar_priority" ? siteCard : solarCard)(opened.element)!
+  solarCard(opened.element)!
     .querySelector<HTMLButtonElement>(`[data-edit='${which}']`)!
     .click();
   await settle();
@@ -131,10 +131,9 @@ describe("the Solar section", () => {
     expect(card.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.solar"));
     expect(card.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("solar");
     expect(card.textContent).not.toContain(translate("en", "site.applies.one"));
+    // Car or battery first is the battery's place in the site's priority list (the house card's site settings).
     expect(card.querySelector("[data-row='solar_priority']")).toBeNull();
-    expect(siteCard(element)!.querySelector("[data-row='solar_priority']")?.textContent).toContain(
-      translate("en", "site.solarPriority.carFirst"),
-    );
+    expect(siteCard(element)!.querySelector("[data-row='solar_priority']")).toBeNull();
     expect(card.querySelector("[data-row='solar_forecast']")?.textContent).toContain("Roof, Garage");
     // Each value is its own button, and nothing on the page saves by itself.
     expect(Array.from(card.querySelectorAll<HTMLElement>("button")).map((node) => node.dataset["edit"])).toEqual([
@@ -143,7 +142,7 @@ describe("the Solar section", () => {
     expect(card.querySelector("input")).toBeNull();
   });
 
-  it("leaves out car or battery first without a home battery, or on a site that cannot follow solar", async () => {
+  it("has no car or battery first row on the charger card, with or without a battery", async () => {
     const noBattery = await open(dashboard(solarSite), { battery: false });
     expect(siteCard(noBattery.element)!.querySelector("[data-row='battery']")).not.toBeNull();
     expect(siteCard(noBattery.element)!.querySelector("[data-row='solar_priority']")).toBeNull();
@@ -175,28 +174,13 @@ describe("the Solar section", () => {
 describe("the Solar editors", () => {
   it("open with the stored choice, a positive button and Cancel, and no request", async () => {
     const { hass, element } = await openSolar();
-    expect(dlg(element).parentElement?.textContent).toContain(translate("en", "site.solarPriority.title"));
-    expect(choose(element, /Car first/).checked).toBe(true);
-    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button")).map((node) => node.textContent);
-    expect(buttons).toEqual([translate("en", "identify.choose"), translate("en", "settings.cancel")]);
+    expect(choose(element, /Roof/).checked).toBe(true);
+    expect(choose(element, /Garage/).checked).toBe(false);
     expect(siteWrites(hass)).toHaveLength(0);
     cancelButton(element).click();
     await settle();
     await openSolarAgain(element, "solar_forecast");
     expect(choose(element, /Roof/).checked).toBe(true);
-    expect(choose(element, /Garage/).checked).toBe(false);
-  });
-
-  it("sends only the priority, with what was shown", async () => {
-    const { hass, element } = await openSolar();
-    choose(element, /Battery first/).click();
-    expect(siteWrites(hass)).toHaveLength(0);
-    saveButton(element).click();
-    await settle();
-    expect(siteWrites(hass)).toHaveLength(1);
-    expect(siteWrites(hass)[0]).toMatchObject({ type: "spotnav/update_site_settings", charger_id: "entry_a" });
-    expect(siteWrites(hass)[0]?.["changes"]).toEqual({ solar_priority: "battery_first" });
-    expect(siteWrites(hass)[0]?.["expected"]).toEqual({ solar_priority: "car_first" });
   });
 
   it("sends only the forecast sources, with what was shown", async () => {
@@ -210,7 +194,7 @@ describe("the Solar editors", () => {
 
   it("returns to Settings after a committed write, with one read of the dashboard", async () => {
     const { hass, element } = await openSolar();
-    choose(element, /Battery first/).click();
+    choose(element, /Garage/).click();
     saveButton(element).click();
     await settle();
     hass.resolveNext(read("site_settings", "v1", "success.json"));
@@ -232,27 +216,25 @@ describe("the Solar editors", () => {
 
   it("returns to Settings on Cancel without a request", async () => {
     const { hass, element } = await openSolar();
-    choose(element, /Battery first/).click();
+    choose(element, /Garage/).click();
     cancelButton(element).click();
     await settle();
     expect(siteWrites(hass)).toHaveLength(0);
     expect(dlg(element).querySelector("[data-section='solar']")).not.toBeNull();
-    expect(siteCard(element)!.querySelector("[data-row='solar_priority']")?.textContent).toContain(
-      translate("en", "site.solarPriority.carFirst"),
-    );
+    expect(solarCard(element)!.querySelector("[data-row='solar_forecast']")?.textContent).toContain("Roof");
   });
 
   it("stays open with the sentence for a refusal, keeping the choice", async () => {
     const { hass, element } = await openSolar();
-    choose(element, /Battery first/).click();
+    choose(element, /Garage/).click();
     saveButton(element).click();
     await settle();
     hass.resolveNext(read("site_settings", "v1", "invalid_value.json"));
     await settle();
-    expect(dlg(element).querySelector("form[data-value-editor='single']")).not.toBeNull();
+    expect(dlg(element).querySelector("form[data-value-editor]")).not.toBeNull();
     expect(dlg(element).textContent).toContain(translate("en", "settings.error.invalid"));
     expect(dlg(element).textContent).not.toContain("spotnav_invalid_value");
-    expect(choose(element, /Battery first/).checked).toBe(true);
+    expect(choose(element, /Garage/).checked).toBe(true);
     expect(saveButton(element).disabled).toBe(false);
   });
 });

@@ -50,6 +50,20 @@ export interface SiteView {
   price_settings: SitePriceSettings | null;
   /** The site's own `site` block (solar forecast sources, load balancing), `null` while the site is not running. */
   site: Site | null;
+  /** The site's one priority list (`site/priority.py`), top first; `null` from a Home Assistant before it. */
+  priority: SitePriority | null;
+}
+
+/** One row of the priority list: `charger:<entry id>` (named by `name`) or a fixed load id the card names itself. */
+export interface SitePriorityRow {
+  id: string;
+  name: string | null;
+}
+
+/** The priority list's rows the site has, top first (gets energy first, gives way last); `writable` for an admin. */
+export interface SitePriority {
+  order: SitePriorityRow[];
+  writable: boolean;
 }
 
 /** The area's facts the price section words its rows with; `null` while the area list does not name the area. */
@@ -285,6 +299,7 @@ const SITE_VIEW = O({
     }),
   ),
   site: "any",
+  priority: N(O({ order: A(O({ id: "string", name: N("string") })), writable: "boolean" })),
 });
 
 const OPTIONS = O({
@@ -403,10 +418,16 @@ export function decodeSiteList(raw: unknown): Decoded<{ api_version: number; sit
 
 export function decodeSiteView(raw: unknown): Decoded<SiteView> {
   // `import_target` came later: a Home Assistant before it is read as one that can measure it (the row shows).
+  // `priority` came later too: absent reads as `null` (no row).
+  const plain = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
   const grown =
-    typeof raw === "object" && raw !== null && !Array.isArray(raw) && !("import_target" in raw)
-      ? { ...(raw as Record<string, unknown>), import_target: { available: true, reason: null } }
-      : raw;
+    plain === null
+      ? raw
+      : {
+          ...("import_target" in plain ? {} : { import_target: { available: true, reason: null } }),
+          ...("priority" in plain ? {} : { priority: null }),
+          ...plain,
+        };
   const decoded = versioned<SiteView>(grown, SITE_VIEW_API_VERSION, SITE_VIEW);
   if (!decoded.ok) {
     return decoded;
