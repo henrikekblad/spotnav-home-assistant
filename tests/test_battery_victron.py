@@ -22,6 +22,7 @@ from custom_components.spotnav.battery.commands import (
     VICTRON_PHASES,
     VICTRON_RENEW_S,
     VICTRON_SILENCE_S,
+    Expiry,
     control_for,
     phase_table,
     table,
@@ -46,6 +47,7 @@ TICK = timedelta(seconds=10)
 VOLTS = 400.0 / 3 ** 0.5
 FUSE_A = 20.0
 TARGETS = ("phase_l1_target", "phase_l2_target", "phase_l3_target")
+KEY = "v3.60 | victron 2026.1"
 #: The owner's house (2026-11-18): the learned peaks on a 20 A fuse.
 PEAKS = {"L1": 13.6, "L2": 18.0, "L3": 17.4}
 
@@ -57,14 +59,19 @@ def _caps(peaks: dict[str, float] = PEAKS, **kwargs: Any) -> tuple[float, float,
 
 
 def _shipped(peaks: dict[str, float] = PEAKS) -> tuple[float, float, float]:
-    """The caps the recipe as shipped gets: its dead-man is not stated, so the house counts at its peak."""
-    return _caps(peaks, silence_fallback_s=VICTRON_PHASES.silence_fallback_s)
+    """The caps the recipe as shipped gets: its dead-man is stated, not measured, so the house counts at its peak."""
+    expiry = VICTRON_PHASES.expiry
+    lifts = gate.expiry_lifts(
+        expiry, measured=gate.expiry_measured(expiry, KEY), slow=VICTRON_CONTROL.slow,
+        fixed_charge=VICTRON_CONTROL.fixed_charge,
+    )
+    return _caps(peaks, expiry_lifts=lifts)
 
 
 def _lifted() -> tuple[float, float, float]:
     """The caps a recipe with a dead-man seen on a plant would get (the fuse less the margin on each phase). No
     recipe ships it; the executor does not know where its caps come from, so these exercise its live clamp alone."""
-    return _caps(silence_fallback_s=VICTRON_SILENCE_S)
+    return _caps(expiry_lifts=True)
 
 
 @dataclass
@@ -243,7 +250,7 @@ def test_the_setpoints_are_setpoints_with_a_cap_that_fits_a_minute_and_the_rest_
 
 def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> None:
     # The page's 60 s fallback is not stated until a field test has seen it: the HA-down cap is not lifted on it.
-    assert VICTRON_PHASES.silence_fallback_s is None and VICTRON_SILENCE_S == 60
+    assert VICTRON_SILENCE_S == 60
     expiry = VICTRON_PHASES.expiry
     assert (expiry.kind, expiry.renewer, expiry.window_s, expiry.evidence) == ("device_deadman", "spotnav", 60.0, "stated")
     assert expiry.renewed_roles == TARGETS and expiry.measured_on == frozenset()
@@ -257,7 +264,7 @@ def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> Non
     assert phased.watchdog_roles == TARGETS and phased.watchdog_renew_s == VICTRON_RENEW_S
     assert phased.own_states == {"ESS mode": frozenset({"external_control"})} and VICTRON_CONTROL.own_states == {}
     # No recipe says its plant falls back by itself.
-    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.silence_fallback_s] == []
+    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.expiry.evidence == "measured"] == []
     assert SIGENERGY_CONTROL.phase_control is not None and SIGENERGY_CONTROL.phase_control.park
 
 
@@ -474,15 +481,30 @@ def test_the_gate_lifts_the_ha_down_cap_only_for_a_fallback_within_the_minute() 
     kept = _caps()
     # The targets stay: each phase's own peak bounds it (L2 has no room at all on the owner's house).
     assert kept == pytest.approx(tuple((FUSE_A - 2.0 - peak) * VOLTS / 1000 for peak in PEAKS.values()))
-    lifted = _caps(silence_fallback_s=VICTRON_SILENCE_S)
+    lifted = _caps(expiry_lifts=True)
     assert lifted == pytest.approx(((FUSE_A - 2.0) * VOLTS / 1000,) * 3)
-    for silence in (None, 0, 61, 1800, float("nan"), True):
-        assert _caps(silence_fallback_s=silence) == kept, silence
     # The fuse or the chargers unknown: no charge either way.
     assert gate.grid_charge_phase_caps_kw(
-        None, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None, silence_fallback_s=60
+        None, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None, expiry_lifts=True
     ) == (0.0, 0.0, 0.0)
-    assert not gate.silence_guards(None) and gate.silence_guards(60) and not gate.silence_guards(60.5)
+    roles = VICTRON_PHASES.expiry.renewed_roles
+
+    def lifts(window: float, *, measured: bool = True, evidence: str = "measured") -> bool:
+        expiry = Expiry("device_deadman", "spotnav", window, roles, renew_s=VICTRON_RENEW_S if window > 20 else None,
+                        evidence=evidence, measured_on=frozenset({KEY}) if evidence == "measured" else frozenset())
+        return gate.expiry_lifts(expiry, measured=gate.expiry_measured(expiry, KEY) and measured, slow=False,
+                                 fixed_charge=False)
+
+    # Only a dead-man measured on this firmware, within the minute.
+    assert lifts(60.0) and lifts(30.0) and not lifts(60.5) and not lifts(61.0) and not lifts(1800.0)
+    assert not lifts(60.0, evidence="stated")
+    # The recipe as shipped: stated.
+    assert not gate.expiry_lifts(VICTRON_PHASES.expiry, measured=gate.expiry_measured(VICTRON_PHASES.expiry, KEY),
+                                 slow=False, fixed_charge=False)
+    # Measured on another firmware: not on this one.
+    other = Expiry("device_deadman", "spotnav", 60.0, roles, renew_s=VICTRON_RENEW_S, evidence="measured",
+                   measured_on=frozenset({"v3.50 | victron 2026.1"}))
+    assert not gate.expiry_measured(other, KEY)
 
 
 def test_an_unbalanced_house_never_passes_the_fuse_on_any_phase() -> None:

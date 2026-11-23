@@ -41,6 +41,23 @@ ACCEPT = (False, True)
 IMPORT_LIMITS = (None, 4.0, 13.8)
 #: The site's own safety margin (the accepted and per-phase rules' margin).
 SITE_MARGIN_A = 1.0
+#: The firmware key the gate is asked about (no recipe is measured on any).
+KEY = "V100R001C21SPC117 | sigen 2.0.3"
+
+
+def _lifts(control: BrandControl, *, phased: bool) -> bool:
+    """Whether the grid charge's own expiry lifts its HA-down cap, as the shell reckons it
+    (`control.BatteryControl._expiry_lifts`)."""
+    base = control.with_phases(False)
+    if phased:
+        if base.phase_control is None:
+            return False
+        expiry = base.phase_control.expiry
+    else:
+        expiry = base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
+    return gate.expiry_lifts(
+        expiry, measured=gate.expiry_measured(expiry, KEY), slow=base.slow, fixed_charge=base.fixed_charge
+    )
 
 
 def _controls() -> dict[str, BrandControl]:
@@ -87,7 +104,8 @@ def _facts(control: BrandControl) -> dict[str, Any]:
         "local_readback": control.local_readback,
         "readback_s": control.readback_s,
         "settle_s": control.settle_s,
-        "silence_fallback_s": None if spec is None else spec.silence_fallback_s,
+        # The phase spec's dead-man the gate lifts a phase's cap on (none measured).
+        "silence_fallback_s": spec.expiry.window_s if spec is not None and _lifts(control, phased=True) else None,
         "roles": {
             role.name: {
                 "lease": _lease(role) if role.method == "service" else None,
@@ -129,7 +147,7 @@ def _services(control: BrandControl, window_s: int) -> dict[str, Any]:
 def _gate(control: BrandControl) -> dict[str, Any]:
     """The HA-down caps as the shell reckons them for this control (`control._phase_caps_kw`, `_grid_charge_cap_kw`,
     `_ha_down_status`), over the grid of sites."""
-    spec = control.phase_control
+    phase_lifts, lifts = _lifts(control, phased=True), _lifts(control, phased=False)
     applies = _accept_applies(control)
     phase_tested = control.import_limit_phases is not None and control.import_limit_phases.field_tested
     phase_caps: list[Any] = []
@@ -139,19 +157,18 @@ def _gate(control: BrandControl) -> dict[str, Any]:
     ):
         phase_caps.append(list(gate.grid_charge_phase_caps_kw(
             fuse, VOLTS, margin_a=margin, cars_a=cars, house_peak_kw=house, house_phase_peaks_a=peaks,
-            silence_fallback_s=None if spec is None else spec.silence_fallback_s,
-            accept_ha_down=accept and applies, site_margin_a=SITE_MARGIN_A,
+            expiry_lifts=phase_lifts, accept_ha_down=accept and applies, site_margin_a=SITE_MARGIN_A,
         )))
         for limit, acts, per_phase in itertools.product(IMPORT_LIMITS, (False, True), sorted({False, phase_tested})):
             caps.append(gate.grid_charge_cap_kw(
                 fuse, VOLTS, margin_a=margin, cars_a=cars, house_peak_kw=house,
                 plant_phases=control.grid_charge_phases, import_limit_kw=limit, import_limit_acts=acts,
                 house_phase_peaks_a=peaks, import_limit_per_phase=per_phase, phase_margin_a=SITE_MARGIN_A,
-                accept_ha_down=accept and applies,
+                accept_ha_down=accept and applies, expiry_lifts=lifts,
             ))
     return {
         "accept_applies": applies,
-        "ha_down_lifted": spec is not None and gate.silence_guards(spec.silence_fallback_s),
+        "ha_down_lifted": phase_lifts or lifts,
         "phase_caps_kw": phase_caps,
         "caps_kw": caps,
     }

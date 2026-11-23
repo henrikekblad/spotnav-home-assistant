@@ -1131,14 +1131,14 @@ class BatteryControl:
         person accepted the HA-down risk (`battery_control_accept_ha_down`), by default as stored now. `no_cars`:
         the chargers and SpotNav's own heat counted as drawing nothing, for the status's offer only."""
         control = control_for(self.facts.brand)
-        spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=0.0 if no_cars else self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
             house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
-            # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
-            silence_fallback_s=None if spec is None else spec.silence_fallback_s,
+            # A plant that stops following its targets by itself when the writes stop (the phase spec's own measured
+            # expiry).
+            expiry_lifts=self._expiry_lifts(control, phased=True),
             accept_ha_down=(self.options().accept_ha_down if accept is None else accept) and _accept_applies(control),
             site_margin_a=self._site_margin_a(),
         )
@@ -1793,6 +1793,27 @@ class BatteryControl:
             # The per-phase rule and the accepted HA-down risk: the site's own safety margin as the person set it.
             phase_margin_a=self._site_margin_a(),
             accept_ha_down=options.accept_ha_down and _accept_applies(control),
+            expiry_lifts=self._expiry_lifts(control, phased=False),
+        )
+
+    def _expiry_lifts(self, control: BrandControl | None, *, phased: bool) -> bool:
+        """Whether the grid charge's own expiry stands in for its HA-down cap (`gate.expiry_lifts`): the phase spec's
+        for a charge per phase (`phased`), else the recipe's own for the grid charge (`expiry_by_action`, then
+        `expiry`: never the phase spec's, which has nothing to end a balanced command). Measured only on the
+        firmware read now (`gate.expiry_measured`). `control` is the brand's control as `control_for` gives it."""
+        if control is None:
+            return False
+        base = control.with_phases(False)
+        if phased:
+            spec = base.phase_control
+            if spec is None:
+                return False
+            expiry = spec.expiry
+        else:
+            expiry = base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
+        key = self.firmware_key() if self.firmware_known() else None
+        return gate.expiry_lifts(
+            expiry, measured=gate.expiry_measured(expiry, key), slow=base.slow, fixed_charge=base.fixed_charge
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -2195,8 +2216,8 @@ class BatteryControl:
             control = control_for(self.facts.brand)
             if control is None or not control.supports(ACTION_GRID_CHARGE) or not _accept_applies(control):
                 return block
-            spec = control.phase_control
-            if spec is not None and gate.silence_guards(spec.silence_fallback_s):
+            # A command's own measured expiry stands in for the cap: nothing to accept.
+            if self._expiry_lifts(control, phased=True) or self._expiry_lifts(control, phased=False):
                 return block
             plain = replace(options, accept_ha_down=False)
             phase_path = self._phase_path_open()

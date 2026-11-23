@@ -273,10 +273,10 @@ The entity keys, options and services below were checked against each integratio
     So the three setpoints are renewed every `VICTRON_RENEW_S` (each is then written again within about 30 s). By
     the page a charge per phase then stops by itself within `VICTRON_SILENCE_S` of the last write, but that is
     quoted, not seen: a firmware where the rule does not act, or something else on the GX that republishes the
-    setpoints (Node-RED, a script), would leave them standing. So the recipe does **not** state the dead-man
-    (`PhaseControl.silence_fallback_s` `None`): each phase's HA-down cap is reckoned with the house at its learned
+    setpoints (Node-RED, a script), would leave them standing. So the recipe's dead-man is only stated, not
+    measured (`PhaseControl.expiry`, `gate.expiry_lifts`): each phase's HA-down cap is reckoned with the house at its learned
     peak, as Sigenergy's (`gate.grid_charge_phase_caps_kw`), and bounds the whole target that would stand (the load
-    behind the point plus the charge, `executor._phase_room_kw`). **Before it may be stated** a field test on the
+    behind the point plus the charge, `executor._phase_room_kw`). **Before it counts as measured** a field test on the
     plant, per Venus OS version (the firmware key), must show: (1) a charge per phase of at least 1 kW on each
     phase, SpotNav stopped mid-charge (Home Assistant stopped, not a hand-back), the ESS mode still
     `external_control`; (2) within 70 s of the last write each Multi's AC input power falls to its AC output's load
@@ -607,14 +607,6 @@ class PhaseControl:
     def watchdog_renew_s(self) -> int | None:
         """How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`."""
         return self.expiry.renew_s
-
-    @property
-    def silence_fallback_s(self) -> float | None:
-        """The plant stops following the targets by itself this long after the last write of them (s): the expiry's
-        window, only for a dead-man measured on a plant (`Expiry.evidence`); `None` otherwise: the targets are
-        reckoned as staying until written. No recipe is measured yet."""
-        expiry = self.expiry
-        return expiry.window_s if expiry.kind == "device_deadman" and expiry.evidence == "measured" else None
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
@@ -1582,7 +1574,7 @@ _VIC_NO_CHARGE = Role("disable_charge", "switch", _key("vebus_hub4_disable_charg
 _VIC_NO_FEED_IN = Role("disable_feed_in", "switch", _key("vebus_hub4_disable_feed_in", "switch"), restored=False)
 _VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
 #: The Multi falls back to passthru this long after the last write of a setpoint (s), by Victron's page, and how often
-#: each is renewed. The fallback is not yet seen on a plant, so it is not the recipe's `silence_fallback_s` (see the
+#: each is renewed. The fallback is not yet seen on a plant, so the recipe's expiry is stated, not measured (see the
 #: module for the field test that must come first).
 VICTRON_SILENCE_S: Final = 60
 VICTRON_RENEW_S: Final = 20

@@ -284,12 +284,31 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
     assert fuse_a is not None
     volts = 400.0 / 3 ** 0.5
     caps = control._phase_caps_kw(now)
-    assert not gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+    assert not control._expiry_lifts(VICTRON_CONTROL, phased=True)
     assert caps == pytest.approx(gate.grid_charge_phase_caps_kw(
         fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
         house_phase_peaks_a=control._phase_peaks(now) or None,
     ))
     assert all(cap < (fuse_a - 2.0) * volts / 1000 for cap in caps), "never the fuse less the margin"
+    # A phase dead-man measured on this very firmware lifts a charge per phase only, never the balanced Mode-2
+    # charge (nothing ends that one); measured on another firmware it lifts nothing.
+    from dataclasses import replace  # noqa: PLC0415
+
+    assert not control.firmware_known() and not control._expiry_lifts(VICTRON_CONTROL, phased=True)
+    control._key = "v3.60 | victron_gx 1"  # a firmware read once
+    assert control.firmware_known()
+    expiry = VICTRON_CONTROL.phase_control.expiry
+    measured = replace(VICTRON_CONTROL, phase_control=replace(
+        VICTRON_CONTROL.phase_control,
+        expiry=replace(expiry, evidence="measured", measured_on=frozenset({control.firmware_key()})),
+    ))
+    assert control._expiry_lifts(measured, phased=True)
+    assert not control._expiry_lifts(measured, phased=False)
+    elsewhere = replace(VICTRON_CONTROL, phase_control=replace(
+        VICTRON_CONTROL.phase_control,
+        expiry=replace(expiry, evidence="measured", measured_on=frozenset({"other | victron 0"})),
+    ))
+    assert not control._expiry_lifts(elsewhere, phased=True)
 
     # A sensor that reads nothing: no charge per phase.
     hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")
