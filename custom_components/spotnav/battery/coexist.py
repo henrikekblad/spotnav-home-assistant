@@ -31,7 +31,7 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   over Modbus (its `marstek-venus-e` template), a planner rather than an aggregator [V]; no aggregator is known.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
-  0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
+  0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
   `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
   Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry).
 
@@ -121,6 +121,10 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     OutsideIntegration("checkwatt", "CheckWatt", "runs"),
     OutsideIntegration("tibber", "Tibber", "hint"),
     OutsideIntegration("greenely", "Greenely", "hint"),
+    # ffunes/Omnibattery (manifest `domain`, 1.6.1, `d74591b`): a controller for Marstek, Zendure, Anker Solix, Sessy
+    # and Hoymiles batteries (a PD zero-export loop, grid charging, time slots). It exists only to drive a battery, so
+    # its being set up marks the battery as run by someone else, as CheckWatt's does.
+    OutsideIntegration("omnibattery", "Omnibattery", "runs"),
 )
 
 

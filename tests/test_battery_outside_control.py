@@ -67,6 +67,11 @@ def test_only_an_integration_that_runs_batteries_marks_by_itself() -> None:
     assert [(row.domain, row.strength) for row in found] == [("checkwatt", "runs"), ("tibber", "hint")]
 
 
+def test_omnibattery_runs_a_battery_by_its_presence_alone() -> None:
+    found = outside_integrations({"omnibattery", "tibber"})
+    assert [(row.domain, row.strength) for row in found] == [("tibber", "hint"), ("omnibattery", "runs")]
+
+
 # --- integrations and planners ------------------------------------------------------------------------------------
 
 
