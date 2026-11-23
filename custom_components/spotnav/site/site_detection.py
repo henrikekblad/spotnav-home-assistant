@@ -766,6 +766,12 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("modbus",), _re(r"^sg_battery_power(?:_inv_\d+)?$"), inverted=True),
     BatteryRow(("sungrow",), _re(r"total_field_energy_storage_active_power$")),
     BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
+    # Omnibattery (`omnibattery`, ffunes `e60eb4f`): the system's `system_battery_cell_power` (unique id
+    # `marstek_venus_system_system_battery_cell_power`, a legacy prefix that never changes) is the signed sum over all
+    # its batteries, "+charge / -discharge" (`sensors/aggregate_sensors.py` `_calculate_battery_cell_power`: minus the
+    # AC power plus any DC PV, per battery), created on every install. The unsigned `system_charge_power` and
+    # `system_discharge_power` are AC only and are not read. Charge-positive: not inverted.
+    BatteryRow(("omnibattery",), _re(r"(?:^|_)system_battery_cell_power$"), label="Omnibattery, all batteries"),
     # Solis Modbus (Pho3niX90 v4.5.0): the derived "Battery Power Net" (unique key `battery_power_combined`) is the
     # battery power (33149) negated while register 33135 reads 0 (charging): discharge-positive.
     BatteryRow(("solis_modbus",), _re(r"battery_power_(?:net|combined)$"), inverted=True),

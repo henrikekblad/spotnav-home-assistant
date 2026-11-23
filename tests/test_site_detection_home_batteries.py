@@ -208,3 +208,25 @@ def test_a_cars_or_a_phones_battery_is_never_offered_as_the_home_battery() -> No
     r.add("tesla_fleet", "home_battery_power", "1234-battery_power", device_class="power", unit="kW", device="site", entry="fleet")
     [battery] = r.detect().batteries
     assert battery.entity_id == "sensor.home_battery_power"
+
+
+# ---- Omnibattery ----------------------------------------------------------------------------------
+
+
+def omnibattery() -> Registry:
+    """`omnibattery`: the system's aggregates have the legacy unique id `marstek_venus_system_<key>`; each battery has
+    its own `<device key>_<key>` entities, one of them a signed cell power too."""
+    r = Registry()
+    r.device("system", name="Omnibattery", entry="omni")
+    for key in ("system_battery_cell_power", "system_charge_power", "system_discharge_power"):
+        r.add("omnibattery", f"omnibattery_{key}", f"marstek_venus_system_{key}", device_class="power", unit="W", device="system", entry="omni", translation_key=key)
+    r.add("omnibattery", "marstek_a_battery_power", "marstek_a_battery_power", device_class="power", unit="W", device="system", entry="omni", translation_key="battery_power")
+    return r
+
+
+def test_the_omnibattery_system_cell_power_is_the_battery_and_is_charge_positive() -> None:
+    [battery] = omnibattery().detect().batteries
+
+    assert battery.integration == "omnibattery"
+    assert battery.entity_id == "sensor.omnibattery_system_battery_cell_power"
+    assert battery.inverted is False
