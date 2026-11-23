@@ -676,3 +676,27 @@ def test_a_phase_lift_needs_the_fuse_known() -> None:
     assert grid_charge_phase_caps_kw(None, 400.0, expiry_lifts=True, **base) == (0.0, 0.0, 0.0)
     assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=True, **{**base, "cars_a": float("nan")}) == (
         0.0, 0.0, 0.0)
+
+
+def test_the_energy_a_grid_charge_may_take_after_home_assistant_dies() -> None:
+    from custom_components.spotnav.battery.commands import NO_EXPIRY, Expiry  # noqa: PLC0415
+    from custom_components.spotnav.battery.gate import expiry_energy_kwh, expiry_note  # noqa: PLC0415
+
+    deadman = Expiry("device_deadman", "spotnav", 60.0, ("r",))
+    lease = Expiry("device_lease", "spotnav", 1800.0, ("forcible",))
+    block = Expiry("soc_bound", "spotnav", 1800.0, ("reserve",))
+    window = Expiry("clock_window", "nobody", 900.0)
+    looped = Expiry("device_deadman", "integration", 30.0, integration="ecoflow")
+    assert expiry_energy_kwh(deadman, 6.0) == pytest.approx(0.1)
+    assert expiry_energy_kwh(lease, 3.0) == pytest.approx(1.5)
+    assert expiry_energy_kwh(block, 5.0) == pytest.approx(2.5)
+    assert expiry_energy_kwh(window, 4.0, slot_left_s=450.0) == pytest.approx(0.5)
+    assert expiry_energy_kwh(window, 4.0, slot_left_s=5000.0) == pytest.approx(1.0)
+    # Unbounded: no expiry, a window whose end is not known, an integration's own loop, a rate not read.
+    assert expiry_energy_kwh(NO_EXPIRY, 4.0) is None and expiry_energy_kwh(window, 4.0) is None
+    assert expiry_energy_kwh(looped, 4.0) is None and expiry_energy_kwh(lease, float("nan")) is None
+    assert expiry_note(deadman, measured=False) == "dead-man stated, not measured"
+    assert expiry_note(deadman, measured=True) is None
+    assert expiry_note(looped, measured=True) == "continues while HA runs"
+    assert expiry_note(block, measured=False) == "charges at most one block"
+    assert expiry_note(lease, measured=False) is None and expiry_note(NO_EXPIRY, measured=False) is None

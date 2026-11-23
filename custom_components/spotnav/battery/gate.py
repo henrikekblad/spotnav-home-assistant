@@ -726,6 +726,38 @@ def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bo
     )
 
 
+def expiry_energy_kwh(expiry: Expiry, rate_kw: float, *, slot_left_s: float | None = None) -> float | None:
+    """The kWh a grid charge at `rate_kw` may still take from the grid after Home Assistant dies, by the command's
+    own expiry: the rate over the window for a dead-man, a lease and a SoC block; for a clock window the rate to the
+    slot's end (`slot_left_s`, at most the window). `None` (unbounded): no expiry, a clock window whose end is not
+    known, and an integration's own renewal (a stalled SpotNav does not stop it). For the diagnostics and the control
+    log only: never a cap."""
+    if not _usable(rate_kw):
+        return None
+    rate = max(rate_kw, 0.0)
+    window = expiry.window_s
+    if expiry.renewer == "integration" or window is None:
+        return None
+    if expiry.kind in ("device_deadman", "device_lease", "soc_bound"):
+        return rate * window / 3600.0
+    if expiry.kind == "clock_window" and _usable(slot_left_s):
+        return rate * min(max(slot_left_s, 0.0), window) / 3600.0  # type: ignore[type-var]
+    return None
+
+
+def expiry_note(expiry: Expiry, *, measured: bool) -> str | None:
+    """The diagnostics line for an expiry, where it has one: an integration's own renewal (`continues while HA
+    runs`), a SoC block (`charges at most one block`), a dead-man SpotNav renews that no field test has seen act on
+    this firmware (`dead-man stated, not measured`)."""
+    if expiry.kind != "none" and expiry.renewer == "integration":
+        return "continues while HA runs"
+    if expiry.kind == "soc_bound":
+        return "charges at most one block"
+    if expiry.kind == "device_deadman" and expiry.renewer == "spotnav" and not measured:
+        return "dead-man stated, not measured"
+    return None
+
+
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,

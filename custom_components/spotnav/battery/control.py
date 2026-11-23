@@ -100,6 +100,7 @@ from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
     BrandControl,
+    Expiry,
     Phases,
     answered,
     control_for,
@@ -346,6 +347,18 @@ class Trial:
         return {"action": self.action, "rate_kw": self.rate_kw, "started_at": self.started_at.isoformat(),
                 "until": self.until.isoformat(), "force_test": self.force}
 
+
+
+def _grid_charge_expiry(control: BrandControl | None, *, phased: bool) -> Expiry | None:
+    """The expiry of a grid charge on this control: the phase spec's for a charge per phase (`phased`; `None` for a
+    brand without one), else the recipe's own for the grid charge (`expiry_by_action`, then `expiry`: never the
+    phase spec's, which has nothing to end a balanced command)."""
+    if control is None:
+        return None
+    base = control.with_phases(False)
+    if phased:
+        return None if base.phase_control is None else base.phase_control.expiry
+    return base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
 
 
 def _accept_applies(control: BrandControl | None) -> bool:
@@ -1801,20 +1814,69 @@ class BatteryControl:
         for a charge per phase (`phased`), else the recipe's own for the grid charge (`expiry_by_action`, then
         `expiry`: never the phase spec's, which has nothing to end a balanced command). Measured only on the
         firmware read now (`gate.expiry_measured`). `control` is the brand's control as `control_for` gives it."""
-        if control is None:
+        expiry = _grid_charge_expiry(control, phased=phased)
+        if control is None or expiry is None:
             return False
         base = control.with_phases(False)
-        if phased:
-            spec = base.phase_control
-            if spec is None:
-                return False
-            expiry = spec.expiry
-        else:
-            expiry = base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
-        key = self.firmware_key() if self.firmware_known() else None
         return gate.expiry_lifts(
-            expiry, measured=gate.expiry_measured(expiry, key), slow=base.slow, fixed_charge=base.fixed_charge
+            expiry, measured=self._expiry_measured(expiry), slow=base.slow, fixed_charge=base.fixed_charge
         )
+
+    def _expiry_measured(self, expiry: Expiry) -> bool:
+        """Whether the expiry was seen to act on the firmware read now (`gate.expiry_measured`)."""
+        key = self.firmware_key() if self.firmware_known() else None
+        return gate.expiry_measured(expiry, key)
+
+    def _expiry_block(self) -> dict[str, Any] | None:
+        """The grid charge's own expiry, balanced and per phase, for the diagnostics only (the card does not know
+        these keys): what it is, whether it is measured here and lifts the HA-down cap, its line
+        (`gate.expiry_note`) and the kWh a charge at the battery's rated power may still take after Home Assistant
+        dies (`ha_down_energy_kwh`, `gate.expiry_energy_kwh`; `None`: unbounded). `None` for a brand SpotNav does not
+        write to."""
+        try:
+            control = control_for(self.facts.brand)
+            if control is None:
+                return None
+            rated = self.facts.max_charge_kw
+            block: dict[str, Any] = {}
+            for name, phased in (("balanced", False), ("per_phase", True)):
+                expiry = _grid_charge_expiry(control, phased=phased)
+                if expiry is None:
+                    block[name] = None
+                    continue
+                measured = self._expiry_measured(expiry)
+                energy = None if rated is None else gate.expiry_energy_kwh(expiry, rated)
+                block[name] = {
+                    "expiry_id": expiry.expiry_id, "kind": expiry.kind, "renewer": expiry.renewer,
+                    "window_s": expiry.window_s, "evidence": expiry.evidence, "measured": measured,
+                    "lifts": self._expiry_lifts(control, phased=phased),
+                    "note": gate.expiry_note(expiry, measured=measured),
+                    "rate_kw": rated, "ha_down_energy_kwh": None if energy is None else round(energy, 3),
+                }
+            return block
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("expiry_block: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
+
+    def _log_expiry(self, executor: Executor, events: list[dict[str, Any]]) -> None:
+        """A grid charge entered or changed under an expiry: the kWh it may still take after Home Assistant dies
+        (`ha_down_energy_kwh`, `None`: unbounded) in the control log. Nothing for a control without one (Sigenergy's
+        log stays as it was)."""
+        for event in events:
+            if event.get("kind") not in ("enter", "change") or event.get("reason") != ACTION_GRID_CHARGE:
+                continue
+            phases = event.get("phase_kw")
+            phased = executor.control.phased and isinstance(phases, list)
+            expiry = _grid_charge_expiry(executor.control, phased=phased)
+            if expiry is None or expiry.kind == "none":
+                continue
+            rate = sum(float(value) for value in phases) if phased else event.get("rate_kw")  # type: ignore[union-attr]
+            energy = gate.expiry_energy_kwh(expiry, rate) if isinstance(rate, (int, float)) else None
+            self._log([{
+                "at": event.get("at"), "kind": "ha_down_energy", "reason": expiry.kind,
+                "ha_down_energy_kwh": None if energy is None else round(energy, 3),
+                "note": gate.expiry_note(expiry, measured=self._expiry_measured(expiry)),
+            }])
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
         """What the plant's own grid import limit reads now (kW), `None` when the brand has none, it is disabled or
@@ -2724,6 +2786,7 @@ class BatteryControl:
         result = executor.step(inputs)
         self._failed = self._timed_out = ()
         self._log(result.events)
+        self._log_expiry(executor, result.events)
         if any(event["kind"] == "enter" for event in result.events) and taken_over(inputs.facts, executor.control):
             # Taken over from the plant's own optimiser: turning control off reminds the person to set it again.
             self.took_from_ai = True
@@ -3051,6 +3114,7 @@ class BatteryControl:
             "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
+            "expiry": self._expiry_block(),
         }
 
     def _write_budget_block(self) -> dict[str, Any] | None:

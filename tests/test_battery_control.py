@@ -303,6 +303,11 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     assert plant.stored_at_first_call["state"]["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
     assert control.executor.state.phase == "active"
     assert control.snapshot()["executor"]["state"]["action"] == "hold"
+    # Sigenergy's grid charge has no expiry of its own: nothing lifts, nothing bounds it (diagnostics only).
+    expiry = control.snapshot()["expiry"]
+    assert expiry["balanced"]["kind"] == "none" and expiry["per_phase"]["kind"] == "none"
+    assert not expiry["balanced"]["lifts"] and expiry["balanced"]["ha_down_energy_kwh"] is None
+    assert "expiry" not in control.status()
 
     # HA stops without handing back; the next start restores before anything else.
     again = BatteryControl(hass, controller, plan_source=_hold)
