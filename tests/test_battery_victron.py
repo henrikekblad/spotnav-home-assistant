@@ -810,7 +810,7 @@ def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_n
 
 
 def _verify_expiry(
-    plant: Plant, looks: int = 900, *, mutate: Any = None, glitch_at_s: float | None = None,
+    plant: Plant, looks: int = 900, *, mutate: Any = None, glitch_at_s: float | None = None, phase: int = 0,
 ) -> tuple[Verification, Executor, list[dict[str, Any]]]:
     """The routine's hold, `per_phase` and `expiry` on the model plant. `mutate(plant, s)`: changes the plant `s`
     into the silence; `glitch_at_s`: one look that far into it reads L1 as in passthru (the house unchanged)."""
@@ -818,7 +818,7 @@ def _verify_expiry(
     now = T0
     verification = Verification(
         executor, now, firmware="v3.60", modes=("hold", "per_phase", "expiry"), expiry=VICTRON_PHASES.expiry,
-        expiry_phased=True,
+        expiry_phased=True, expiry_phase=phase,
     )
     capability = Capability(rated_charge_kw=plant.rating_kw, rated_discharge_kw=plant.rating_kw)
     seen_looks: list[dict[str, Any]] = []
@@ -938,3 +938,38 @@ def test_a_later_run_proves_another_phase_on_its_own() -> None:
     )
     assert [result.report_name for result in verification.results][-2] == "expiry:L2"
     assert verification.results[-2].phase == "L2"
+
+
+@pytest.mark.parametrize("phase", [0, 1, 2])
+@pytest.mark.parametrize("behind_kw", [0.6, 1.0])
+def test_a_dead_man_that_works_with_load_behind_the_multi_passes_and_never_blocks_control(
+    phase: int, behind_kw: float
+) -> None:
+    """In passthru the point carries the load behind the Multi, above the setpoint written (that load less 1 kW): no
+    runaway in the silence, so the test decides and the control is left idle, never blocked."""
+    plant = Plant()
+    plant.out_kw[phase] = behind_kw
+    verification, executor, _looks = _verify_expiry(plant, phase=phase)
+    modes = verification.report()["modes"]
+    assert modes[f"expiry:L{phase + 1}"]["outcome"] == "obeyed", modes
+    assert modes["normal"]["outcome"] == "restored"
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+
+
+@pytest.mark.parametrize(
+    ("true_s", "outcome"),
+    [(30, "not_judgeable:early_fallback"), (65, "obeyed"), (70, "not_judgeable:late_look"), (85, "ignored")],
+)
+def test_only_a_fallback_around_the_window_passes_and_one_a_look_late_is_tried_again(
+    monkeypatch: pytest.MonkeyPatch, true_s: float, outcome: str
+) -> None:
+    """A plant whose Multis leave their setpoints `true_s` after the last write: seen first the look after."""
+    import tests.test_battery_victron as module  # noqa: PLC0415
+
+    monkeypatch.setattr(module, "VICTRON_SILENCE_S", true_s)
+    verification, executor, _looks = _verify_expiry(Plant())
+    row = verification.report()["modes"]["expiry:L1"]
+    assert row["outcome"] == outcome, row
+    assert gate.mode_verdict(outcome) == ("fail" if outcome == "ignored" else "pass" if outcome == "obeyed"
+                                          else "pending")
+    assert executor.state.blocked is None

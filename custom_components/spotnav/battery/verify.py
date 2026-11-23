@@ -90,8 +90,10 @@ at about 0 **and**, for a target that is the grid's power at a point, that power
 the phases proven (owner decision 2026-11-23), with the house on that phase (the whole site's for a hold) where
 it was at the silence's start: a load that moves on it reads exactly like a fallback, and is
 `not_judgeable:house_changed`, never a pass. The fallback is timed from the last write of a renewed role: `obeyed`
-within the window and one look (the gate takes it only within `gate.SILENCE_FALLBACK_MAX_S` and one look,
-`gate.expiry_measured`), `partial:early` sooner than the renewal (the recipe is wrong), `ignored` later or not by
+from one look before the window to one look after it (the gate takes it only within `gate.SILENCE_FALLBACK_MAX_S`
+and one look, `gate.expiry_measured`), `partial:early` sooner than the renewal (the recipe is wrong),
+`not_judgeable:early_fallback` sooner than that window and `not_judgeable:late_look` one look past it (both tried
+again at a later run, `Verification._expiry_decide`), `ignored` later or not by
 `expiry_deadline_s` (the window plus `max(15 s, half the window)` from the last write; the silence never runs past
 `EXPIRY_TEST_MAX_S`), `not_judgeable:*` (tried again at a later run) or `aborted:*` (near the fuse or a peak cover
 due: `fuse_headroom`; the battery taking from the grid: `charge_in_silence`; any hand-back of the executor's own). The battery is then handed back at once. Its row never decides the report (`gate.allowed_actions`
@@ -892,9 +894,12 @@ class Verification:
         stale = sample.power_kw is None or sample.age_s is None or sample.age_s > READING_MAX_AGE_S
         plant, house = sample.plant_phase_kw, self._expiry_house_kw(sample, phase)
         point = None if phase is None else self._written_point_kw(phase)
+        grid_target = phase is not None and self._grid_target()
         if stale or house is None or (phase is not None and (plant is None or (
-            point is not None and sample.phase_point_kw is None
+            grid_target and (point is None or sample.phase_point_kw is None)
         ))):
+            # For a target that is the grid's power at a point, the value written and the point's reading are both
+            # needed to tell a fallback (`_written_point_kw`).
             self._expiry_outcome(now, result, "not_judgeable:readings_stale")
             return
         assert sample.power_kw is not None
@@ -902,7 +907,11 @@ class Verification:
             self._expiry_start(now, result, sample, step, phase, house)
             return
         elapsed = (now - self.expiry_since).total_seconds()
-        last_write = self.expiry_last_write or self.expiry_since
+        if self.expiry_last_write is None:
+            # No write of a renewed role seen in this mode: the dead-man could not be timed.
+            self._expiry_outcome(now, result, "not_judgeable:no_write_seen")
+            return
+        last_write = self.expiry_last_write
         result.readings.append({
             "at": now.isoformat(), "since_s": round(elapsed, 1),
             "since_write_s": round((now - last_write).total_seconds(), 1), "power_kw": round(sample.power_kw, 3),
@@ -995,9 +1004,10 @@ class Verification:
             return True
         plant = sample.plant_phase_kw
         assert sample.power_kw is not None
+        # On any phase: the executor counts no runaway in the silence, so this is the one check for a charge.
         charging = (
             sample.grid_kw is not None and min(sample.power_kw, sample.grid_kw) > FLOOR_KW
-        ) or (phase is not None and plant is not None and plant[phase] < -PROBE_POWER_TOLERANCE_KW)
+        ) or (phase is not None and plant is not None and min(plant) < -PROBE_POWER_TOLERANCE_KW)
         if charging:
             # The battery took from the grid: never a fallback, handed back at once.
             self._expiry_outcome(now, result, "aborted:charge_in_silence")
@@ -1005,16 +1015,29 @@ class Verification:
         return False
 
     def _expiry_decide(self, now: datetime, result: ModeResult, expiry: Expiry, fallback_s: float) -> None:
-        """The plant read as fallen back, `fallback_s` after the last write of a renewed role: `partial:early` sooner
-        than the renewal (the renewals would not keep it alive), `obeyed` within the window and one look (and never
-        past `gate.SILENCE_FALLBACK_MAX_S` and one look), else `ignored` (late)."""
+        """The plant read as fallen back, first seen `fallback_s` after the last write of a renewed role (a look's
+        resolution: the fallback itself came up to one look sooner). With `W` the window (at most
+        `gate.SILENCE_FALLBACK_MAX_S`) and `L` one look (`gate.EXPIRY_LOOK_S`):
+
+        * sooner than the renewal: `partial:early` (the renewals would not keep it alive: the recipe is wrong);
+        * else sooner than `W - L`: `not_judgeable:early_fallback` (something else stopped the plant following its
+          target; tried again at a later run, never a pass);
+        * `W - L` to `W + L`: `obeyed`;
+        * up to one more look later: `not_judgeable:late_look` (the look and the write's timing can put a true `W`
+          there; tried again, never a pass: the gate takes `W + L` at most, owner decision 5);
+        * later: `ignored` (late, decided)."""
         assert expiry.window_s is not None
         result.fallback_s = round(fallback_s, 1)
+        window = min(expiry.window_s, SILENCE_FALLBACK_MAX_S)
         renew_s = expiry.renew_s or WATCHDOG_RENEW_S
         if fallback_s < renew_s:
             outcome = "partial:early"
-        elif fallback_s <= min(expiry.window_s, SILENCE_FALLBACK_MAX_S) + EXPIRY_LOOK_S:
+        elif fallback_s < window - EXPIRY_LOOK_S:
+            outcome = "not_judgeable:early_fallback"
+        elif fallback_s <= window + EXPIRY_LOOK_S:
             outcome = "obeyed"
+        elif fallback_s <= window + 2 * EXPIRY_LOOK_S:
+            outcome = "not_judgeable:late_look"
         else:
             result.late = True
             outcome = "ignored"
@@ -1029,6 +1052,11 @@ class Verification:
         if sample.grid_kw is None or sample.power_kw is None:
             return None
         return sample.grid_kw - sample.power_kw
+
+    def _grid_target(self) -> bool:
+        """Whether the phase spec's targets are the grid's power at a point (`PhaseControl.target_kind` `grid`)."""
+        spec = self.executor.control.phase_control
+        return spec is not None and spec.target_kind == "grid"
 
     def _written_point_kw(self, phase: int) -> float | None:
         """For a recipe whose targets are the grid's power at a point (`PhaseControl.target_kind` `grid`, Victron):
