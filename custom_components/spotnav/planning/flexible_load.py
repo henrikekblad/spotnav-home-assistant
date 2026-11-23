@@ -34,7 +34,14 @@ KIND_HOME_BATTERY: Final = "home_battery"
 KIND_WATER_HEATER: Final = "water_heater"
 KIND_HEAT: Final = "heat"
 KIND_HEAT_ZONE: Final = "heat_zone"
-KINDS: Final = (KIND_CAR, KIND_HOME_BATTERY, KIND_WATER_HEATER, KIND_HEAT, KIND_HEAT_ZONE)
+#: The pool's heat pump, the pool's circulation pump and the spa (`pool/flexible.py`).
+KIND_POOL_HEAT: Final = "pool_heat"
+KIND_POOL_CIRCULATION: Final = "pool_circulation"
+KIND_SPA: Final = "spa"
+KINDS: Final = (
+    KIND_CAR, KIND_HOME_BATTERY, KIND_WATER_HEATER, KIND_HEAT, KIND_HEAT_ZONE, KIND_POOL_HEAT, KIND_POOL_CIRCULATION,
+    KIND_SPA,
+)
 
 GOAL_ENERGY_BY: Final = "energy_by"
 GOAL_TEMPERATURE_BY: Final = "temperature_by"
