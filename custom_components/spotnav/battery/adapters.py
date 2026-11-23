@@ -278,6 +278,21 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   battery) and `pack_input_power` (out of it), both non-negative (`device.py` lines 185-186 and 258-268), as the site
   detection's Zendure row reads them.
 
+* Omnibattery, `omnibattery` (ffunes/Omnibattery `e60eb4f`, 1.6.1, read 2026-11-23): a controller that drives Marstek,
+  Zendure, Anker, Sessy, Hoymiles and Indevolt batteries through its own drivers, so the batteries' entities are its
+  own and no `marstek_modbus` or `zendure_ha` entity exists. Read only, and the whole system as one battery: its
+  system entities keep the legacy unique id `marstek_venus_system_<key>` (`infra/entity_naming.py`
+  `SYSTEM_UNIQUE_ID_PREFIX`, never changed; only the suggested entity id is `omnibattery_<key>`, an install from
+  before the rebrand keeps `marstek_venus_system_<key>`), so they are found by the key at the end of the unique id.
+  The level is `system_soc` (%, weighted by each battery's capacity, a plain mean where no capacity is known; batteries
+  in manual mode are left out unless all are, `sensors/aggregate_sensors.py` `_calculate_system_soc`) and the size
+  `system_total_energy` (kWh, the sum of the batteries' sizes). The counters are not read: the system has only the
+  daily `system_daily_charging_energy` and `_discharging_energy`, which restart every day, and the batteries' own
+  lifetime counters are one per battery. No rating and no floor is a system entity (learnt). Nobody else is read as
+  running it: the integration is itself the outside controller (`coexist.py`), so no mode rule. The battery's power is
+  `system_battery_cell_power`, the signed sum over the batteries, positive while charging, as the site detection's
+  Omnibattery row reads it (see there).
+
 * Sungrow SH hybrids (SH-RS 1p, SH-RT 3p) through mkaiser's YAML Modbus package (mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant
   `e2adb62`, read 2026-11-23, `plans/research_integrations/sungrow_control_2026-11-23.md`), read only (the mode and power
   registers have a watchdog only in External EMS, which nothing here writes). It is no integration: its entities are
@@ -1204,9 +1219,21 @@ SUNGROW: Final = Adapter(
     ),
 )
 
+#: Omnibattery (see the module): read only, the system's aggregate entities. It is the outside controller itself, so no
+#: mode is read and `outside_control` marks the battery as run by someone else by its presence.
+OMNIBATTERY: Final = Adapter(
+    brand="omnibattery",
+    label="Omnibattery",
+    platforms=("omnibattery",),
+    facts={
+        "soc": _key("system_soc"),
+        "capacity": _key("system_total_energy"),
+    },
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
 )
 
 
