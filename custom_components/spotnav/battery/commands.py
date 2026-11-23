@@ -800,11 +800,10 @@ class BrandControl:
     #: hold runs only while that rate fits under the fuse cap, as a fixed grid charge must (`gate.restricted`,
     #: `executor`'s start rule).
     hold_charges_without: tuple[str, ...] = ()
-    #: A grid charge whose power the plant sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is
-    #: commanded in blocks of this long (s): the ceiling is what the plant reaches in one block at the recipe's rate
-    #: (an upper figure, so it is reached no sooner), renewed every block from the SoC then. Without a dead-man a
-    #: Home Assistant (or a cloud) that stops leaves at most one block's charge from the grid, not a full battery.
-    charge_block_s: float | None = None
+    #: An action's own expiry where it differs from the control's (`expiry`): a grid charge whose power the plant
+    #: sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is a `soc_bound` expiry, commanded in
+    #: blocks of its window (`charge_block_s`).
+    expiry_by_action: Mapping[str, Expiry] = field(default_factory=dict)
     #: How long after a hand-back its writes are watched (s): where the read-back is only Home Assistant's own echo
     #: (`local_readback`) a device or a cloud that refused the restore shows SpotNav's value again on a later poll,
     #: and the restore is then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
@@ -833,6 +832,16 @@ class BrandControl:
         if self.phased and spec is not None and spec.expiry.renew_s is not None:
             return spec.expiry.renew_s
         return self.expiry.renew_s
+
+    @property
+    def charge_block_s(self) -> float | None:
+        """A grid charge whose power the plant sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`)
+        is commanded in blocks of this long (s; the grid charge's `soc_bound` expiry): the ceiling is what the plant
+        reaches in one block at the recipe's rate (an upper figure, so it is reached no sooner), renewed every block
+        from the SoC then. Without a dead-man a Home Assistant (or a cloud) that stops leaves at most one block's
+        charge from the grid, not a full battery. `None`: no such block."""
+        expiry = self.expiry_by_action.get(ACTION_GRID_CHARGE)
+        return expiry.window_s if expiry is not None and expiry.kind == "soc_bound" else None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -1752,7 +1761,8 @@ TESLA_CONTROL: Final = BrandControl(
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
-    charge_block_s=TESLA_CHARGE_BLOCK_S,
+    # The reserve one block ahead of the SoC, set again each block by SpotNav: a SoC bound, never a fuse argument.
+    expiry_by_action={ACTION_GRID_CHARGE: Expiry("soc_bound", "spotnav", TESLA_CHARGE_BLOCK_S, ("reserve",))},
     # tesla_fleet echoes a write at once and polls the cloud every 60 s: fifteen polls show a refused restore. A
     # restore given up is tried hourly, not every 15 minutes (each is a billed command).
     settle_s=900.0,
