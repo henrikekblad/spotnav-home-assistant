@@ -788,10 +788,12 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         label="SolaX Modbus, Solinteg plugin",
     ),
     # Charge and discharge as two non-negative entities.
-    # Core `sma`: `<entry>-<key>_<idx>` with the keys `battery_power_charge_total` / `_discharge_total` (the
-    # per-phase `_a`/`_b`/`_c` ones are not matched); older releases had no `_total` and no index.
+    # Core `sma` and HACS `pysmaplus` (ha-pysmaplus `5d74e78`, the same entity names): found by the sensors' names
+    # `battery_power_charge_total` / `_discharge_total` (the per-phase `_a`/`_b`/`_c` ones are not matched); older
+    # releases had no `_total` and no index. The unique id is `<serial>-<pysma code>_<idx>` (`6100_00496900`), so the
+    # name is read from the entity id and its original name, never from the id.
     BatteryRow(
-        ("sma",),
+        ("sma", "pysmaplus"),
         _re(r"battery_power_charge(?:_total)?(?:_\d+)?$"),
         discharge_regex=_re(r"battery_power_discharge(?:_total)?(?:_\d+)?$"),
     ),

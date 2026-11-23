@@ -3560,5 +3560,116 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "sma": {
+  "_source": "home-assistant/core `sma` (09cac8e, pysma 1.1.9) and littleyoda/ha-pysmaplus 5d74e78: `<config entry unique id, the serial>-<pysma key>_<key index>` (core sensor.py lines 891-893), the pysma keys from kellerza/pysma 029e574 `definitions/webconnect.py`, so a hexadecimal `6100_00295A00` and not a name; the per-battery A, B and C sensors are disabled by default. `Battery Capacity Total` (6100_00696E00) is a percent. Not a real registry; built from the source.",
+  "platform": "sma",
+  "manufacturer": "SMA",
+  "battery": "sensor.sma_battery_power_charge_total",
+  "entities": [
+   {
+    "entity_id": "sensor.sma_battery_power_charge_total",
+    "unique_id": "1234567890-6100_00496900_0",
+    "device": "sbs",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_power_discharge_total",
+    "unique_id": "1234567890-6100_00496A00_0",
+    "device": "sbs",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_power_charge_a",
+    "unique_id": "1234567890-6100_00499300_0",
+    "device": "sbs",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.sma_battery_soc_total",
+    "unique_id": "1234567890-6100_00295A00_0",
+    "device": "sbs",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_soc_a",
+    "unique_id": "1234567890-6100_00498F00_0",
+    "device": "sbs",
+    "state": "60",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.sma_battery_capacity_total",
+    "unique_id": "1234567890-6100_00696E00_0",
+    "device": "sbs",
+    "state": "100",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_charge_total",
+    "unique_id": "1234567890-6400_00496700_0",
+    "device": "sbs",
+    "state": "2100.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_discharge_total",
+    "unique_id": "1234567890-6400_00496800_0",
+    "device": "sbs",
+    "state": "1900.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_battery_operating_mode",
+    "unique_id": "1234567890-6180_08495E00_0",
+    "device": "sbs",
+    "state": "Charge",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sma_grid_power",
+    "unique_id": "1234567890-6100_40263F00_0",
+    "device": "sbs",
+    "state": "-300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "sma",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

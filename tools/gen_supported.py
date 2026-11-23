@@ -884,8 +884,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "SMA",
         "`sma`, Home Assistant core; `pysmaplus`, HACS",
         keys=("sma", "pysmaplus"),
-        control="Unknown: Modbus setpoints exist, but no Home Assistant integration for them was found",
-        note="Core does not support ennexOS devices such as the Tripower X.",
+        adapter="sma",
+        control="Not mapped: read only. Modbus setpoints exist, but no Home Assistant integration for them was found",
+        note="Core does not support ennexOS devices such as the Tripower X. The size is not read: the integration's "
+        "Battery Capacity Total is a percentage. The mode is not readable, so SMA's Forecast-based Charging and the "
+        "Sunny Home Manager are not seen.",
     ),
     Overview(
         "Kostal (Plenticore)",

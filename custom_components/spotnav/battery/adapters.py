@@ -417,6 +417,20 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   writes it to 100 to charge); the firmware (no entity). Another maker's `saj_modbus` (a PV-only R5 integration) and core `saj`
   have no battery.
 
+* SMA Sunny Boy Storage and Sunny Tripower Smart Energy, core `sma` (pysma 1.1.9) and HACS `pysmaplus` (littleyoda/ha-pysmaplus
+  `5d74e78`, 0.6.6), over the inverter's webconnect (read 2026-11-23, `plans/research_integrations/sma_control_2026-11-23.md`):
+  read only, and no Home Assistant route can write. Unique id `<config entry unique id, the serial>-<pysma key>_<key index>`
+  (core `sensor.py` lines 891-893, `pysmaplus` line 1231) where the key is pysma's register code, not a name
+  (`definitions/webconnect.py`): the total level `6100_00295A00`, the counters `6400_00496700` (charged) and `6400_00496800`
+  (discharged, kWh), every id anchored after the serial's hyphen so that the per-battery A, B and C sensors (`6100_00498F00`,
+  disabled by default) are not them. The battery's power is two unsigned sensors, charge `6100_00496900` and discharge
+  `6100_00496A00`, the site's pair (found by their names, see `site_detection`). Not read: the size, which no entity states
+  (`Battery Capacity Total`, `6100_00696E00`, has the unit % and is never a size); the ratings and the floor (no entity); the
+  firmware, which is the device's `sw_version`; any mode: the `Operating Mode` sensor is the inverter's status text and not the
+  energy strategy, and SMA's Forecast-based Charging and the Sunny Home Manager's management, which run the battery, show in no
+  entity, so the battery reads as free here whatever they do. The ennexOS devices (Tripower X, Data Manager M) through
+  `pysmaplus` have other keys (`Bat.ChaStt`), whose unique ids are not verified and are not matched.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1464,10 +1478,27 @@ SAJ: Final = Adapter(
     ),
 )
 
+def _sma(code: str) -> Match:
+    """pysma's register code, after the serial's hyphen and before the key index: `<serial>-<code>_<idx>`."""
+    return Match(("sensor",), re.compile(rf"^[^-]+-{re.escape(code.lower())}_\d+$"))
+
+
+#: SMA through core `sma` or `pysmaplus` (see the module): read only. No mode is readable and no size is stated.
+SMA: Final = Adapter(
+    brand="sma",
+    label="SMA",
+    platforms=("sma", "pysmaplus"),
+    facts={
+        "soc": _sma("6100_00295A00"),
+        "charged_total": _sma("6400_00496700"),
+        "discharged_total": _sma("6400_00496800"),
+    },
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ, SMA,
 )
 
 

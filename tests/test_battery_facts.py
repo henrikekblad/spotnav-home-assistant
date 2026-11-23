@@ -479,6 +479,8 @@ PLAN_REASON = {
     "senec": "no_capacity",
     # SAJ's size has no unit and its ratings are permille of an unread power: learnt.
     "saj": "no_capacity",
+    # SMA states no size and no rating on any route: learnt.
+    "sma": "no_capacity",
 }
 
 

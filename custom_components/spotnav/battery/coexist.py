@@ -88,6 +88,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   issue 162); EKD's Ampere.IQ rewrites the same registers on an Ampere.StoragePro (issue 18). Tibber lists SAJ among the batteries
   it runs, from a LinkedIn post only [U]; no other aggregator was found
   (`plans/research_integrations/saj_control_2026-11-23.md`).
+* SMA's own control is the Sunny Portal's Forecast-based Charging, the Sunny Home Manager's energy management (both must be
+  off for any outside control, evcc's template and SMA's Modbus document say) and the inverter's own protective grid charge at
+  a very low level (10-15 minutes, the SMA manual); none shows in a Home Assistant entity. No aggregator was found, and no
+  Nordic SMA battery owner either (`plans/research_integrations/sma_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -173,6 +177,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("saj", "SAJ", ("saj_h2_modbus",),
                 "SAJ app (Elekeeper, eSolar): AI saving, peak shaving, time-of-use and the app's charge and discharge limits",
                 ("Tibber, named for SAJ [U]",)),
+    Coexistence("sma", "SMA", ("sma", "pysmaplus"),
+                "Sunny Portal Forecast-based Charging, the Sunny Home Manager's energy management and the inverter's protective grid charge"),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
