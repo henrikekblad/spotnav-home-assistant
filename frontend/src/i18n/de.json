@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Poolwärmepumpe heizt",
   "house.plan.reason.sun": "Sonne",
   "house.plan.reason.need": "die Filterung des Tages",
-  "house.plan.reason.extra": "Extra-Filterung"
+  "house.plan.reason.extra": "Extra-Filterung",
+  "house.plan.load.spa": "Whirlpool",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C um {time}",
+  "house.plan.run.spa.heat": "Whirlpool heizt auf",
+  "house.plan.run.spa.hold": "Whirlpool bleibt warm für das Bad",
+  "house.plan.run.sauna.heat": "Sauna heizt auf",
+  "house.plan.run.sauna.hold": "Sauna bereit",
+  "house.plan.reason.bath": "für die gebuchte Zeit",
+  "house.plan.reason.now": "jetzt gestartet"
 }

@@ -50,7 +50,7 @@ describe("decoding the plan", () => {
     const { hours: _hours, ...missing } = read("plan", "villa.json");
     expect(decodePlan(missing).ok).toBe(false);
     const raw = read("plan", "villa.json");
-    const loads = (raw.loads as Record<string, unknown>[]).map((load, index) => (index === 0 ? { ...load, kind: "spa" } : load));
+    const loads = (raw.loads as Record<string, unknown>[]).map((load, index) => (index === 0 ? { ...load, kind: "jacuzzi" } : load));
     expect(decodePlan({ ...raw, loads }).ok).toBe(false);
   });
 });
@@ -175,6 +175,23 @@ describe("the Plan tab", () => {
       }
     }
     expect(body(pool).querySelectorAll("[data-load='pool_circulation']").length).toBeGreaterThan(0);
+  });
+
+  it("draws the spa and the sauna as watched lanes with their heat-up and hold, worded in every language", () => {
+    const value = plan("spa_sauna.json");
+    const spa = value.loads.find((load) => load.kind === "spa")!;
+    const sauna = value.loads.find((load) => load.kind === "sauna")!;
+    expect(spa.would && sauna.would && spa.in_house).toBe(true);
+    const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
+    expect(laneReason("sv", ctx, spa)).toMatch(/38 °C kl\. \d\d:\d\d/u);
+    expect(runWords("sv", spa, spa.runs[0]!)).toBe("Spat värms upp: billig timme");
+    for (const language of LANGUAGES) {
+      for (const load of [spa, sauna]) {
+        for (const run of load.runs) {
+          expect(runWords(language, load, run), language).not.toMatch(/house\.plan\./);
+        }
+      }
+    }
   });
 
   it("says on the battery's lane when the fuse's cap held grid charging back, in every language", () => {

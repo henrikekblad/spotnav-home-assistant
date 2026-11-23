@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Poolens varmepumpe varmer",
   "house.plan.reason.sun": "sol",
   "house.plan.reason.need": "døgnets filtrering",
-  "house.plan.reason.extra": "ekstra filtrering"
+  "house.plan.reason.extra": "ekstra filtrering",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C kl. {time}",
+  "house.plan.run.spa.heat": "Spaen varmes op",
+  "house.plan.run.spa.hold": "Spaen holdes varm til badet",
+  "house.plan.run.sauna.heat": "Saunaen varmes op",
+  "house.plan.run.sauna.hold": "Saunaen er klar",
+  "house.plan.reason.bath": "til den bookede tid",
+  "house.plan.reason.now": "startet nu"
 }

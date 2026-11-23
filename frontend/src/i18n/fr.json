@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "La pompe à chaleur de la piscine chauffe",
   "house.plan.reason.sun": "soleil",
   "house.plan.reason.need": "la filtration du jour",
-  "house.plan.reason.extra": "filtration supplémentaire"
+  "house.plan.reason.extra": "filtration supplémentaire",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C à {time}",
+  "house.plan.run.spa.heat": "Le spa chauffe",
+  "house.plan.run.spa.hold": "Le spa reste chaud pour le bain",
+  "house.plan.run.sauna.heat": "Le sauna chauffe",
+  "house.plan.run.sauna.hold": "Sauna prêt",
+  "house.plan.reason.bath": "pour l'heure réservée",
+  "house.plan.reason.now": "lancé maintenant"
 }

@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Zwembadwarmtepomp verwarmt",
   "house.plan.reason.sun": "zon",
   "house.plan.reason.need": "de filtering van de dag",
-  "house.plan.reason.extra": "extra filtering"
+  "house.plan.reason.extra": "extra filtering",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C om {time}",
+  "house.plan.run.spa.heat": "Spa warmt op",
+  "house.plan.run.spa.hold": "Spa blijft warm voor het bad",
+  "house.plan.run.sauna.heat": "Sauna warmt op",
+  "house.plan.run.sauna.hold": "Sauna klaar",
+  "house.plan.reason.bath": "voor de geboekte tijd",
+  "house.plan.reason.now": "nu gestart"
 }

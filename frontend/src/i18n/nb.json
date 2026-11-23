@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Bassengets varmepumpe varmer",
   "house.plan.reason.sun": "sol",
   "house.plan.reason.need": "døgnets filtrering",
-  "house.plan.reason.extra": "ekstra filtrering"
+  "house.plan.reason.extra": "ekstra filtrering",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Badstue",
+  "house.plan.lane.deadlineReady": "{temp} °C kl. {time}",
+  "house.plan.run.spa.heat": "Spaen varmes opp",
+  "house.plan.run.spa.hold": "Spaen holdes varm til badet",
+  "house.plan.run.sauna.heat": "Badstuen varmes opp",
+  "house.plan.run.sauna.hold": "Badstuen er klar",
+  "house.plan.reason.bath": "til den bestilte tiden",
+  "house.plan.reason.now": "startet nå"
 }

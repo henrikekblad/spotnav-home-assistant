@@ -33,8 +33,27 @@ const HISTORY_KEYS = ["days", "first"] as const;
 const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh", "active_min"] as const;
 const MONEY_KEYS = ["currency", "major_unit", "minor_unit"] as const;
 
-export type PlanLoadKind = "car" | "home_battery" | "heat" | "heat_zone" | "water_heater" | "pool_circulation" | "pool_heat";
-const LOAD_KINDS: readonly PlanLoadKind[] = ["car", "home_battery", "heat", "heat_zone", "water_heater", "pool_circulation", "pool_heat"];
+export type PlanLoadKind =
+  | "car"
+  | "home_battery"
+  | "heat"
+  | "heat_zone"
+  | "water_heater"
+  | "pool_circulation"
+  | "pool_heat"
+  | "spa"
+  | "sauna";
+const LOAD_KINDS: readonly PlanLoadKind[] = [
+  "car",
+  "home_battery",
+  "heat",
+  "heat_zone",
+  "water_heater",
+  "pool_circulation",
+  "pool_heat",
+  "spa",
+  "sauna",
+];
 export type CeilingKind = "import_target" | "power_level" | "power_tariff" | "fuse";
 const CEILINGS: readonly CeilingKind[] = ["import_target", "power_level", "power_tariff", "fuse"];
 
@@ -640,6 +659,11 @@ export function laneReason(language: Language, ctx: FormatContext, load: PlanLoa
     });
   } else if (load.kind === "pool_heat") {
     line = translate(language, "house.plan.lane.poolHeat", { hours: formatFixed(language, num("planned_h"), 0) });
+  } else if (load.kind === "spa" || load.kind === "sauna") {
+    const ready = typeof s["ready_at"] === "string" ? Date.parse(s["ready_at"]) : NaN;
+    line = Number.isFinite(ready)
+      ? translate(language, "house.plan.lane.deadlineReady", { temp: formatNumber(language, num("target_c"), 1), time: clock(ctx, ready) })
+      : translate(language, "house.plan.lane.none");
   } else {
     line = translate(language, "house.plan.lane.waterHeater", { hours: formatFixed(language, num("on_hours"), 0) });
   }

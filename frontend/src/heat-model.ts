@@ -95,6 +95,19 @@ const CONFIG = O({
       control: "boolean",
     }),
   ),
+  sauna: N(
+    O({
+      entity_id: "string",
+      family: "string",
+      target_c: "number",
+      sessions: A(O({ weekdays: A("number"), time: "string" })),
+      session_once: N("string"),
+      heater_kw: N("number"),
+      lock_id: N("string"),
+      safety_declared: "boolean",
+      control: "boolean",
+    }),
+  ),
   heat_notifications: O({ targets: A("string"), events: A("string") }),
   heat_meter_entity: N("string"),
 });
@@ -111,6 +124,16 @@ const POOL_PUMP_CHOICE = O({
   shape: "string",
   switch_id: N("string"),
   number_id: N("string"),
+  cloud: "boolean",
+});
+const SAUNA_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  family: "string",
+  lock_id: N("string"),
   cloud: "boolean",
 });
 const SPA_CHOICE = O({
@@ -295,6 +318,53 @@ const POOL = O({
   would: N(O({ action: "string", until: N("string"), reason: "string" })),
   notes: A(O({ code: "string", params: "any" })),
 });
+const SESSION = O({ weekdays: A("number"), time: "string" });
+const NOT_READY = O({
+  at: "string",
+  cause: "string",
+  reach_c: "number",
+  short_c: "number",
+  short_kwh: "number",
+  later: N("string"),
+});
+/** What the spa's and the sauna's status share (`spa/runtime.py`). */
+const DEADLINE_COMMON = {
+  family: "string",
+  heating: N("boolean"),
+  kw: N("number"),
+  rate_c_h: "number",
+  rate_learned: "boolean",
+  state: N("string"),
+  ready_at: N("string"),
+  live: "boolean",
+  control: O({ state: "string", reason: N("string"), paused_until: N("string") }),
+  would: N(O({ action: "string", until: N("string"), reason: "string" })),
+  not_ready: N(NOT_READY),
+  notes: A(O({ code: "string", params: "any" })),
+} as const;
+const SPA = O({
+  ...DEADLINE_COMMON,
+  water_c: N("number"),
+  bath_c: "number",
+  idle_c: "number",
+  floor_c: "number",
+  next_bath: N(O({ at: "string", source: "string" })),
+  baths: A(SESSION),
+  bath_once: N("string"),
+  bath_now: N(O({ until: "string" })),
+});
+const SAUNA = O({
+  ...DEADLINE_COMMON,
+  temp_c: N("number"),
+  target_c: "number",
+  next_session: N(O({ at: "string", source: "string" })),
+  sessions: A(SESSION),
+  session_once: N("string"),
+  session_now: N(O({ until: "string" })),
+  locked: N("boolean"),
+  lock_id: N("string"),
+  safety_declared: N("boolean"),
+});
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
 
 const ANSWER = O({
@@ -431,6 +501,7 @@ const ANSWER = O({
         }),
       ),
       spa: A(SPA_CHOICE),
+      sauna: A(SAUNA_CHOICE),
       phones: A(O({ service: "string", name: "string" })),
     }),
   ),
@@ -469,6 +540,8 @@ const ANSWER = O({
   hot_water: N(HOT_WATER),
   water_heater: N(WATER_HEATER),
   pool: N(POOL),
+  spa: N(SPA),
+  sauna: N(SAUNA),
 });
 
 const WRITE = O({
@@ -511,6 +584,8 @@ export interface HeatConfig {
   pool: HeatPoolConfig | null;
   /** The spa: its bath and idle temperatures, the bath times and the opt-in. */
   spa: HeatSpaConfig | null;
+  /** The sauna: its temperature, the session times, its lock and the opt-in (a relay's only with its safety declared). */
+  sauna: HeatSaunaConfig | null;
   /** The heat card's phones and the events they hear (`plan_at_risk`, `pool_season`). */
   heat_notifications: { targets: string[]; events: string[] };
   heat_meter_entity: string | null;
@@ -548,6 +623,18 @@ export interface HeatSpaConfig {
   baths: { weekdays: number[]; time: string }[];
   bath_once: string | null;
   heater_kw: number | null;
+  control: boolean;
+}
+
+export interface HeatSaunaConfig {
+  entity_id: string;
+  family: string;
+  target_c: number;
+  sessions: { weekdays: number[]; time: string }[];
+  session_once: string | null;
+  heater_kw: number | null;
+  lock_id: string | null;
+  safety_declared: boolean;
   control: boolean;
 }
 
@@ -833,6 +920,7 @@ export interface HeatAnswer {
     tank_sensor: HeatChoice[];
     pool: HeatPoolChoices | null;
     spa: (HeatRankedChoice & { family: string; controllable: boolean; cloud: boolean })[];
+    sauna: (HeatRankedChoice & { family: string; lock_id: string | null; cloud: boolean })[];
     phones: { service: string; name: string }[];
   } | null;
   relay: HeatRelay | null;
@@ -847,6 +935,61 @@ export interface HeatAnswer {
   water_heater: HeatWaterHeater | null;
   /** The pool in shadow; `null` without one. */
   pool: HeatPool | null;
+  /** The spa and the sauna in shadow; `null` without one. */
+  spa: HeatSpa | null;
+  sauna: HeatSauna | null;
+}
+
+/** A session that will not be ready: why, what it reaches and the earliest later hour that fits. */
+export interface HeatNotReady {
+  at: string;
+  /** "rate", "import_target", "power_level" or "fuse". */
+  cause: string;
+  reach_c: number;
+  short_c: number;
+  short_kwh: number;
+  later: string | null;
+}
+
+interface HeatDeadlineCommon {
+  family: string;
+  heating: boolean | null;
+  kw: number | null;
+  rate_c_h: number;
+  rate_learned: boolean;
+  /** "idle", "heating", "ready" or "late". */
+  state: string | null;
+  ready_at: string | null;
+  live: boolean;
+  control: { state: string; reason: string | null; paused_until: string | null };
+  would: { action: string; until: string | null; reason: string } | null;
+  not_ready: HeatNotReady | null;
+  notes: { code: string; params: Record<string, unknown> }[];
+}
+
+export interface HeatSpa extends HeatDeadlineCommon {
+  water_c: number | null;
+  bath_c: number;
+  idle_c: number;
+  floor_c: number;
+  next_bath: { at: string; source: string } | null;
+  baths: { weekdays: number[]; time: string }[];
+  bath_once: string | null;
+  bath_now: { until: string } | null;
+}
+
+export interface HeatSauna extends HeatDeadlineCommon {
+  temp_c: number | null;
+  target_c: number;
+  next_session: { at: string; source: string } | null;
+  sessions: { weekdays: number[]; time: string }[];
+  session_once: string | null;
+  session_now: { until: string } | null;
+  /** The door or safety lock reads locked; `null` where nothing reads. */
+  locked: boolean | null;
+  lock_id: string | null;
+  /** A relay's declared safety measure; `null` for an integration's sauna. */
+  safety_declared: boolean | null;
 }
 
 export interface HeatPoolPart {

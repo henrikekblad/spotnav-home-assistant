@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Pool heat pump heats",
   "house.plan.reason.sun": "sun",
   "house.plan.reason.need": "the day's filtering",
-  "house.plan.reason.extra": "extra filtering"
+  "house.plan.reason.extra": "extra filtering",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C at {time}",
+  "house.plan.run.spa.heat": "Spa heats up",
+  "house.plan.run.spa.hold": "Spa held for the bath",
+  "house.plan.run.sauna.heat": "Sauna heats up",
+  "house.plan.run.sauna.hold": "Sauna ready",
+  "house.plan.reason.bath": "for the booked time",
+  "house.plan.reason.now": "started now"
 }

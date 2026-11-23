@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Altaan lämpöpumppu lämmittää",
   "house.plan.reason.sun": "aurinko",
   "house.plan.reason.need": "vuorokauden suodatus",
-  "house.plan.reason.extra": "lisäsuodatus"
+  "house.plan.reason.extra": "lisäsuodatus",
+  "house.plan.load.spa": "Poreallas",
+  "house.plan.load.sauna": "Sauna",
+  "house.plan.lane.deadlineReady": "{temp} °C klo {time}",
+  "house.plan.run.spa.heat": "Poreallas lämpenee",
+  "house.plan.run.spa.hold": "Poreallas pidetään lämpimänä",
+  "house.plan.run.sauna.heat": "Sauna lämpenee",
+  "house.plan.run.sauna.hold": "Sauna on valmis",
+  "house.plan.reason.bath": "varattuun aikaan",
+  "house.plan.reason.now": "käynnistetty nyt"
 }

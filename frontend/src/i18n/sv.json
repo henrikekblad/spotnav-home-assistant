@@ -2315,5 +2315,14 @@
   "house.plan.run.pool_heat.heat": "Poolens värmepump värmer",
   "house.plan.reason.sun": "sol",
   "house.plan.reason.need": "dygnets filtrering",
-  "house.plan.reason.extra": "extra filtrering"
+  "house.plan.reason.extra": "extra filtrering",
+  "house.plan.load.spa": "Spa",
+  "house.plan.load.sauna": "Bastu",
+  "house.plan.lane.deadlineReady": "{temp} °C kl. {time}",
+  "house.plan.run.spa.heat": "Spat värms upp",
+  "house.plan.run.spa.hold": "Spat hålls varmt för badet",
+  "house.plan.run.sauna.heat": "Bastun värms upp",
+  "house.plan.run.sauna.hold": "Bastun är klar",
+  "house.plan.reason.bath": "till den bokade tiden",
+  "house.plan.reason.now": "startad nu"
 }
