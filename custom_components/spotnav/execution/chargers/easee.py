@@ -202,6 +202,11 @@ class EaseeCommandPath(StartStopPath):
         #: `True` after a pause of ours, `False` after a resume, `None` when nothing is known (a
         #: restart, a plug-in).
         self.paused: bool | None = None
+        #: `True` from a resume of ours until a pause of ours, an unplug or a plug-in (never kept across a restart):
+        #: the charge control as SpotNav last set it, for a car that finishes the charge itself
+        #: (`ChargingController._finished_with_control_on`). `paused` false is not that: a plug-in or a restart
+        #: also leave it false or unknown without any resume of ours.
+        self.resumed = False
         # A pause command on its way: the status still says `charging` until the charger has paused, and a
         # dynamic limit written meanwhile would lift the pause the moment it lands.
         self._pausing = False
@@ -233,6 +238,7 @@ class EaseeCommandPath(StartStopPath):
         if status is not None:
             if status in _EASEE_NO_CABLE:
                 self.paused = None  # unplugged: the plug-in clears Easee's dynamic limit and with it the pause
+                self.resumed = False
                 return False
             if status == "charging":
                 if not self._pause_lagging():
@@ -276,7 +282,13 @@ class EaseeCommandPath(StartStopPath):
         a stale read-back of the old limit still says.
         """
         self.paused = False
+        self.resumed = False
         self._pause_sent_at = None
+
+    def resumed_by_us(self) -> bool:
+        """Whether SpotNav's last command to this charger was a resume, not followed by a pause of ours, an unplug or
+        a plug-in (`resumed`)."""
+        return self.resumed and self.paused is not True
 
     def _start_owed(self) -> bool:
         """Whether a `start` (authorize) must precede the `resume`: the charger says it waits for an
@@ -313,6 +325,7 @@ class EaseeCommandPath(StartStopPath):
             await self._command(device_id, "start")
         await self._command(device_id, "resume")
         self.paused = False
+        self.resumed = True
         self._pause_sent_at = None
         return True
 
@@ -330,6 +343,7 @@ class EaseeCommandPath(StartStopPath):
         finally:
             self._pausing = False
         self.paused = True
+        self.resumed = False
         return True
 
     def enabled_state(self) -> None:

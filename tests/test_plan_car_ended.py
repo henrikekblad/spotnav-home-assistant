@@ -290,7 +290,13 @@ async def test_a_paused_easee_is_not_a_charge_the_car_ended(hass: HomeAssistant)
     hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": False})
     controller.adapter.path.paused = True
     assert controller._control_on is False  # noqa: SLF001
+    # Plugged in (or restarted) and `completed` without a resume of ours: not a charge SpotNav turned on.
     controller.adapter.path.paused = False
     hass.states.async_set("sensor.easee_status", "completed", {"config_authorizationRequired": False})
+    assert controller._control_on is False  # noqa: SLF001
+    # After a resume of ours the car's `completed` keeps the control on; a pause of ours turns it off again.
+    controller.adapter.path.resumed = True
     assert controller._control_on is True  # noqa: SLF001
+    controller.adapter.path.paused = True
+    assert controller._control_on is False  # noqa: SLF001
     await controller.async_shutdown()

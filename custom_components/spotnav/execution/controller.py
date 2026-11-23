@@ -5462,7 +5462,9 @@ class ChargingController:
         connector `SuspendedEV`) would read as the charge control turned off: the core heard the charger reported off,
         the plan lost its charge and the stop was counted as an outside pause, and the car's end of the plan's charge
         (`PlanChargeWatch`) never came. There SpotNav's own last command stands for the control while the car has
-        finished (`_car_finished`): resumed and not paused since (`is_paused` false) is on.
+        finished (`_car_finished`): a resume of ours not followed by a pause of ours, an unplug or a plug-in
+        (`resumed_by_us`) is on. Without one (a plug-in, a restart, a charge the charger or a person began) it reads off
+        as before.
         """
         if self.charging or self.adapter.enabled_state() is True:
             return True
@@ -5470,11 +5472,11 @@ class ChargingController:
 
     def _finished_with_control_on(self) -> bool:
         """`_control_on`'s case of a charger without an enabled state whose car has finished the charge itself: on
-        while SpotNav's last command was a start (`is_paused` false)."""
+        while SpotNav's last command was a resume of its own (`resumed_by_us`)."""
         if self.adapter.enabled_state() is not None or not self._car_finished():
             return False
-        is_paused = getattr(self.adapter.path, "is_paused", None)
-        return callable(is_paused) and is_paused() is False
+        resumed = getattr(self.adapter.path, "resumed_by_us", None)
+        return callable(resumed) and resumed() is True
 
     @property
     def charge_control_on(self) -> bool:
