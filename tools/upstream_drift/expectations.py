@@ -2,7 +2,7 @@
 
 Nothing here is a second copy of a key list: each expectation is taken from the module that uses it
 (`execution/charger_profiles.py`, `execution/chargers/*.py`, `battery/adapters.py`, `battery/commands.py`,
-`vehicles/vehicle_wake.py`, `site/site_detection.py`), so a key added there is checked from the next run on.
+`vehicles/vehicle_wake.py`, `site/site_detection.py`, `pool/detect.py`, `spa/adapters.py`), so a key added there is checked from the next run on.
 
 The spotnav modules are imported under a stub package, so the integration's own `__init__` (setup code, the card)
 is not run; the modules read here still import Home Assistant's types, so it must be installed.
@@ -371,6 +371,26 @@ def site_expectations() -> Iterator[Expectation]:
         yield Expectation(platform, "integration", "", "site/site_detection.py: UPDATE_BEHAVIOUR")
 
 
+def pool_spa_expectations() -> Iterator[Expectation]:
+    """The pool heat pumps, spas and saunas SpotNav sets (`pool/control.py`, `spa/control.py`): each route's on and off
+    values, Tuya Local's pool heat pump key, core Tuya's `temp_set`, and the keys a sauna's longest run and MSpa's own
+    schedule are read by."""
+    detect = _import("pool.detect")
+    adapters = _import("spa.adapters")
+    for domain in sorted(detect.POOL_DOMAINS | detect.PANEL_DOMAINS):
+        yield Expectation(domain, "integration", "", "pool/detect.py: POOL_DOMAINS, PANEL_DOMAINS")
+    yield Expectation("tuya_local", KIND_KEY, detect.TUYA_LOCAL_KEY, "pool/detect.py: TUYA_LOCAL_KEY")
+    yield Expectation("tuya", KIND_KEY, "temp_set", "pool/detect.py: tuya_heat_pump")
+    for family, route in adapters.ROUTES.items():
+        if route.heat in (adapters.HEAT_PRESET, adapters.HEAT_HVAC, adapters.HEAT_OPERATION):
+            domain = adapters.FAMILY_DOMAINS.get(family, family)
+            for value in (route.on, route.off):
+                yield Expectation(domain, KIND_VALUE, value, f"spa/adapters.py: ROUTES {family}")
+    yield Expectation("mspa", KIND_FRAGMENT, adapters.MSPA_SCHEDULE_ID, "spa/adapters.py: MSPA_SCHEDULE_ID")
+    yield Expectation("saunum", KIND_KEY, adapters.SAUNUM_DURATION_KEY, "spa/adapters.py: SAUNUM_DURATION_KEY")
+    yield Expectation("harvia_sauna", KIND_KEY, adapters.HARVIA_ON_TIME_KEY, "spa/adapters.py: HARVIA_ON_TIME_KEY")
+
+
 def collect(repo: Path, known_domains: frozenset[str]) -> list[Expectation]:
     """Every expectation, without duplicates (the first origin of each is kept)."""
     package_dir = repo / "custom_components" / "spotnav"
@@ -382,6 +402,7 @@ def collect(repo: Path, known_domains: frozenset[str]) -> list[Expectation]:
         *battery_expectations(),
         *vehicle_expectations(),
         *site_expectations(),
+        *pool_spa_expectations(),
         *service_expectations(package_dir, known_domains),
     ):
         gathered.setdefault(expectation.ident, expectation)
