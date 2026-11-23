@@ -11,6 +11,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * Huawei Solar, `huawei_solar` (wlcrs `c754df5`, library huawei-solar 3.1.0): `<serial>_<register name>`.
 * SolarEdge Modbus Multi, `solaredge_modbus_multi` (WillCodeForCats `0ab6569`): `<model>_<serial>[_B<n>]_<key>`;
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
+* SolarEdge Modbus, core and binsentsu's HACS `solaredge_modbus` (see `SOLAREDGE_MODBUS`): facts only, no control.
 * SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only. The
   firmware is the computed `software_version` (the raw `firmware_dsp`/`firmware_arm` registers are internal); the
   same string is the inverter device's `sw_version`, which `facts.py` falls back on (wills106 `4acd644`). The size
@@ -486,6 +487,32 @@ SOLAREDGE: Final = Adapter(
     ),
 )
 
+#: The two integrations that share the domain `solaredge_modbus`, read for the facts only. Not the `SOLAREDGE` adapter
+#: (brand `solaredge`): that brand has a control recipe in `commands.py` written against `solaredge_modbus_multi`'s
+#: entities, and a control found by key alone on another integration is not a verified one. Its own brand keeps
+#: `commands.control_for` empty here.
+#: * Core (home-assistant/core `d33dfe3a`, library solaredged 0.5.0): `<inverter serial>_battery_<battery serial or
+#:   slot_n>_<key>`; the SunSpec battery block as the Multi's, so the same counters: `energy_imported` (Wh, into the
+#:   battery), `energy_exported` (out), `state_of_energy` (%), `energy_max` (Wh, usable; disabled by default),
+#:   `max_charge_power` and `max_discharge_power` (W, disabled by default).
+#: * binsentsu's HACS integration (`e6734e47`, 2.3.0): `<hub name>_battery<n>_<key>` with a name the person chose;
+#:   `state_of_charge` (%), `size_max` (Wh), `energy_charged` and `energy_discharged` (kWh). It states no rating.
+SOLAREDGE_MODBUS: Final = Adapter(
+    brand="solaredge_modbus",
+    label="SolarEdge Modbus",
+    platforms=("solaredge_modbus",),
+    facts={
+        "soc": Match(("sensor",), re.compile(r"(?:_battery_.+_state_of_energy|_battery\d_state_of_charge)$")),
+        "capacity": Match(("sensor",), re.compile(r"(?:_battery_.+_energy_max|_battery\d_size_max)$")),
+        "rated_charge": Match(("sensor",), re.compile(r"_battery_.+_max_charge_power$")),
+        "rated_discharge": Match(("sensor",), re.compile(r"_battery_.+_max_discharge_power$")),
+        "charged_total": Match(("sensor",), re.compile(r"(?:_battery_.+_energy_imported|_battery\d_energy_charged)$")),
+        "discharged_total": Match(
+            ("sensor",), re.compile(r"(?:_battery_.+_energy_exported|_battery\d_energy_discharged)$")
+        ),
+    },
+)
+
 SOLAX: Final = Adapter(
     brand="solax",
     label="SolaX Modbus",
@@ -803,7 +830,7 @@ MARSTEK: Final = Adapter(
 )
 
 ADAPTERS: Final[tuple[Adapter, ...]] = (
-    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
+    SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK,
 )
 

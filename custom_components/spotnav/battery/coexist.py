@@ -31,7 +31,7 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   over Modbus (its `marstek-venus-e` template), a planner rather than an aggregator [V]; no aggregator is known.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
-  0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
+  0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
   `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
   Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry).
 
@@ -68,6 +68,11 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("sungrow", "Sungrow", (), "iSolarCloud", ("CheckWatt [F]", "Greenely (pilot) [V]")),
     Coexistence("goodwe", "GoodWe", ("goodwe",), "SEMS: eco modes", ("CheckWatt [F]", "Greenely (pilot) [V]")),
     Coexistence("pixii", "Pixii", (), "Pixii Home", ("Greenely [V]",)),
+    # Emaldo has no Home Assistant integration (a gh search found none, 2026-11-23): its own hardware is run from its
+    # cloud, by its own optimiser and its Grid Rewards guarantee plan, sold with Bixia (since July 2026, [V] in
+    # `plans/research_integrations/commercial_energy_gap_2026-11-14.md`).
+    Coexistence("emaldo", "Emaldo", (), "Emaldo app: its own optimiser and Grid Rewards plan",
+                ("Bixia, Grid Rewards guarantee plan [V]",)),
     Coexistence("ferroamp", "Ferroamp", ("ferroamp",), "EnergyHub", ("Ntricity / Varberg Energi, FCR-D [V]",)),
     Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
     Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),
@@ -85,7 +90,7 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Enequi [F]", "Tibber [U]")),
     Coexistence("marstek", "Marstek", ("marstek_local_api", "marstek_modbus"),
                 "Marstek app: AI mode and Manual time slots"),
-    Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
+    Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),
     Coexistence("tesla", "Tesla Powerwall", ("powerwall",), "Tesla app: time-based control, Storm Watch"),
@@ -121,6 +126,10 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     OutsideIntegration("checkwatt", "CheckWatt", "runs"),
     OutsideIntegration("tibber", "Tibber", "hint"),
     OutsideIntegration("greenely", "Greenely", "hint"),
+    # ffunes/Omnibattery (manifest `domain`, 1.6.1, `d74591b`): a controller for Marstek, Zendure, Anker Solix, Sessy
+    # and Hoymiles batteries (a PD zero-export loop, grid charging, time slots). It exists only to drive a battery, so
+    # its being set up marks the battery as run by someone else, as CheckWatt's does.
+    OutsideIntegration("omnibattery", "Omnibattery", "runs"),
 )
 
 
