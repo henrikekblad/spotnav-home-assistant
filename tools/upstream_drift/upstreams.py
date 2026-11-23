@@ -82,6 +82,7 @@ UPSTREAMS: dict[str, Source] = {
     "anker_solix": _hacs("thomluther/ha-anker-solix"),
     "ecoflow_cloud": _hacs("tolwi/hassio-ecoflow-cloud"),
     "marstek_local_api": _hacs("jaapp/ha-marstek-local-api"),
+    "marstek_modbus": _hacs("ViperRNMC/marstek_venus_modbus"),
     "tesla_custom": _hacs("alandtse/tesla"),
     "powerwall": CORE,
     "fronius": CORE,

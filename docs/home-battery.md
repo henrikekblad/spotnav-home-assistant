@@ -182,6 +182,20 @@ SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not r
 writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
+**Read only: Marstek (Venus E, C, D, A).** SpotNav reads these through either the Marstek Local API integration
+(`marstek_local_api`, Marstek's own local API, which you switch on in the Marstek app) or the Marstek Venus Modbus
+integration (`marstek_modbus`, RS485 or Modbus TCP): the battery's power and level and its size (*Rated capacity*, or
+*Battery Total Energy* over Modbus). With several batteries in one Local API entry SpotNav reads them whole, from the
+*Marstek System* device (*Total battery power*, *Average state of charge*, *Total rated capacity*). The ratings are
+learnt. Over Modbus it also reads the battery's lifetime charge and discharge counters, and its floor from
+*Discharging Cutoff Capacity* once you enable it (Venus E v1 and v2). SpotNav counts the battery as running itself
+only in the *Operating mode* "Auto" (local API; "AI", "Manual", "Passive" and "UPS" are someone else's), or in the
+*User Work Mode* "Self Consumption" with *RS485 Control Mode* off (Modbus). The local API reports the mode every
+5 minutes, and the *Marstek System* device has none, so with several batteries in one entry SpotNav cannot tell who
+runs them. SpotNav has no control for Marstek and writes nothing to it: the mode, Passive mode, the time slots and the
+RS485 control stay yours. The official Marstek integration (`marstek`) is not read yet. Read from the integrations'
+source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
 the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.

@@ -96,6 +96,41 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
   (`battery_power_combined`, discharge-positive, `site_detection.BATTERY_ROWS`). The inverter's "AC Grid Port Active
   Power Phase A-C" (33512/33515/33518, S16, lines 1799-1823) states no sign, so there is no `plant_phase_power`.
+* Marstek (Venus E, C, D, A), read 2026-11-23 (`plans/v3_marstek_adapter.md`), one adapter for two integrations, read
+  only (no control is mapped). Each finds only its own entities (the battery entity's platform), so the keys of both
+  sit in one match where they differ:
+  * `marstek_local_api` (jaapp/ha-marstek-local-api `624881c`, manifest 1.2.0.rc7; Marstek's local Open API over UDP,
+    Rev 1.0; line numbers in `sensor.py`): unique ids are `<mac>_<key>` per battery (lines 644, 694) and, when one
+    entry holds several batteries, `<the macs sorted, joined by _>_<key>` on a "Marstek System" device (lines 589-590,
+    748). The level is `battery_soc` (Bat.GetStatus `soc`, line 70) or, on the system device,
+    `system_average_soc` (line 465), which weighs each battery by its rated capacity (`coordinator.py` lines
+    138-148). The size is `battery_rated_capacity` (`rated_capacity`, Wh, shown in kWh, line 97; no firmware scaling
+    applies to it, `compatibility.py` lines 98-154) or `system_total_rated_capacity`, their sum (line 439). The
+    firmware is `firmware_version` (Marstek.GetDevice `ver`, line 336; the device's `sw_version` is the same number).
+    The mode is the sensor `operating_mode` (ES.GetMode `mode`, line 371; "Auto", "AI", "Manual" or "Passive",
+    `const.py` lines 67-72; MarstekEnergy/ha_marstek 0.3.0 knows "UPS" too), free only in "Auto" (the battery's own
+    self-consumption on its CT): "AI" is Marstek's own optimiser, "Manual" its time slots and "Passive" a setpoint some
+    outside controller sends. The mode is read every fifth poll (300 s by default, `const.py` line 17), and the system
+    device has none: with several batteries in one entry it is not found and SpotNav cannot tell who runs them. No
+    rating, floor or lifetime counter of the battery is an entity (the API has none), so the ratings are learnt; the
+    CT's `a_power` to `c_power` are the grid's, not the battery's.
+  * `marstek_modbus` (ViperRNMC/marstek_venus_modbus 2026.10.1, `cb5a241`; the 2026.11.1 betas keep the scheme,
+    `entity.py` line 77): unique ids are `<config entry id>_<key>` (`sensor.py` line 62, `select.py` line 106,
+    `switch.py` line 71, `number.py` line 71), the keys from `registers/e_v12.yaml` (Venus E v1/v2, C), `e_v3.yaml`
+    (Venus E v3), `d.yaml` and `a.yaml`, one entry per battery. The level is `battery_soc` (32104, or 34002 on E v3).
+    The size is `battery_total_energy` (32105, kWh, e.g. `e_v12.yaml` line 75), which the integration itself takes
+    for the capacity (its `stored_energy` is the SoC times it, line 973, and its cycle count the discharge over it),
+    as does ffunes/Marstek-Venus-Energy-Manager. The floor is the number `discharging_cutoff_capacity` (44001, %,
+    E v1/v2 only, line 692, disabled by default). The mode is the select `user_work_mode` (43000, line 448: `manual`,
+    `anti_feed` "Self Consumption", `trade_mode` "AI Optimization"), free only in `anti_feed`, and the switch
+    `rs485_control_mode` (42000, line 566, disabled by default), free while off: on, an outside controller writes the
+    battery's force mode and powers (evcc keeps `user_work_mode` at `anti_feed` meanwhile). The firmware is the
+    computed `firmware_version` (line 930, "V<ems>.<bms>" or "V<ems>.<vms>.<bms>"). The battery's counters are
+    `total_charging_energy` and `total_discharging_energy` (33000/33002, kWh, lines 187/198; on Venus A and D with
+    their own PV input they may count PV energy to the house too, the integration's README says). No rating is read:
+    `max_charge_power` and `max_discharge_power` (44002/44003) are settings an outside controller writes (evcc writes
+    0 there to hold), not the battery's rating, so the ratings are learnt. The battery's power `battery_power`
+    (32102, or 30001) is charge-positive (`site_detection.BATTERY_ROWS`).
 
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
@@ -738,9 +773,38 @@ SOLIS: Final = Adapter(
     plant_max_attribute="device_limit",
 )
 
+def _any_key(*keys: str, domains: tuple[str, ...] = ("sensor",)) -> Match:
+    """One of `keys` at the end of the unique id, after `_` or at its start (Marstek's two integrations)."""
+    return Match(domains, re.compile(rf"(?:^|_)(?:{'|'.join(re.escape(key) for key in keys)})$"))
+
+
+#: Marstek through `marstek_local_api` or `marstek_modbus` (see the module): read only.
+MARSTEK: Final = Adapter(
+    brand="marstek",
+    label="Marstek",
+    platforms=("marstek_local_api", "marstek_modbus"),
+    facts={
+        # Found on the battery entity's own device: the system device's weighted level, else the one battery's.
+        "soc": _any_key("system_average_soc", "battery_soc"),
+        "capacity": _any_key("system_total_rated_capacity", "battery_rated_capacity", "battery_total_energy"),
+        "firmware": _key("firmware_version"),
+        "charged_total": _key("total_charging_energy"),
+        "discharged_total": _key("total_discharging_energy"),
+    },
+    modes=(
+        ModeRule(
+            _any_key("operating_mode", "user_work_mode", domains=("sensor", "select")),
+            frozenset({"Auto", "anti_feed"}),
+            "operating mode",
+        ),
+        ModeRule(_key("rs485_control_mode", "switch"), frozenset({"off"}), "RS485 control", required=False),
+    ),
+    reserves=(ReserveSource(_key("discharging_cutoff_capacity", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS,
+    FERROAMP, FOXESS, SOLIS, MARSTEK,
 )
 
 

@@ -1493,5 +1493,89 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "marstek": {
+  "_source": "Unique ids from jaapp/ha-marstek-local-api 624881c (`<mac>_<key>`, sensor.py lines 644 and 694), one Venus E 3.0 on firmware 148 in its own entry; the remaining capacity and the CT's phase power are there to show they are not read.",
+  "platform": "marstek_local_api",
+  "manufacturer": "Marstek",
+  "battery": "sensor.marstek_venuse_3_0_power",
+  "entities": [
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_power",
+    "unique_id": "aabbccddeeff_battery_power",
+    "device": "venus",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_state_of_charge",
+    "unique_id": "aabbccddeeff_battery_soc",
+    "device": "venus",
+    "state": "55",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_rated_capacity",
+    "unique_id": "aabbccddeeff_battery_rated_capacity",
+    "device": "venus",
+    "state": "5.12",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_remaining_capacity",
+    "unique_id": "aabbccddeeff_battery_capacity",
+    "device": "venus",
+    "state": "2.816",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_firmware_version",
+    "unique_id": "aabbccddeeff_firmware_version",
+    "device": "venus",
+    "state": "148",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_operating_mode",
+    "unique_id": "aabbccddeeff_operating_mode",
+    "device": "venus",
+    "state": "Auto",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_venuse_3_0_ct_phase_a_power",
+    "unique_id": "aabbccddeeff_ct_phase_a_power",
+    "device": "venus",
+    "state": "1200",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "marstek",
+   "soc_pct": 55.0,
+   "capacity_kwh": 5.12,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

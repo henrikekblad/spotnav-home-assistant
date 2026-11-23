@@ -25,6 +25,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
 * Solis's own optimiser is SolisCloud's "Solis AI" / "Smart Strategy" (evcc's `solis-hybrid-s` template asks for it
   to be turned off for local control [F]); its local modes are the options of `solis_modbus`'s "Storage Mode"
   select (Pho3niX90 v4.5.0). Enequi (QuiPower) running a Solis S6-EH3P is a field report (2026-11-22) [F].
+* Marstek's own modes are the local API's "AI" (its optimiser), "Manual" (time slots) and "Passive" (a setpoint
+  from outside), and the Modbus integration's `user_work_mode` "trade_mode" ("AI Optimization") and `manual`
+  (jaapp/ha-marstek-local-api `624881c`, ViperRNMC/marstek_venus_modbus 2026.10.1). evcc drives Venus batteries
+  over Modbus (its `marstek-venus-e` template), a planner rather than an aggregator [V]; no aggregator is known.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -79,6 +83,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("1KOMMA5 Heartbeat (1K5 units) [U]",)),
     Coexistence("solis", "Solis", ("solis_modbus",), "SolisCloud: Solis AI and time-of-use",
                 ("Enequi [F]", "Tibber [U]")),
+    Coexistence("marstek", "Marstek", ("marstek_local_api", "marstek_modbus"),
+                "Marstek app: AI mode and Manual time slots"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

@@ -166,6 +166,7 @@ NAMES: dict[str, str] = {
     "anker_solix": "Anker Solix",
     "ecoflow_cloud": "EcoFlow",
     "marstek_local_api": "Marstek (local API)",
+    "marstek_modbus": "Marstek (Modbus)",
     # vehicles
     "kia_uvo": "Kia Uvo",
     "ha_kia_hyundai": "Kia and Hyundai (community integration)",
@@ -927,9 +928,15 @@ OVERVIEW: tuple[Overview, ...] = (
         note="PowerOcean and Stream batteries are not read.",
     ),
     Overview(
-        "Marstek",
-        "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api)",
-        keys=("marstek_local_api",),
+        "Marstek (Venus E, C, D, A)",
+        "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS "
+        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek)",
+        keys=("marstek_local_api", "marstek_modbus"),
+        adapter="marstek",
+        control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "
+        "slots; Modbus has RS485 control with force charge and discharge and charge and discharge limits",
+        note="The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with several "
+        "batteries in one entry it is not read at all.",
     ),
 )
 

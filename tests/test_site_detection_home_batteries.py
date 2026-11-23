@@ -167,12 +167,18 @@ def test_a_single_marstek_is_read_by_its_own_battery_power() -> None:
     assert battery.entity_id == "sensor.venus_ee01_battery_power" and battery.inverted is False
 
 
-def test_marstek_over_modbus_is_not_detected_because_its_sign_is_not_known() -> None:
+def test_marstek_over_modbus_is_read_by_its_battery_power_which_is_charge_positive() -> None:
+    """`marstek_modbus` (ViperRNMC 2026.10.1): `<entry id>_<key>`; its AC power is the other sign and not read."""
     r = Registry()
-    r.device("venus", model="Venus E", manufacturer="Marstek", name="Venus", entry="mm")
+    r.device("venus", model="Venus", manufacturer="Marstek", name="Venus", entry="mm")
+    r.add("marstek_modbus", "venus_ac_power", "01JABCDEF_ac_power", device_class="power", unit="W", device="venus", entry="mm")
     r.add("marstek_modbus", "venus_battery_power", "01JABCDEF_battery_power", device_class="power", unit="W", device="venus", entry="mm")
 
-    assert r.detect().batteries == ()
+    [battery] = r.detect().batteries
+
+    assert battery.integration == "marstek_modbus"
+    assert battery.entity_id == "sensor.venus_battery_power"
+    assert battery.inverted is False and battery.discharge_entity_id is None
 
 
 # ---- never a car's or a phone's battery ----------------------------------------------------------------------------
