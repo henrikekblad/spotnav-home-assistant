@@ -42,7 +42,20 @@
     "does_not_fit.later": "Départ plus tard ({time})",
     "does_not_fit.peak": "Autoriser la pointe",
     "does_not_fit.peak.kw": "Autoriser la pointe (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Autoriser la pointe (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Autoriser la pointe (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Pas prêt à temps",
+    "not_ready.line.car": "{name} {time} : il manque {kwh} kWh avec l'objectif de soutirage de {target} kW",
+    "not_ready.line.spa": "Spa {time} : atteint {reach} °C",
+    "not_ready.line.sauna": "Sauna {time} : atteint {reach} °C",
+    "not_ready.later.spa": "Bain plus tard ({time})",
+    "not_ready.later.sauna": "Séance plus tard ({time})",
+    "not_ready.take.c": "Prendre ce qui tient (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Piscine",
+    "pool_season.message": "L’eau est autour de 10 °C depuis trois jours : temps de fermer la saison de la piscine ?",
+    "pool_season.close": "Fermer la saison"
   },
   "add_charger": {
     "hint": "Ajoutez une borne : Paramètres → Appareils et services → SpotNav → Ajouter une entrée → Borne ; elle proposera de rejoindre ce site."

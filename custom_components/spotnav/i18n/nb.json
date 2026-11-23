@@ -42,7 +42,20 @@
     "does_not_fit.later": "Senere avreise ({time})",
     "does_not_fit.peak": "Tillat toppen",
     "does_not_fit.peak.kw": "Tillat toppen (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Tillat toppen (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Tillat toppen (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Blir ikke klart i tide",
+    "not_ready.line.car": "{name} {time}: {kwh} kWh mangler under effektmålet på {target} kW",
+    "not_ready.line.spa": "Spa {time}: når {reach} °C",
+    "not_ready.line.sauna": "Badstue {time}: når {reach} °C",
+    "not_ready.later.spa": "Senere badetid ({time})",
+    "not_ready.later.sauna": "Senere badstueøkt ({time})",
+    "not_ready.take.c": "Ta det som får plass (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Badstue",
+    "pool_season.title": "SpotNav · Basseng",
+    "pool_season.message": "Vannet har ligget rundt 10 °C i tre dager – på tide å stenge bassengsesongen?",
+    "pool_season.close": "Steng sesongen"
   },
   "add_charger": {
     "hint": "Legg til en lader: Innstillinger → Enheter og tjenester → SpotNav → Legg til oppføring → Lader; den tilbyr å bli med i dette anlegget."

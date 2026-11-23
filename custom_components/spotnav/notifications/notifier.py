@@ -410,6 +410,9 @@ class ChargerNotifier:
         self._closed = False
         # A `plan_at_risk` held back behind the "does not fit" notice.
         self._at_risk_behind_target: dict[str, Any] | None = None
+        # The site's combined "not ready in time" notice (`site_notice.py`) holds this car's departure on the phones,
+        # or waits for the morning with it: `plan_at_risk` is held back behind it as behind this charger's own.
+        self._site_holds = False
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
@@ -931,8 +934,64 @@ class ChargerNotifier:
     # ------------------------------------------------------------------ a charge that does not fit
 
     def _fit_holds_back(self) -> bool:
-        """Whether `plan_at_risk` is held back: the "does not fit" notice is on the phones, or waits for the morning."""
-        return bool(self._fit_phones) or self._fit_quiet
+        """Whether `plan_at_risk` is held back: the "does not fit" notice (this charger's, or the site's combined one
+        with this car in it) is on the phones, or waits for the morning."""
+        return bool(self._fit_phones) or self._fit_quiet or self._site_holds
+
+    # -- what the site's combined notice (`site_notice.py`) asks of the charger
+
+    def fit_may_tell(self) -> bool:
+        """Whether a "does not fit" for this car may be told now: a car is (or may be) there and no person's Stop
+        holds."""
+        return self._connected is not False and not self._person_stop_holds()
+
+    def hold_for_site(self, holds: bool) -> None:
+        """The site's combined notice holds this car's departure (on the phones, or waiting for the morning), or no
+        longer does: a `plan_at_risk` held back behind it is told then, if the plan still cannot be met for reasons of
+        its own and this charger's own notice does not hold it."""
+        if holds == self._site_holds:
+            return
+        self._site_holds = holds
+        if holds or self._fit_phones or self._fit_quiet:
+            return
+        behind, self._at_risk_behind_target = self._at_risk_behind_target, None
+        if behind is not None and self._at_risk_now:
+            now = dt_util.utcnow()
+            self._mark_at_risk_told(behind, now)
+            self._maybe_send(EVENT_PLAN_AT_RISK, behind, now)
+
+    def mark_fit_told(self, departure: str) -> None:
+        """The site's combined notice told this departure: never told again on its own (kept with the told plan)."""
+        if self._fit_told != departure:
+            self._fit_told = departure
+            self._save_plan()
+
+    def fit_targets(self, now: datetime) -> tuple[str, ...]:
+        """The phones that hear this charger's `plan_at_risk`, as the "does not fit" notice reaches them (chosen, the
+        service there, within the hourly limit)."""
+        notifications = self._store.settings(self._entry_id).notifications
+        if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
+            return ()
+        return tuple(target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target))
+
+    def fit_sent(self, now: datetime) -> None:
+        """The site's combined notice went to this charger's phones: counted as its own would be."""
+        self._sent_times.append(now)
+        self._last_sent[EVENT_PLAN_AT_RISK] = now
+
+    @property
+    def push(self) -> ChargerPush | None:
+        """The paired app's wake-up for this charger."""
+        return self._push
+
+    @property
+    def notifications_url(self) -> str:
+        """What a tap opens: the dashboard chosen for this charger, else the default one."""
+        return self._store.settings(self._entry_id).notifications.url or DEFAULT_URL
+
+    @property
+    def name(self) -> str:
+        return self._name()
 
     def does_not_fit(self, block: dict[str, Any] | None, recheck: Callable[[], None] | None = None) -> str | None:
         """The charge's "does not fit" block (`site/does_not_fit.py`) where the plan asks the person, else `None` (it
@@ -955,8 +1014,10 @@ class ChargerNotifier:
         if asking is None or moment is None or moment <= now:
             self._arm_fit_timer(None)
             was_quiet, self._fit_quiet = self._fit_quiet, False
-            behind = self._at_risk_behind_target
-            self._at_risk_behind_target = None
+            behind = None if self._site_holds else self._at_risk_behind_target
+            if not self._site_holds:
+                # Kept while the site's combined notice holds this car: told once that one lets go.
+                self._at_risk_behind_target = None
             if (outcome is not None or was_quiet) and behind is not None and self._at_risk_now:
                 # The plan still cannot be met for reasons of its own: told now, as it was not before.
                 self._mark_at_risk_told(behind, now)

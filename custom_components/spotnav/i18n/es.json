@@ -42,7 +42,20 @@
     "does_not_fit.later": "Salida más tarde ({time})",
     "does_not_fit.peak": "Permitir el pico",
     "does_not_fit.peak.kw": "Permitir el pico (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Permitir el pico (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Permitir el pico (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · No estará listo a tiempo",
+    "not_ready.line.car": "{name} {time}: faltan {kwh} kWh con el objetivo de consumo de {target} kW",
+    "not_ready.line.spa": "Spa {time}: llega a {reach} °C",
+    "not_ready.line.sauna": "Sauna {time}: llega a {reach} °C",
+    "not_ready.later.spa": "Baño más tarde ({time})",
+    "not_ready.later.sauna": "Sesión más tarde ({time})",
+    "not_ready.take.c": "Tomar lo que cabe (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Sauna",
+    "pool_season.title": "SpotNav · Piscina",
+    "pool_season.message": "El agua lleva tres días en torno a 10 °C: ¿hora de cerrar la temporada de piscina?",
+    "pool_season.close": "Cerrar la temporada"
   },
   "add_charger": {
     "hint": "Añade un cargador: Ajustes → Dispositivos y servicios → SpotNav → Añadir entrada → Cargador; te ofrecerá unirse a esta instalación."

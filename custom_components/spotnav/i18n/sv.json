@@ -42,7 +42,20 @@
     "does_not_fit.later": "Senare avresa ({time})",
     "does_not_fit.peak": "Tillåt toppen",
     "does_not_fit.peak.kw": "Tillåt toppen (≈ {kw} kW)",
-    "does_not_fit.peak.cost": "Tillåt toppen (≈ {kw} kW, ≈ {cost})"
+    "does_not_fit.peak.cost": "Tillåt toppen (≈ {kw} kW, ≈ {cost})",
+    "not_ready.title": "SpotNav · Blir inte klart i tid",
+    "not_ready.line.car": "{name} {time}: {kwh} kWh saknas under effektmålet {target} kW",
+    "not_ready.line.spa": "Spa {time}: når {reach} °C",
+    "not_ready.line.sauna": "Bastu {time}: når {reach} °C",
+    "not_ready.later.spa": "Senare badtid ({time})",
+    "not_ready.later.sauna": "Senare bastupass ({time})",
+    "not_ready.take.c": "Ta det som ryms (≈ {reach} °C)",
+    "not_ready.button": "{load}: {choice}",
+    "not_ready.load.spa": "Spa",
+    "not_ready.load.sauna": "Bastu",
+    "pool_season.title": "SpotNav · Pool",
+    "pool_season.message": "Vattnet har legat runt 10 °C i tre dagar – dags att stänga poolsäsongen?",
+    "pool_season.close": "Stäng säsongen"
   },
   "add_charger": {
     "hint": "Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen."

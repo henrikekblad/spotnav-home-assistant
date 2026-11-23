@@ -164,6 +164,8 @@ class PoolSpaShadow:
         self._save_pending = False
         self._saved: dict[str, Any] | None = None
         self._look_failed_logged = False
+        #: The sessions not ready last told to the site (`_tell_not_ready`).
+        self._not_ready_seen: tuple[Any, ...] = ()
 
     # ---- life cycle
 
@@ -424,8 +426,29 @@ class PoolSpaShadow:
                 self.spa.look(now, self.tz, config.spa, self._read_deadline(config.spa), hours)
             if config.sauna is not None:
                 self.sauna.look(now, self.tz, config.sauna, self._read_deadline(config.sauna), hours)
+        self._tell_not_ready(config)
         self._account_energy(now, config)
         self._save()
+
+    def _tell_not_ready(self, config: HeatConfig) -> None:
+        """A bath or a session that will not be ready (or no longer) changes what the site tells: its combined notice
+        is told again (`SiteCapacityController._tell_target_risk`) when the sessions not ready change."""
+        found = []
+        for kind, part, block in (("spa", self.spa, config.spa), ("sauna", self.sauna, config.sauna)):
+            not_ready = None if block is None or part.plan is None else part.plan.not_ready
+            if not_ready is not None:
+                found.append((kind, not_ready.at, not_ready.cause, not_ready.later))
+        signature = tuple(found)
+        if signature == self._not_ready_seen:
+            return
+        self._not_ready_seen = signature
+        tell = getattr(self.site, "_tell_target_risk", None)
+        if tell is None:
+            return
+        try:
+            tell()
+        except Exception:  # noqa: BLE001 - the shadow goes on; the next change tells again
+            _LOGGER.debug("SpotNav site %s: the combined notice could not be told", self.site.entry_id, exc_info=True)
 
     def _draws(self, config: HeatConfig) -> dict[str, float]:
         """What each load draws now (kW), as read: the pool's circulation and heat pump while on, the spa or the
@@ -559,6 +582,18 @@ class PoolSpaShadow:
             self.extra = None
         self._replan(now, pool)
         self._decide(now, pool)
+        self._tell_season(now, pool)
+
+    def _tell_season(self, now: datetime, pool: PoolConfig) -> None:
+        """The season hint on the heat card's phones, once a season (`season_hinted`, the year told): only once it went
+        to a phone, so one chosen later still hears it this season."""
+        local = self._local(now)
+        days = {date.fromisoformat(day): row[1] for day, row in self.water_days.items()}
+        if not season_hint(days, local.date(), season_open=pool.season_open, hinted_year=self.season_hinted):
+            return
+        notice = getattr(self.site, "site_notice", None)
+        if notice is not None and notice.pool_season(now):
+            self.season_hinted = local.year
 
     def _learn(self, now: datetime, heating: bool, water: float | None) -> None:
         """The heat pump's real runs (their rise) and the water's overnight fall without heat."""

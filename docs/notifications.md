@@ -24,7 +24,7 @@ has its own choice, so the driver of each car can follow their own charger.
 | Event | On by default | When |
 |---|---|---|
 | Charging stopped or did not start as planned | yes | see below |
-| The charge will not be ready by the departure | yes | the departure cannot be met with the time left; once each time it becomes so ; where the site's [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) is what makes it miss (and the plan asks), it says what does not fit under the ceiling instead, with *Take what fits*, *Later departure (17:00)* (where a later whole hour fits) and *Allow the peak* buttons for that departure: once per departure, never between 22:00 and 07:00 (one from the night is told at 07:00 if it still stands), and taken off the phones once it fits again or a choice is made |
+| Not ready in time | yes | the departure cannot be met with the time left; once each time it becomes so ; where the site's [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) is what makes it miss (and the plan asks), it says what does not fit under the ceiling instead, with *Take what fits*, *Later departure (17:00)* (where a later whole hour fits) and *Allow the peak* buttons for that departure: once per departure, never between 22:00 and 07:00 (one from the night is told at 07:00 if it still stands), and taken off the phones once it fits again or a choice is made. Where more than the one car is not ready in time, it is [one notice for the whole site](#not-ready-in-time-across-the-site) |
 | Charging complete | yes | the target state of charge was reached, the requested energy was delivered, the car stopped by itself when full after the plan's last window, or the plan's last window (or the hour after it that a car still charging to its own limit gets) ended while the car was charging |
 | Charging started | no | the charger starts charging, for whatever reason |
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
@@ -120,6 +120,37 @@ that keeps charging, or begins again, after three stops within ten minutes is le
 phones hear "The charger keeps charging although it was stopped". The card's status says so until the
 person presses Start, Stop or Resume, or the car is unplugged. This one is not held back by a "did not
 start" told shortly before it.
+
+## Not ready in time across the site
+
+A car's departure is not the only deadline: a [spa's](heat-pumps.md) booked bath and a sauna's session are too, and
+under the import target or the main fuse they compete for the same room. When more than one car's charge, or any bath
+or session, will not be ready in time, the phones get **one** notice for the whole site, titled *Not ready in time*,
+instead of one per load:
+
+> **SpotNav · Not ready in time**
+> Spa 19:00: reaches 35 °C
+> Garage 07:30: 4 kWh short under the 6.0 kW import target
+
+- **One per phone.** It goes to the phones that follow any of the loads in it: each car's charger's phones (with
+  *Not ready in time* on) and, for a bath or a session, the phones chosen in the heat card's settings. A phone that follows several of them gets it once.
+- **The three choices that free the most** are its buttons (Android shows at most three): *Allow the peak* (sets the
+  ceiling aside for every load in the notice at once, never the main fuse), *Later bath (20:00)*, *Later session
+  (20:00)*, *Later departure (08:00)* and *Take what fits*, each named by its load. At a tie the choice that costs
+  nothing comes first, then the load lower in the site's priority list (by default the bath gives way before the
+  car). Tapping the notice opens the card's choice sheet (the house card's Plan tab) with every choice.
+- **When.** Once per deadline: a new deadline joining tells it again, listing all that stand; never between 22:00 and
+  07:00 (one from the night is told at 07:00 if it still stands). Taken off once nothing in it asks any more (it
+  fits, or a choice was made on the phone, in the card or in the app). Unanswered, the site's priority list decides
+  and each car's lasting *If the car cannot be ready in time* stands.
+- A car alone keeps its own notice as above, with the same words and buttons. The plain *the departure cannot be met
+  with the time left* stays each charger's own.
+
+### The pool season
+
+When the pool's water has stayed at about 10 °C or below for three days in autumn, the heat card's phones (with *Pool
+season* on) are told once a season, in the daytime: *The water has been around 10 °C for three days: time to close the
+pool season?*, with a *Close the season* button that closes it as the Pool tab's switch does.
 
 ## What a notification says
 
