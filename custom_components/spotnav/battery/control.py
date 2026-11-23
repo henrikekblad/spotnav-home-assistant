@@ -126,6 +126,7 @@ from .export_curtail import curtails
 from .facts import BatteryFacts
 from .ledger import Ledger
 from .monitor import Capability, Monitor
+from .outside_control import RESERVE_MARGIN_PCT
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -1158,6 +1159,7 @@ class BatteryControl:
             # A plant that stops following its targets by itself when the writes stop (the phase spec's own measured
             # expiry).
             expiry_lifts=self._expiry_lifts(control, phased=True),
+            own_import_a=self._own_import_a(control),
             accept_ha_down=(self.options().accept_ha_down if accept is None else accept) and _accept_applies(control),
             site_margin_a=self._site_margin_a(),
         )
@@ -1824,7 +1826,34 @@ class BatteryControl:
             phase_margin_a=self._site_margin_a(),
             accept_ha_down=options.accept_ha_down and _accept_applies(control),
             expiry_lifts=self._expiry_lifts(control, phased=False),
+            own_import_a=self._own_import_a(control),
         )
+
+    def _own_import_a(self, control: BrandControl | None, *, live: bool = False) -> float:
+        """What the plant may import by itself on each phase it spreads that over (A, `commands.AutonomousImport`):
+        read from its entity where it has one, else the recipe's figure; neither known: infinite (no grid charge, no
+        hold start). For the HA-down caps whatever the trigger (the SoC drifts while Home Assistant is down); `live`
+        (the executor's room now): only while the trigger may fire (`below_reserve`: the SoC within
+        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read). 0 for a recipe that declares none."""
+        spec = None if control is None else control.autonomous_import
+        if control is None or spec is None:
+            return 0.0
+        if live and spec.trigger == "below_reserve":
+            soc = self.facts.soc_pct
+            reserve = _float(read_plant_entity(self.hass, self.site.config, spec.reserve)) if spec.reserve else None
+            reserve = reserve if reserve is not None else self.facts.reserve_soc_pct
+            if soc is not None and reserve is not None and soc > reserve + RESERVE_MARGIN_PCT:
+                return 0.0
+        kw: float | None = None
+        if spec.entity is not None:
+            read = _float(read_plant_entity(self.hass, self.site.config, spec.entity))
+            kw = None if read is None else read * spec.scale
+        if kw is None:
+            kw = spec.kw
+        if kw is None or not math.isfinite(kw):
+            return math.inf
+        phases = min(max(int(spec.phases or self._plant_phases(control)), 1), 3)
+        return max(kw, 0.0) * 1000.0 / (phases * phase_volts(stored_voltage_between_phases_v(self.site.config)))
 
     def _expiry_lifts(self, control: BrandControl | None, *, phased: bool) -> bool:
         """Whether the grid charge's own expiry stands in for its HA-down cap (`gate.expiry_lifts`): the phase spec's
@@ -2365,6 +2394,7 @@ class BatteryControl:
             empty = gate.ha_down_accepted_cap_kw(
                 self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
                 margin_a=self._site_margin_a(), plant_phases=self._plant_phases(control),
+                own_import_a=self._own_import_a(control),
             )
             if executor is not None and executor.control.phased and self._phased_wanted():
                 # A charge per phase may use each phase's fuse less the margin.
@@ -2748,6 +2778,7 @@ class BatteryControl:
             timed_out=self._timed_out,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
+            own_import_a=self._own_import_a(control_for(self.facts.brand), live=True),
         )
 
     def _shedding(self, now: datetime, config: dict[str, Any]) -> tuple[bool, bool]:

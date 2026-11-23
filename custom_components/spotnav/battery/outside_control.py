@@ -107,6 +107,9 @@ class Observation:
     #: The start-up wait runs (`runtime.START_GRACE`): a planner or an integration may not be back yet, so no verdict
     #: ends.
     starting: bool = False
+    #: The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
+    #: (`commands.AutonomousImport`, trigger `below_reserve`): a charge near it is the device's own as well.
+    top_up_reserve_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +286,7 @@ class OutsideControlWatch:
         if obs.battery_age_s is None or obs.battery_age_s > MAX_AGE_S:
             return None
         if obs.power_kw > BEHAVIOUR_KW and obs.grid_kw > BEHAVIOUR_KW:
-            floor = obs.reserve_soc_pct or 0.0
+            floor = max(obs.reserve_soc_pct or 0.0, obs.top_up_reserve_pct or 0.0)
             return None if obs.soc_pct <= floor + RESERVE_MARGIN_PCT else REASON_GRID_CHARGE
         if obs.power_kw < -BEHAVIOUR_KW and obs.grid_kw < -BEHAVIOUR_KW:
             return REASON_EXPORT_DISCHARGE

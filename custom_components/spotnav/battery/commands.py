@@ -698,6 +698,26 @@ class ImportLimitPhases:
 
 
 @dataclass(frozen=True, slots=True)
+class AutonomousImport:
+    """What a plant may import from the grid by itself, uncommanded, while SpotNav runs it (a top-up below its
+    reserve, a schedule of its own, a set grid input): counted with every HA-down cap (`gate`'s `own_import_a`,
+    whatever the trigger: the SoC drifts while Home Assistant is down) and in the executor's live room while the
+    trigger may fire. Data only; no recipe declares one yet."""
+
+    #: A fixed figure (kW), or a number or sensor to read it from (`entity`, times `scale` to kW); read first, the
+    #: figure where it reads nothing, and no grid charge at all where neither is known.
+    kw: float | None = None
+    entity: Match | None = None
+    scale: float = 1.0
+    #: The phases it is spread over; `None`: the recipe's own (`grid_charge_phases`, or the Output Type).
+    phases: int | None = None
+    trigger: Literal["always", "below_reserve", "own_schedule"] = "always"
+    #: For `below_reserve`: the reserve (%) it tops up to, where the plant shows it (else the facts' own reserve).
+    reserve: Match | None = None
+    why: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ImportLimitTrust:
     """Where a plant's own grid import limit (`BrandControl.import_limit`) was shown to act, so that either import-limit
     rule may stand in for the HA-down cap (`control.BatteryControl._import_limit_refusal`: `not_trusted` elsewhere).
@@ -761,6 +781,9 @@ class BrandControl:
     import_limit_phases: ImportLimitPhases | None = None
     #: Where that limit was shown to act (`ImportLimitTrust`); set wherever `import_limit` is.
     import_limit_trust: ImportLimitTrust | None = None
+    #: What the plant may import by itself, uncommanded (`AutonomousImport`); `None`: nothing (every recipe today:
+    #: Sigenergy in Maximum Self Consumption under SpotNav has none, its AI mode's own charge is outside control).
+    autonomous_import: AutonomousImport | None = None
     note: str = ""
     #: Ways to hold, tried in order by the verification (`HoldVariant`); the first is in `states` and `peak_first`
     #: until another is chosen (`with_hold`). Empty: the brand has one hold.

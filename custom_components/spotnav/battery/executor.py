@@ -450,6 +450,9 @@ class ExecInputs:
     #: fallback (`expired`), never someone else's change. The effect is not judged meanwhile (the test judges it),
     #: except a charge per phase over its targets.
     expiry_probe: bool = False
+    #: What the plant may import by itself on the most loaded phase now (A, `commands.AutonomousImport`), only while
+    #: its trigger may fire: taken off the headroom a hold starts on and its peak cover reads.
+    own_import_a: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -975,7 +978,23 @@ def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: boo
     phase it puts out on is not known)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
-    return inputs.headroom_a - uncovered_a(inputs, sale_kw, from_sale=from_sale) >= HEADROOM_MARGIN_A
+    return (
+        inputs.headroom_a - _own_import_a(inputs) - uncovered_a(inputs, sale_kw, from_sale=from_sale)
+        >= HEADROOM_MARGIN_A
+    )
+
+
+def _own_import_a(inputs: ExecInputs) -> float:
+    """What the plant may import by itself on the most loaded phase now (A, `ExecInputs.own_import_a`): never below 0,
+    anything not a number (or not known) as more than any fuse (`OWN_IMPORT_UNKNOWN_A`, finite for the change log)."""
+    own = inputs.own_import_a
+    if isinstance(own, bool) or not isinstance(own, (int, float)) or math.isnan(own):
+        return OWN_IMPORT_UNKNOWN_A
+    return min(max(float(own), 0.0), OWN_IMPORT_UNKNOWN_A)
+
+
+#: A plant's own import not known (A): more than any fuse, so nothing starts on it.
+OWN_IMPORT_UNKNOWN_A: Final = 1000.0
 
 
 def uncovered_a(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> float:
@@ -2577,7 +2596,8 @@ class Executor:
         recover within `PEAK_RECOVER_S`, hold again after `PEAK_REHOLD_S` when the start rule allows it."""
         state = self.state
         now = inputs.now
-        headroom = inputs.headroom_a
+        # What the plant may import by itself now comes off the room the peak cover reads.
+        headroom = None if inputs.headroom_a is None else inputs.headroom_a - _own_import_a(inputs)
         first = self.control.peak_first.get(ACTION_HOLD, ())
         if self.control.slow or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
             return []

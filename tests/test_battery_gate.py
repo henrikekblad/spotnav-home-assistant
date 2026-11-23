@@ -733,3 +733,28 @@ def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_repo
         now=now,
     )
     assert expiry_measured(other, _KEY, again) and not expiry_measured(phase, _KEY, again)
+
+
+def test_a_plants_own_import_comes_off_every_ha_down_cap_but_never_off_the_import_limit_rules() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "house_phase_peaks_a": {"L1": 4.0, "L2": 4.0,
+                                                                                           "L3": 4.0}}
+    plain = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, **base)
+    own = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, **base)
+    assert plain is not None and own == pytest.approx(plain - 3.0 * 3 * volts / 1000)
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=float("inf"), **base) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=float("nan"), **base) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, accept_ha_down=True, phase_margin_a=1.0,
+                              **base) == pytest.approx(16.0 * 3 * volts / 1000)
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, expiry_lifts=True, **base) == (
+        pytest.approx(15.0 * 3 * volts / 1000))
+    assert ha_down_accepted_cap_kw(20.0, 400.0, margin_a=1.0, plant_phases=1, own_import_a=4.0) == pytest.approx(
+        15.0 * volts / 1000)
+    # The import-limit rules are the plant's own measure of everything it imports: unchanged.
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, import_limit_kw=4.0,
+                              import_limit_per_phase=True, phase_margin_a=1.0, **base) is None
+    phases = grid_charge_phase_caps_kw(20.0, 400.0, own_import_a=3.0, **base)
+    assert phases == pytest.approx(tuple(cap - 3.0 * volts / 1000 for cap in grid_charge_phase_caps_kw(
+        20.0, 400.0, **base)))
+    assert grid_charge_phase_caps_kw(20.0, 400.0, own_import_a=float("inf"), expiry_lifts=True, **base) == (
+        0.0, 0.0, 0.0)

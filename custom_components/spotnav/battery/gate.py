@@ -796,6 +796,7 @@ def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
     expiry_lifts: bool = False, accept_ha_down: bool = False, site_margin_a: float | None = None,
+    own_import_a: float = 0.0,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -828,20 +829,33 @@ def grid_charge_phase_caps_kw(
     recipe's own dead-man, which needs nothing): each phase's cap is what the fuse allows with an empty house, the
     fuse less the site's own safety margin (`site_margin_a`; `None`: `margin_a`), and the live clamp per phase is
     again what bounds the charge while Home Assistant runs. With it down, the house's load rides on top of the last
-    targets and may open the fuse: what the person accepted."""
+    targets and may open the fuse: what the person accepted.
+
+    `own_import_a`: what the plant may import by itself on each phase (A, `commands.AutonomousImport`), taken off
+    every phase in each of the rules above (infinite: no grid charge)."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
+    own_a = _own_a(own_import_a)
     if expiry_lifts:
-        most = max(main_fuse_a - margin_a, 0.0) * volts / 1000.0
+        most = max(main_fuse_a - margin_a - own_a, 0.0) * volts / 1000.0
         return (most, most, most)
     if accept_ha_down:
-        most = max(main_fuse_a - (margin_a if site_margin_a is None else site_margin_a), 0.0) * volts / 1000.0
+        most = max(
+            main_fuse_a - (margin_a if site_margin_a is None else site_margin_a) - own_a, 0.0
+        ) * volts / 1000.0
         return (most, most, most)
     house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
-    room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
+    room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - peak, 0.0) * volts / 1000.0 for peak in house]
     return (room[0], room[1], room[2])
+
+
+def _own_a(own_import_a: float) -> float:
+    """A plant's own import per phase (A) as counted: never below 0; anything not a number counts as without end."""
+    if isinstance(own_import_a, bool) or not isinstance(own_import_a, (int, float)) or math.isnan(own_import_a):
+        return math.inf
+    return max(float(own_import_a), 0.0)
 
 
 def phase_split_kw(total_kw: float, caps_kw: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -861,7 +875,7 @@ def grid_charge_cap_kw(
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
     import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
     import_limit_per_phase: bool = False, phase_margin_a: float | None = None, accept_ha_down: bool = False,
-    expiry_lifts: bool = False,
+    expiry_lifts: bool = False, own_import_a: float = 0.0,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -891,7 +905,11 @@ def grid_charge_cap_kw(
     `accept_ha_down` (the site's `battery_control_accept_ha_down`, only where neither import-limit rule holds: those
     come first): the cap is what the fuse allows with an empty house (`ha_down_accepted_cap_kw`, with `phase_margin_a`
     as the site's own safety margin), not the house at its peak and the chargers' last currents with nobody
-    watching."""
+    watching.
+
+    `own_import_a` (what the plant may import by itself on each phase it spreads that over, A,
+    `commands.AutonomousImport`; infinite: no grid charge) is taken off the fuse like the chargers' currents, in the
+    expiry's, the accepted and the house's rule alike; the import-limit rules are unchanged."""
     if import_limit_per_phase and import_limit_phase_holds(
         import_limit_kw, main_fuse_a, volts_between_phases,
         margin_a=margin_a if phase_margin_a is None else phase_margin_a, cars_a=cars_a,
@@ -904,19 +922,20 @@ def grid_charge_cap_kw(
         return None
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return 0.0
+    own_a = _own_a(own_import_a)
     if expiry_lifts:
         assert main_fuse_a is not None
         phases = min(max(int(plant_phases), 1), 3)
-        return max(main_fuse_a - margin_a, 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
+        return max(main_fuse_a - margin_a - own_a, 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
     if accept_ha_down:
         return ha_down_accepted_cap_kw(
             main_fuse_a, volts_between_phases, margin_a=margin_a if phase_margin_a is None else phase_margin_a,
-            plant_phases=plant_phases,
+            plant_phases=plant_phases, own_import_a=own_a,
         )
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     house_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a))
-    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
+    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
 
@@ -939,15 +958,18 @@ def ha_down_setup_state(stored: Any, main_fuse_a: float | None, brand: str | Non
 
 def ha_down_accepted_cap_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, plant_phases: int,
+    own_import_a: float = 0.0,
 ) -> float:
     """The grid charge cap once the person accepted the HA-down risk (`battery_control_accept_ha_down`): what the
     fuse allows with an empty house, the fuse less the site's own safety margin (`margin_a`) on each of the phases
     the plant spreads its charge over (`plant_phases`, as `grid_charge_cap_kw`; 1 where the brand does not say, so
-    the whole charge may be on one phase). 0 with the fuse unknown."""
+    the whole charge may be on one phase), less what the plant may import by itself on each of them (`own_import_a`,
+    A; infinite: 0). 0 with the fuse unknown."""
     if main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0:
         return 0.0
     phases = min(max(int(plant_phases), 1), 3)
-    return max(main_fuse_a - max(margin_a, 0.0), 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
+    room_a = main_fuse_a - max(margin_a, 0.0) - _own_a(own_import_a)
+    return max(room_a, 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
 
 
 def export_discharge_cap_kw(

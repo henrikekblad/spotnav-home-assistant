@@ -192,6 +192,9 @@ def test_a_reading_with_its_sign_the_wrong_way_does_not_mark() -> None:
 
 def test_a_maintenance_charge_near_the_floor_its_own_optimiser_and_stale_readings_do_not_mark() -> None:
     assert _charging_from_grid(OutsideControlWatch(), T0, 20, reserve_soc_pct=48.0) == []
+    # A top-up the recipe declares (`commands.AutonomousImport`, below a reserve of its own) is the device's own too.
+    assert _charging_from_grid(OutsideControlWatch(), T0, 20, top_up_reserve_pct=48.0) == []
+    assert _charging_from_grid(OutsideControlWatch(), T0, 20, top_up_reserve_pct=20.0) != []
     assert _charging_from_grid(OutsideControlWatch(), T0, 20, management="self_managed") == []
     assert _charging_from_grid(OutsideControlWatch(), T0, 20, battery_age_s=600.0) == []
     assert _charging_from_grid(OutsideControlWatch(), T0, 20, on_grid=False) == []

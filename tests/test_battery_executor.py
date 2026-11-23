@@ -1881,3 +1881,16 @@ def test_an_expiry_test_is_ignored_on_a_command_that_could_add_import() -> None:
     now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 6, "grid_charge", 3.0,
                        expiry_probe=True)
     assert events(results, "renew")
+
+
+def test_a_plants_own_import_comes_off_the_room_a_hold_starts_on_and_its_peak_cover_reads() -> None:
+    from custom_components.spotnav.battery.executor import hold_headroom_ok  # noqa: PLC0415
+
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    look = inputs(battery, T0, "hold", headroom_a=4.0, power_kw=0.0)
+    assert hold_headroom_ok(look) and not hold_headroom_ok(replace(look, own_import_a=2.5))
+    assert not hold_headroom_ok(replace(look, own_import_a=float("nan")))
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    _now, results = run(executor, battery, now, 2, "hold", headroom_a=PEAK_COVER_A + 1.0, own_import_a=1.5)
+    assert events(results, "peak_cover")

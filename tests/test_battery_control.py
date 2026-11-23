@@ -1385,6 +1385,39 @@ async def test_the_import_limit_is_trusted_only_where_it_was_shown_to_act(
         assert not control.import_limit_guards()
 
 
+@pytest.mark.parametrize("case", ["none", "fixed", "unread"])
+async def test_a_plants_own_import_comes_off_the_ha_down_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str
+) -> None:
+    """A recipe that declares what the plant imports by itself (no shipped one does) has it counted in the cap: a
+    fixed figure on each of its phases, and with neither its entity nor a figure read, no grid charge at all."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    now = dt_util.now()
+    before = control._grid_charge_cap_kw(now, control.options())
+    assert control._own_import_a(commands_module.SIGENERGY_CONTROL) == 0.0
+    if case != "none":
+        from custom_components.spotnav.battery.adapters import Match  # noqa: PLC0415
+        import re  # noqa: PLC0415
+
+        own = commands_module.AutonomousImport(
+            kw=2.3 if case == "fixed" else None,
+            entity=Match(("number",), re.compile("never_there")) if case == "unread" else None,
+        )
+        monkeypatch.setattr(commands_module, "CONTROLS", tuple(
+            replace(c, autonomous_import=own) if c.brand == "sigenergy" else c for c in commands_module.CONTROLS
+        ))
+    after = control._grid_charge_cap_kw(now, control.options())
+    assert before is not None and after is not None and before > 3.0
+    if case == "none":
+        assert after == before
+    elif case == "fixed":
+        phases = control._plant_phases(commands_module.control_for("sigenergy"))
+        assert after == pytest.approx(max(before - 2.3, 0.0)) if phases == 3 else after < before
+    else:
+        assert after == 0.0
+
+
 def test_every_recipe_with_an_import_limit_says_where_it_was_shown_to_act() -> None:
     sigen = commands_module.SIGENERGY_CONTROL.import_limit_trust
     assert sigen is not None and sigen.acts_in == frozenset({"grid_charge"})

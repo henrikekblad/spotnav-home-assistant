@@ -492,6 +492,23 @@ class BatteryShadow:
         self.facts = self._read_facts()
         return True
 
+    def _top_up_reserve_pct(self, facts: BatteryFacts) -> float | None:
+        """The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
+        (`commands.AutonomousImport`, trigger `below_reserve`): read where the plant shows it, else the facts' own
+        reserve; `None` for every other recipe."""
+        control = control_for(facts.brand)
+        spec = None if control is None else control.autonomous_import
+        if spec is None or spec.trigger != "below_reserve":
+            return None
+        if spec.reserve is not None:
+            try:
+                value = float(read_plant_entity(self.hass, self.site.config, spec.reserve) or "nan")
+            except ValueError:
+                value = math.nan
+            if math.isfinite(value):
+                return value
+        return facts.reserve_soc_pct
+
     def _grid_kw(self) -> float | None:
         """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
         signed = list(self.site.result.phase_signed_active_power_w.values())
@@ -527,6 +544,7 @@ class BatteryShadow:
                 grid_kw=self._grid_kw(),
                 soc_pct=facts.soc_pct,
                 reserve_soc_pct=facts.reserve_soc_pct,
+                top_up_reserve_pct=self._top_up_reserve_pct(facts),
                 battery_age_s=inputs.battery_age_s,
                 on_grid=facts.on_grid,
                 measurement_ok=inputs.measurement_ok,
