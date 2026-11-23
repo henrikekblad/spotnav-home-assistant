@@ -346,7 +346,7 @@ def merge_report(
             and not (name.startswith(MODE_EXPIRY) and kept.get("expiry_id") != row.get("expiry_id"))
         ):
             continue
-        modes[name] = dict(row)
+        modes[name] = _expiry_row(row, kept) if name.startswith(MODE_EXPIRY) else dict(row)
     return {
         "key": key,
         "brand": run.get("brand"),
@@ -357,6 +357,31 @@ def merge_report(
         "attempts": attempts,
         "modes": modes,
     }
+
+
+#: Separate runs on one firmware key that must each give the mode `expiry` `obeyed` before it counts as measured
+#: (owner decision 4: "measured = two passing runs").
+EXPIRY_PASSES: Final = 2
+#: A run's `obeyed` before the passes are complete: pending, so the next run tries it again.
+EXPIRY_PASSED_ONCE: Final = "obeyed_once"
+
+
+def _expiry_row(row: Mapping[str, Any], kept: Mapping[str, Any] | None) -> dict[str, Any]:
+    """A run's expiry row merged with the one kept (still pending, for the same expiry): `obeyed` counts a pass
+    (`passes`), and is `obeyed` in the report only once `EXPIRY_PASSES` runs passed, `EXPIRY_PASSED_ONCE` (pending)
+    before; a pending outcome keeps the passes so far; any other (`ignored`, a failing abort) starts them again."""
+    same = kept is not None and kept.get("expiry_id") == row.get("expiry_id")
+    passes = kept.get("passes", 0) if same and kept is not None else 0
+    passes = passes if isinstance(passes, int) and not isinstance(passes, bool) else 0
+    out = dict(row)
+    outcome = row.get("outcome")
+    if outcome == "obeyed":
+        passes += 1
+        out["outcome"] = "obeyed" if passes >= EXPIRY_PASSES else EXPIRY_PASSED_ONCE
+    elif mode_verdict(outcome) != "pending":
+        passes = 0
+    out["passes"] = passes
+    return out
 
 
 def report_status(report: Mapping[str, Any] | None) -> ReportStatus:
@@ -748,6 +773,10 @@ def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry, phase: s
     (`Expiry.expiry_id`), its fallback within the minute and a look."""
     row = _modes(report).get(expiry_mode(phase))
     if not isinstance(row, Mapping) or row.get("outcome") != "obeyed" or row.get("expiry_id") != expiry.expiry_id:
+        return False
+    # Two separate passing runs on this firmware (`merge_report`, `EXPIRY_PASSES`); a run's own row never counts.
+    passes = row.get("passes")
+    if not isinstance(passes, int) or isinstance(passes, bool) or passes < EXPIRY_PASSES:
         return False
     # The fallback counted from the last write, within the minute the lift rests on (and one look).
     fallback = row.get("fallback_s")

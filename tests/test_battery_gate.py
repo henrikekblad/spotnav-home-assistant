@@ -719,7 +719,12 @@ def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_repo
     passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}
     run = {"started_at": now.isoformat(),
            "modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": phase.expiry_id, "fallback_s": 45.0}}}
-    report = merge_report({"modes": passed}, run, key=_KEY, attempts=2, now=now)
+    once = merge_report({"modes": passed}, run, key=_KEY, attempts=2, now=now)
+    # One passing run: pending, tried again; two: measured.
+    assert once["modes"][MODE_EXPIRY]["outcome"] == "obeyed_once" and once["modes"][MODE_EXPIRY]["passes"] == 1
+    assert not expiry_measured(phase, _KEY, once) and expiry_due(once, phase)
+    report = merge_report(once, run, key=_KEY, attempts=3, now=now)
+    assert report["modes"][MODE_EXPIRY]["passes"] == 2
     assert expiry_measured(phase, _KEY, report) and not expiry_measured(other, _KEY, report)
     assert not expiry_measured(phase, "fw2 | brand 1.0", report)
     assert not expiry_due(report, phase) and expiry_due(report, other)
@@ -730,11 +735,19 @@ def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_repo
     )
     assert report_status(failed) == "passed" and not expiry_due(failed, phase)
     assert allowed_actions(failed, Options()) == allowed_actions({"modes": passed}, Options())
-    # A run for another expiry (the recipe changed) replaces the decided row.
-    again = merge_report(
-        failed, {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id, "fallback_s": 70.0}}},
-        key=_KEY, attempts=3, now=now,
-    )
+    # A pending outcome between two passes keeps the first; an ignored one starts again (and decides).
+    late = {"modes": {MODE_EXPIRY: {"outcome": "not_judgeable:late_look", "expiry_id": phase.expiry_id}}}
+    kept = merge_report(once, late, key=_KEY, attempts=3, now=now)
+    assert kept["modes"][MODE_EXPIRY]["passes"] == 1
+    assert expiry_measured(phase, _KEY, merge_report(kept, run, key=_KEY, attempts=4, now=now))
+    ignored = {"modes": {MODE_EXPIRY: {"outcome": "ignored", "expiry_id": phase.expiry_id}}}
+    reset = merge_report(once, ignored, key=_KEY, attempts=3, now=now)
+    assert reset["modes"][MODE_EXPIRY]["passes"] == 0 and not expiry_due(reset, phase)
+    # A run for another expiry (the recipe changed) replaces the decided row, its passes counted afresh.
+    other_run = {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id, "fallback_s": 70.0}}}
+    again = merge_report(failed, other_run, key=_KEY, attempts=3, now=now)
+    assert not expiry_measured(other, _KEY, again)
+    again = merge_report(again, other_run, key=_KEY, attempts=4, now=now)
     assert expiry_measured(other, _KEY, again) and not expiry_measured(phase, _KEY, again)
 
 

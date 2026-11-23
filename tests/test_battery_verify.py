@@ -306,9 +306,10 @@ def test_a_fallback_later_than_the_window_and_a_look_is_not_a_pass() -> None:
     row = verification.report()["modes"]["expiry"]
     assert row["outcome"] == "ignored" and row["late"] and row["fallback_s"] >= 85.0
     # Even written as obeyed, the gate takes no fallback past the minute and a look.
-    assert not gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed"}}}, _expiry_of(60.0))
-    assert gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed", "fallback_s": 70.0}}},
-                                  _expiry_of(60.0))
+    assert not gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed", "passes": 2}}},
+                                      _expiry_of(60.0))
+    assert gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed", "fallback_s": 70.0,
+                                                        "passes": 2}}}, _expiry_of(60.0))
 
 
 def _expiry_of(window_s: float):  # noqa: ANN202

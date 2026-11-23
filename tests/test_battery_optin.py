@@ -327,7 +327,8 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
                         "per_phase": {"outcome": "obeyed"}}}
     assert control._expiry_due(passed) and not control._expiry_due(None)
     def proven(*phases: str) -> dict:
-        rows = {f"expiry:{phase}": {"outcome": "obeyed", "expiry_id": expiry.expiry_id, "fallback_s": 50.0}
+        rows = {f"expiry:{phase}": {"outcome": "obeyed", "expiry_id": expiry.expiry_id, "fallback_s": 60.0,
+                                    "passes": 2}
                 for phase in phases}
         return {**passed, "modes": {**passed["modes"], **rows}}
 

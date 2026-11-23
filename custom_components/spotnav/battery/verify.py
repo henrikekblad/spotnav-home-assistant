@@ -90,8 +90,9 @@ at about 0 **and**, for a target that is the grid's power at a point, that power
 the phases proven (owner decision 2026-11-23), with the house on that phase (the whole site's for a hold) where
 it was at the silence's start: a load that moves on it reads exactly like a fallback, and is
 `not_judgeable:house_changed`, never a pass. The fallback is timed from the last write of a renewed role: `obeyed`
-from one look before the window to one look after it (the gate takes it only within `gate.SILENCE_FALLBACK_MAX_S`
-and one look, `gate.expiry_measured`), `partial:early` sooner than the renewal (the recipe is wrong),
+after one look before the window up to one look after it (the gate takes it only within
+`gate.SILENCE_FALLBACK_MAX_S` and one look, and only once two separate runs on the firmware passed,
+`gate.EXPIRY_PASSES`, `gate.expiry_measured`; the fallback reads so on each of the looks up to the hand-back), `partial:early` sooner than the renewal (the recipe is wrong),
 `not_judgeable:early_fallback` sooner than that window and `not_judgeable:late_look` one look past it (both tried
 again at a later run, `Verification._expiry_decide`), `ignored` later or not by
 `expiry_deadline_s` (the window plus `max(15 s, half the window)` from the last write; the silence never runs past
@@ -1020,9 +1021,10 @@ class Verification:
         `gate.SILENCE_FALLBACK_MAX_S`) and `L` one look (`gate.EXPIRY_LOOK_S`):
 
         * sooner than the renewal: `partial:early` (the renewals would not keep it alive: the recipe is wrong);
-        * else sooner than `W - L`: `not_judgeable:early_fallback` (something else stopped the plant following its
+        * else at `W - L` or sooner: `not_judgeable:early_fallback` (something else stopped the plant following its
           target; tried again at a later run, never a pass);
-        * `W - L` to `W + L`: `obeyed`;
+        * after `W - L` up to `W + L`: `obeyed` (a pass; measured only after `gate.EXPIRY_PASSES` runs,
+          `gate.merge_report`);
         * up to one more look later: `not_judgeable:late_look` (the look and the write's timing can put a true `W`
           there; tried again, never a pass: the gate takes `W + L` at most, owner decision 5);
         * later: `ignored` (late, decided)."""
@@ -1032,7 +1034,8 @@ class Verification:
         renew_s = expiry.renew_s or WATCHDOG_RENEW_S
         if fallback_s < renew_s:
             outcome = "partial:early"
-        elif fallback_s < window - EXPIRY_LOOK_S:
+        elif fallback_s <= window - EXPIRY_LOOK_S:
+            # The edge itself too: three looks of passthru seen first a look before the window are not enough.
             outcome = "not_judgeable:early_fallback"
         elif fallback_s <= window + EXPIRY_LOOK_S:
             outcome = "obeyed"

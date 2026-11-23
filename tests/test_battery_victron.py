@@ -870,9 +870,14 @@ def test_victrons_dead_man_is_measured_on_the_probes_discharge_on_one_phase() ->
     assert VICTRON_SILENCE_S - VICTRON_RENEW_S - 30 <= row["fallback_s"] <= VICTRON_SILENCE_S + 10
     assert all(look["ops"] == [] for look in looks if look["probe"])
     assert executor.state.blocked is None
-    # Recorded in the report for this firmware, it lifts a charge per phase only.
+    # Recorded in the report for this firmware: one passing run is not enough, the second makes it measured.
     key = "v3.60 | victron_gx 1"
-    report = {"key": key, "modes": modes}
+    passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}, "per_phase": {"outcome": "obeyed"}}
+    once = gate.merge_report({"modes": passed}, {"modes": modes}, key=key, attempts=2, now=T0)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, key, once, "L1")
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes}, "L1")
+    second, _executor, _looks = _verify_expiry(Plant())
+    report = gate.merge_report(once, {"modes": second.report()["modes"]}, key=key, attempts=3, now=T0)
     assert gate.expiry_measured(VICTRON_PHASES.expiry, key, report, "L1")
     # Proven on L1 only: L2 and L3 stay unproven, and the balanced charge is never lifted by it.
     assert gate.expiry_phases_measured(VICTRON_PHASES.expiry, key, report) == (True, False, False)
@@ -973,3 +978,47 @@ def test_only_a_fallback_around_the_window_passes_and_one_a_look_late_is_tried_a
     assert gate.mode_verdict(outcome) == ("fail" if outcome == "ignored" else "pass" if outcome == "obeyed"
                                           else "pending")
     assert executor.state.blocked is None
+
+
+def _two_runs(make: Any, *, true_s: float | None = None, monkeypatch: pytest.MonkeyPatch | None = None,
+              **kwargs: Any) -> tuple[dict[str, Any], bool]:
+    """Two runs of the routine on the same firmware key, merged as control merges them: the last row and whether
+    L1 is measured then."""
+    import tests.test_battery_victron as module  # noqa: PLC0415
+
+    if true_s is not None and monkeypatch is not None:
+        monkeypatch.setattr(module, "VICTRON_SILENCE_S", true_s)
+    key = "v3.60 | victron_gx 1"
+    report: dict[str, Any] | None = {"modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+                                               "per_phase": {"outcome": "obeyed"}}}
+    for attempt in (1, 2):
+        verification, _executor, _looks = _verify_expiry(make(), **kwargs)
+        report = gate.merge_report(report, {"modes": verification.report()["modes"]}, key=key, attempts=attempt,
+                                   now=T0)
+    assert report is not None
+    return report["modes"]["expiry:L1"], gate.expiry_measured(VICTRON_PHASES.expiry, key, report, "L1")
+
+
+def test_a_three_look_passthru_on_a_plant_that_never_falls_back_is_never_measured() -> None:
+    """The re-review's residual: the Multi leaves its setpoint for three looks from 30 s into the silence on a plant
+    whose dead-man never acts, the house steady."""
+
+    def glitch(model: Plant, since: float) -> None:
+        # Passthru for three looks (the setpoints read as long stale), then following them again.
+        model.fallback = 30 <= since < 60
+        if model.fallback:
+            for name in list(model.written_at):
+                model.written_at[name] = T0
+
+    row, measured = _two_runs(lambda: Plant(fallback=False), mutate=glitch)
+    assert not measured and row["outcome"] == "not_judgeable:early_fallback" and row["fallback_s"] == 50.0, row
+
+
+def test_a_genuine_dead_man_is_measured_after_the_second_passing_run_not_the_first() -> None:
+    row, measured = _two_runs(Plant)
+    assert measured and row["outcome"] == "obeyed" and row["passes"] == 2
+
+
+def test_a_dead_man_that_acts_well_inside_the_window_is_not_measured(monkeypatch: pytest.MonkeyPatch) -> None:
+    row, measured = _two_runs(Plant, true_s=45, monkeypatch=monkeypatch)
+    assert not measured and row["outcome"] == "not_judgeable:early_fallback", row
