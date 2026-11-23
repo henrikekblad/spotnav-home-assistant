@@ -51,6 +51,11 @@ function controlled(answer: HouseHistory): HouseHistory {
   };
 }
 
+/** The same period without the sun's value (a site without the sun's production): the parts SpotNav controls alone. */
+function sunless(answer: HouseHistory): HouseHistory {
+  return { ...answer, review: answer.review === null ? null : { ...answer.review, sun_gave: null, sun_days: 0 }, buckets: answer.buckets.map((bucket) => ({ ...bucket, sun_gave: null })) };
+}
+
 const kr = (minor: number): string => `${(minor / 100).toFixed(2)} kr`;
 
 function render(answer: HouseHistory, ui: Partial<HouseUi> = {}, handlers: Record<string, unknown> = {}, language: "en" | "sv" = "sv"): HTMLElement {
@@ -82,32 +87,40 @@ describe("the parts of a period", () => {
   it("has only the parts the period has, each with its sum, and a headline of the parts drawn", () => {
     const month = history("villa_month.json");
     // The battery under its own control: its own part and the plan's would-be figure, no arbitrage of SpotNav's.
-    expect(earnParts(month)).toEqual(["own", "heat", "car", "would"]);
+    expect(earnParts(month)).toEqual(["own", "heat", "car", "sun", "would"]);
     expect(partTotal(month, "own")).toBe(2625);
     expect(partTotal(month, "would")).toBe(3225);
     expect(partTotal(month, "car")).toBe(1960);
     expect(partTotal(month, "heat")).toBe(120);
+    expect(partTotal(month, "sun")).toBe(9100);
     expect(partTotal(month, "battery")).toBeNull();
-    // The headline never counts what the plan would have earned: nothing was done.
-    expect(earnTotal(month, new Set())).toBe(2625 + 120 + 1960);
-    expect(earnTotal(month, new Set(["own"]))).toBe(2080);
-    expect(earnTotal(month, new Set(["own", "heat", "car"]))).toBeNull();
+    // The headline never counts what the plan would have earned: nothing was done. The sun's value is money the
+    // house got: in it unless hidden.
+    expect(earnTotal(month, new Set())).toBe(2625 + 120 + 1960 + 9100);
+    expect(earnTotal(month, new Set(["own"]))).toBe(2080 + 9100);
+    expect(earnTotal(month, new Set(["own", "heat", "car"]))).toBe(9100);
+    expect(earnTotal(month, new Set(["own", "heat", "car", "sun"]))).toBeNull();
     const own = controlled(month);
-    expect(earnParts(own)).toEqual(["battery", "heat", "car"]);
-    expect(earnTotal(own, new Set())).toBe(4705);
+    expect(earnParts(own)).toEqual(["battery", "heat", "car", "sun"]);
+    expect(earnTotal(own, new Set())).toBe(4705 + 9100);
+    expect(earnParts(sunless(own))).toEqual(["battery", "heat", "car"]);
+    expect(earnTotal(sunless(own), new Set())).toBe(4705);
     // An answer from a backend before the parts: nothing to show.
     const old = history("villa_month.json", (raw) => {
       delete raw["own_control"];
       delete raw["saving"];
       for (const bucket of raw["buckets"] as Array<Record<string, unknown>>) {
-        for (const key of ["own_battery", "would_battery", "saving", "saving_battery", "saving_car", "saving_heat"]) {
+        for (const key of ["own_battery", "would_battery", "saving", "saving_battery", "saving_car", "saving_heat", "sun_gave"]) {
           delete bucket[key];
         }
       }
     });
     expect(old.own_control).toBeNull();
-    expect(old.buckets.every((bucket) => bucket.own_battery === null && bucket.would_battery === null)).toBe(true);
-    expect(earnParts(old)).toEqual([]);
+    expect(old.buckets.every((bucket) => bucket.own_battery === null && bucket.would_battery === null && bucket.sun_gave === null)).toBe(true);
+    // Its review still has the period's sun value (the same as Money's): the sun's sum, no bars.
+    expect(earnParts(old)).toEqual(["sun"]);
+    expect(earnBars({ doc: document, language: "sv", answer: old, hidden: new Set(), height: 150, money: kr, selected: null })).toBeNull();
+    expect(earnParts({ ...old, review: null })).toEqual([]);
     expect(decodeHouseHistory({ ...read("house_history", "villa_month.json"), own_control: { earned: "much" } })).toEqual({ ok: false, failure: "malformed" });
   });
 
@@ -139,7 +152,7 @@ describe("the parts of a period", () => {
 
 describe("the bars", () => {
   it("stacks a month's parts per day, with the plan's would-be figure hatched in a lane beside the battery's own", () => {
-    const month = history("villa_month.json");
+    const month = sunless(history("villa_month.json"));
     const chart = earnBars({ doc: document, language: "sv", answer: month, hidden: new Set(), height: 150, money: kr, selected: null })!;
     const bars = Array.from(chart.querySelectorAll<HTMLButtonElement>(".spotnav-house-pbar"));
     expect(bars).toHaveLength(30);
@@ -192,7 +205,7 @@ describe("the bars", () => {
 
 describe("the tab", () => {
   it("has the picker, the headline, the toggles with their sums, the bars and what each figure counts", () => {
-    const month = history("villa_month.json");
+    const month = sunless(history("villa_month.json"));
     const onEarnPart = vi.fn();
     const card = render(month, {}, { onEarnPart });
     const panel = card.querySelector("[role='tabpanel']")!;
@@ -229,12 +242,14 @@ describe("the tab", () => {
   });
 
   it("shows a day by the hour: the plan's figure in words, the car's hour and the heat's whole-day estimate said", () => {
-    const day = history("villa_day.json", (raw) => {
-      const saving = raw["saving"] as Record<string, number>;
-      saving["heat"] = 60;
-      saving["heat_days"] = 1;
-      saving["total"] = 360;
-    });
+    const day = sunless(
+      history("villa_day.json", (raw) => {
+        const saving = raw["saving"] as Record<string, number>;
+        saving["heat"] = 60;
+        saving["heat_days"] = 1;
+        saving["total"] = 360;
+      }),
+    );
     const card = render(day, { choice: { period: "day", date: "2026-11-15" } });
     // The heat is in the headline and its toggle, in no hour's bar.
     expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,35 kr");
@@ -266,6 +281,67 @@ describe("the tab", () => {
     const legend = earnLegend(document, "en", history("villa_month.json"), new Set(), kr, vi.fn());
     expect(legend.getAttribute("aria-label")).toBe("Parts shown");
     expect(legend.querySelector("button")?.textContent).toBe("Battery, own control 26.25 kr");
+  });
+});
+
+describe("the sun's part", () => {
+  it("is a toggle with its sum and what it counts, a part of the month's stacks and of the headline unless hidden", () => {
+    const month = history("villa_month.json");
+    // The same figure as Details → Money's (the period's reviews summed), its days in the bars.
+    expect(partTotal(month, "sun")).toBe(month.review!.sun_gave);
+    expect(month.buckets.reduce((sum, bucket) => sum + (bucket.sun_gave ?? 0), 0)).toBe(month.review!.sun_gave);
+    const card = render(month);
+    const toggle = card.querySelector<HTMLButtonElement>("button[data-legend='earn-sun']")!;
+    expect(toggle.textContent).toBe("Sol 91 kr");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.title).toBe("Solenergin huset använde, till priset då, plus det som såldes");
+    expect(toggle.querySelector("[data-series='earn-sun']")).not.toBeNull();
+    expect(card.querySelector<HTMLButtonElement>("button[data-legend='earn-car']")?.title).toBe("");
+    expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 138 kr");
+    const day = card.querySelector("[data-bar='2026-11-12']")!;
+    expect(lanes(day)[0]!.series).toEqual(["earn-own", "earn-heat", "earn-car", "earn-sun"]);
+    expect(day.getAttribute("aria-label")).toContain("Sol 7,00 kr");
+    expect(card.querySelector("[data-line='earn-notes']")?.textContent).toContain(translate("sv", "house.earn.note.sun"));
+    const onEarnPart = vi.fn();
+    render(month, {}, { onEarnPart }).querySelector<HTMLButtonElement>("button[data-legend='earn-sun']")!.click();
+    expect(onEarnPart).toHaveBeenCalledWith(["sun"]);
+    // Hidden: out of the headline, the stacks and the notes, its toggle unpressed; remembered like the other parts.
+    const hidden = render(month, { earnHidden: ["sun"] });
+    expect(hidden.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 47 kr");
+    expect(hidden.querySelector("button[data-legend='earn-sun']")?.getAttribute("aria-pressed")).toBe("false");
+    expect(hidden.querySelector(".spotnav-house-pbar-part[data-series='earn-sun']")).toBeNull();
+    expect(hidden.querySelector("[data-line='earn-notes']")?.textContent).not.toContain("Solens");
+    const store = new Map<string, string>();
+    const memory = () => ({ getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value) });
+    writeEarnHidden("site_a", ["sun", "car"], memory);
+    expect(readEarnHidden("site_a", memory)).toEqual(["sun", "car"]);
+    // A site without the sun's value has no such part.
+    expect(render(sunless(month)).querySelector("button[data-legend='earn-sun']")).toBeNull();
+    // A year: a part per month.
+    const year = history("villa_year.json");
+    expect(earnParts(year)).toContain("sun");
+    expect(bucketPart(year.buckets.find((bucket) => bucket.key === "2026-11")!, "sun")).toBe(9100);
+  });
+
+  it("is a whole day's figure in a day's view: in the headline and its toggle, in no hour's bar", () => {
+    const day = history("villa_day.json");
+    expect(partTotal(day, "sun")).toBe(700);
+    expect(day.buckets.every((bucket) => bucket.sun_gave === null)).toBe(true);
+    const card = render(day, { choice: { period: "day", date: "2026-11-15" } });
+    expect(Array.from(card.querySelectorAll<HTMLElement>("button[data-legend]")).map((toggle) => toggle.dataset["legend"])).toEqual(["earn-own", "earn-car", "earn-sun"]);
+    expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 14 kr");
+    expect(render(day, { choice: { period: "day", date: "2026-11-15" }, earnHidden: ["sun"] }).querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 6,75 kr");
+    expect(card.querySelector(".spotnav-house-pbar-part[data-series='earn-sun']")).toBeNull();
+    expect(card.querySelectorAll("[data-part='earn-bars'] .spotnav-house-pbar")).toHaveLength(24);
+    expect(card.querySelector("[data-line='earn-notes']")?.textContent).toContain(translate("sv", "house.earn.note.sunDay"));
+    // A day whose hours are no longer kept still says so, the sun being a whole day's figure.
+    const old = { ...day, buckets: day.buckets.map((bucket) => ({ ...bucket, saving: null, saving_car: null, own_battery: null })) };
+    expect(earnNotes("sv", old, new Set(), kr)[0]).toBe(translate("sv", "house.earn.note.noHours"));
+    // Only the sun shown: the headline is the sun's, no bars, and no word of missing hours.
+    const sunOnly = render(day, { choice: { period: "day", date: "2026-11-15" }, earnHidden: ["own", "car"] });
+    expect(sunOnly.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,00 kr");
+    expect(sunOnly.querySelector("[data-part='earn-bars']")).toBeNull();
+    expect(earnNotes("sv", day, new Set(["own", "car"]), kr)).toEqual([translate("sv", "house.earn.note.sunDay")]);
   });
 });
 
@@ -314,6 +390,10 @@ describe("the card element", () => {
     // The toggle is drawn anew unpressed, and keeps the focus.
     expect(root.querySelector("button[data-legend='earn-car']")?.getAttribute("aria-pressed")).toBe("false");
     expect(root.activeElement?.getAttribute("data-legend")).toBe("earn-car");
+    // The sun's part is remembered the same way.
+    root.querySelector<HTMLButtonElement>("button[data-legend='earn-sun']")!.click();
+    expect(store.get(earnKey("site_villa"))).toBe('["car","sun"]');
+    expect(root.querySelector("button[data-legend='earn-sun']")?.getAttribute("aria-pressed")).toBe("false");
     element.remove();
     const again = await mount(new FakeHass());
     expect(store.get("spotnav-house-card.tab.site_villa")).toBe("earn");

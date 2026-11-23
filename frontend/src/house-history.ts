@@ -77,6 +77,9 @@ export interface HouseBucket {
    * reviewed (the plan's), on a day's hours (the plan's) and from a backend before them. */
   own_battery: number | null;
   would_battery: number | null;
+  /** The sun's value over the bucket's reviewed days (minor unit): the same nightly reviews' figure as the period's
+   * `review.sun_gave`; `null` on a day's hours, where no day has it, and from a backend before it. */
+  sun_gave: number | null;
 }
 
 /** Before SpotNav controls the battery: what the battery's own control earned over the period's such days, and what
@@ -255,6 +258,7 @@ function bucket(value: unknown): HouseBucket {
     sell: newNumber(source, "sell"),
     own_battery: newNumber(source, "own_battery"),
     would_battery: newNumber(source, "would_battery"),
+    sun_gave: newNumber(source, "sun_gave"),
   };
 }
 
