@@ -477,6 +477,8 @@ PLAN_REASON = {
     "growatt_modbus": "no_rated_power",
     # SENEC states neither a size nor a rating on any route: learnt.
     "senec": "no_capacity",
+    # SAJ's size has no unit and its ratings are permille of an unread power: learnt.
+    "saj": "no_capacity",
 }
 
 

@@ -84,5 +84,8 @@ def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_do
     # FoxESS: grid meter, battery power and level read, untested, and read only.
     row = next(row for name, row in rows.items() if name.startswith("FoxESS"))
     assert row[2] == "Yes, untested: grid meter, battery power, battery level" and row[3].startswith("Not mapped: read only")
-    assert rows["SAJ"][1:5] == ("Unknown", "No", "Unknown", "Nothing yet")
+    # SAJ: the Modbus integration's battery power and level are read, untested, and read only.
+    row = next(row for name, row in rows.items() if name.startswith("SAJ"))
+    assert row[2].startswith("Yes, untested: battery power, battery level") and row[3].startswith("Not mapped: read only")
+    assert row[4] == "Nothing yet"
     assert "\n## Hybrid inverters and home batteries: overview\n" in gen.render()

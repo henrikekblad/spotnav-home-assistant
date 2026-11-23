@@ -868,6 +868,17 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(
         ("senec",), _re(r"_accuexport_now$"), discharge_regex=_re(r"_accuimport_now$"), label="SENEC (WebAPI)"
     ),
+    # SAJ (`saj_h2_modbus`, stanus74 `3f5cd84`): `<entry name>_batteryPower`, the aggregate 0x40A6, whose `fast_` copy is
+    # disabled by default and left out. Sign DISPUTED: ha-saj-local documents positive = discharge and evcc's template reads
+    # the same register so (its log shows +441 W while the battery discharges); the integration's wiki says charging. Read
+    # as discharge-positive: sign unverified on hardware.
+    BatteryRow(
+        ("saj_h2_modbus",),
+        _re(r"_batterypower$"),
+        inverted=True,
+        reject=_re(r"_fast_batterypower$"),
+        label="SAJ (Modbus)",
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

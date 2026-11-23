@@ -100,6 +100,7 @@ UPSTREAMS: dict[str, Source] = {
     "e3dc_rscp": _hacs("torbennehmer/hacs-e3dc"),
     "growatt_modbus": _hacs("0xAHA/Growatt_ModbusTCP"),
     "senec": _hacs("marq24/ha-senec-v3"),
+    "saj_h2_modbus": _hacs("stanus74/home-assistant-saj-h2-modbus"),
     "e3dc_rscp_connect": _hacs("tobias-terhaar/e3dc_rscp_connect"),
     "e3dc_maestro": _hacs("TommiG1/e3dc-maestro"),
     # Vehicles.

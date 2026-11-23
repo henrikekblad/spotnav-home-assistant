@@ -83,6 +83,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   `system_state`); one owner's charge switch came back on ten seconds after it was turned off (marq24/ha-senec-v3 issue 115).
   No aggregator is named: none was found, and no Nordic SENEC owner either
   (`plans/research_integrations/senec_control_2026-11-23.md`).
+* SAJ's own control is the app's: the `AppMode` options `12` (AI saving) and `10` (peak shaving) are the vendor's optimisers,
+  `1` the time-of-use slots, and the app's limits stay in force after Home Assistant has written the passive entities (stanus74
+  issue 162); EKD's Ampere.IQ rewrites the same registers on an Ampere.StoragePro (issue 18). Tibber lists SAJ among the batteries
+  it runs, from a LinkedIn post only [U]; no other aggregator was found
+  (`plans/research_integrations/saj_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -165,6 +170,9 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "E3/DC portal: AI360, Smart-Charge, idle periods and weather-regulated charge"),
     Coexistence("senec", "SENEC", ("senec",),
                 "SENEC app and SENEC.Cloud: tariff charging, the backup reserve, peak shaving and the unit's own maintenance charges"),
+    Coexistence("saj", "SAJ", ("saj_h2_modbus",),
+                "SAJ app (Elekeeper, eSolar): AI saving, peak shaving, time-of-use and the app's charge and discharge limits",
+                ("Tibber, named for SAJ [U]",)),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),

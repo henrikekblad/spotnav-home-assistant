@@ -170,6 +170,7 @@ NAMES: dict[str, str] = {
     "e3dc_rscp": "E3/DC",
     "growatt_modbus": "Growatt (Modbus)",
     "senec": "SENEC",
+    "saj_h2_modbus": "SAJ (Modbus)",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -916,7 +917,18 @@ OVERVIEW: tuple[Overview, ...] = (
         "them. SENEC's own maintenance and safety charges grid-charge by themselves. The mode is read from the unit's "
         "state text, which only English, German and Italian have.",
     ),
-    Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
+    Overview(
+        "SAJ (H2, HS2, Ampere.StoragePro)",
+        "`saj_h2_modbus`, HACS (stanus74/home-assistant-saj-h2-modbus). Not read: `saj_modbus` and core `saj` (PV "
+        "inverters without a battery)",
+        keys=("saj_h2_modbus",),
+        adapter="saj",
+        control="Not mapped: read only. A passive mode with a charge or discharge power in permille of the rated "
+        "power exists, and nothing in it ends by itself",
+        note="Which way the battery power counts is not settled between the sources and is not yet confirmed on a "
+        "unit. The mode is free only in self-use. The size and ratings are learnt. Named among the batteries Tibber "
+        "runs (not verified).",
+    ),
     Overview(
         "Alpha ESS",
         "`alphaess_modbus`, HACS (senalse/ha-alphaess-modbus). Not read: `alphaess`, HACS (cloud, entities named by "

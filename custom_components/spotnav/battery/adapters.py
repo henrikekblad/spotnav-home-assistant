@@ -400,6 +400,23 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (`SAFE_CHARGE_FORCE`) must be off. Without a `system_state` the mode is unknown: the WebAPI and OpenAPI entries state none.
   The firmware is the device's `sw_version`, not an entity.
 
+* SAJ H2, HS2 and Ampere.StoragePro, `saj_h2_modbus` (stanus74/home-assistant-saj-h2-modbus `3f5cd84`, v3.1.3, local Modbus TCP,
+  read 2026-11-23, `plans/research_integrations/saj_control_2026-11-23.md`): read only. Unique id `<entry name>_<key>` for the
+  sensors, a fast copy `<entry name>_fast_<key>`, numbers `<entry name>_<key>_input`; the entry name is the person's (`SAJ` by
+  default) and the keys are camel-cased, so every key is matched lower-cased by suffix. The level is `batEnergyPercent` (the
+  inverter's side; the BMS block's `Bat1SOC` reads 0 % on an HS3, issue 201), the counters `bat_total_charge` and
+  `bat_total_discharge` (disabled by default), the mode the `AppMode` sensor (0 self-use, 1 time-of-use, 2 backup, 3 passive,
+  10 peak shaving and 12 AI saving, the last two the SAJ app's own optimisers), free only in 0: evcc runs its hold in 2
+  (backup, whether it grid-charges is unknown) and its charge in 1. The battery's power is `batteryPower` (0x40A6, the
+  aggregate), whose sign is DISPUTED: the integration's wiki (written with an AI, by the research's reading) says positive =
+  charging, ha-saj-local documents positive = discharge, and evcc's template feeds the same register as the battery's power,
+  its log in issue 34536 reading +441 W while the battery discharged. Read as discharge-positive; sign unverified on
+  hardware. Not read: the size (`BatCapcity` and `BatUserCap` carry no unit, likely Ah, which is unconfirmed, so a size from
+  them times `BatVolt` would be a guess); the ratings (the limits are permille of a rated power that is no entity); the floor
+  (`battery_on_grid_discharge_depth`, register 0x3644, is undocumented as a depth of discharge or a level, and one controller
+  writes it to 100 to charge); the firmware (no entity). Another maker's `saj_modbus` (a PV-only R5 integration) and core `saj`
+  have no battery.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1430,10 +1447,27 @@ SENEC: Final = Adapter(
     reserves=(ReserveSource(_key("spare_capacity", "sensor", "number")),),
 )
 
+#: SAJ through `saj_h2_modbus` (see the module): read only. The ids begin with the entry's name and the keys are
+#: camel-cased, so a key is the lower-cased suffix.
+SAJ: Final = Adapter(
+    brand="saj",
+    label="SAJ",
+    platforms=("saj_h2_modbus",),
+    facts={
+        "soc": _key("batenergypercent"),
+        "charged_total": _key("bat_total_charge"),
+        "discharged_total": _key("bat_total_discharge"),
+    },
+    modes=(
+        # 3 passive (an outside controller), 1 time-of-use, 2 backup (evcc's hold), 10 and 12 the SAJ app's optimisers.
+        ModeRule(_key("appmode", "sensor"), frozenset({"0"}), "app mode"),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS, SENEC, SAJ,
 )
 
 

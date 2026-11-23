@@ -3413,5 +3413,152 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "saj": {
+  "_source": "stanus74/home-assistant-saj-h2-modbus 3f5cd84 (v3.1.3): sensors `<entry name>_<key>` (a `fast` copy `<entry name>_fast_<key>`), numbers `<entry name>_<key>_input` (sensor.py lines 72-80, number.py line 333), the entry name the person's (`SAJ` by default) and the keys camel-cased in const.py; the device's manufacturer is \"SAJ Electric\" (const.py line 35). Not a real registry; built from the source, the energy counters and the fast copy disabled by default as there. `BatCapcity` and `BatUserCap` carry no unit (the `information_sensors` group).",
+  "platform": "saj_h2_modbus",
+  "manufacturer": "SAJ Electric",
+  "battery": "sensor.saj_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.saj_battery_power",
+    "unique_id": "SAJ_batteryPower",
+    "device": "inv",
+    "state": "441",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_fast_battery_power",
+    "unique_id": "SAJ_fast_batteryPower",
+    "device": "inv",
+    "state": "441",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.saj_battery_power_inverter",
+    "unique_id": "SAJ_BatPower",
+    "device": "inv",
+    "state": "440",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_energy_percent",
+    "unique_id": "SAJ_batEnergyPercent",
+    "device": "inv",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_1_soc",
+    "unique_id": "SAJ_Bat1SOC",
+    "device": "inv",
+    "state": "61",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_capacity",
+    "unique_id": "SAJ_BatCapcity",
+    "device": "inv",
+    "state": "200",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_user_capacity",
+    "unique_id": "SAJ_BatUserCap",
+    "device": "inv",
+    "state": "180",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_voltage_inverter",
+    "unique_id": "SAJ_BatVolt",
+    "device": "inv",
+    "state": "51.2",
+    "unit": "V",
+    "device_class": "voltage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_battery_total_charge",
+    "unique_id": "SAJ_bat_total_charge",
+    "device": "inv",
+    "state": "4100.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.saj_battery_total_discharge",
+    "unique_id": "SAJ_bat_total_discharge",
+    "device": "inv",
+    "state": "3800.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.saj_app_mode",
+    "unique_id": "SAJ_AppMode",
+    "device": "inv",
+    "state": "0",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.saj_app_mode",
+    "unique_id": "SAJ_app_mode_input",
+    "device": "inv",
+    "state": "0",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.saj_battery_on_grid_discharge_depth",
+    "unique_id": "SAJ_battery_on_grid_discharge_depth_input",
+    "device": "inv",
+    "state": "20",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.saj_total_grid_power",
+    "unique_id": "SAJ_totalgridPower",
+    "device": "inv",
+    "state": "300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "saj",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }
