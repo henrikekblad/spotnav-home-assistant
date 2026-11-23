@@ -188,6 +188,17 @@ class PoolPlan:
         }
 
 
+def _keep(
+    states: dict[tuple[int, bool, int], tuple[float, tuple[int, ...]]],
+    key: tuple[int, bool, int],
+    value: tuple[float, tuple[int, ...]],
+) -> None:
+    """Keep the cheaper way to reach a state."""
+    held = states.get(key)
+    if held is None or value[0] < held[0]:
+        states[key] = value
+
+
 def _place(
     costs: Sequence[float | None],
     target: int,
@@ -215,18 +226,13 @@ def _place(
         cost = costs[index]
         nxt: dict[tuple[int, bool, int], tuple[float, tuple[int, ...]]] = {}
 
-        def keep(key: tuple[int, bool, int], value: tuple[float, tuple[int, ...]]) -> None:
-            held = nxt.get(key)
-            if held is None or value[0] < held[0]:
-                nxt[key] = value
-
         for (chosen, last, starts), (total, hours) in states.items():
             if index not in forced:
-                keep((chosen, False, starts), (total, hours))
+                _keep(nxt, (chosen, False, starts), (total, hours))
             if (cost is not None or index in forced) and chosen < target:
                 start = 0 if last else 1
                 extra = (cost or 0.0) + (_START if start else 0.0) + (_OVER_START if start and starts >= max_starts else 0.0)
-                keep((chosen + 1, True, starts + start), (total + extra, (*hours, index)))
+                _keep(nxt, (chosen + 1, True, starts + start), (total + extra, (*hours, index)))
         need = due[index]
         if need > 0:
             nxt = {key: (total + _SHORT * max(0, min(need, target) - key[0]), hours) for key, (total, hours) in nxt.items()}

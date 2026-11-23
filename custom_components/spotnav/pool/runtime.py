@@ -39,7 +39,7 @@ from ..planning.demand_charge import hour_start
 from ..sauna.config import FAMILY_HARVIA, FAMILY_RELAY, FAMILY_TYLO, SaunaConfig
 from ..spa.config import SpaConfig
 from ..spa.plan import HeatHour
-from ..spa.runtime import DeadlineShadow, Reading, new_sauna, new_spa
+from ..spa.runtime import Reading, new_sauna, new_spa
 from .config import SHAPE_CLIMATE, PoolConfig
 from .plan import (
     EXTRA_HOURS,
