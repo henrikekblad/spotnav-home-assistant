@@ -467,6 +467,8 @@ PLAN_REASON = {
     "sungrow": None,
     # Omnibattery states the system's level and size and no rating: learnt.
     "omnibattery": "no_rated_power",
+    # sonnen states the rating (`max_power`) but its size sensor is disabled by default: learnt until it is enabled.
+    "sonnen": "no_capacity",
 }
 
 

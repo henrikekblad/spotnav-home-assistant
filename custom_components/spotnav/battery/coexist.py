@@ -59,10 +59,14 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   option but `off` writes the limits from the P1 meter), Zendure-HA `e67b04e`. Ffunes/Omnibattery drives Zendure too and is
   in the outside integrations. No aggregator is named: none was found
   (`plans/research_integrations/zendure_control_2026-11-23.md`).
+* sonnen's own modes are the options of `sonnenbatterie`'s `operating_mode` (`2` automatic, `10` time-of-use, `11`
+  optimization; weltmeyer `9441b4a`); a mode change is refused while a virtual power plant is active, which is the
+  Tibber VPP (sonnenVPP, since 2024 in Sweden [V]) running the battery
+  (`plans/research_integrations/sonnen_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
-  `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
+  `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1, read on 2026-11-23 at `9441b4a`, 2026.11.6), and the adapters' own (`adapters.py`). No Home
   Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry): its row has no platform, as `modbus`
   is every Modbus device's, and is found by the brand of the facts (`adapters.SUNGROW`, chosen by unique id).
 
@@ -106,7 +110,7 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Bixia, Grid Rewards guarantee plan [V]",)),
     Coexistence("ferroamp", "Ferroamp", ("ferroamp",), "EnergyHub", ("Ntricity / Varberg Energi, FCR-D [V]",)),
     Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
-    Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),
+    Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app: time-of-use and its own optimization mode", ("Tibber VPP [V]",)),
     Coexistence("solax", "SolaX", ("solax_modbus",), "SolaX Cloud", ("Tibber [U]",)),
     # The other plugins of `solax_modbus` that have an adapter, after SolaX so that the integration alone still
     # names SolaX. Their own modes are the ones the plugin's mode select lists.

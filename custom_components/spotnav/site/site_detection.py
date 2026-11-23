@@ -837,6 +837,10 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         discharge_regex=_re(r"_battery_discharging_power$"),
         label="Anker Solix (local, official)",
     ),
+    # sonnenBatterie (`sonnenbatterie`, weltmeyer `9441b4a`): `sensor.sonnenbatterie_<serial>_state_battery_inout`, the unit's
+    # `Pac_total_W`, "positive = discharging" on the AC side (the README's table, `sensor_list.py`). The positive-only
+    # `state_battery_input` and the energy counters end otherwise. Sign from the source, unverified on hardware.
+    BatteryRow(("sonnenbatterie",), _re(r"_state_battery_inout$"), inverted=True, label="sonnenBatterie"),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

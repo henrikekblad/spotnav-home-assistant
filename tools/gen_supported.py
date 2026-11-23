@@ -165,6 +165,7 @@ NAMES: dict[str, str] = {
     "zendure_ha": "Zendure",
     "omnibattery": "Omnibattery",
     "anker_solix": "Anker Solix",
+    "sonnenbatterie": "sonnenBatterie",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -893,9 +894,14 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "sonnen",
-        "`sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie): not read",
-        control="Not mapped. Operating mode, charge and discharge power and reserve exist locally",
-        note="Joins Tibber's virtual power plant.",
+        "`sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie)",
+        keys=("sonnenbatterie",),
+        adapter="sonnen",
+        control="Not mapped: read only. Operating mode, charge and discharge power and reserve exist locally, and a "
+        "charge or discharge command lasts about 30 seconds on the unit",
+        note="Joins Tibber's virtual power plant, which refuses mode changes while it runs. The size is read only "
+        "when its disabled sensor is enabled, the energy counters are Home Assistant's own sums and not read, and "
+        "the ratings are one figure, the stack's maximum power.",
     ),
     Overview(
         "Emaldo",

@@ -2642,5 +2642,152 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "sonnen": {
+  "_source": "weltmeyer/ha_sonnenbatterie 9441b4a (2026.11.6): sensors `sensor.sonnenbatterie_<serial>_<key>` (a literal `sensor.` is inside the unique id, sensor.py line 108; the key is the `legacy_key` when one is set), selects and numbers `sonnenbatterie_<serial>_<key>` (entities.py). Not a real registry; built from the source and sensor_list.py, the installed-capacity sensors disabled by default as there.",
+  "platform": "sonnenbatterie",
+  "manufacturer": "sonnen",
+  "battery": "sensor.sonnen_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.sonnen_battery_power",
+    "unique_id": "sensor.sonnenbatterie_123456_state_battery_inout",
+    "device": "sb",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_state_of_charge",
+    "unique_id": "sensor.sonnenbatterie_123456_state_charge_user",
+    "device": "sb",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_real_state_of_charge",
+    "unique_id": "sensor.sonnenbatterie_123456_state_charge_real",
+    "device": "sb",
+    "state": "61",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.sonnen_installed_capacity",
+    "unique_id": "sensor.sonnenbatterie_123456_state_total_capacity_real",
+    "device": "sb",
+    "state": "10000",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.sonnen_usable_capacity",
+    "unique_id": "sensor.sonnenbatterie_123456_state_total_capacity_usable",
+    "device": "sb",
+    "state": "9000",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.sonnen_max_power",
+    "unique_id": "sensor.sonnenbatterie_123456_max_power",
+    "device": "sb",
+    "state": "4000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_tou_max_power",
+    "unique_id": "sensor.sonnenbatterie_123456_tou_max_power",
+    "device": "sb",
+    "state": "2500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_operating_mode",
+    "unique_id": "sensor.sonnenbatterie_123456_operating_mode",
+    "device": "sb",
+    "state": "2",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.sonnen_operating_mode",
+    "unique_id": "sonnenbatterie_123456_select_operating_mode",
+    "device": "sb",
+    "state": "automatic",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_backup_buffer",
+    "unique_id": "sensor.sonnenbatterie_123456_backup_buffer",
+    "device": "sb",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.sonnen_battery_reserve",
+    "unique_id": "sonnenbatterie_123456_battery_reserve",
+    "device": "sb",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_energy_battery_charge",
+    "unique_id": "sensor.sonnenbatterie_123456_energy_battery_charge",
+    "device": "sb",
+    "state": "12.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_energy_battery_discharge",
+    "unique_id": "sensor.sonnenbatterie_123456_energy_battery_discharge",
+    "device": "sb",
+    "state": "10.1",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sonnen_grid_power",
+    "unique_id": "sensor.sonnenbatterie_123456_state_grid_inout",
+    "device": "sb",
+    "state": "200",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "sonnen",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": 4.0,
+   "rated_discharge_kw": 4.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

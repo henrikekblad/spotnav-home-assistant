@@ -314,6 +314,22 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   discharge-positive ("negative: Battery charging"), negated by the site. No floor is read: the SoC limits
   (`uid_battery_min_soc`) are the person's, and what the level means against them is open.
 
+* sonnenBatterie, `sonnenbatterie` (weltmeyer/ha_sonnenbatterie `9441b4a`, 2026.11.6, local API, read 2026-11-23,
+  `plans/research_integrations/sonnen_control_2026-11-23.md`): read only. Sensors are `sensor.sonnenbatterie_<serial>_<key>`
+  (the literal `sensor.` is inside the unique id, `sensor.py` line 108), numbers and selects `sonnenbatterie_<serial>_<key>`;
+  the key is the entity's `legacy_key` where one is set, so the level (USOC, the user-visible one) is `state_charge_user`
+  and the size `state_total_capacity_real` (Wh, disabled by default: the size is learnt until it is enabled). The rating
+  `max_power` (W, the stack's or the inverter's, one figure for both directions) is anchored on the serial, as the
+  `tou_max_power` setting also ends in it. The mode is the sensor `operating_mode` (`"1"` manual, `"2"` automatic
+  self-consumption, `"10"` time-of-use, `"11"` optimization), free only in `"2"`: the others are the person's schedule,
+  sonnen's own optimiser or a virtual power plant (Tibber), and a mode change is refused while a VPP is active. The floor
+  is the reserve, the number `battery_reserve` (`EM_USOC`) and the sensor `backup_buffer`, the highest read. Not read: the
+  lifetime counters `energy_battery_charge` and `energy_battery_discharge` (the integration integrates `Pac_total_W` from
+  zero at install, skips what happens while Home Assistant is off and ignores up to 50 W, so they are no device meters
+  and a round trip from them would be wrong); the grid status `systemstatus` (free text, its values are not listed in
+  the code); the firmware, which is the device's `sw_version` (read from the device registry, not an entity). The
+  battery's power is `state_battery_inout` (`Pac_total_W`), discharge-positive, the AC side (the README's table).
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1231,9 +1247,30 @@ OMNIBATTERY: Final = Adapter(
     },
 )
 
+#: sonnenBatterie through `sonnenbatterie` (see the module): read only. The sensors' unique ids begin `sensor.`.
+SONNEN: Final = Adapter(
+    brand="sonnen",
+    label="sonnenBatterie",
+    platforms=("sonnenbatterie",),
+    facts={
+        "soc": _key("state_charge_user"),
+        "capacity": _key("state_total_capacity_real"),
+        # One figure for both directions, anchored on the serial: `tou_max_power` is a schedule setting.
+        "rated_charge": Match(("sensor",), re.compile(r"^sensor\.sonnenbatterie_[^_]+_max_power$")),
+        "rated_discharge": Match(("sensor",), re.compile(r"^sensor\.sonnenbatterie_[^_]+_max_power$")),
+    },
+    modes=(
+        # Free in automatic (self-consumption); manual is a setpoint someone else sends, time-of-use the person's
+        # schedule and optimization sonnen's own (a VPP among them). An unknown mode (a newer firmware's) reads unknown.
+        ModeRule(_key("operating_mode", "sensor"), frozenset({"2"}), "operating mode"),
+    ),
+    reserves=(ReserveSource(_key("battery_reserve", "number")), ReserveSource(_key("backup_buffer"))),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
+    SONNEN,
 )
 
 
