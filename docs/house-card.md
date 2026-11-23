@@ -214,6 +214,14 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   or keep it shown to compare with a battery maker's earnings figure that counts the sun. It is a whole day's figure:
   a day's view has it in the headline and its toggle, not in an hour's bar; a month or a year has it as a part of each
   day's or month's bar. The sun's days are kept as long as the reviews are.
+  A site with solar panels and no home battery has the Sun part too, from a nightly sun review of its own: shortly
+  after midnight SpotNav values yesterday by the quarter hour from Home Assistant's 5-minute statistics of the Energy
+  dashboard's grid and solar meters, at each quarter hour's price with every fee (an hourly price spread over its
+  quarters where the area has no quarter-hour prices), with the same formula and no battery. Its hours are kept 40
+  days and its days 400, so a day's view has the sun in each hour's bar. Older days, and days from before the update,
+  are estimated from the hourly statistics at the hour's average price; within an hour the energy bought and the
+  energy sold net against each other, so an hour that sold in one quarter and bought in another reads a little
+  differently. A note under the bars says when the period has such estimated days.
 
   ![The house card's Earnings tab on a month: the battery's own earnings per day beside what SpotNav would have saved, hatched](images/house-card-earnings.png)
 
@@ -244,6 +252,8 @@ tabs. Every figure in it is the chosen period's own and stands once; nothing is 
   the same days with no battery hatched on top.
 * **Share of perfect**: the battery's ways side by side (below).
 * **Money**: what the period cost, and what the battery, the sun and both together saved (*The battery saved*, below).
+  Without a home battery: what the period cost and *The sun saved*, from the nightly sun review (the quarter hours of
+  the 5-minute statistics) or, for older days, estimated from the hourly statistics, with a note where it is.
 * **SpotNav saved**: the period's sum and a row per part (its bars are the Earnings tab).
 * **Forecast errors** and **Day by day**.
 * **How it is counted**: what SpotNav's saving is compared with, how the flow is allocated, and the sources, among
