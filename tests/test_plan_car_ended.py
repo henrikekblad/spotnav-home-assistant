@@ -222,3 +222,81 @@ async def test_a_car_still_drawing_or_paused_by_load_balancing_has_not_ended_the
     await _later(hass, freezer, 2 * PLAN_CAR_IDLE_S)
     assert controller.plan is not None and told == [] and controller.car_ended_at is None
     await controller.async_shutdown()
+
+
+async def test_an_easee_car_that_ends_the_plans_charge_itself_is_the_cars_end_not_an_outside_pause(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """23 Nov (a Kia Ceed PHEV on an Easee): mid-window the charger says `completed` (connector `SuspendedEV`): the
+    car is full. Easee's resume and pause have no state to read (`enabled_state` None), so the charge control read
+    off the moment the car stopped, the watch reset, and the stop was counted as an outside pause while a later
+    window stayed to start the full car again. SpotNav's own last command (resumed, not paused) now stands for it."""
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.spotnav.flows.charger_detection import detect_charger
+
+    from .charger_helpers import detected_config
+    from .charger_shapes import SHAPES, register_shape
+
+    ids = register_shape(hass, SHAPES["easee"])
+    found = detect_charger(hass, ids["device_id"])
+    car = Car(100.0, estimated=True)
+    controller = ChargingController(
+        hass, "entry_easee", detected_config(found), soc_reader=car, vehicle_limit_reader=lambda _vehicle_id: 100.0
+    )
+    await controller.async_initialize()
+    commands: list[str] = []
+
+    async def action(call: ServiceCall) -> None:
+        commands.append(call.data["action_command"])
+        if call.data["action_command"] == "resume":
+            hass.states.async_set("sensor.easee_status", "charging", {"config_authorizationRequired": False})
+        elif call.data["action_command"] == "pause":
+            hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": False})
+
+    hass.services.async_register("easee", "action_command", action)
+    async_mock_service(hass, "easee", "set_charger_dynamic_limit")
+    hass.states.async_set("sensor.easee_status", "ready_to_charge", {"config_authorizationRequired": False})
+    told: list[tuple[str | None, bool]] = []
+    controller.set_car_ended_observer(lambda vehicle_id, full: told.append((vehicle_id, full)))
+    await controller.async_install(_plan())
+    await hass.async_block_till_done()
+    assert "resume" in commands and controller.charging, "the open window resumes the charge"
+    await _later(hass, freezer, 120)
+
+    # The car is full: Easee says `completed`.
+    hass.states.async_set("sensor.easee_status", "completed", {"config_authorizationRequired": False})
+    await _later(hass, freezer, 30)
+    await _later(hass, freezer, PLAN_CAR_IDLE_S - 60)
+    assert controller.plan is not None, "not yet five minutes"
+    await _later(hass, freezer, 60)
+
+    assert controller.plan is None, "the car's end: the windows ahead are cleared, nothing starts the full car again"
+    assert controller.completion_record is not None and controller.completion_record["reason"] == "vehicle_full"
+    assert told == [("ev6", True)]
+    await controller.async_shutdown()
+
+
+async def test_a_paused_easee_is_not_a_charge_the_car_ended(hass: HomeAssistant) -> None:
+    """The other side: after SpotNav's own pause Easee's control reads off, as before."""
+    from custom_components.spotnav.flows.charger_detection import detect_charger
+
+    from .charger_helpers import detected_config
+    from .charger_shapes import SHAPES, register_shape
+
+    ids = register_shape(hass, SHAPES["easee"])
+    controller = ChargingController(hass, "entry_easee", detected_config(detect_charger(hass, ids["device_id"])))
+    await controller.async_initialize()
+    hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": False})
+    controller.adapter.path.paused = True
+    assert controller._control_on is False  # noqa: SLF001
+    # Plugged in (or restarted) and `completed` without a resume of ours: not a charge SpotNav turned on.
+    controller.adapter.path.paused = False
+    hass.states.async_set("sensor.easee_status", "completed", {"config_authorizationRequired": False})
+    assert controller._control_on is False  # noqa: SLF001
+    # After a resume of ours the car's `completed` keeps the control on; a pause of ours turns it off again.
+    controller.adapter.path.resumed = True
+    assert controller._control_on is True  # noqa: SLF001
+    controller.adapter.path.paused = True
+    assert controller._control_on is False  # noqa: SLF001
+    await controller.async_shutdown()
