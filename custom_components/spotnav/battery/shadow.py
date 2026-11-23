@@ -40,8 +40,11 @@ PART_HOLD_FOR_CAR: Final = "hold_for_car"
 PART_SWITCH_LOAD: Final = "switch_load"
 #: No solar export while the sell price is below zero (`export_curtail.py`): the site's export limit at 0 kW.
 PART_EXPORT_CURTAIL: Final = "export_curtail"
+#: The pool's circulation and heat pump, and the spa, watched (`pool/runtime.py`); their book is their own.
+PART_POOL: Final = "pool"
+PART_SPA: Final = "spa"
 #: Every part, in the order they were added.
-PARTS: Final[tuple[str, ...]] = (PART_HOLD_FOR_CAR, PART_SWITCH_LOAD, PART_EXPORT_CURTAIL)
+PARTS: Final[tuple[str, ...]] = (PART_HOLD_FOR_CAR, PART_SWITCH_LOAD, PART_EXPORT_CURTAIL, PART_POOL, PART_SPA)
 
 #: Whether a part of the book may be turned on at all. Off in this release: the book's parts run in shadow (the
 #: battery control has its own per-site gate, `gate.py`).
