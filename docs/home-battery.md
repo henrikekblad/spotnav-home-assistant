@@ -436,16 +436,19 @@ off in the app. That is the same exposure Sigenergy's own AI mode runs with ever
 **Turning it on, step by step:**
 
 1. In the Sigenergy integration, enable `Grid Import Limitation`, `Grid Sensor Status`, `Output Type` and
-   `Independent phase power control` if they are disabled (they are by default). SpotNav reads them; it never
-   writes any of them.
+   `Independent phase power control` if they are disabled (they are by default). SpotNav only reads the last three.
 2. Turn `Independent phase power control` on, and check that `Output Type` reads L1/L2/L3/N.
-3. In the Sigenergy app, set the plant's grid import limit to at most 3 x (fuse - safety margin) x voltage, for
-   example 13.1 kW on 20 A with a 1 A margin.
-4. In the card's battery settings, turn on "The import limit acts".
+3. In the card's battery settings, press the button on the import limit's line and confirm:
+   * **Set 13.1 kW…** when the plant's limit reads more than 3 x (fuse - safety margin) x voltage, or nothing:
+     SpotNav lowers `Grid Import Limitation` to that figure (13.1 kW on 20 A with a 1 A margin), reads it back, and
+     only then says the limit acts. It never raises the limit, and writes nothing while battery control is off. If
+     the value does not read back within 15 seconds nothing else changes and the line says so: set it in the
+     Sigenergy app instead and press again.
+   * **Turn on…** when the limit already reads low enough: only "The import limit acts" is turned on.
 
 The battery section says what is still missing, one step at a time, with a button to the entity or the setting
-("Independent phase power control is off or cannot be read. Turn it on …", "Lower it to at most 13.1 kW in the
-Sigenergy app …"). Once everything holds it says so instead of the cap: "Sigenergy holds each phase under 4.4 kW
+("Independent phase power control is off or cannot be read. Turn it on …", "Sigenergy can hold each phase under the
+plant's own import limit, but it reads 13.8 kW. At 13.1 kW or less …"). Once everything holds it says so instead of the cap: "Sigenergy holds each phase under 4.4 kW
 (the plant's import limit, 13.1 kW, shared over three phases): grid charging uses what the house leaves."
 
 **Another plant.** Owners of another Sigenergy model or firmware who want to see the hold for themselves can run
@@ -461,7 +464,10 @@ still is handed back after about two minutes): the battery keeps charging at the
 house may be at its peak meanwhile. On a 16–20 A fuse that
 often leaves almost no grid charge. An administrator can accept that risk instead: in the card's battery settings,
 "If Home Assistant stops" is shown only where it would make a real difference (battery control on, a plant that can
-charge from the grid, the cap clearly below what the fuse allows with an empty house). Tick "I understand and
+charge from the grid, the cap clearly below what the fuse allows with an empty house) and where the plant's own
+per-phase hold above is no way: on a Sigenergy plant that can take that way, the import limit's line is shown
+instead, since it guards the fuse without accepting a risk. An acceptance given earlier stays shown so it can be
+turned off. Tick "I understand and
 accept …" in its editor.
 
 With it on, the cap is what the fuse allows with an **empty** house: each phase's fuse less the site's safety margin,
