@@ -7,8 +7,8 @@ diagnostics (`flexible_loads`) only; no plan reads it yet.
 
 Each load's `state` (`with_states`): `running` where SpotNav steers it, `watched` where it only watches; `paused` with
 the reason `ceiling` while the shed order holds it (`site/shed_order.py`: the water heater paused, the heat lowered
-one step, a car the import target's hold pauses), `blocked` with the hard rule's code where a step was due and the
-load's own rule kept it.
+one step, a car the import target's hold pauses; the pool, the spa, the sauna and cooling as `would` steps only),
+`blocked` with the hard rule's code where a step was due and the load's own rule kept it.
 """
 
 from __future__ import annotations

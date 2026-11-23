@@ -3,9 +3,16 @@
 
 When the running period (the hour, or the quarter hour where the tariff counts quarters) is heading over the ceiling
 the import target's hold keeps (`site/import_target.py`: the import target or the power level, lifted to the month's
-free level, less its margin), the loads give way in one fixed order and come back in the reverse one:
+free level, less its margin), the loads give way from the bottom of the site's priority list up (`site/priority.py`,
+`set_priority`) and come back from the top down. The default list gives (`ORDER`):
 
-    battery -> water heater -> car -> heat        (put back: heat -> car -> water heater -> battery)
+    pool heat -> pool circulation -> spa idle -> battery -> water heater -> cooling -> sauna -> spa bath -> car -> heat
+
+which keeps the order of 3.0's first steps for the loads it stepped (battery -> water heater -> car -> heat). A load's
+place decides its measure (`_measure`): above every car `beyond_cars_w` (as heat below), else `excess_w` (as the
+water heater below); below the battery also without the battery's help (`Projection.battery_help_w`). The pool, the
+spa, the sauna and cooling (`WATCH_ONLY`) have no control yet: their steps are `would` only and hold no other step
+back. The steps below describe the water heater and heat at their default places.
 
 **The projection** is the hold's own, never a second one: its period budget (`HourBudget`) says what the rest of the
 period may still import on average (`rate_w`) and what the house draws now without the cars (`house_w`); the hold's
