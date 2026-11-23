@@ -214,3 +214,124 @@ def test_the_hardware_test_s_charge_step_is_tried_up_to_98_percent_and_a_short_o
     assert charge(98.0, 1.0, quick=True) == "not_judgeable:soc_near_full"
     # Below the taper a charge taken short is still a failure.
     assert charge(60.0, 0.0, quick=True) == "ignored"
+
+
+# --- the mode `expiry` -----------------------------------------------------------------------------------------------
+
+
+def _expiry_run(
+    *, fallback_after_s: float | None, window_s: float = 60.0, renew_s: int = 20, silent_headroom_a: float = 20.0,
+    charge_in_silence: bool = False, looks: int = 400,
+) -> tuple[Verification, Executor, list[dict]]:
+    """A SolarEdge hold whose command timeout is a 60 s dead-man SpotNav renews every 20 s (a recipe made up for the
+    test: SolarEdge's own is 1800 s and never tried), with a plant that leaves the hold `fallback_after_s` after the
+    last write of a renewed role, once the silence runs (`None`: never)."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    from custom_components.spotnav.battery.commands import Expiry  # noqa: PLC0415
+
+    expiry = Expiry("device_deadman", "spotnav", window_s, ("command_timeout", "command_mode"), renew_s=renew_s)
+    control = replace(SOLAREDGE_CONTROL, expiry=expiry)
+    executor = Executor(control)
+    battery = FakeBattery(control, dict(SOLAREDGE_STATES))
+    now = T0
+    verification = Verification(executor, now, firmware="V1", modes=("hold", "expiry"), expiry=expiry)
+    capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
+    house_kw = 2.0
+    silent_at: datetime | None = None
+    last_write = now
+    probes: list[dict] = []
+    for _ in range(looks):
+        power = battery.power_kw(battery.action, battery.rate_kw)
+        if silent_at is not None and fallback_after_s is not None and (now - last_write).total_seconds() >= fallback_after_s:
+            power = -house_kw  # back in its own mode: the battery covers the house
+        if silent_at is not None and charge_in_silence:
+            power = 1.5
+        grid = house_kw + power
+        headroom_a = 20.0 if silent_at is None else silent_headroom_a
+        sample = Sample(power, 5.0, battery.soc_pct, house_kw, grid, headroom_a=headroom_a)
+        action, rate = verification.command(now, sample, 10.0)
+        probe = verification.expiry_probe()
+        if probe and silent_at is None:
+            silent_at = now
+        result = executor.step(replace(
+            inputs(battery, now, action, rate, house_deficit_kw=house_kw, headroom_a=headroom_a, grid_import_kw=grid),
+            facts=replace(battery.facts(power)), expiry_probe=probe,
+        ))
+        probes.append({"probe": probe, "ops": [op.role for op in result.ops],
+                       "events": [event["kind"] for event in result.events]})
+        for op in result.ops:
+            battery.apply(op)
+            if op.role in expiry.renewed_roles:
+                last_write = now
+        state = executor.state
+        battery.action = state.action if state.phase == "active" else None
+        verification.after(now, result, sample, capability)
+        now += TICK
+        if verification.done and state.phase in ("idle", "blocked") and not result.ops:
+            break
+    return verification, executor, probes
+
+
+def test_a_hold_whose_dead_man_acts_within_its_window_is_obeyed_and_nothing_is_written_in_the_silence() -> None:
+    verification, executor, looks = _expiry_run(fallback_after_s=55.0)
+    assert verification.done
+    row = verification.report()["modes"]["expiry"]
+    assert row["outcome"] == "obeyed" and row["scope"] == "hold" and row["window_s"] == 60.0
+    assert row["expiry_id"] == "device_deadman:60:command_timeout,command_mode"
+    # Timed from the last write, to the look: within a look of the plant's own 55 s.
+    assert 55.0 <= row["fallback_s"] <= 65.0
+    assert _outcomes(verification)["normal"] == "restored"
+    silent = [look for look in looks if look["probe"]]
+    assert silent and all(look["ops"] == [] and "renew" not in look["events"] for look in silent)
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+
+
+def test_a_hold_that_never_falls_back_is_ignored_by_the_deadline() -> None:
+    verification, _executor, looks = _expiry_run(fallback_after_s=None)
+    assert _outcomes(verification)["expiry"] == "ignored"
+    # 60 s and a 30 s margin from the last write, a look apart.
+    assert 6 <= sum(look["probe"] for look in looks) <= 10
+
+
+def test_a_fallback_sooner_than_the_renewal_is_a_recipe_bug_not_a_pass() -> None:
+    verification, _executor, _looks = _expiry_run(fallback_after_s=25.0, renew_s=40)
+    assert _outcomes(verification)["expiry"] == "partial:early"
+
+
+def test_a_fallback_later_than_the_window_and_a_look_is_not_a_pass() -> None:
+    from custom_components.spotnav.battery import gate  # noqa: PLC0415
+
+    verification, _executor, _looks = _expiry_run(fallback_after_s=85.0)
+    row = verification.report()["modes"]["expiry"]
+    assert row["outcome"] == "ignored" and row["late"] and row["fallback_s"] >= 85.0
+    # Even written as obeyed, the gate takes no fallback past the minute and a look.
+    assert not gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed", "passes": 2}}},
+                                      _expiry_of(60.0))
+    assert gate.expiry_row_passed({"modes": {"expiry": {**row, "outcome": "obeyed", "fallback_s": 70.0,
+                                                        "passes": 2}}}, _expiry_of(60.0))
+
+
+def _expiry_of(window_s: float):  # noqa: ANN202
+    from custom_components.spotnav.battery.commands import Expiry  # noqa: PLC0415
+
+    return Expiry("device_deadman", "spotnav", window_s, ("command_timeout", "command_mode"), renew_s=20)
+
+
+def test_the_expiry_test_gives_way_near_the_fuse_and_to_a_charge_in_the_silence() -> None:
+    # 1.5 A of headroom: under the executor's margin, over its hand-back mark.
+    verification, _executor, _looks = _expiry_run(fallback_after_s=None, silent_headroom_a=1.5)
+    assert _outcomes(verification)["expiry"] == "aborted:fuse_headroom"
+    verification, executor, _looks = _expiry_run(fallback_after_s=None, charge_in_silence=True)
+    outcome = _outcomes(verification)["expiry"]
+    assert outcome == "aborted:charge_in_silence"
+    assert mode_verdict(outcome) == "pending"
+
+
+def test_the_expiry_is_never_tried_unless_a_run_names_it_and_never_without_a_hold_that_passed() -> None:
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    verification = _verify(Executor(SOLAREDGE_CONTROL), battery)
+    assert "expiry" not in _outcomes(verification)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    verification = _verify(Executor(SOLAREDGE_CONTROL), battery, modes=("expiry",))
+    assert _outcomes(verification)["expiry"] == "not_judgeable:not_supported"

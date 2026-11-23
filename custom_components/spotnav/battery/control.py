@@ -99,8 +99,8 @@ from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
-    WATCHDOG_S,
     BrandControl,
+    Expiry,
     Phases,
     answered,
     control_for,
@@ -126,6 +126,7 @@ from .export_curtail import curtails
 from .facts import BatteryFacts
 from .ledger import Ledger
 from .monitor import Capability, Monitor
+from .outside_control import RESERVE_MARGIN_PCT
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -240,12 +241,12 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
     return reads
 
 
-async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> str | None:
+async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | None:
     """One write as a service call; why it was not taken (`_failure`), `None` when it was."""
     role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-        services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
+        services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
     )
     try:
         await _async_service(hass, domain, service, data)
@@ -305,7 +306,7 @@ async def async_hand_back_stored(
                 now=dt_util.now(), facts=facts, reads=reads, measurement_ok=False, stopping="removed", failed=failed,
                 timed_out=timed_out,
             ))
-            whys = {op.role: await _async_call(hass, op, executor, WATCHDOG_S) for op in result.ops if op.restore}
+            whys = {op.role: await _async_call(hass, op, executor) for op in result.ops if op.restore}
             failed = tuple(role for role, why in whys.items() if why is not None)
             timed_out = tuple(role for role, why in whys.items() if why == "call_timeout")
             if executor.state.phase != "restoring":
@@ -349,6 +350,24 @@ class Trial:
 
 
 
+def _card_refusal(refusal: str | None) -> str | None:
+    """An import-limit refusal as the card is sent it: `not_trusted` (`commands.ImportLimitTrust`) as `not_supported`,
+    a code the card knows; the precise code is in the diagnostics (`snapshot`)."""
+    return "not_supported" if refusal == "not_trusted" else refusal
+
+
+def _grid_charge_expiry(control: BrandControl | None, *, phased: bool) -> Expiry | None:
+    """The expiry of a grid charge on this control: the phase spec's for a charge per phase (`phased`; `None` for a
+    brand without one), else the recipe's own for the grid charge (`expiry_by_action`, then `expiry`: never the
+    phase spec's, which has nothing to end a balanced command)."""
+    if control is None:
+        return None
+    base = control.with_phases(False)
+    if phased:
+        return None if base.phase_control is None else base.phase_control.expiry
+    return base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
+
+
 def _accept_applies(control: BrandControl | None) -> bool:
     """Whether the person's acceptance of the HA-down risk (`battery_control_accept_ha_down`) may lift the cap on this
     recipe: never for a slow control or one whose charge SpotNav cannot set (`BrandControl.slow`, `fixed_charge`:
@@ -363,8 +382,15 @@ RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
 #: none, a step they can take (enable the Output Type or the grid sensor status, turn the phase switch on), or the
 #: site's sources not read yet (a moment after a start: the HA-down row must not flash up meanwhile).
 PHASE_PATH_STEPS: Final = frozenset(
-    {None, "sources_unknown", "output_type_unread", "phase_control_off", "grid_sensor_offline"}
+    {None, "sources_unknown", "output_type_unread", "phase_control_off", "grid_sensor_offline", *(
+        # The import limit not tested on this firmware, or the firmware not read (owner decision 7): the step is the
+        # field test on it, never the HA-down acceptance.
+        "firmware_not_tested", "firmware_unread",
+    )}
 )
+#: Path steps that leave nothing for the tap to write (`import_limit_write_kw`, `async_set_import_limit`): the limit
+#: is not trusted on this firmware until the field test ran on it.
+FIRMWARE_STEPS: Final = frozenset({"firmware_not_tested", "firmware_unread"})
 #: How long the person's import-limit write is read back for, and how often (s).
 IMPORT_LIMIT_READ_BACK_S: Final = 15.0
 IMPORT_LIMIT_READ_BACK_STEP_S: Final = 0.5
@@ -375,7 +401,7 @@ class BatteryControl:
 
     def __init__(
         self, hass: HomeAssistant, site: SiteCapacityController, *, plan_source: PlanSource | None = None,
-        sell_source: SellSource | None = None, watchdog_s: int = WATCHDOG_S,
+        sell_source: SellSource | None = None, watchdog_s: int | None = None,
     ) -> None:
         self.hass = hass
         self.site = site
@@ -1132,14 +1158,15 @@ class BatteryControl:
         person accepted the HA-down risk (`battery_control_accept_ha_down`), by default as stored now. `no_cars`:
         the chargers and SpotNav's own heat counted as drawing nothing, for the status's offer only."""
         control = control_for(self.facts.brand)
-        spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=0.0 if no_cars else self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
             house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
-            # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
-            silence_fallback_s=None if spec is None else spec.silence_fallback_s,
+            # A plant that stops following its targets by itself when the writes stop (the phase spec's own measured
+            # expiry).
+            expiry_lifts=self._phase_expiry_lifts(control),
+            own_import_a=self._own_import_a(control),
             accept_ha_down=(self.options().accept_ha_down if accept is None else accept) and _accept_applies(control),
             site_margin_a=self._site_margin_a(),
         )
@@ -1319,8 +1346,15 @@ class BatteryControl:
         modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous)
         if self._per_phase_due(previous):
             modes = (*modes, gate.MODE_PER_PHASE)
+        expiry = self._expiry_to_test(previous) if self._expiry_due(previous) else None
+        if expiry is not None:
+            # Tried only after a hold that passed in this same run.
+            modes = (*modes, *(() if "hold" in modes else ("hold",)), gate.MODE_EXPIRY)
         self.verification = Verification(
             executor, now, firmware=self.facts.firmware, modes=modes, tried=gate.variants_tried(previous),
+            expiry=None if expiry is None else expiry[0], expiry_phased=expiry is not None and expiry[1] is not None,
+            expiry_phase=0 if expiry is None or expiry[1] is None else expiry[1],
+            phase_mapped=gate.per_phase(previous) == "verified",
         )
         # The attempt counts from its start: a restart in the middle neither forgets it nor runs again at once.
         self._keep_report(key, gate.merge_report(
@@ -1372,6 +1406,8 @@ class BatteryControl:
             inputs.grid_import_kw if inputs.measurement_ok else None,
             self._grid_phase_kw() if inputs.measurement_ok else None, inputs.plant_phase_kw,
             curtailing=self._curtailing(), soc_min_pct=inputs.facts.reserve_soc_pct or 0.0,
+            headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
+            volts_between_phases=inputs.volts_between_phases,
         )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         probe = verification.probe()
@@ -1405,6 +1441,8 @@ class BatteryControl:
             inputs, action=action, rate_kw=rate, slot_end=None,
             phase_caps_kw=self._phase_caps_kw(now, held_off=self._hw_run) if charging else None, phase_probe_kw=probe,
             reads=self._reads(executor.control),
+            # The mode `expiry`'s silence: nothing renews the command (`verify.Verification.expiry_probe`).
+            expiry_probe=verification.expiry_probe(),
         )
         result = await self._async_step(executor, inputs, allowed=True)
         capability = Capability(
@@ -1422,7 +1460,9 @@ class BatteryControl:
         """Start a run at a suitable moment when the report for this firmware still needs one."""
         report = self.report()
         state = self.state(options)
-        if state not in ("waiting", "on") or not (gate.needs_run(report) or self._per_phase_due(report)):
+        if state not in ("waiting", "on") or not (
+            gate.needs_run(report) or self._per_phase_due(report) or self._expiry_due(report)
+        ):
             self.waiting_for = None
             return
         if not self.firmware_known():
@@ -1794,7 +1834,170 @@ class BatteryControl:
             # The per-phase rule and the accepted HA-down risk: the site's own safety margin as the person set it.
             phase_margin_a=self._site_margin_a(),
             accept_ha_down=options.accept_ha_down and _accept_applies(control),
+            expiry_lifts=self._expiry_lifts(control, phased=False),
+            own_import_a=self._own_import_a(control),
         )
+
+    def _own_import_a(self, control: BrandControl | None, *, live: bool = False) -> float:
+        """What the plant may import by itself on each phase it spreads that over (A, `commands.AutonomousImport`):
+        read from its entity where it has one, else the recipe's figure; neither known: infinite (no grid charge, no
+        hold start). For the HA-down caps whatever the trigger (the SoC drifts while Home Assistant is down); `live`
+        (the executor's room now): only while the trigger may fire (`below_reserve`: the SoC within
+        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read). 0 for a recipe that declares none."""
+        spec = None if control is None else control.autonomous_import
+        if control is None or spec is None:
+            return 0.0
+        if live and spec.trigger == "below_reserve":
+            soc = self.facts.soc_pct
+            reserve = _float(read_plant_entity(self.hass, self.site.config, spec.reserve)) if spec.reserve else None
+            reserve = reserve if reserve is not None else self.facts.reserve_soc_pct
+            if soc is not None and reserve is not None and soc > reserve + RESERVE_MARGIN_PCT:
+                return 0.0
+        kw: float | None = None
+        if spec.entity is not None:
+            read = _float(read_plant_entity(self.hass, self.site.config, spec.entity))
+            kw = None if read is None else read * spec.scale
+        if kw is None:
+            kw = spec.kw
+        if kw is None or not math.isfinite(kw):
+            return math.inf
+        phases = min(max(int(spec.phases or self._plant_phases(control)), 1), 3)
+        return max(kw, 0.0) * 1000.0 / (phases * phase_volts(stored_voltage_between_phases_v(self.site.config)))
+
+    def _expiry_lifts(self, control: BrandControl | None, *, phased: bool) -> bool:
+        """Whether the grid charge's own expiry stands in for its HA-down cap (`gate.expiry_lifts`): the phase spec's
+        for a charge per phase (`phased`: on all three phases, `_phase_expiry_lifts`), else the recipe's own for the
+        grid charge (`expiry_by_action`, then `expiry`: never the phase spec's, which has nothing to end a balanced
+        command). Measured only on the firmware read now (`gate.expiry_measured`). `control` is the brand's control as
+        `control_for` gives it."""
+        if phased:
+            return all(self._phase_expiry_lifts(control))
+        expiry = _grid_charge_expiry(control, phased=False)
+        if control is None or expiry is None:
+            return False
+        base = control.with_phases(False)
+        return gate.expiry_lifts(
+            expiry, measured=self._expiry_measured(expiry), slow=base.slow, fixed_charge=base.fixed_charge
+        )
+
+    def _phase_expiry_lifts(self, control: BrandControl | None) -> tuple[bool, bool, bool]:
+        """Per phase (L1, L2, L3): whether the phase spec's expiry stands in for that phase's HA-down cap, measured on
+        that very phase on the firmware read now (owner decision 2026-11-23: an unproven phase keeps its cap)."""
+        expiry = _grid_charge_expiry(control, phased=True)
+        if control is None or expiry is None:
+            return (False, False, False)
+        base = control.with_phases(False)
+        if not gate.expiry_lifts(expiry, measured=True, slow=base.slow, fixed_charge=base.fixed_charge):
+            return (False, False, False)
+        key = self.firmware_key() if self.firmware_known() else None
+        return gate.expiry_phases_measured(expiry, key, self.report())
+
+    def _expiry_measured(self, expiry: Expiry) -> bool:
+        """Whether the expiry was seen to act on the firmware read now (`gate.expiry_measured`): recorded in the
+        recipe, or the routine's mode `expiry` obeyed for it in this firmware's report (never the hardware test's)."""
+        key = self.firmware_key() if self.firmware_known() else None
+        return gate.expiry_measured(expiry, key, self.report())
+
+    def _expiry_to_test(self, report: dict[str, Any] | None = None) -> tuple[Expiry, int | None] | None:
+        """The expiry the verification's mode `expiry` may try on this plant (`gate.expiry_testable`: one whose pass
+        would lift a cap), still undecided on this firmware: the hold's own where its renewed roles are all in the
+        hold's writes (phase `None`), else the phase spec's where a charge per phase can run here, on the first
+        phase (0-2) not yet proven or decided (one a run; `report`, by default the report now). `None` for every
+        other plant (Sigenergy: no expiry)."""
+        control = control_for(self.facts.brand)
+        if control is None:
+            return None
+        report = self.report() if report is None else report
+        key = self.firmware_key() if self.firmware_known() else None
+        testable = {"slow": control.slow, "fixed_charge": control.fixed_charge}
+        hold = control.states.get(ACTION_HOLD)
+        expiry = control.expiry
+        if (
+            hold is not None and gate.expiry_testable(expiry, **testable)
+            and not gate.expiry_measured(expiry, key, report) and gate.expiry_due(report, expiry)
+        ):
+            written = {want.role for want in hold(0.0, int(expiry.window_s or 0))}
+            if set(expiry.renewed_roles) <= written:
+                return expiry, None
+        spec = control.phase_control
+        if spec is not None and gate.expiry_testable(spec.expiry, **testable) and self._phase_missing() is None:
+            for index, phase in enumerate(gate.PHASE_NAMES):
+                if not gate.expiry_measured(spec.expiry, key, report, phase) and gate.expiry_due(
+                    report, spec.expiry, phase
+                ):
+                    return spec.expiry, index
+        return None
+
+    def _expiry_due(self, report: dict[str, Any] | None) -> bool:
+        """Whether a run should try the mode `expiry`: there is one to try (`_expiry_to_test`), still undecided for
+        it on this firmware, control has passed here, the routine has runs left, and for the phase spec's the mode
+        `per_phase` passed or is still to be tried."""
+        found = self._expiry_to_test(report)
+        if found is None or gate.report_status(report) != "passed":
+            return False
+        attempts = (report or {}).get("attempts")
+        if isinstance(attempts, int) and attempts >= gate.MAX_ATTEMPTS:
+            return False
+        return found[1] is None or gate.per_phase(report) == "verified" or self._per_phase_due(report)
+
+    def _expiry_block(self) -> dict[str, Any] | None:
+        """The grid charge's own expiry, balanced and per phase, for the diagnostics only (the card does not know
+        these keys): what it is, whether it is measured here and lifts the HA-down cap, its line
+        (`gate.expiry_note`) and the kWh a charge at the battery's rated power may still take after Home Assistant
+        dies (`ha_down_energy_kwh`, `gate.expiry_energy_kwh`; `None`: unbounded). `None` for a brand SpotNav does not
+        write to."""
+        try:
+            control = control_for(self.facts.brand)
+            if control is None:
+                return None
+            rated = self.facts.max_charge_kw
+            block: dict[str, Any] = {}
+            for name, phased in (("balanced", False), ("per_phase", True)):
+                expiry = _grid_charge_expiry(control, phased=phased)
+                if expiry is None:
+                    block[name] = None
+                    continue
+                key = self.firmware_key() if self.firmware_known() else None
+                # Per phase for the phase spec's (each phase proven on its own).
+                measured: bool | list[bool] = (
+                    list(gate.expiry_phases_measured(expiry, key, self.report())) if phased
+                    else self._expiry_measured(expiry)
+                )
+                energy = None if rated is None else gate.expiry_energy_kwh(expiry, rated)
+                block[name] = {
+                    "expiry_id": expiry.expiry_id, "kind": expiry.kind, "renewer": expiry.renewer,
+                    "window_s": expiry.window_s, "evidence": expiry.evidence, "measured": measured,
+                    "lifts": list(self._phase_expiry_lifts(control)) if phased
+                    else self._expiry_lifts(control, phased=False),
+                    "note": gate.expiry_note(expiry, measured=all(measured) if isinstance(measured, list) else measured),
+                    "rate_kw": rated, "ha_down_energy_kwh": None if energy is None else round(energy, 3),
+                }
+            return block
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("expiry_block: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
+
+    def _log_expiry(self, executor: Executor, events: list[dict[str, Any]]) -> None:
+        """A grid charge entered or changed under an expiry: the kWh it may still take after Home Assistant dies
+        (`ha_down_energy_kwh`, `None`: unbounded) in the control log. Nothing for a control without one (Sigenergy's
+        log stays as it was)."""
+        for event in events:
+            if event.get("kind") not in ("enter", "change") or event.get("reason") != ACTION_GRID_CHARGE:
+                continue
+            phases = event.get("phase_kw")
+            phased = executor.control.phased and isinstance(phases, list)
+            expiry = _grid_charge_expiry(executor.control, phased=phased)
+            if expiry is None or expiry.kind == "none":
+                continue
+            rate = sum(float(value) for value in phases) if phased else event.get("rate_kw")  # type: ignore[union-attr]
+            energy = gate.expiry_energy_kwh(expiry, rate) if isinstance(rate, (int, float)) else None
+            self._log([{
+                "at": event.get("at"), "kind": "ha_down_energy", "reason": expiry.kind,
+                "ha_down_energy_kwh": None if energy is None else round(energy, 3),
+                "note": gate.expiry_note(expiry, measured=all(gate.expiry_phases_measured(
+                    expiry, self.firmware_key() if self.firmware_known() else None, self.report()
+                )) if phased else self._expiry_measured(expiry)),
+            }])
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
         """What the plant's own grid import limit reads now (kW), `None` when the brand has none, it is disabled or
@@ -1835,10 +2038,13 @@ class BatteryControl:
                 return "foreign_pv"
         return None
 
-    def _import_limit_refusal(self, *, dc_charger: bool = True) -> str | None:
+    def _import_limit_refusal(self, *, dc_charger: bool = True, action: str = ACTION_GRID_CHARGE) -> str | None:
         """Why the plant's own import limit cannot be the fuse's guard on this site whatever it reads, as a stable
         code; `None` when it can. The rule (`gate.import_limit_max_kw`) rests on the plant seeing every source and
-        spreading its charge evenly over three phases, so it is refused for a plant that is not three-phase
+        spreading its charge evenly over three phases, so it is refused where the recipe does not trust the limit here
+        (`_import_limit_distrust`: `not_trusted`, not shown to act in that state; `firmware_not_tested`, another
+        firmware than the one it was tested on; `firmware_unread`, the firmware never read), for a
+        plant that is not three-phase
         (`plant_not_three_phase`: a single-phase source), a sun source that is not the plant's (`foreign_pv`: it
         lowers the total the plant sees while one phase carries more), sources not read yet (`sources_unknown`), and
         a charger run by power through the plant (`dc_charger`: Sigenergy's DC charger, which can also put out, V2G;
@@ -1846,6 +2052,9 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return "not_supported"
+        distrust = self._import_limit_distrust(control, action)
+        if distrust is not None:
+            return distrust
         if self._plant_phases(control) != 3:
             return "plant_not_three_phase"
         if self._sources is None:
@@ -1858,6 +2067,23 @@ class BatteryControl:
                 if entry is not None and entry.data.get(CONF_CURRENT_CONTROL) == CURRENT_CONTROL_POWER:
                     return "dc_charger"
         return None
+
+    def _import_limit_distrust(self, control: BrandControl, action: str = ACTION_GRID_CHARGE) -> str | None:
+        """Why the recipe does not trust the plant's own import limit here (`commands.ImportLimitTrust`), `None` when it
+        does: `not_trusted` (marked untrusted, or not shown to act in the state the caller relies on, `action`: the
+        recipe's grid charge for the battery's two rules, the plant's own mode for a charger's lift),
+        `firmware_unread` (the recipe names its firmwares and the plant's was never read: fail closed) or
+        `firmware_not_tested` (read, and not one it was tested on: the field test is to be run on it). The last two
+        are steps on the per-phase path (`PHASE_PATH_STEPS`, owner decision 7): no HA-down acceptance is offered
+        instead."""
+        trust = control.import_limit_trust
+        if trust is None or trust.untrusted or action not in trust.acts_in:
+            return "not_trusted"
+        if trust.firmware is None:
+            return None
+        if not self.firmware_known():
+            return "firmware_unread"
+        return None if self.firmware_key().split(" | ", 1)[0] in trust.firmware else "firmware_not_tested"
 
     def _site_margin_a(self) -> float:
         """The site's own safety margin (A per phase) as stored now, for the per-phase import-limit rule only."""
@@ -1930,6 +2156,8 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None or not self._phase_path_open():
             return None
+        if self._import_limit_phase_refusal(assume_acts=True) in FIRMWARE_STEPS:
+            return None  # not trusted on this firmware yet: the field test first, nothing to write
         target = self.import_limit_target_kw()
         most = gate.import_limit_phase_max_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
@@ -1959,7 +2187,7 @@ class BatteryControl:
             return "not_enabled"  # nothing is written to the plant while battery control is off
         control = control_for(self.facts.brand)
         refusal = self._import_limit_phase_refusal(assume_acts=True)
-        if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS:
+        if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS or refusal in FIRMWARE_STEPS:
             return refusal or "not_supported"
         target = self.import_limit_target_kw()
         if target is None:
@@ -2018,7 +2246,11 @@ class BatteryControl:
         try:
             now = dt_util.now()
             options = self.options()
-            if not options.import_limit_acts or self._import_limit_refusal(dc_charger=False) is not None:
+            # The charger's lift runs while the plant is in its own mode, not in the recipe's grid charge: the limit
+            # must have been shown to act there (`commands.ImportLimitTrust.acts_in`).
+            if not options.import_limit_acts or self._import_limit_refusal(
+                dc_charger=False, action=ACTION_SELF_CONSUME
+            ) is not None:
                 return False
             value = self._import_limit_kw(control_for(self.facts.brand))
             peaks = getattr(self.site, "phase_peaks", None)
@@ -2068,7 +2300,7 @@ class BatteryControl:
             "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
             "holds": options.import_limit_acts and refusal is None
             and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
-            "why": refusal,
+            "why": _card_refusal(refusal),
         }
         spec = control.import_limit_phases
         if spec is None:
@@ -2085,7 +2317,8 @@ class BatteryControl:
         match = {"output_type_unread": control.output_type, "phase_control_off": spec.switch,
                  "grid_sensor_offline": spec.grid_sensor}.get(phase_refusal or "")
         block["per_phase"] = {
-            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds,
+            "why": _card_refusal(phase_refusal),
             # What the administrator's tap sets the limit to (`import_limit_target_kw`), the card's figure too.
             "set_kw": self.import_limit_write_kw(),
             "entity_id": None if match is None else plant_entity_id(self.hass, self.site.config, match),
@@ -2196,8 +2429,8 @@ class BatteryControl:
             control = control_for(self.facts.brand)
             if control is None or not control.supports(ACTION_GRID_CHARGE) or not _accept_applies(control):
                 return block
-            spec = control.phase_control
-            if spec is not None and gate.silence_guards(spec.silence_fallback_s):
+            # A command's own measured expiry stands in for the cap: nothing to accept.
+            if self._expiry_lifts(control, phased=True) or self._expiry_lifts(control, phased=False):
                 return block
             plain = replace(options, accept_ha_down=False)
             phase_path = self._phase_path_open()
@@ -2210,6 +2443,7 @@ class BatteryControl:
             empty = gate.ha_down_accepted_cap_kw(
                 self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
                 margin_a=self._site_margin_a(), plant_phases=self._plant_phases(control),
+                own_import_a=self._own_import_a(control),
             )
             if executor is not None and executor.control.phased and self._phased_wanted():
                 # A charge per phase may use each phase's fuse less the margin.
@@ -2593,6 +2827,7 @@ class BatteryControl:
             timed_out=self._timed_out,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
+            own_import_a=self._own_import_a(control_for(self.facts.brand), live=True),
         )
 
     def _shedding(self, now: datetime, config: dict[str, Any]) -> tuple[bool, bool]:
@@ -2704,6 +2939,7 @@ class BatteryControl:
         result = executor.step(inputs)
         self._failed = self._timed_out = ()
         self._log(result.events)
+        self._log_expiry(executor, result.events)
         if any(event["kind"] == "enter" for event in result.events) and taken_over(inputs.facts, executor.control):
             # Taken over from the plant's own optimiser: turning control off reminds the person to set it again.
             self.took_from_ai = True
@@ -2770,8 +3006,8 @@ class BatteryControl:
         role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-            services=role.services, watchdog_s=self._watchdog_s, device_field=role.device_field,
-            duration=role.duration,
+            services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
+            duration=role.lease,
         )
         try:
             await _async_service(self.hass, domain, service, data)
@@ -3031,7 +3267,17 @@ class BatteryControl:
             "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
+            "expiry": self._expiry_block(),
+            # The precise import-limit refusals (the card is sent `not_supported` for `not_trusted`).
+            "import_limit_refusal": self._import_limit_refusals(),
         }
+
+    def _import_limit_refusals(self) -> dict[str, str | None] | None:
+        try:
+            return {"total": self._import_limit_refusal(), "per_phase": self._import_limit_phase_refusal()}
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("import_limit_refusals: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
 
     def _write_budget_block(self) -> dict[str, Any] | None:
         try:

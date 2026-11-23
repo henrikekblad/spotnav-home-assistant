@@ -284,12 +284,74 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
     assert fuse_a is not None
     volts = 400.0 / 3 ** 0.5
     caps = control._phase_caps_kw(now)
-    assert not gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+    assert not control._expiry_lifts(VICTRON_CONTROL, phased=True)
     assert caps == pytest.approx(gate.grid_charge_phase_caps_kw(
         fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
         house_phase_peaks_a=control._phase_peaks(now) or None,
     ))
     assert all(cap < (fuse_a - 2.0) * volts / 1000 for cap in caps), "never the fuse less the margin"
+    # A phase dead-man measured on this very firmware lifts a charge per phase only, never the balanced Mode-2
+    # charge (nothing ends that one); measured on another firmware it lifts nothing.
+    from dataclasses import replace  # noqa: PLC0415
+
+    assert not control.firmware_known() and not control._expiry_lifts(VICTRON_CONTROL, phased=True)
+    control._key = "v3.60 | victron_gx 1"  # a firmware read once
+    assert control.firmware_known()
+    expiry = VICTRON_CONTROL.phase_control.expiry
+    def recorded(phases: frozenset[str], key: str = control.firmware_key()) -> Any:
+        return replace(VICTRON_CONTROL, phase_control=replace(
+            VICTRON_CONTROL.phase_control,
+            expiry=replace(expiry, evidence="measured", measured_on=frozenset({key}), measured_phases=phases),
+        ))
+
+    measured = recorded(frozenset({"L1", "L2", "L3"}))
+    assert control._expiry_lifts(measured, phased=True)
+    assert not control._expiry_lifts(measured, phased=False)
+    # Recorded in the recipe on L1 alone: only L1's cap is lifted.
+    only_l1 = recorded(frozenset({"L1"}))
+    assert control._phase_expiry_lifts(only_l1) == (True, False, False)
+    assert not control._expiry_lifts(only_l1, phased=True) and not control._expiry_lifts(only_l1, phased=False)
+    # A phase expiry recorded in the recipe must name its phases; one that names none lifts nothing.
+    with pytest.raises(ValueError):
+        recorded(frozenset())
+    assert not gate.expiry_measured(
+        replace(expiry, evidence="measured", measured_on=frozenset({control.firmware_key()})),
+        control.firmware_key(), None, "L1",
+    )
+    elsewhere = recorded(frozenset({"L1", "L2", "L3"}), "other | victron 0")
+    assert not control._expiry_lifts(elsewhere, phased=True)
+    # The routine's mode `expiry` may try Victron's phase dead-man here (stated, within the minute) once control passed.
+    assert control._expiry_to_test() == (expiry, 0)
+    passed = {"key": control.firmware_key(), "attempts": 1,
+              "modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+                        "per_phase": {"outcome": "obeyed"}}}
+    assert control._expiry_due(passed) and not control._expiry_due(None)
+    def proven(*phases: str) -> dict:
+        rows = {f"expiry:{phase}": {"outcome": "obeyed", "expiry_id": expiry.expiry_id, "fallback_s": 60.0,
+                                    "passes": 2}
+                for phase in phases}
+        return {**passed, "modes": {**passed["modes"], **rows}}
+
+    # One phase a run: L1 proven, L2 next; all three proven, nothing left.
+    assert control._expiry_to_test(proven("L1")) == (expiry, 1) and control._expiry_due(proven("L1"))
+    assert not control._expiry_due(proven("L1", "L2", "L3"))
+    # The owner's rule: only the proven phases' caps are lifted (the recipe as shipped, measured by the routine).
+    control.reports = {control.firmware_key(): proven("L1")}
+    stated = VICTRON_CONTROL
+    assert control._phase_expiry_lifts(stated) == (True, False, False)
+    assert not control._expiry_lifts(stated, phased=True) and not control._expiry_lifts(stated, phased=False)
+    shipped = gate.grid_charge_phase_caps_kw(
+        fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
+        house_phase_peaks_a=control._phase_peaks(now) or None,
+    )
+    caps = control._phase_caps_kw(now)
+    assert caps[0] == pytest.approx((fuse_a - 2.0) * volts / 1000) and caps[1:] == pytest.approx(shipped[1:])
+    control.reports = {control.firmware_key(): proven("L1", "L2", "L3")}
+    assert control._phase_expiry_lifts(stated) == (True, True, True) and control._expiry_lifts(stated, phased=True)
+    assert control._phase_caps_kw(now) == pytest.approx(((fuse_a - 2.0) * volts / 1000,) * 3)
+    # Never the balanced cap.
+    assert not control._expiry_lifts(stated, phased=False)
+    control.reports = {}
 
     # A sensor that reads nothing: no charge per phase.
     hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")

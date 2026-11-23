@@ -688,12 +688,12 @@ def test_the_runaway_is_judged_against_the_larger_of_the_old_and_new_target_and_
 
 
 def test_a_recipe_may_set_the_grid_s_power_have_a_state_that_depends_on_the_charge_and_renew_a_watchdog() -> None:
-    from custom_components.spotnav.battery.commands import Want
+    from custom_components.spotnav.battery.commands import Expiry, Want
 
     assert SIGENERGY_PHASES.target_kind == "plant" and SIGENERGY_PHASES.watchdog_roles == ()
     # A state that depends on the charge (a mode per direction), and a watchdog the phased charge keeps alive.
     spec = replace(
-        SIGENERGY_PHASES, target_kind="grid", watchdog_roles=("control_mode",),
+        SIGENERGY_PHASES, target_kind="grid", expiry=Expiry("device_deadman", "spotnav", 60.0, ("control_mode",), renew_s=20),
         follow=lambda phases: (Want("remote_ems", True), Want("control_mode", "in" if sum(phases) >= 0 else "out")),
     )
     control = replace(SIGENERGY_CONTROL, phase_control=spec).with_phases(True)

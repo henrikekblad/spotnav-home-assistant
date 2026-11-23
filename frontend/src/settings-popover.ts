@@ -425,6 +425,10 @@ const PHASE_RULE_STEPS: Record<string, TranslationKey> = {
   output_type_unread: "battery.cap.phase.outputTypeUnread",
   phase_control_off: "battery.cap.phase.phaseControlOff",
   grid_sensor_offline: "battery.cap.phase.gridSensorOffline",
+  // The import limit not tested on the plant's firmware, or the firmware not read: the step is the field test on it,
+  // never the HA-down acceptance (owner decision 7).
+  firmware_not_tested: "battery.cap.phase.firmwareNotTested",
+  firmware_unread: "battery.cap.phase.firmwareUnread",
 };
 
 /** Whether the plant's per-phase hold could guard the fuse on this plant (the recipe has it, field-tested, the

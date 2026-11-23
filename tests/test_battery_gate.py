@@ -4,6 +4,7 @@ actions the report allows, when the routine may run, the grid charge cap and the
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 
@@ -593,6 +594,199 @@ def test_the_accepted_ha_down_risk_gives_each_phase_the_fuse_less_the_site_s_mar
     assert grid_charge_phase_caps_kw(20.0, 400.0, accept_ha_down=True, site_margin_a=1.0, **base) == pytest.approx(
         (19.0 * volts / 1000,) * 3)
     # A recipe's own dead-man comes first: its own rule (the caller's margin), the acceptance not needed.
-    assert grid_charge_phase_caps_kw(20.0, 400.0, silence_fallback_s=30, accept_ha_down=True, site_margin_a=0.0,
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=True, accept_ha_down=True, site_margin_a=0.0,
                                      **base) == pytest.approx((18.0 * volts / 1000,) * 3)
     assert grid_charge_phase_caps_kw(None, 400.0, accept_ha_down=True, site_margin_a=1.0, **base) == (0.0, 0.0, 0.0)
+
+
+# --- a command's own expiry (`expiry_lifts`) ------------------------------------------------------------------------
+
+_KEY = "fw1 | brand 1.0"
+
+
+def _expiry(kind: str, renewer: str, window: float | None, *, evidence: str = "measured", **kwargs: Any) -> Any:
+    from custom_components.spotnav.battery.commands import Expiry  # noqa: PLC0415
+
+    roles = ("r",) if renewer == "spotnav" and kind in ("device_deadman", "device_lease", "soc_bound") else ()
+    if roles and kind != "soc_bound" and window is not None and window <= 900:
+        kwargs.setdefault("renew_s", 20)
+    return Expiry(kind, renewer, window, roles, evidence=evidence,  # type: ignore[arg-type]
+                  measured_on=frozenset({_KEY}) if evidence == "measured" else frozenset(), **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kind", "renewer", "window", "evidence", "slow", "fixed", "lifts"),
+    [
+        ("none", "nobody", None, "stated", False, False, False),
+        ("device_deadman", "spotnav", 60.0, "measured", False, False, True),
+        ("device_deadman", "spotnav", 30.0, "measured", False, False, True),
+        ("device_deadman", "spotnav", 61.0, "measured", False, False, False),
+        ("device_deadman", "spotnav", 1800.0, "measured", False, False, False),
+        ("device_deadman", "spotnav", 60.0, "stated", False, False, False),
+        # An integration's own renewal loop never lifts, even measured (it keeps going while SpotNav stalls).
+        ("device_deadman", "integration", 30.0, "measured", False, False, False),
+        ("device_lease", "spotnav", 60.0, "measured", False, False, True),
+        ("device_lease", "spotnav", 60.0, "stated", False, False, False),
+        ("device_lease", "spotnav", 1800.0, "measured", False, False, False),
+        ("device_lease", "nobody", 60.0, "measured", False, False, False),
+        ("device_lease", "integration", 60.0, "measured", False, False, False),
+        # A SoC bound or a clock window is never a fuse argument.
+        ("soc_bound", "spotnav", 60.0, "measured", False, False, False),
+        ("clock_window", "nobody", 60.0, "measured", False, False, False),
+        # A slow control or one whose charge SpotNav cannot set: the live clamp cannot lower it in seconds.
+        ("device_deadman", "spotnav", 60.0, "measured", True, False, False),
+        ("device_lease", "spotnav", 60.0, "measured", False, True, False),
+    ],
+)
+def test_only_a_measured_expiry_spotnav_renews_within_the_minute_lifts_the_ha_down_cap(
+    kind: str, renewer: str, window: float | None, evidence: str, slow: bool, fixed: bool, lifts: bool,
+) -> None:
+    from custom_components.spotnav.battery.gate import expiry_lifts, expiry_measured  # noqa: PLC0415
+
+    expiry = _expiry(kind, renewer, window, evidence=evidence)
+    measured = expiry_measured(expiry, _KEY)
+    assert measured == (evidence == "measured")
+    assert expiry_lifts(expiry, measured=measured, slow=slow, fixed_charge=fixed) is lifts
+    # Measured on another firmware, or the firmware not read: never.
+    assert not expiry_lifts(expiry, measured=expiry_measured(expiry, "fw2 | brand 1.0"), slow=slow, fixed_charge=fixed)
+    assert not expiry_measured(expiry, None) and not expiry_measured(expiry, "unknown | brand 1.0")
+
+
+def test_the_expiry_lift_comes_after_both_import_limit_rules_and_the_fuse_and_before_the_acceptance() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 10.0, "house_peak_kw": 3.0, "house_phase_peaks_a": UNBALANCED}
+    plain = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, **base)
+    lifted = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, expiry_lifts=True, **base)
+    assert lifted == pytest.approx(18.0 * 3 * volts / 1000) and plain is not None and plain < lifted
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=1, expiry_lifts=True, **base) == pytest.approx(
+        18.0 * volts / 1000)
+    # Before the acceptance (the caller's margin, not the site's).
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, expiry_lifts=True, accept_ha_down=True, phase_margin_a=0.0,
+                              **base) == pytest.approx(lifted)
+    # The fuse unknown: no grid charge, lifted or not.
+    assert grid_charge_cap_kw(None, 400.0, plant_phases=3, expiry_lifts=True, **base) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, expiry_lifts=True, **{**base, "cars_a": float("nan")}) == 0.0
+    # Either import-limit rule that holds comes first: no cap of this kind.
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, expiry_lifts=True, import_limit_kw=4.0,
+                              import_limit_per_phase=True, phase_margin_a=1.0, **base) is None
+    # Off: as before.
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, expiry_lifts=False, **base) == plain
+
+
+def test_a_phase_lift_needs_the_fuse_known() -> None:
+    base = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None}
+    assert grid_charge_phase_caps_kw(None, 400.0, expiry_lifts=True, **base) == (0.0, 0.0, 0.0)
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=True, **{**base, "cars_a": float("nan")}) == (
+        0.0, 0.0, 0.0)
+
+
+def test_the_energy_a_grid_charge_may_take_after_home_assistant_dies() -> None:
+    from custom_components.spotnav.battery.commands import NO_EXPIRY, Expiry  # noqa: PLC0415
+    from custom_components.spotnav.battery.gate import expiry_energy_kwh, expiry_note  # noqa: PLC0415
+
+    deadman = Expiry("device_deadman", "spotnav", 60.0, ("r",), renew_s=20)
+    lease = Expiry("device_lease", "spotnav", 1800.0, ("forcible",))
+    block = Expiry("soc_bound", "spotnav", 1800.0, ("reserve",))
+    window = Expiry("clock_window", "nobody", 900.0)
+    looped = Expiry("device_deadman", "integration", 30.0, integration="ecoflow")
+    assert expiry_energy_kwh(deadman, 6.0) == pytest.approx(0.1)
+    assert expiry_energy_kwh(lease, 3.0) == pytest.approx(1.5)
+    assert expiry_energy_kwh(block, 5.0) == pytest.approx(2.5)
+    assert expiry_energy_kwh(window, 4.0, slot_left_s=450.0) == pytest.approx(0.5)
+    assert expiry_energy_kwh(window, 4.0, slot_left_s=5000.0) == pytest.approx(1.0)
+    # Unbounded: no expiry, a window whose end is not known, an integration's own loop, a rate not read.
+    assert expiry_energy_kwh(NO_EXPIRY, 4.0) is None and expiry_energy_kwh(window, 4.0) is None
+    assert expiry_energy_kwh(looped, 4.0) is None and expiry_energy_kwh(lease, float("nan")) is None
+    assert expiry_note(deadman, measured=False) == "dead-man stated, not measured"
+    assert expiry_note(deadman, measured=True) is None
+    assert expiry_note(looped, measured=True) == "continues while HA runs"
+    assert expiry_note(block, measured=False) == "charges at most one block"
+    assert expiry_note(lease, measured=False) is None and expiry_note(NO_EXPIRY, measured=False) is None
+
+
+def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_report() -> None:
+    from custom_components.spotnav.battery.gate import (  # noqa: PLC0415
+        MODE_EXPIRY,
+        expiry_due,
+        expiry_measured,
+        merge_report,
+        report_status,
+    )
+
+    phase = _expiry("device_deadman", "spotnav", 60.0, evidence="stated", renew_s=20)
+    other = _expiry("device_lease", "spotnav", 60.0, evidence="stated", renew_s=20)
+    now = datetime(2026, 11, 23, 20, 0, tzinfo=timezone.utc)
+    passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}
+    run = {"started_at": now.isoformat(),
+           "modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": phase.expiry_id, "fallback_s": 45.0}}}
+    once = merge_report({"modes": passed}, run, key=_KEY, attempts=2, now=now)
+    # One passing run: pending, tried again; two: measured.
+    assert once["modes"][MODE_EXPIRY]["outcome"] == "obeyed_once" and once["modes"][MODE_EXPIRY]["passes"] == 1
+    assert not expiry_measured(phase, _KEY, once) and expiry_due(once, phase)
+    report = merge_report(once, run, key=_KEY, attempts=3, now=now)
+    assert report["modes"][MODE_EXPIRY]["passes"] == 2
+    assert expiry_measured(phase, _KEY, report) and not expiry_measured(other, _KEY, report)
+    assert not expiry_measured(phase, "fw2 | brand 1.0", report)
+    assert not expiry_due(report, phase) and expiry_due(report, other)
+    # Ignored: decided, never lifts, and the report still passes.
+    failed = merge_report(
+        {"modes": passed}, {"modes": {MODE_EXPIRY: {"outcome": "ignored", "expiry_id": phase.expiry_id}}},
+        key=_KEY, attempts=2, now=now,
+    )
+    assert report_status(failed) == "passed" and not expiry_due(failed, phase)
+    assert allowed_actions(failed, Options()) == allowed_actions({"modes": passed}, Options())
+    # A pending outcome between two passes keeps the first; an ignored one starts again (and decides).
+    late = {"modes": {MODE_EXPIRY: {"outcome": "not_judgeable:late_look", "expiry_id": phase.expiry_id}}}
+    kept = merge_report(once, late, key=_KEY, attempts=3, now=now)
+    assert kept["modes"][MODE_EXPIRY]["passes"] == 1
+    assert expiry_measured(phase, _KEY, merge_report(kept, run, key=_KEY, attempts=4, now=now))
+    ignored = {"modes": {MODE_EXPIRY: {"outcome": "ignored", "expiry_id": phase.expiry_id}}}
+    reset = merge_report(once, ignored, key=_KEY, attempts=3, now=now)
+    assert reset["modes"][MODE_EXPIRY]["passes"] == 0 and not expiry_due(reset, phase)
+    # A run for another expiry (the recipe changed) replaces the decided row, its passes counted afresh.
+    other_run = {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id, "fallback_s": 70.0}}}
+    again = merge_report(failed, other_run, key=_KEY, attempts=3, now=now)
+    assert not expiry_measured(other, _KEY, again)
+    again = merge_report(again, other_run, key=_KEY, attempts=4, now=now)
+    assert expiry_measured(other, _KEY, again) and not expiry_measured(phase, _KEY, again)
+
+
+def test_a_plants_own_import_comes_off_every_ha_down_cap_but_never_off_the_import_limit_rules() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "house_phase_peaks_a": {"L1": 4.0, "L2": 4.0,
+                                                                                           "L3": 4.0}}
+    plain = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, **base)
+    own = grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, **base)
+    assert plain is not None and own == pytest.approx(plain - 3.0 * 3 * volts / 1000)
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=float("inf"), **base) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=float("nan"), **base) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, accept_ha_down=True, phase_margin_a=1.0,
+                              **base) == pytest.approx(16.0 * 3 * volts / 1000)
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, expiry_lifts=True, **base) == (
+        pytest.approx(15.0 * 3 * volts / 1000))
+    assert ha_down_accepted_cap_kw(20.0, 400.0, margin_a=1.0, plant_phases=1, own_import_a=4.0) == pytest.approx(
+        15.0 * volts / 1000)
+    # The import-limit rules are the plant's own measure of everything it imports: unchanged.
+    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, own_import_a=3.0, import_limit_kw=4.0,
+                              import_limit_per_phase=True, phase_margin_a=1.0, **base) is None
+    phases = grid_charge_phase_caps_kw(20.0, 400.0, own_import_a=3.0, **base)
+    assert phases == pytest.approx(tuple(cap - 3.0 * volts / 1000 for cap in grid_charge_phase_caps_kw(
+        20.0, 400.0, **base)))
+    assert grid_charge_phase_caps_kw(20.0, 400.0, own_import_a=float("inf"), expiry_lifts=True, **base) == (
+        0.0, 0.0, 0.0)
+
+
+def test_a_phase_dead_man_lifts_only_the_phases_it_was_proven_on() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "house_phase_peaks_a": UNBALANCED}
+    kept = grid_charge_phase_caps_kw(20.0, 400.0, **base)
+    lifted = 18.0 * volts / 1000
+    l1 = grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(True, False, False), **base)
+    assert l1[0] == pytest.approx(lifted) and l1[1:] == pytest.approx(kept[1:])
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(True, True, True), **base) == pytest.approx(
+        (lifted,) * 3)
+    assert grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=True, **base) == pytest.approx((lifted,) * 3)
+    # The unproven phases keep the accepted rule where the person accepted the HA-down risk.
+    accepted = grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(False, True, False), accept_ha_down=True,
+                                         site_margin_a=1.0, **base)
+    assert accepted == pytest.approx((19.0 * volts / 1000, lifted, 19.0 * volts / 1000))

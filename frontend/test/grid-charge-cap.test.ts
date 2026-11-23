@@ -235,6 +235,18 @@ describe("the grid charge cap block", () => {
       expect(sensor?.text).toContain("Enable its status entity in the Sigenergy integration if it is disabled");
       expect(step("en", limit({ why: "output_type_unread" }))?.text).toContain("cannot read the plant's Output Type");
       expect(step("en", limit({ why: "phase_control_off" }))?.text).toContain("Independent phase power control is off");
+      // Owner decision 7: another firmware than the tested one, or none read: the test on it is the step.
+      expect(step("en", limit({ why: "firmware_not_tested", set_kw: null }))).toEqual({
+        code: "firmware_not_tested",
+        entityId: null,
+        setKw: null,
+        text: "Sigenergy's import limit per phase has only been tested on another firmware than your plant runs now."
+          + " Until the import-limit test has been run on this firmware, grid charging stays held back to protect the"
+          + " main fuse if Home Assistant stops.",
+      });
+      expect(step("sv", limit({ why: "firmware_unread", set_kw: null }))?.text).toContain(
+        "SpotNav kan inte läsa anläggningens firmware",
+      );
       expect(step("sv", limit({}))?.text).toBe(
         "Sigenergy kan hålla varje fas under anläggningens egen importgräns, men den står på 13,8 kW. Med högst 13,1 kW"
           + " skyddar den huvudsäkringen även om Home Assistant stannar, och laddning från nätet hålls inte längre"
@@ -277,7 +289,8 @@ describe("the grid charge cap block", () => {
       for (const language of LANGUAGES) {
         const lines = [
           gridChargeCapLine(language, status({ cap_kw: null, rule: "import_limit", ...limit({ holds: true }, { holds: true }) })),
-          ...["not_said_to_act", "output_type_unread", "phase_control_off", "grid_sensor_offline"].map(
+          ...["not_said_to_act", "output_type_unread", "phase_control_off", "grid_sensor_offline", "firmware_not_tested",
+            "firmware_unread"].map(
             (why) => importLimitPhaseStep(language, status(limit({ why }), ["grid_charge"], on()))?.text ?? null,
           ),
           importLimitPhaseStep(language, status(limit({}), ["grid_charge"], on()))?.text ?? null,
@@ -288,7 +301,7 @@ describe("the grid charge cap block", () => {
           expect(line, language).not.toContain("{");
         }
         expect(lines[0], language).toMatch(/4[.,]6.*13[.,]8/);
-        expect(lines[5], language).toMatch(/13[.,]8.*13[.,]1/);
+        expect(lines[7], language).toMatch(/13[.,]8.*13[.,]1/);
       }
     });
   });

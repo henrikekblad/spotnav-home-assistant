@@ -35,9 +35,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase. Where the plant
   takes a target per phase (`commands.PhaseControl`, verified as the mode `per_phase`) the cap is each phase's own
   (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge. Where the
-  recipe states the plant's own dead-man (`commands.PhaseControl.silence_fallback_s`, set only once a field test has
-  seen it act; no recipe does yet) the targets do not stay, and each phase's cap is the fuse less the margin: the
-  live clamp per phase bounds the charge. A plant that holds its import limit **per phase**
+  plant's own dead-man or lease, renewed by SpotNav, was **measured** on this firmware (`expiry_lifts`: the recipe's
+  `commands.Expiry`, recorded from a field test or the verification's mode `expiry`; a maker's word never lifts, nor
+  an integration's own renewal loop) the command does not stay, and the cap is the fuse less the margin: the live
+  clamp bounds the charge. A plant that holds its import limit **per phase**
   (`commands.ImportLimitPhases`, Sigenergy with independent phase power control on) needs no option: once the
   owner's on-site test is recorded in the recipe, and while the switch reads on, the grid sensor online and the
   Output Type L1/L2/L3/N, and the site's own option says its limit acts, a limit at most three times the fuse less the
@@ -53,8 +54,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   `grid_charge_phase_caps_kw`), so a command can never ask for more than an empty house could take. The live clamp
   per phase while Home Assistant runs (`executor._phase_room_kw`, `HEADROOM_MARGIN_A`, every look), the write caps,
   the read-back, the hand-back and the chargers' load balancing are unchanged. It changes nothing where the plant's
-  own import limit guards the fuse (either rule above: no cap of this kind) or a recipe's own dead-man does
-  (`silence_guards`): those come first, and the card does not offer it there. It is given for one setup, the
+  own import limit guards the fuse (either rule above: no cap of this kind) or a command's own measured expiry does
+  (`expiry_lifts`): those come first, and the card does not offer it there. It is given for one setup, the
   site's main fuse and the plant's brand (`CONF_ACCEPT_HA_DOWN_SETUP`, `ha_down_setup_state`): once either changes it
   counts as off and is cleared.
 
@@ -89,7 +90,7 @@ from datetime import datetime
 from typing import Any, Final, Literal
 
 from ..core.electric import phase_volts
-from .commands import ACTION_CURTAIL_EXPORT
+from .commands import ACTION_CURTAIL_EXPORT, Expiry
 from .plan_model import (
     DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
@@ -137,6 +138,9 @@ BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
 MODE_NORMAL: Final = "normal"
 #: The capability a plant with targets per phase is checked for (`verify.py`); never needed for control to run.
 MODE_PER_PHASE: Final = "per_phase"
+#: Whether a command's own expiry (`commands.Expiry`) acts on this firmware (`verify.py`): never needed for control to
+#: run, and never failing the report; only a pass changes anything (`expiry_measured`: the HA-down cap may lift).
+MODE_EXPIRY: Final = "expiry"
 #: Outcomes that pass.
 PASSING: Final = frozenset({"obeyed", "restored"})
 #: Outcomes that fail outright.
@@ -164,10 +168,13 @@ _PHASE_NAMES: Final = PHASE_NAMES
 HOUSE_PEAK_DEFAULT_KW: Final = 4.0
 #: A grid charge below this is not worth running (kW); the executor imports it.
 MIN_RATE_KW: Final = 0.5
-#: The longest a plant's own dead-man (`commands.PhaseControl.silence_fallback_s`) may take to stop a charge per
+#: The longest a command's own measured expiry (`commands.Expiry`, `expiry_lifts`) may take to stop a charge per
 #: phase for the HA-down cap to be lifted on its account (s): about what a fuse and a breaker carry a phase's
 #: overload for without opening (see `grid_charge_phase_caps_kw`).
 SILENCE_FALLBACK_MAX_S: Final = 60.0
+#: How far apart the looks are that see a fallback (s, `runtime.TICK_S`): a fallback measured by the verification's
+#: mode `expiry` counts once it came within `SILENCE_FALLBACK_MAX_S` and one look of the last write.
+EXPIRY_LOOK_S: Final = 10.0
 #: A held car's departure has room when this many hours at its planned power are left over (h).
 DEPARTURE_ROOM_H: Final = 2.0
 
@@ -333,9 +340,13 @@ def merge_report(
         if not isinstance(row, Mapping):
             continue
         kept = modes.get(name)
-        if kept is not None and mode_verdict(kept.get("outcome")) != "pending":
+        if (
+            kept is not None and mode_verdict(kept.get("outcome")) != "pending"
+            # An expiry decided for another expiry than the one this run tried (the recipe changed) is not kept.
+            and not (name.startswith(MODE_EXPIRY) and kept.get("expiry_id") != row.get("expiry_id"))
+        ):
             continue
-        modes[name] = dict(row)
+        modes[name] = _expiry_row(row, kept) if name.startswith(MODE_EXPIRY) else dict(row)
     return {
         "key": key,
         "brand": run.get("brand"),
@@ -346,6 +357,31 @@ def merge_report(
         "attempts": attempts,
         "modes": modes,
     }
+
+
+#: Separate runs on one firmware key that must each give the mode `expiry` `obeyed` before it counts as measured
+#: (owner decision 4: "measured = two passing runs").
+EXPIRY_PASSES: Final = 2
+#: A run's `obeyed` before the passes are complete: pending, so the next run tries it again.
+EXPIRY_PASSED_ONCE: Final = "obeyed_once"
+
+
+def _expiry_row(row: Mapping[str, Any], kept: Mapping[str, Any] | None) -> dict[str, Any]:
+    """A run's expiry row merged with the one kept (still pending, for the same expiry): `obeyed` counts a pass
+    (`passes`), and is `obeyed` in the report only once `EXPIRY_PASSES` runs passed, `EXPIRY_PASSED_ONCE` (pending)
+    before; a pending outcome keeps the passes so far; any other (`ignored`, a failing abort) starts them again."""
+    same = kept is not None and kept.get("expiry_id") == row.get("expiry_id")
+    passes = kept.get("passes", 0) if same and kept is not None else 0
+    passes = passes if isinstance(passes, int) and not isinstance(passes, bool) else 0
+    out = dict(row)
+    outcome = row.get("outcome")
+    if outcome == "obeyed":
+        passes += 1
+        out["outcome"] = "obeyed" if passes >= EXPIRY_PASSES else EXPIRY_PASSED_ONCE
+    elif mode_verdict(outcome) != "pending":
+        passes = 0
+    out["passes"] = passes
+    return out
 
 
 def report_status(report: Mapping[str, Any] | None) -> ReportStatus:
@@ -702,20 +738,123 @@ def import_limit_phase_holds(
     )
 
 
-def silence_guards(silence_fallback_s: float | None) -> bool:
-    """Whether a recipe's own dead-man (`commands.PhaseControl.silence_fallback_s`) stands in for the HA-down cap of
-    a charge per phase: the maker states that the plant stops following the targets by itself, within
-    `SILENCE_FALLBACK_MAX_S` of the last write."""
+def expiry_mode(phase: str | None = None) -> str:
+    """The report's row for an expiry measured on the whole command (`expiry`), or on one phase of a phase spec's
+    (`expiry:L1`): each phase is proven on its own (owner decision 2026-11-23)."""
+    return MODE_EXPIRY if phase is None else f"{MODE_EXPIRY}:{phase}"
+
+
+def expiry_measured(
+    expiry: Expiry, key: str | None, report: Mapping[str, Any] | None = None, phase: str | None = None
+) -> bool:
+    """Whether the expiry's fallback was seen to act on this firmware (`firmware_key`): the recipe records a field
+    test on it (`Expiry.evidence` `measured`, `measured_on`), or the routine's report for this key has the mode
+    `expiry` obeyed for this very expiry (`Expiry.expiry_id`: a measured phase expiry never counts for a balanced
+    one) and, for a phase spec's, on this very phase (`phase`, its row `expiry:<phase>`; in the recipe, one of
+    `Expiry.measured_phases`: a recipe measurement naming no phase lifts no phase). A key not read is never
+    measured; a report kept under another key never counts."""
+    if key is None or not firmware_known(key):
+        return False
+    if expiry.evidence == "measured" and key in expiry.measured_on and (
+        phase is None or phase in expiry.measured_phases
+    ):
+        return True
+    return expiry_row_passed(report, expiry, phase) and report is not None and report.get("key") == key
+
+
+def expiry_phases_measured(expiry: Expiry, key: str | None, report: Mapping[str, Any] | None) -> tuple[bool, bool, bool]:
+    """A phase spec's expiry measured on L1, L2 and L3 (`expiry_measured` per phase)."""
+    found = [expiry_measured(expiry, key, report, phase) for phase in PHASE_NAMES]
+    return (found[0], found[1], found[2])
+
+
+def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry, phase: str | None = None) -> bool:
+    """Whether the report's row for this expiry (`expiry_mode`) is `obeyed` for this very expiry
+    (`Expiry.expiry_id`), its fallback within the minute and a look."""
+    row = _modes(report).get(expiry_mode(phase))
+    if not isinstance(row, Mapping) or row.get("outcome") != "obeyed" or row.get("expiry_id") != expiry.expiry_id:
+        return False
+    # Two separate passing runs on this firmware (`merge_report`, `EXPIRY_PASSES`); a run's own row never counts.
+    passes = row.get("passes")
+    if not isinstance(passes, int) or isinstance(passes, bool) or passes < EXPIRY_PASSES:
+        return False
+    # The fallback counted from the last write, within the minute the lift rests on (and one look).
+    fallback = row.get("fallback_s")
     return (
-        silence_fallback_s is not None and not isinstance(silence_fallback_s, bool)
-        and math.isfinite(silence_fallback_s) and 0 < silence_fallback_s <= SILENCE_FALLBACK_MAX_S
+        isinstance(fallback, (int, float)) and not isinstance(fallback, bool) and math.isfinite(fallback)
+        and 0 <= fallback <= SILENCE_FALLBACK_MAX_S + EXPIRY_LOOK_S
     )
+
+
+def expiry_due(report: Mapping[str, Any] | None, expiry: Expiry, phase: str | None = None) -> bool:
+    """Whether the report has the mode `expiry` still undecided for this very expiry (and phase): no row, a row for
+    another expiry, or a row still pending."""
+    row = _modes(report).get(expiry_mode(phase))
+    if not isinstance(row, Mapping) or row.get("expiry_id") != expiry.expiry_id:
+        return True
+    return mode_verdict(row.get("outcome")) == "pending"
+
+
+def expiry_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
+    """Whether the verification's mode `expiry` may try this expiry: one whose pass would lift the HA-down cap
+    (`expiry_lifts` once measured): a dead-man or lease SpotNav renews, within `SILENCE_FALLBACK_MAX_S`, on a control
+    the live clamp can lower. An integration's own renewal or nobody's is never tried (a field test recorded in the
+    recipe is its only route, and it still never lifts)."""
+    return expiry_lifts(expiry, measured=True, slow=slow, fixed_charge=fixed_charge)
+
+
+def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bool) -> bool:
+    """Whether a command's own expiry (`commands.Expiry`) stands in for the HA-down cap: a dead-man or a lease that
+    **SpotNav** renews (an integration's own loop keeps running while SpotNav stalls, so it never counts), whose
+    fallback was **measured** on this firmware (`measured`, `expiry_measured`; a maker's word alone never lifts),
+    on a control the live clamp can lower within seconds (not `slow`, not `fixed_charge`), ending within
+    `SILENCE_FALLBACK_MAX_S` of the last write. A SoC bound or a clock window never lifts a fuse cap."""
+    window = expiry.window_s
+    return (
+        expiry.kind in ("device_deadman", "device_lease") and expiry.renewer == "spotnav"
+        and measured is True and not slow and not fixed_charge
+        and window is not None and not isinstance(window, bool) and math.isfinite(window)
+        and 0 < window <= SILENCE_FALLBACK_MAX_S
+    )
+
+
+def expiry_energy_kwh(expiry: Expiry, rate_kw: float, *, slot_left_s: float | None = None) -> float | None:
+    """The kWh a grid charge at `rate_kw` may still take from the grid after Home Assistant dies, by the command's
+    own expiry: the rate over the window for a dead-man, a lease and a SoC block; for a clock window the rate to the
+    slot's end (`slot_left_s`, at most the window). `None` (unbounded): no expiry, a clock window whose end is not
+    known, and an integration's own renewal (a stalled SpotNav does not stop it). For the diagnostics and the control
+    log only: never a cap."""
+    if not _usable(rate_kw):
+        return None
+    rate = max(rate_kw, 0.0)
+    window = expiry.window_s
+    if expiry.renewer == "integration" or window is None:
+        return None
+    if expiry.kind in ("device_deadman", "device_lease", "soc_bound"):
+        return rate * window / 3600.0
+    if expiry.kind == "clock_window" and _usable(slot_left_s):
+        return rate * min(max(slot_left_s, 0.0), window) / 3600.0  # type: ignore[type-var]
+    return None
+
+
+def expiry_note(expiry: Expiry, *, measured: bool) -> str | None:
+    """The diagnostics line for an expiry, where it has one: an integration's own renewal (`continues while HA
+    runs`), a SoC block (`charges at most one block`), a dead-man SpotNav renews that no field test has seen act on
+    this firmware (`dead-man stated, not measured`)."""
+    if expiry.kind != "none" and expiry.renewer == "integration":
+        return "continues while HA runs"
+    if expiry.kind == "soc_bound":
+        return "charges at most one block"
+    if expiry.kind == "device_deadman" and expiry.renewer == "spotnav" and not measured:
+        return "dead-man stated, not measured"
+    return None
 
 
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
-    silence_fallback_s: float | None = None, accept_ha_down: bool = False, site_margin_a: float | None = None,
+    expiry_lifts: bool | tuple[bool, bool, bool] = False, accept_ha_down: bool = False,
+    site_margin_a: float | None = None, own_import_a: float = 0.0,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -726,9 +865,9 @@ def grid_charge_phase_caps_kw(
     with each phase's own house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) counted on
     every phase. With the fuse or the chargers unknown no phase may charge (0).
 
-    **A plant with its own dead-man** (`silence_fallback_s`, `silence_guards`; a recipe states it only once a field
-    test has seen the plant stop following its targets when the writes stop. Victron's page promises it for Mode 3,
-    but it is not yet seen, so its recipe does not state it, `commands.py`): the targets do not stay, so the cap is
+    **A plant with its own dead-man** (`expiry_lifts`, the phase spec's expiry by `gate.expiry_lifts`: measured on
+    this firmware, by a field test or the verification's mode `expiry`. Victron's page promises it for Mode 3, but
+    until it is seen its recipe states it only, `commands.py`): the targets do not stay, so the cap is
     not reckoned for a house at its peak with nobody watching. It is the fuse less the margin on each phase,
 
         cap_i = V * max(0, fuse - margin) / 1000
@@ -748,20 +887,37 @@ def grid_charge_phase_caps_kw(
     recipe's own dead-man, which needs nothing): each phase's cap is what the fuse allows with an empty house, the
     fuse less the site's own safety margin (`site_margin_a`; `None`: `margin_a`), and the live clamp per phase is
     again what bounds the charge while Home Assistant runs. With it down, the house's load rides on top of the last
-    targets and may open the fuse: what the person accepted."""
+    targets and may open the fuse: what the person accepted.
+
+    `own_import_a`: what the plant may import by itself on each phase (A, `commands.AutonomousImport`), taken off
+    every phase in each of the rules above (infinite: no grid charge).
+
+    `expiry_lifts` per phase (L1, L2, L3; one bool: all three): the dead-man lifts only the phases it was measured on
+    (owner decision 2026-11-23); every other phase keeps its own cap by the rules after it."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
-    if silence_guards(silence_fallback_s):
-        most = max(main_fuse_a - margin_a, 0.0) * volts / 1000.0
-        return (most, most, most)
+    own_a = _own_a(own_import_a)
+    lifts = (expiry_lifts,) * 3 if isinstance(expiry_lifts, bool) else tuple(item is True for item in expiry_lifts)
+    lifted = max(main_fuse_a - margin_a - own_a, 0.0) * volts / 1000.0
     if accept_ha_down:
-        most = max(main_fuse_a - (margin_a if site_margin_a is None else site_margin_a), 0.0) * volts / 1000.0
-        return (most, most, most)
-    house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
-    room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
-    return (room[0], room[1], room[2])
+        most = max(
+            main_fuse_a - (margin_a if site_margin_a is None else site_margin_a) - own_a, 0.0
+        ) * volts / 1000.0
+        room = [most, most, most]
+    else:
+        house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
+        room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - peak, 0.0) * volts / 1000.0 for peak in house]
+    out = [lifted if lifts[index] else room[index] for index in range(3)]
+    return (out[0], out[1], out[2])
+
+
+def _own_a(own_import_a: float) -> float:
+    """A plant's own import per phase (A) as counted: never below 0; anything not a number counts as without end."""
+    if isinstance(own_import_a, bool) or not isinstance(own_import_a, (int, float)) or math.isnan(own_import_a):
+        return math.inf
+    return max(float(own_import_a), 0.0)
 
 
 def phase_split_kw(total_kw: float, caps_kw: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -781,6 +937,7 @@ def grid_charge_cap_kw(
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
     import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
     import_limit_per_phase: bool = False, phase_margin_a: float | None = None, accept_ha_down: bool = False,
+    expiry_lifts: bool = False, own_import_a: float = 0.0,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -801,10 +958,20 @@ def grid_charge_cap_kw(
     the fuse that way (`import_limit_phase_holds`), with `phase_margin_a` (the site's own safety margin, see
     `import_limit_phase_max_kw`; `None`: `margin_a`). With the fuse unknown no grid charge may run (0).
 
+    `expiry_lifts` (the grid charge's own expiry stands in for the cap, `gate.expiry_lifts`: a dead-man or lease
+    SpotNav renews, measured on this firmware, ending within `SILENCE_FALLBACK_MAX_S`; after both import-limit rules
+    and the fuse known, before the acceptance): the command does not stay, so the cap is the fuse less `margin_a` on
+    each of the plant's phases, and the live clamp bounds the charge, as for a charge per phase with its own
+    dead-man (`grid_charge_phase_caps_kw`). No recipe's balanced grid charge has one measured yet.
+
     `accept_ha_down` (the site's `battery_control_accept_ha_down`, only where neither import-limit rule holds: those
     come first): the cap is what the fuse allows with an empty house (`ha_down_accepted_cap_kw`, with `phase_margin_a`
     as the site's own safety margin), not the house at its peak and the chargers' last currents with nobody
-    watching."""
+    watching.
+
+    `own_import_a` (what the plant may import by itself on each phase it spreads that over, A,
+    `commands.AutonomousImport`; infinite: no grid charge) is taken off the fuse like the chargers' currents, in the
+    expiry's, the accepted and the house's rule alike; the import-limit rules are unchanged."""
     if import_limit_per_phase and import_limit_phase_holds(
         import_limit_kw, main_fuse_a, volts_between_phases,
         margin_a=margin_a if phase_margin_a is None else phase_margin_a, cars_a=cars_a,
@@ -817,15 +984,20 @@ def grid_charge_cap_kw(
         return None
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return 0.0
+    own_a = _own_a(own_import_a)
+    if expiry_lifts:
+        assert main_fuse_a is not None
+        phases = min(max(int(plant_phases), 1), 3)
+        return max(main_fuse_a - margin_a - own_a, 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
     if accept_ha_down:
         return ha_down_accepted_cap_kw(
             main_fuse_a, volts_between_phases, margin_a=margin_a if phase_margin_a is None else phase_margin_a,
-            plant_phases=plant_phases,
+            plant_phases=plant_phases, own_import_a=own_a,
         )
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     house_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a))
-    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
+    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - own_a - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
 
@@ -848,15 +1020,18 @@ def ha_down_setup_state(stored: Any, main_fuse_a: float | None, brand: str | Non
 
 def ha_down_accepted_cap_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, plant_phases: int,
+    own_import_a: float = 0.0,
 ) -> float:
     """The grid charge cap once the person accepted the HA-down risk (`battery_control_accept_ha_down`): what the
     fuse allows with an empty house, the fuse less the site's own safety margin (`margin_a`) on each of the phases
     the plant spreads its charge over (`plant_phases`, as `grid_charge_cap_kw`; 1 where the brand does not say, so
-    the whole charge may be on one phase). 0 with the fuse unknown."""
+    the whole charge may be on one phase), less what the plant may import by itself on each of them (`own_import_a`,
+    A; infinite: 0). 0 with the fuse unknown."""
     if main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0:
         return 0.0
     phases = min(max(int(plant_phases), 1), 3)
-    return max(main_fuse_a - max(margin_a, 0.0), 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
+    room_a = main_fuse_a - max(margin_a, 0.0) - _own_a(own_import_a)
+    return max(room_a, 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
 
 
 def export_discharge_cap_kw(

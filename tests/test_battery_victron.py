@@ -22,6 +22,7 @@ from custom_components.spotnav.battery.commands import (
     VICTRON_PHASES,
     VICTRON_RENEW_S,
     VICTRON_SILENCE_S,
+    Expiry,
     control_for,
     phase_table,
     table,
@@ -46,6 +47,7 @@ TICK = timedelta(seconds=10)
 VOLTS = 400.0 / 3 ** 0.5
 FUSE_A = 20.0
 TARGETS = ("phase_l1_target", "phase_l2_target", "phase_l3_target")
+KEY = "v3.60 | victron 2026.1"
 #: The owner's house (2026-11-18): the learned peaks on a 20 A fuse.
 PEAKS = {"L1": 13.6, "L2": 18.0, "L3": 17.4}
 
@@ -57,14 +59,19 @@ def _caps(peaks: dict[str, float] = PEAKS, **kwargs: Any) -> tuple[float, float,
 
 
 def _shipped(peaks: dict[str, float] = PEAKS) -> tuple[float, float, float]:
-    """The caps the recipe as shipped gets: its dead-man is not stated, so the house counts at its peak."""
-    return _caps(peaks, silence_fallback_s=VICTRON_PHASES.silence_fallback_s)
+    """The caps the recipe as shipped gets: its dead-man is stated, not measured, so the house counts at its peak."""
+    expiry = VICTRON_PHASES.expiry
+    lifts = gate.expiry_lifts(
+        expiry, measured=gate.expiry_measured(expiry, KEY), slow=VICTRON_CONTROL.slow,
+        fixed_charge=VICTRON_CONTROL.fixed_charge,
+    )
+    return _caps(peaks, expiry_lifts=lifts)
 
 
 def _lifted() -> tuple[float, float, float]:
     """The caps a recipe with a dead-man seen on a plant would get (the fuse less the margin on each phase). No
     recipe ships it; the executor does not know where its caps come from, so these exercise its live clamp alone."""
-    return _caps(silence_fallback_s=VICTRON_SILENCE_S)
+    return _caps(expiry_lifts=True)
 
 
 @dataclass
@@ -243,7 +250,11 @@ def test_the_setpoints_are_setpoints_with_a_cap_that_fits_a_minute_and_the_rest_
 
 def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> None:
     # The page's 60 s fallback is not stated until a field test has seen it: the HA-down cap is not lifted on it.
-    assert VICTRON_PHASES.silence_fallback_s is None and VICTRON_SILENCE_S == 60
+    assert VICTRON_SILENCE_S == 60
+    expiry = VICTRON_PHASES.expiry
+    assert (expiry.kind, expiry.renewer, expiry.window_s, expiry.evidence) == ("device_deadman", "spotnav", 60.0, "stated")
+    assert expiry.renewed_roles == TARGETS and expiry.measured_on == frozenset()
+    assert VICTRON_CONTROL.expiry.kind == "none"
     assert _shipped() == _caps() and _shipped() != _lifted()
     assert VICTRON_PHASES.watchdog_renew_s == VICTRON_RENEW_S
     # Three roles, one written a look: each is written again within the renewal plus three looks.
@@ -253,7 +264,7 @@ def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> Non
     assert phased.watchdog_roles == TARGETS and phased.watchdog_renew_s == VICTRON_RENEW_S
     assert phased.own_states == {"ESS mode": frozenset({"external_control"})} and VICTRON_CONTROL.own_states == {}
     # No recipe says its plant falls back by itself.
-    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.silence_fallback_s] == []
+    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.expiry.evidence == "measured"] == []
     assert SIGENERGY_CONTROL.phase_control is not None and SIGENERGY_CONTROL.phase_control.park
 
 
@@ -470,15 +481,30 @@ def test_the_gate_lifts_the_ha_down_cap_only_for_a_fallback_within_the_minute() 
     kept = _caps()
     # The targets stay: each phase's own peak bounds it (L2 has no room at all on the owner's house).
     assert kept == pytest.approx(tuple((FUSE_A - 2.0 - peak) * VOLTS / 1000 for peak in PEAKS.values()))
-    lifted = _caps(silence_fallback_s=VICTRON_SILENCE_S)
+    lifted = _caps(expiry_lifts=True)
     assert lifted == pytest.approx(((FUSE_A - 2.0) * VOLTS / 1000,) * 3)
-    for silence in (None, 0, 61, 1800, float("nan"), True):
-        assert _caps(silence_fallback_s=silence) == kept, silence
     # The fuse or the chargers unknown: no charge either way.
     assert gate.grid_charge_phase_caps_kw(
-        None, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None, silence_fallback_s=60
+        None, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None, expiry_lifts=True
     ) == (0.0, 0.0, 0.0)
-    assert not gate.silence_guards(None) and gate.silence_guards(60) and not gate.silence_guards(60.5)
+    roles = VICTRON_PHASES.expiry.renewed_roles
+
+    def lifts(window: float, *, measured: bool = True, evidence: str = "measured") -> bool:
+        expiry = Expiry("device_deadman", "spotnav", window, roles, renew_s=VICTRON_RENEW_S if window > 20 else None,
+                        evidence=evidence, measured_on=frozenset({KEY}) if evidence == "measured" else frozenset())
+        return gate.expiry_lifts(expiry, measured=gate.expiry_measured(expiry, KEY) and measured, slow=False,
+                                 fixed_charge=False)
+
+    # Only a dead-man measured on this firmware, within the minute.
+    assert lifts(60.0) and lifts(30.0) and not lifts(60.5) and not lifts(61.0) and not lifts(1800.0)
+    assert not lifts(60.0, evidence="stated")
+    # The recipe as shipped: stated.
+    assert not gate.expiry_lifts(VICTRON_PHASES.expiry, measured=gate.expiry_measured(VICTRON_PHASES.expiry, KEY),
+                                 slow=False, fixed_charge=False)
+    # Measured on another firmware: not on this one.
+    other = Expiry("device_deadman", "spotnav", 60.0, roles, renew_s=VICTRON_RENEW_S, evidence="measured",
+                   measured_on=frozenset({"v3.50 | victron 2026.1"}))
+    assert not gate.expiry_measured(other, KEY)
 
 
 def test_an_unbalanced_house_never_passes_the_fuse_on_any_phase() -> None:
@@ -778,3 +804,221 @@ def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_n
     now, _ = _run(executor, plant, T0, 4, "export_discharge", 6.0)
     assert float(plant.states["grid_setpoint"]) < -200 and "grid_setpoint" in executor.state.snapshot
     assert executor.told_problems(plant.reads(executor, now)) == ()
+
+
+# --- the expiry measured through the per-phase probe -------------------------------------------------------------------
+
+
+def _verify_expiry(
+    plant: Plant, looks: int = 900, *, mutate: Any = None, glitch_at_s: float | None = None, phase: int = 0,
+) -> tuple[Verification, Executor, list[dict[str, Any]]]:
+    """The routine's hold, `per_phase` and `expiry` on the model plant. `mutate(plant, s)`: changes the plant `s`
+    into the silence; `glitch_at_s`: one look that far into it reads L1 as in passthru (the house unchanged)."""
+    executor = Executor(VICTRON_CONTROL)
+    now = T0
+    verification = Verification(
+        executor, now, firmware="v3.60", modes=("hold", "per_phase", "expiry"), expiry=VICTRON_PHASES.expiry,
+        expiry_phased=True, expiry_phase=phase,
+    )
+    capability = Capability(rated_charge_kw=plant.rating_kw, rated_discharge_kw=plant.rating_kw)
+    seen_looks: list[dict[str, Any]] = []
+    silent_at: datetime | None = None
+    for _ in range(looks):
+        if silent_at is None and verification.expiry_probe():
+            silent_at = now
+        since = None if silent_at is None else (now - silent_at).total_seconds()
+        if mutate is not None and since is not None:
+            mutate(plant, since)
+        seen = plant.inputs(executor, now, None)
+        deficit = max((seen.grid_import_kw or 0.0) - (seen.facts.power_kw or 0.0), 0.0)
+        grid, out, point = seen.grid_phase_kw, seen.plant_phase_kw, seen.phase_point_kw
+        if glitch_at_s is not None and since == glitch_at_s and grid and out and point:
+            out = (0.0, out[1], out[2])
+            grid = (grid[0] + 1.0, grid[1], grid[2])
+            point = (point[0] + 1.0, point[1], point[2])
+        sample = Sample(
+            seen.facts.power_kw, 5.0, 50.0, deficit, seen.grid_import_kw, grid, out,
+            headroom_a=seen.headroom_a, phase_point_kw=point,
+        )
+        action, rate = verification.command(now, sample, plant.rating_kw)
+        probe = verification.expiry_probe()
+        result = executor.step(plant.inputs(
+            executor, now, action, rate, phase_probe_kw=verification.probe(), house_deficit_kw=deficit,
+            expiry_probe=probe,
+        ))
+        for op in result.ops:
+            plant.apply(now, op)
+        seen_looks.append({"probe": probe, "ops": [op.role for op in result.ops]})
+        verification.after(now, result, sample, capability)
+        assert max(plant.amps(now)) <= FUSE_A + 1e-6
+        now += TICK
+        if verification.done and executor.state.phase in ("idle", "blocked") and not result.ops:
+            break
+    return verification, executor, seen_looks
+
+
+def test_victrons_dead_man_is_measured_on_the_probes_discharge_on_one_phase() -> None:
+    verification, executor, looks = _verify_expiry(Plant())
+    assert verification.done
+    modes = verification.report()["modes"]
+    assert {mode: row["outcome"] for mode, row in modes.items()} == {
+        "hold": "obeyed", "per_phase": "obeyed", "expiry:L1": "obeyed", "normal": "restored"
+    }
+    row = modes["expiry:L1"]
+    assert row["scope"] == "phase" and row["expiry_id"] == VICTRON_PHASES.expiry.expiry_id
+    # The last renewal was at most `VICTRON_RENEW_S` and three looks before the silence began.
+    assert VICTRON_SILENCE_S - VICTRON_RENEW_S - 30 <= row["fallback_s"] <= VICTRON_SILENCE_S + 10
+    assert all(look["ops"] == [] for look in looks if look["probe"])
+    assert executor.state.blocked is None
+    # Recorded in the report for this firmware: one passing run is not enough, the second makes it measured.
+    key = "v3.60 | victron_gx 1"
+    passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}, "per_phase": {"outcome": "obeyed"}}
+    once = gate.merge_report({"modes": passed}, {"modes": modes}, key=key, attempts=2, now=T0)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, key, once, "L1")
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes}, "L1")
+    second, _executor, _looks = _verify_expiry(Plant())
+    report = gate.merge_report(once, {"modes": second.report()["modes"]}, key=key, attempts=3, now=T0)
+    assert gate.expiry_measured(VICTRON_PHASES.expiry, key, report, "L1")
+    # Proven on L1 only: L2 and L3 stay unproven, and the balanced charge is never lifted by it.
+    assert gate.expiry_phases_measured(VICTRON_PHASES.expiry, key, report) == (True, False, False)
+    assert not gate.expiry_measured(VICTRON_CONTROL.expiry, key, report)
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.70 | victron_gx 1", report, "L1")
+
+
+def test_a_multi_that_never_falls_back_leaves_the_dead_man_stated() -> None:
+    verification, _executor, _looks = _verify_expiry(Plant(fallback=False))
+    modes = verification.report()["modes"]
+    assert modes["expiry:L1"]["outcome"] == "ignored" and modes["per_phase"]["outcome"] == "obeyed"
+    report = {"key": "v3.60 | victron_gx 1", "modes": modes}
+    assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.60 | victron_gx 1", report, "L1")
+    # A failed expiry never fails the report.
+    assert gate.report_status({**report, "modes": {**modes, "normal": {"outcome": "restored"}}}) == "passed"
+
+
+def _measured(modes: dict[str, Any]) -> bool:
+    key = "v3.60 | victron_gx 1"
+    return any(gate.expiry_phases_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes}))
+
+
+@pytest.mark.parametrize(("start", "end"), [(0.6, 0.1), (0.8, 0.3), (1.0, 0.0)])
+def test_a_load_that_drops_on_the_probed_phase_is_never_a_fallback(start: float, end: float) -> None:
+    """The review's case: the Multi never falls back (its setpoints stand), and L1's load drops 30 s into the
+    silence, by more than the tolerance and by exactly the probe's 1 kW: the plant's power reads as passthru."""
+    plant = Plant(fallback=False)
+    plant.out_kw[0] = start
+
+    def drop(model: Plant, since: float) -> None:
+        model.out_kw[0] = start if since < 30 else end
+
+    verification, _executor, _looks = _verify_expiry(plant, mutate=drop)
+    modes = verification.report()["modes"]
+    assert modes["expiry:L1"]["outcome"] == "not_judgeable:house_changed"
+    assert not _measured(modes)
+
+
+def test_one_look_that_reads_like_passthru_is_a_glitch_not_a_fallback() -> None:
+    verification, _executor, _looks = _verify_expiry(Plant(fallback=False), glitch_at_s=30.0)
+    modes = verification.report()["modes"]
+    assert modes["expiry:L1"]["outcome"] == "ignored" and modes["expiry:L1"]["fallback_s"] is None
+    assert not _measured(modes)
+
+
+def test_the_silence_needs_room_for_the_probes_own_power_coming_back() -> None:
+    """A fallback ends the probe's 1 kW discharge on L1 (about 4.3 A back on it): with less headroom than the margin
+    plus that, the test gives way before the plant can fall back over the fuse."""
+
+    def beside(model: Plant, since: float) -> None:
+        model.beside_kw[0] = 0.5 if since < 20 else 4.4  # L1 about 16 A: room for the margin, not for the probe
+
+    verification, _executor, _looks = _verify_expiry(Plant(), mutate=beside)
+    assert verification.report()["modes"]["expiry:L1"]["outcome"] == "aborted:fuse_headroom"
+
+
+def test_a_later_run_proves_another_phase_on_its_own() -> None:
+    executor = Executor(VICTRON_CONTROL)
+    now = T0
+    verification = Verification(
+        executor, now, firmware="v3.60", modes=("hold", "per_phase", "expiry"), expiry=VICTRON_PHASES.expiry,
+        expiry_phased=True, expiry_phase=1,
+    )
+    assert [result.report_name for result in verification.results][-2] == "expiry:L2"
+    assert verification.results[-2].phase == "L2"
+
+
+@pytest.mark.parametrize("phase", [0, 1, 2])
+@pytest.mark.parametrize("behind_kw", [0.6, 1.0])
+def test_a_dead_man_that_works_with_load_behind_the_multi_passes_and_never_blocks_control(
+    phase: int, behind_kw: float
+) -> None:
+    """In passthru the point carries the load behind the Multi, above the setpoint written (that load less 1 kW): no
+    runaway in the silence, so the test decides and the control is left idle, never blocked."""
+    plant = Plant()
+    plant.out_kw[phase] = behind_kw
+    verification, executor, _looks = _verify_expiry(plant, phase=phase)
+    modes = verification.report()["modes"]
+    assert modes[f"expiry:L{phase + 1}"]["outcome"] == "obeyed", modes
+    assert modes["normal"]["outcome"] == "restored"
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+
+
+@pytest.mark.parametrize(
+    ("true_s", "outcome"),
+    [(30, "not_judgeable:early_fallback"), (65, "obeyed"), (70, "not_judgeable:late_look"), (85, "ignored")],
+)
+def test_only_a_fallback_around_the_window_passes_and_one_a_look_late_is_tried_again(
+    monkeypatch: pytest.MonkeyPatch, true_s: float, outcome: str
+) -> None:
+    """A plant whose Multis leave their setpoints `true_s` after the last write: seen first the look after."""
+    import tests.test_battery_victron as module  # noqa: PLC0415
+
+    monkeypatch.setattr(module, "VICTRON_SILENCE_S", true_s)
+    verification, executor, _looks = _verify_expiry(Plant())
+    row = verification.report()["modes"]["expiry:L1"]
+    assert row["outcome"] == outcome, row
+    assert gate.mode_verdict(outcome) == ("fail" if outcome == "ignored" else "pass" if outcome == "obeyed"
+                                          else "pending")
+    assert executor.state.blocked is None
+
+
+def _two_runs(make: Any, *, true_s: float | None = None, monkeypatch: pytest.MonkeyPatch | None = None,
+              **kwargs: Any) -> tuple[dict[str, Any], bool]:
+    """Two runs of the routine on the same firmware key, merged as control merges them: the last row and whether
+    L1 is measured then."""
+    import tests.test_battery_victron as module  # noqa: PLC0415
+
+    if true_s is not None and monkeypatch is not None:
+        monkeypatch.setattr(module, "VICTRON_SILENCE_S", true_s)
+    key = "v3.60 | victron_gx 1"
+    report: dict[str, Any] | None = {"modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+                                               "per_phase": {"outcome": "obeyed"}}}
+    for attempt in (1, 2):
+        verification, _executor, _looks = _verify_expiry(make(), **kwargs)
+        report = gate.merge_report(report, {"modes": verification.report()["modes"]}, key=key, attempts=attempt,
+                                   now=T0)
+    assert report is not None
+    return report["modes"]["expiry:L1"], gate.expiry_measured(VICTRON_PHASES.expiry, key, report, "L1")
+
+
+def test_a_three_look_passthru_on_a_plant_that_never_falls_back_is_never_measured() -> None:
+    """The re-review's residual: the Multi leaves its setpoint for three looks from 30 s into the silence on a plant
+    whose dead-man never acts, the house steady."""
+
+    def glitch(model: Plant, since: float) -> None:
+        # Passthru for three looks (the setpoints read as long stale), then following them again.
+        model.fallback = 30 <= since < 60
+        if model.fallback:
+            for name in list(model.written_at):
+                model.written_at[name] = T0
+
+    row, measured = _two_runs(lambda: Plant(fallback=False), mutate=glitch)
+    assert not measured and row["outcome"] == "not_judgeable:early_fallback" and row["fallback_s"] == 50.0, row
+
+
+def test_a_genuine_dead_man_is_measured_after_the_second_passing_run_not_the_first() -> None:
+    row, measured = _two_runs(Plant)
+    assert measured and row["outcome"] == "obeyed" and row["passes"] == 2
+
+
+def test_a_dead_man_that_acts_well_inside_the_window_is_not_measured(monkeypatch: pytest.MonkeyPatch) -> None:
+    row, measured = _two_runs(Plant, true_s=45, monkeypatch=monkeypatch)
+    assert not measured and row["outcome"] == "not_judgeable:early_fallback", row

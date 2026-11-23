@@ -339,6 +339,9 @@ _SELF_CLEARING: Final = (
     "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
     "call_timeout",
 )
+#: Blocks the expiry test's silence never leaves behind (`ExecInputs.expiry_probe`): nothing new was asked of the plant,
+#: and a fallback reads as a command not obeyed.
+_PROBE_UNBLOCKED: Final = ("not_obeyed", "no_effect")
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -444,6 +447,16 @@ class ExecInputs:
     #: then the first less the second.
     phase_behind_kw: Phases | None = None
     phase_point_kw: Phases | None = None
+    #: The verification's expiry test (`verify.MODE_EXPIRY`) runs on the active command: no renewal round starts,
+    #: nothing else is written for it (a change of action or rate is refused for the span; a peak cover and every
+    #: hand-back still write), and a renewed role (`BrandControl.watchdog_roles`) that reads the device's documented
+    #: fallback (`Expiry.fallback_values`) is its own (`expired`), never someone else's change; one that reads
+    #: anything else is another writer (`diverged`), left to the ledger as any outside change. The effect is not judged meanwhile (the test judges it),
+    #: except a charge per phase over its targets.
+    expiry_probe: bool = False
+    #: What the plant may import by itself on the most loaded phase now (A, `commands.AutonomousImport`), only while
+    #: its trigger may fire: taken off the headroom a hold starts on and its peak cover reads.
+    own_import_a: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -969,7 +982,23 @@ def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: boo
     phase it puts out on is not known)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
-    return inputs.headroom_a - uncovered_a(inputs, sale_kw, from_sale=from_sale) >= HEADROOM_MARGIN_A
+    return (
+        inputs.headroom_a - _own_import_a(inputs) - uncovered_a(inputs, sale_kw, from_sale=from_sale)
+        >= HEADROOM_MARGIN_A
+    )
+
+
+def _own_import_a(inputs: ExecInputs) -> float:
+    """What the plant may import by itself on the most loaded phase now (A, `ExecInputs.own_import_a`): never below 0,
+    anything not a number (or not known) as more than any fuse (`OWN_IMPORT_UNKNOWN_A`, finite for the change log)."""
+    own = inputs.own_import_a
+    if isinstance(own, bool) or not isinstance(own, (int, float)) or math.isnan(own):
+        return OWN_IMPORT_UNKNOWN_A
+    return min(max(float(own), 0.0), OWN_IMPORT_UNKNOWN_A)
+
+
+#: A plant's own import not known (A): more than any fuse, so nothing starts on it.
+OWN_IMPORT_UNKNOWN_A: Final = 1000.0
 
 
 def uncovered_a(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> float:
@@ -1132,7 +1161,7 @@ class Executor:
 
     def __init__(
         self, control: BrandControl, ledger: Ledger | None = None, monitor: Monitor | None = None,
-        state: ExecState | None = None, *, watchdog_s: int = WATCHDOG_S,
+        state: ExecState | None = None, *, watchdog_s: int | None = None,
     ) -> None:
         self.ledger = ledger or Ledger()
         self.monitor = monitor or Monitor()
@@ -1142,12 +1171,19 @@ class Executor:
         control = control.with_hold(self.state.variant) if self.state.variant else control
         self.control = control.with_phases(True) if self.state.phased else control
         self.state = replace(self.state, variant=self.control.variant, phased=self.control.phased)
-        self.watchdog_s = watchdog_s
+        #: The window written into a command that carries one (a timeout, an autorepeat, a lease's duration): the
+        #: recipe's expiry window (`Expiry.window_s`), `WATCHDOG_S` where it states none; a caller's own wins.
+        self.watchdog_s = watchdog_s if watchdog_s is not None else int(self.control.expiry.window_s or WATCHDOG_S)
         #: What a state that depends on the plant is filled in with (`BrandControl.wanted`): the SoC, the rating and the
         #: optional roles this plant lacks, as of the last look; not stored.
         self._soc_pct: float | None = None
         self._rated_kw: float | None = None
         self._capacity_kwh: float | None = None
+        #: The renewed roles read as expired in the running expiry test (`ExecInputs.expiry_probe`), and those that
+        #: changed there to anything but the device's documented fallback (`diverged`: another writer); not stored:
+        #: a restart ends the test.
+        self.expired: tuple[str, ...] = ()
+        self.diverged: tuple[str, ...] = ()
         self._absent: frozenset[str] = frozenset()
 
     def _sense(self, inputs: ExecInputs) -> None:
@@ -1241,6 +1277,9 @@ class Executor:
     def step(self, inputs: ExecInputs) -> StepResult:
         now = inputs.now
         self._sense(inputs)
+        probing = self._probing(inputs)
+        if not probing:
+            self.expired = self.diverged = ()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1272,6 +1311,10 @@ class Executor:
             reason = self._exit_reason(inputs)
             if reason is not None:
                 events += self._begin_restore(now, reason)
+        if probing and self.state.phase == "restoring" and (self.state.blocked or "").startswith(_PROBE_UNBLOCKED):
+            # Handed back in the expiry test's silence for what the plant did after nothing more was written: that is
+            # the test's to judge, never a lasting block of the control (the hand-back itself goes on).
+            self.state = replace(self.state, blocked=None)
         persist_first = False
         if self.state.phase == "idle" and inputs.stopping is None:
             started, start_events = self._try_start(inputs)
@@ -1320,10 +1363,28 @@ class Executor:
             if entity_id is None or claim is None:
                 continue
             read = inputs.reads.get(role.name)
-            event = self.ledger.observe(entity_id, reading(role, None if read is None else read.state), now)
+            now_read = reading(role, None if read is None else read.state)
+            expiring = False
+            if self._probing(inputs) and role.name in self.control.watchdog_roles and claim.owned is not None:
+                step = None if read is None else _tolerance(role, read)
+                if now_read is not None and same(claim.owned, now_read, step) is False:
+                    fallback = self._fallback_values().get(role.name)
+                    if fallback is not None and same(fallback, now_read, step):
+                        # The device's own documented fallback.
+                        expiring = True
+                    elif role.name not in self.diverged:
+                        # Changed to something else in the silence: another writer, never the expiry. Left to the
+                        # ledger's dwell as any outside change; the test ends on it.
+                        self.diverged = (*self.diverged, role.name)
+                        events.append(_event(now, "diverged", role.name, entity_id=entity_id, read=now_read))
+            event = self.ledger.observe(entity_id, now_read, now, expiring=expiring)
             if event is None:
                 continue
-            if event.kind == "confirmed":
+            if event.kind == "expired":
+                # The device's own fallback while the test renews nothing: not written again for the test's span.
+                self.expired = (*self.expired, role.name)
+                events.append(_event(now, "expired", role.name, entity_id=entity_id, read=event.read))
+            elif event.kind == "confirmed":
                 if self.state.pending == role.name or role.name in self.state.in_flight:
                     retries = {name: row for name, row in self.state.retries.items() if name != role.name}
                     self.state = replace(
@@ -1360,7 +1421,8 @@ class Executor:
                 events += self._begin_restore(now, f"not_obeyed:{self.state.action}:{judged.outcome}")
         elif self.state.phase == "active" and self.state.phase_kw is not None:
             events += self._judge_phases(inputs)
-        elif self.state.phase == "active":
+        elif self.state.phase == "active" and not self._probing(inputs):
+            # The expiry test judges the effect itself: a fallback is what it looks for, not a command not obeyed.
             facts = inputs.facts
             capability = Capability(
                 rated_charge_kw=facts.max_charge_kw,
@@ -1430,7 +1492,8 @@ class Executor:
         while that change settles (`PHASE_GRACE_S`); a change of the targets does not start the count again.
         **Taking nothing or too little**: after `PHASE_GRACE_S` since the last change, every `PHASE_GAP_S`, not near
         full. `CONFIRM_READINGS` in a row hand the charge back, blocked. Nothing is judged while a write is awaited
-        or without the reading; for the verification's probe only the runaway (the rest it judges itself)."""
+        or without the reading; for the verification's probe only the runaway (the rest it judges itself), and in the
+        expiry test's silence nothing (`_probing`: a passthru is no charge; the test ends on a real one itself)."""
         state = self.state
         now = inputs.now
         measured = self._phase_measured(inputs)
@@ -1445,7 +1508,7 @@ class Executor:
                 self.state = replace(state, phase_bad=())
             return []
         settling = (now - changed).total_seconds() < PHASE_GRACE_S
-        if (now - entered).total_seconds() >= PHASE_OVER_GRACE_S and (
+        if not self._probing(inputs) and (now - entered).total_seconds() >= PHASE_OVER_GRACE_S and (
             state.phase_over_at is None or (now - state.phase_over_at).total_seconds() >= PHASE_OVER_GAP_S
         ):
             aims = self._phase_aims(phases, state.phase_behind_kw)
@@ -2309,6 +2372,11 @@ class Executor:
         rate, phases, why = self._aim(inputs, False)
         if why is not None:
             return self._begin_restore(now, why)
+        if self._probing(inputs):
+            # The expiry test: the command stands as written, nothing renews it and nothing changes it.
+            if state.renew:
+                self.state = replace(state, renew=())
+            return []
         events: list[dict[str, Any]] = []
         if state.priming and state.pending is None and self._next_role(state, inputs) is None:
             # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
@@ -2551,7 +2619,8 @@ class Executor:
         recover within `PEAK_RECOVER_S`, hold again after `PEAK_REHOLD_S` when the start rule allows it."""
         state = self.state
         now = inputs.now
-        headroom = inputs.headroom_a
+        # What the plant may import by itself now comes off the room the peak cover reads.
+        headroom = None if inputs.headroom_a is None else inputs.headroom_a - _own_import_a(inputs)
         first = self.control.peak_first.get(ACTION_HOLD, ())
         if self.control.slow or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
             return []
@@ -2626,6 +2695,9 @@ class Executor:
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue
+            if not restoring and name in self.expired and not self._covering(state, name):
+                # Expired in the running expiry test: writing it would renew the command the test watches end.
+                continue
             retry = state.retries.get(name)
             if retry is not None and inputs.now < retry[1]:
                 continue
@@ -2690,13 +2762,33 @@ class Executor:
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
 
     def _readback_s(self, state: ExecState, name: str) -> float:
-        """How long this write may take to read back: the brand's longer wait (`BrandControl.readback_s`) only for a
-        write that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link
-        dropped is sent again soon (both are idempotent, and the house stands on the grid without the battery
-        meanwhile)."""
-        if self.control.readback_s is None or state.phase == "restoring" or self._covering(state, name):
+        """How long this write may take to read back: the role's longer wait (`Role.readback_s`) only for a write
+        that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link dropped
+        is sent again soon (both are idempotent, and the house stands on the grid without the battery meanwhile)."""
+        wait = self.control.role(name).readback_s
+        if wait is None or state.phase == "restoring" or self._covering(state, name):
             return READBACK_DEADLINE_S
-        return self.control.readback_s
+        return wait
+
+    def _fallback_values(self) -> dict[str, str]:
+        """The values the device documents its renewed roles fall back to (`Expiry.fallback_values`), the control's
+        own and, on a phased control, the phase spec's."""
+        spec = self.control.phase_control
+        pairs = (*self.control.expiry.fallback_values, *(
+            spec.expiry.fallback_values if self.control.phased and spec is not None else ()
+        ))
+        return dict(pairs)
+
+    def _probing(self, inputs: ExecInputs) -> bool:
+        """Whether the verification's expiry test runs on the active command (`ExecInputs.expiry_probe`): only on a
+        hold or a discharge per phase (every phase's target at most 0), so a command left unrenewed, and a fallback,
+        can never add import. On anything else the flag is ignored and the command runs (and is renewed) as ever."""
+        state = self.state
+        if not inputs.expiry_probe or state.phase != "active":
+            return False
+        if state.action == ACTION_HOLD and state.phase_kw is None:
+            return True
+        return state.action == ACTION_GRID_CHARGE and state.phase_kw is not None and max(state.phase_kw) <= 0.0
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval
@@ -2733,7 +2825,7 @@ class Preview:
 
 
 def preview(
-    control: BrandControl, inputs: ExecInputs, *, writes_today: int = 0, watchdog_s: int = WATCHDOG_S
+    control: BrandControl, inputs: ExecInputs, *, writes_today: int = 0, watchdog_s: int | None = None
 ) -> Preview:
     """The executor's own start rules and commands for `inputs.action`, run on a throw-away executor: nothing is
     written, nothing is kept. The shadow parts (`hold.py`) use it so that what they log as "would write" is exactly

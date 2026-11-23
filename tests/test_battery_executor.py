@@ -108,7 +108,10 @@ def test_service_calls_use_core_entity_services_and_huaweis_own_services() -> No
     assert service_call("switch", "switch.x", False)[1] == "turn_off"
     assert service_call("button", "button.x", True)[:2] == ("button", "press")
     services = HUAWEI_CONTROL.role("forcible").services
-    assert service_call("service", None, "charge:3000", device_id="D", services=services, watchdog_s=1800) == (
+    lease = HUAWEI_CONTROL.role("forcible").lease
+    assert service_call(
+        "service", None, "charge:3000", device_id="D", services=services, watchdog_s=1800, duration=lease
+    ) == (
         "huawei_solar", "forcible_charge", {"device_id": "D", "power": 3000, "duration": 30}
     )
     assert service_call("service", None, "stop", device_id="D", services=services) == (
@@ -1786,7 +1789,7 @@ def test_a_change_never_renews_a_button_it_presses_anyway() -> None:
 
 def test_a_change_puts_nothing_in_a_fast_watchdogs_renewal() -> None:
     """A fast watchdog (`BrandControl.watchdog_renew_s`) renews on its own round, never on a change."""
-    fast = replace(SOLAREDGE_CONTROL, watchdog_renew_s=20)
+    fast = replace(SOLAREDGE_CONTROL, expiry=replace(SOLAREDGE_CONTROL.expiry, renew_s=20))
     executor = _changed(fast, SOLAREDGE_STATES, "hold", "discharge_house")
     assert executor.state.renew == ()
 
@@ -1825,3 +1828,87 @@ def test_a_renewal_owed_when_the_action_changes_within_the_gap_is_still_written(
     assert executor.state.phase == "active"
     gaps = [(later - earlier).total_seconds() for earlier, later in zip(times, [*times[1:], now], strict=True)]
     assert max(gaps) <= WATCHDOG_RENEW_S + 60, gaps
+
+
+# --- the expiry test (`ExecInputs.expiry_probe`) ---------------------------------------------------------------------
+
+
+#: SolarEdge as if its maker documented the command mode's own fallback (the shipped recipe documents none).
+_DOCUMENTED = replace(SOLAREDGE_CONTROL, expiry=replace(
+    SOLAREDGE_CONTROL.expiry, fallback_values=(("command_mode", "Maximize Self Consumption"),)
+))
+
+
+def _probed_hold(control: Any = _DOCUMENTED) -> tuple[Executor, FakeBattery, datetime]:
+    executor = Executor(control)
+    battery = FakeBattery(control, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 8, "hold")
+    assert executor.state.phase == "active" and executor.state.pending is None
+    return executor, battery, now
+
+
+def test_an_expiry_test_renews_nothing_and_writes_nothing_for_its_span() -> None:
+    executor, battery, now = _probed_hold()
+    now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 6, "hold", expiry_probe=True)
+    assert not events(results, "renew") and written(results) == []
+    # A change of action or rate is refused for the span.
+    now, results = run(executor, battery, now, 3, "discharge_house", expiry_probe=True)
+    assert written(results) == [] and executor.state.action == "hold" and not events(results, "change")
+    # The test over: the owed renewal is written as ever.
+    now, results = run(executor, battery, now, 3, "hold")
+    assert events(results, "renew") and written(results)
+
+
+def test_a_renewed_role_that_falls_back_in_an_expiry_test_is_expired_not_someone_elses_change() -> None:
+    executor, battery, now = _probed_hold()
+    battery.states["command_mode"] = "Maximize Self Consumption"  # the inverter's own fallback
+    now, results = run(executor, battery, now, 6, "hold", expiry_probe=True)
+    assert [event["reason"] for event in events(results, "expired")] == ["command_mode"]
+    assert not events(results, "external") and not events(results, "hand_back") and written(results) == []
+    assert executor.state.phase == "active" and executor.state.given_up == ()
+    assert executor.ledger.counters(now.date().isoformat())["external"] == 0
+    # The test hands back: the role is restored as any other, and nothing blocks the control.
+    now, results = run(executor, battery, now, 12, "self_consume")
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+    assert battery.states["command_mode"] == SOLAREDGE_STATES["command_mode"]
+
+
+def test_a_renewed_role_that_changes_to_anything_but_the_documented_fallback_is_another_writer() -> None:
+    for control, value in ((SOLAREDGE_CONTROL, "Discharge to Minimize Import"), (_DOCUMENTED, "Discharge to Maximize Export")):
+        executor, battery, now = _probed_hold(control)
+        battery.states["command_mode"] = value
+        now, results = run(executor, battery, now, 3, "hold", expiry_probe=True)
+        assert [event["reason"] for event in events(results, "diverged")] == ["command_mode"]
+        assert not events(results, "expired") and written(results) == []
+        # Handed back: the change is someone else's, as outside the test.
+        now, results = run(executor, battery, now, 12, "self_consume")
+        assert events(results, "external")
+
+
+def test_the_same_fallback_outside_an_expiry_test_is_someone_elses_change() -> None:
+    executor, battery, now = _probed_hold()
+    battery.states["command_mode"] = "Maximize Self Consumption"
+    now, results = run(executor, battery, now, int(MIN_DIVERGENCE_S // TICK.total_seconds()) + 3, "hold")
+    assert events(results, "external") and (executor.state.blocked or "").startswith("changed_outside_spotnav")
+
+
+def test_an_expiry_test_is_ignored_on_a_command_that_could_add_import() -> None:
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0)
+    now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 6, "grid_charge", 3.0,
+                       expiry_probe=True)
+    assert events(results, "renew")
+
+
+def test_a_plants_own_import_comes_off_the_room_a_hold_starts_on_and_its_peak_cover_reads() -> None:
+    from custom_components.spotnav.battery.executor import hold_headroom_ok  # noqa: PLC0415
+
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    look = inputs(battery, T0, "hold", headroom_a=4.0, power_kw=0.0)
+    assert hold_headroom_ok(look) and not hold_headroom_ok(replace(look, own_import_a=2.5))
+    assert not hold_headroom_ok(replace(look, own_import_a=float("nan")))
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    _now, results = run(executor, battery, now, 2, "hold", headroom_a=PEAK_COVER_A + 1.0, own_import_a=1.5)
+    assert events(results, "peak_cover")

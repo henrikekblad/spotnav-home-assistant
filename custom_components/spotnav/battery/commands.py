@@ -273,10 +273,10 @@ The entity keys, options and services below were checked against each integratio
     So the three setpoints are renewed every `VICTRON_RENEW_S` (each is then written again within about 30 s). By
     the page a charge per phase then stops by itself within `VICTRON_SILENCE_S` of the last write, but that is
     quoted, not seen: a firmware where the rule does not act, or something else on the GX that republishes the
-    setpoints (Node-RED, a script), would leave them standing. So the recipe does **not** state the dead-man
-    (`PhaseControl.silence_fallback_s` `None`): each phase's HA-down cap is reckoned with the house at its learned
+    setpoints (Node-RED, a script), would leave them standing. So the recipe's dead-man is only stated, not
+    measured (`PhaseControl.expiry`, `gate.expiry_lifts`): each phase's HA-down cap is reckoned with the house at its learned
     peak, as Sigenergy's (`gate.grid_charge_phase_caps_kw`), and bounds the whole target that would stand (the load
-    behind the point plus the charge, `executor._phase_room_kw`). **Before it may be stated** a field test on the
+    behind the point plus the charge, `executor._phase_room_kw`). **Before it counts as measured** a field test on the
     plant, per Venus OS version (the firmware key), must show: (1) a charge per phase of at least 1 kW on each
     phase, SpotNav stopped mid-charge (Home Assistant stopped, not a hand-back), the ESS mode still
     `external_control`; (2) within 70 s of the last write each Multi's AC input power falls to its AC output's load
@@ -378,6 +378,88 @@ class Answer:
     taken: frozenset[str]
 
 
+#: How a command ends by itself when nothing renews it: never (`none`), the device's own dead-man on the last write
+#: (`device_deadman`), a lease the command itself carries (`device_lease`: a duration, an autorepeat), a SoC bound the
+#: command stops at (`soc_bound`: a ceiling one block ahead), or the end of a clock window (`clock_window`).
+ExpiryKind = Literal["none", "device_deadman", "device_lease", "soc_bound", "clock_window"]
+#: Who keeps the command alive: SpotNav's own renewals, an integration's own loop (which a stalled SpotNav does not
+#: stop: never counted as an expiry against SpotNav), or nobody.
+Renewer = Literal["spotnav", "integration", "nobody"]
+#: The recipe's own claim (`stated`, never enough to lift a fuse cap) or a field test's (`measured`, per firmware).
+Evidence = Literal["stated", "measured"]
+#: How a write to a role is read back: the device's own register, Home Assistant's echo of the value sent, a value
+#: the device confirms after a delay, the device's answer in the attributes (`Role.answer`), or not at all.
+ReadBack = Literal["register", "echo", "verified", "answer", "none"]
+
+_RENEWED_KINDS: Final = frozenset({"device_deadman", "device_lease", "soc_bound"})
+
+
+@dataclass(frozen=True, slots=True)
+class Expiry:
+    """How a recipe's command ends by itself when Home Assistant stops writing, and what renews it meanwhile. Data
+    only; the gate decides what it is worth (`gate.expiry_lifts`): a `stated` expiry never lifts a fuse cap."""
+
+    kind: ExpiryKind = "none"
+    renewer: Renewer = "nobody"
+    #: The dead-man's or the lease's length (s); for `soc_bound` the block; for `clock_window` the slot's length.
+    window_s: float | None = None
+    #: The roles SpotNav rewrites to keep the command alive (only with `renewer` `spotnav`); for `soc_bound` the
+    #: ceiling's role.
+    renewed_roles: tuple[str, ...] = ()
+    #: How often they are rewritten (s); `None`: `WATCHDOG_RENEW_S`.
+    renew_s: int | None = None
+    evidence: Evidence = "stated"
+    #: The `gate.firmware_key` values a field test saw the fallback act on (only with `evidence` `measured`).
+    measured_on: frozenset[str] = frozenset()
+    #: For a phase spec's expiry (`PhaseControl.expiry`): the phases (`L1`..`L3`) that field test saw it act on;
+    #: only those phases' caps are lifted by it (owner decision 2026-11-23). Required there with `measured`.
+    measured_phases: frozenset[str] = frozenset()
+    #: For `renewer` `integration`: which integration renews it (diagnostics text).
+    integration: str = ""
+    note: str = ""
+    #: What a renewed role reads once the device itself fell back, where the maker documents it (`(role, value)`):
+    #: only such a reading in the verification's silence is the device's own (`expired`); any other change of a
+    #: renewed role there is another writer. Empty: the device leaves them as written (Victron's setpoints).
+    fallback_values: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        renews = self.renewer == "spotnav" and self.kind in _RENEWED_KINDS
+        if bool(self.renewed_roles) != renews:
+            raise ValueError("renewed_roles are set exactly for an expiry SpotNav renews")
+        if self.kind == "device_deadman" and self.renewer == "nobody":
+            raise ValueError("a dead-man needs something that renews it")
+        if self.kind != "none" and (
+            self.window_s is None or isinstance(self.window_s, bool) or not math.isfinite(self.window_s)
+            or self.window_s <= 0
+        ):
+            raise ValueError("window_s must be a positive finite number")
+        if self.renew_s is not None and (
+            self.renew_s <= 0 or (self.window_s is not None and self.renew_s >= self.window_s)
+        ):
+            raise ValueError("renew_s must be positive and shorter than window_s")
+        if self.evidence == "measured" and not self.measured_on:
+            raise ValueError("a measured expiry names the firmware it was measured on")
+        if (
+            renews and self.kind != "soc_bound" and self.renew_s is None and self.window_s is not None
+            and self.window_s <= WATCHDOG_RENEW_S
+        ):
+            raise ValueError("a window shorter than the shared renewal needs its own renew_s")
+        if any(role not in self.renewed_roles for role, _value in self.fallback_values):
+            raise ValueError("a documented fallback value is for a renewed role")
+        if not self.measured_phases <= {"L1", "L2", "L3"} or (self.measured_phases and self.evidence != "measured"):
+            raise ValueError("measured_phases names L1, L2 or L3, and only for a measured expiry")
+
+    @property
+    def expiry_id(self) -> str:
+        """What a verification row names the expiry it measured by (`<kind>:<window>:<roles>`): a measured phase
+        expiry never counts for a balanced one."""
+        window = "-" if self.window_s is None else f"{self.window_s:g}"
+        return f"{self.kind}:{window}:{','.join(self.renewed_roles)}"
+
+
+NO_EXPIRY: Final = Expiry()
+
+
 @dataclass(frozen=True, slots=True)
 class Role:
     """One entity the control writes (or, for a service, reads back)."""
@@ -394,9 +476,10 @@ class Role:
     #: For a service role: `(write, service)` pairs by the kind of value wanted (`charge`, `discharge`, `stop`).
     services: Mapping[str, str] = field(default_factory=dict)
     #: For a service role: the call's field that names the battery's device (Huawei `device_id`, Ferroamp `target`),
-    #: and whether a call with a power carries the watchdog as its `duration` in minutes (`service_call`).
+    #: and whether a call with a power is a lease: it carries the recipe's expiry window (`Expiry.window_s`) as its
+    #: `duration` in minutes (`service_call`).
     device_field: str = "device_id"
-    duration: bool = True
+    lease: bool = False
     #: A read that is the register's "never set" (restored as the rating): its kind (`charge`, `discharge`).
     unset_as_rating: str | None = None
     #: Read as unset when `unknown` (Sigenergy 2.0.1 shows the all-ones value as `unknown`).
@@ -410,6 +493,19 @@ class Role:
     #: A role whose state shows the last request, not that the device took it (Ferroamp's last command): the
     #: device's answer in the attributes, without which the state is no reading (`answered`).
     answer: Answer | None = None
+    #: How a write to it is read back (`ReadBack`): the device's `register` (the default), Home Assistant's `echo` of
+    #: the value sent (the battery's power then judges the effect), the device's `answer` (exactly where `answer` is
+    #: set), or `none` (a button).
+    readback: ReadBack = "register"
+    #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
+    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`) or a cloud, and only
+    #: for a write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped
+    #: one is sent again soon.
+    readback_s: float | None = None
+    #: How long after a hand-back a write to it is watched (s): where the read-back is only Home Assistant's own echo
+    #: a device or a cloud that refused the restore shows SpotNav's value again on a later poll, and the restore is
+    #: then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
+    settle_s: float = 0.0
     #: How near a read must be to a value to count as it (in the entity's unit), where the entity's own step is too
     #: coarse for that: a value one unit off means something else (Victron's -1, no limit, beside 0). `None`: the
     #: entity's step, else `step`.
@@ -422,6 +518,10 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.readback == "answer") != (self.answer is not None):
+            raise ValueError(f"{self.name}: read back by the device's answer exactly where the role has one")
 
 
 @dataclass(frozen=True, slots=True)
@@ -481,8 +581,11 @@ class PhaseControl:
     #: Other roles only the phased control writes (in `follow`: a scheduling mode), so a plant without them shows no
     #: missing control for the balanced one.
     modes: tuple[Role, ...] = ()
-    #: Roles renewed to keep a brand's watchdog alive while the phased control runs (added to the control's own).
-    watchdog_roles: tuple[str, ...] = ()
+    #: How the charge per phase ends by itself when nothing renews it, and the roles SpotNav renews to keep it alive
+    #: while the phased control runs (`BrandControl.watchdog_roles`, after the control's own) and how often (`None`:
+    #: `WATCHDOG_RENEW_S`). Read by the gate (`gate.grid_charge_phase_caps_kw`): only a dead-man **measured** on a
+    #: plant may let a phase's HA-down cap be the fuse itself (a maker's page alone is not enough).
+    expiry: Expiry = NO_EXPIRY
     #: Mode-rule labels and the states the phased control's own commands leave them in (added to the control's own).
     own_states: Mapping[str, frozenset[str]] = field(default_factory=dict)
     #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
@@ -504,20 +607,26 @@ class PhaseControl:
     #: effect is judged at the point against the target written (`grid_phases`). `scale` as for a written role.
     behind: tuple[Role, Role, Role] | None = None
     point: tuple[Role, Role, Role] | None = None
-    #: How often the `watchdog_roles` are renewed while the phased control runs a charge per phase (s); `None`:
-    #: `WATCHDOG_RENEW_S`.
-    watchdog_renew_s: int | None = None
-    #: The plant stops following the targets by itself this long after the last write of them (s): the maker's own
-    #: dead-man. `None`: the targets stay until written. Read by the gate (`gate.grid_charge_phase_caps_kw`): only
-    #: with it may a phase's HA-down cap be the fuse itself, so it is set only once a field test on a plant has seen
-    #: the fallback act (a maker's page alone is not enough); no recipe sets it yet.
-    silence_fallback_s: int | None = None
     #: The three targets exist only on a three-phase plant (an entity per phase the plant has): finding them is
     #: what shows the plant's phases, where the brand has no other reading of them.
     three_phase_by_targets: bool = False
     #: The largest size a `grid` target is written at (kW): the entity's own range, which a write beyond would be
     #: refused by. A target cut to it leaves the battery less than its charge, never more.
     limit_kw: float | None = None
+
+    @property
+    def watchdog_roles(self) -> tuple[str, ...]:
+        """Roles renewed to keep the charge per phase alive (`expiry`)."""
+        return self.expiry.renewed_roles
+
+    @property
+    def watchdog_renew_s(self) -> int | None:
+        """How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`."""
+        return self.expiry.renew_s
+
+    def __post_init__(self) -> None:
+        if self.expiry.evidence == "measured" and not self.expiry.measured_phases:
+            raise ValueError("a phase expiry measured in the recipe names the phases it was measured on")
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
@@ -609,6 +718,40 @@ class ImportLimitPhases:
 
 
 @dataclass(frozen=True, slots=True)
+class AutonomousImport:
+    """What a plant may import from the grid by itself, uncommanded, while SpotNav runs it (a top-up below its
+    reserve, a schedule of its own, a set grid input): counted with every HA-down cap (`gate`'s `own_import_a`,
+    whatever the trigger: the SoC drifts while Home Assistant is down) and in the executor's live room while the
+    trigger may fire. Data only; no recipe declares one yet."""
+
+    #: A fixed figure (kW), or a number or sensor to read it from (`entity`, times `scale` to kW); read first, the
+    #: figure where it reads nothing, and no grid charge at all where neither is known.
+    kw: float | None = None
+    entity: Match | None = None
+    scale: float = 1.0
+    #: The phases it is spread over; `None`: the recipe's own (`grid_charge_phases`, or the Output Type).
+    phases: int | None = None
+    trigger: Literal["always", "below_reserve", "own_schedule"] = "always"
+    #: For `below_reserve`: the reserve (%) it tops up to, where the plant shows it (else the facts' own reserve).
+    reserve: Match | None = None
+    why: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ImportLimitTrust:
+    """Where a plant's own grid import limit (`BrandControl.import_limit`) was shown to act, so that either import-limit
+    rule may stand in for the HA-down cap (`control.BatteryControl._import_limit_refusal`: `not_trusted` elsewhere).
+    Data only."""
+
+    #: The plan actions in whose commanded state the limit was shown to act.
+    acts_in: frozenset[str]
+    #: The plant firmwares (as read, the firmware part of `gate.firmware_key`) it was shown to act on; `None`: any.
+    firmware: frozenset[str] | None = None
+    #: Non-empty: never trusted, the offer hidden (the reason, e.g. a known bug of the maker's).
+    untrusted: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class BrandControl:
     brand: str
     adapter: Adapter
@@ -630,15 +773,15 @@ class BrandControl:
     #: whatever strategy runs (the same acknowledgement as `takeover`, `ExecInputs.takeover`); the hand-back gives
     #: the plant back to that strategy.
     strategy_unread: bool = False
-    #: The roles renewed to keep a watchdog alive (`WATCHDOG_RENEW_S`); empty when the brand has none.
-    watchdog_roles: tuple[str, ...] = ()
+    #: How a command ends by itself when nothing renews it, and the roles SpotNav renews meanwhile (`Expiry`;
+    #: `watchdog_roles`, `watchdog_renew_s`). The phase spec's own is the phase control's (`PhaseControl`), never
+    #: this one: a phased control's balanced commands keep the brand's.
+    expiry: Expiry = NO_EXPIRY
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
     requires: tuple[tuple[str, frozenset[str], str], ...] = ()
     #: Extra requirements for one action (`(action, role, forbidden states, reason)`); a forbidden state that is a
     #: number matches a read of the same number ("0" matches "0.0"), `forbidden_read`.
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
-    #: Whether the effect can only be judged by the battery's power (no read-back from the device).
-    local_readback: bool = False
     #: Per action that adds import, the roles that let the battery cover a peak again, written first (`executor`'s
     #: peak cover under a hold, and the first writes of every hand-back of that action).
     peak_first: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
@@ -656,6 +799,11 @@ class BrandControl:
     #: Where that limit is held per phase (`ImportLimitPhases`): with the owner's test recorded, the HA-down cap is
     #: lifted while it reads at most what keeps every phase under the fuse (`gate.import_limit_phase_holds`).
     import_limit_phases: ImportLimitPhases | None = None
+    #: Where that limit was shown to act (`ImportLimitTrust`); set wherever `import_limit` is.
+    import_limit_trust: ImportLimitTrust | None = None
+    #: What the plant may import by itself, uncommanded (`AutonomousImport`); `None`: nothing (every recipe today:
+    #: Sigenergy in Maximum Self Consumption under SpotNav has none, its AI mode's own charge is outside control).
+    autonomous_import: AutonomousImport | None = None
     note: str = ""
     #: Ways to hold, tried in order by the verification (`HoldVariant`); the first is in `states` and `peak_first`
     #: until another is chosen (`with_hold`). Empty: the brand has one hold.
@@ -677,17 +825,10 @@ class BrandControl:
     #: Writes a day per class (`WriteClass`), where they differ from `SETTING_WRITES`: only for a class the brand's
     #: own documents were read for (see the module).
     write_caps: Mapping[str, int] = field(default_factory=dict)
-    #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
-    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`), and only for a
-    #: write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped one is
-    #: sent again soon.
-    readback_s: float | None = None
     #: Per action, the state as a function of the rate and of the house's net load now (kW, the site's import less
     #: the battery's charge), where the brand sets the **grid's** power and not the battery's: used instead of
     #: `states` when the load is known (`wanted`'s `house_kw`). An action in it does not run without that load.
     house_states: Mapping[str, Callable[[float, float], tuple[Want, ...]]] = field(default_factory=dict)
-    #: How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`.
-    watchdog_renew_s: int | None = None
     #: A slow control (a cloud: Tesla): planned actions only. No hold for a car, no peak cover, no change of action
     #: sooner than `min_change_s`, the read-back waits `readback_s` and a hand-back waits `rearm_s` before the next
     #: action (`executor.py`, `control.py`). `None`: the executor's own figure.
@@ -720,15 +861,10 @@ class BrandControl:
     #: hold runs only while that rate fits under the fuse cap, as a fixed grid charge must (`gate.restricted`,
     #: `executor`'s start rule).
     hold_charges_without: tuple[str, ...] = ()
-    #: A grid charge whose power the plant sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is
-    #: commanded in blocks of this long (s): the ceiling is what the plant reaches in one block at the recipe's rate
-    #: (an upper figure, so it is reached no sooner), renewed every block from the SoC then. Without a dead-man a
-    #: Home Assistant (or a cloud) that stops leaves at most one block's charge from the grid, not a full battery.
-    charge_block_s: float | None = None
-    #: How long after a hand-back its writes are watched (s): where the read-back is only Home Assistant's own echo
-    #: (`local_readback`) a device or a cloud that refused the restore shows SpotNav's value again on a later poll,
-    #: and the restore is then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
-    settle_s: float = 0.0
+    #: An action's own expiry where it differs from the control's (`expiry`): a grid charge whose power the plant
+    #: sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is a `soc_bound` expiry, commanded in
+    #: blocks of its window (`charge_block_s`).
+    expiry_by_action: Mapping[str, Expiry] = field(default_factory=dict)
     #: How often a restore given up is tried again while the control is blocked (s), where each write costs (a
     #: cloud's billed commands); `None`: `executor.BLOCKED_RESTORE_S`.
     restore_retry_s: float | None = None
@@ -736,6 +872,54 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+
+    def __post_init__(self) -> None:
+        if self.import_limit is not None and self.import_limit_trust is None:
+            raise ValueError(f"{self.brand}: an import limit needs to say where it was shown to act")
+
+    @property
+    def watchdog_roles(self) -> tuple[str, ...]:
+        """The roles renewed to keep a watchdog alive: the expiry's, and on a phased control (`with_phases`) the phase
+        spec's after them; empty when the brand has none."""
+        spec = self.phase_control
+        extra = spec.expiry.renewed_roles if self.phased and spec is not None else ()
+        return (*self.expiry.renewed_roles, *extra)
+
+    @property
+    def watchdog_renew_s(self) -> int | None:
+        """How often the `watchdog_roles` are renewed (s): the phase spec's own on a phased control where it states
+        one, else the expiry's; `None`: `WATCHDOG_RENEW_S`."""
+        spec = self.phase_control
+        if self.phased and spec is not None and spec.expiry.renew_s is not None:
+            return spec.expiry.renew_s
+        return self.expiry.renew_s
+
+    @property
+    def local_readback(self) -> bool:
+        """Whether the effect can only be judged by the battery's power: a role read back by Home Assistant's echo,
+        by the device's answer to a request, or not at all (`Role.readback`)."""
+        return any(role.readback in ("echo", "none", "answer") for role in self.roles)
+
+    @property
+    def readback_s(self) -> float | None:
+        """The longest read-back wait of the control's roles (`Role.readback_s`); `None`: the ledger's own for all."""
+        waits = [role.readback_s for role in self.roles if role.readback_s is not None]
+        return max(waits) if waits else None
+
+    @property
+    def settle_s(self) -> float:
+        """The longest a hand-back's writes are watched (`Role.settle_s`); 0: not watched."""
+        return max((role.settle_s for role in self.roles), default=0.0)
+
+    @property
+    def charge_block_s(self) -> float | None:
+        """A grid charge whose power the plant sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`)
+        is commanded in blocks of this long (s; the grid charge's `soc_bound` expiry): the ceiling is what the plant
+        reaches in one block at the recipe's rate (an upper figure, so it is reached no sooner), renewed every block
+        from the SoC then. Without a dead-man a Home Assistant (or a cloud) that stops leaves at most one block's
+        charge from the grid, not a full battery. `None`: no such block."""
+        expiry = self.expiry_by_action.get(ACTION_GRID_CHARGE)
+        return expiry.window_s if expiry is not None and expiry.kind == "soc_bound" else None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -791,13 +975,11 @@ class BrandControl:
             roles=(*self.roles, *spec.owned()),
             states={action: with_idle(build) for action, build in self.states.items()},
             house_states={action: with_idle(build) for action, build in self.house_states.items()},
-            watchdog_renew_s=spec.watchdog_renew_s if spec.watchdog_renew_s is not None else self.watchdog_renew_s,
             enter_order=spec.enter_order, restore_order=spec.restore_order,
             peak_first={**self.peak_first, ACTION_GRID_CHARGE: spec.stop_first},
             requires=(*self.requires, *((role.name, states, why) for role, states, why in spec.requires)),
             # What it owns it writes itself; nothing of them is left to watch.
             watched=tuple(row for row in self.watched if row[0].name not in owned),
-            watchdog_roles=(*self.watchdog_roles, *spec.watchdog_roles),
             own_states={**self.own_states, **spec.own_states},
             phased=True,
         )
@@ -1140,6 +1322,11 @@ SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
     field_tested=True,
 )
 
+#: Where Sigenergy's import limit was shown to act (see `SIGENERGY_IMPORT_LIMIT_PHASES`).
+SIGENERGY_IMPORT_LIMIT_TRUST: Final = ImportLimitTrust(
+    acts_in=frozenset({ACTION_GRID_CHARGE}), firmware=frozenset({"V100R001C21SPC117"}),
+)
+
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
     # Flips to True once the owner's on-site tests are rerun on the reworked executor (one line, here and below).
@@ -1172,6 +1359,10 @@ SIGENERGY_CONTROL: Final = BrandControl(
     output_type=_key("inverter_output_type"),
     import_limit=_key("plant_grid_maximum_import_limitation", "number"),
     import_limit_phases=SIGENERGY_IMPORT_LIMIT_PHASES,
+    # The on-site tests of 2026-11-18 and 2026-11-21 ran in Remote EMS "Command Charging (Grid First)", this recipe's
+    # grid charge, on firmware V100R001C21SPC117 (owner decision 2026-11-23: trusted on the firmware it was tested
+    # on; another is added once it is re-tested there). The site's own option that its limit acts is not tied to it.
+    import_limit_trust=SIGENERGY_IMPORT_LIMIT_TRUST,
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
     hold_variants=SIGENERGY_HOLDS,
@@ -1227,7 +1418,8 @@ SOLAREDGE_CONTROL: Final = BrandControl(
     },
     enter_order=("command_timeout", "charge_limit", "discharge_limit", "command_mode"),
     restore_order=("command_mode", "charge_limit", "discharge_limit", "command_timeout"),
-    watchdog_roles=("command_timeout", "command_mode"),
+    # The command timeout returns the inverter to its default mode (the maker's word; not measured).
+    expiry=Expiry("device_deadman", "spotnav", float(WATCHDOG_S), ("command_timeout", "command_mode")),
     requires=(("control_mode", frozenset({"Remote Control"}), "not_in_remote_control"),),
     peak_first={ACTION_HOLD: ("command_mode",), ACTION_GRID_CHARGE: ("command_mode",)},
     action_requires=((ACTION_GRID_CHARGE, "ac_charge_policy", frozenset({"Disabled"}), "ac_charge_disabled"),),
@@ -1238,7 +1430,7 @@ _HW_FORCIBLE = Role(
     "forcible", "service", _key("forcible_charge_discharge_write"), restored=False,
     services={"charge": "huawei_solar.forcible_charge", "discharge": "huawei_solar.forcible_discharge",
               "stop": "huawei_solar.stop_forcible_charge"},
-    normalize=huawei_forcible,
+    normalize=huawei_forcible, lease=True,
 )
 _HW_DISCHARGE = Role(
     "discharge_power", "number", _key("storage_maximum_discharging_power", "number"), scale=1000.0, step=1.0
@@ -1265,18 +1457,24 @@ HUAWEI_CONTROL: Final = BrandControl(
     },
     enter_order=("discharge_power", "charge_power", "forcible"),
     restore_order=("forcible", "charge_power", "discharge_power"),
-    watchdog_roles=("forcible",),
+    # A forcible charge carries its duration (the maker's word; not measured).
+    expiry=Expiry("device_lease", "spotnav", float(WATCHDOG_S), ("forcible",)),
     requires=(("forcible", frozenset({"stop"}), "forcible_charge_running"),),
     peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("forcible",)},
     note="Services and numbers need the installer password; a forcible charge ends by itself after its duration.",
 )
 
+# The select and the numbers are the integration's own local values (sent on the trigger): read back as its echo.
 _SX_CONTROL = Role(
-    "power_control", "select", _key("remotecontrol_power_control", "select"),
+    "power_control", "select", _key("remotecontrol_power_control", "select"), readback="echo",
 )
-_SX_POWER = Role("active_power", "number", _key("remotecontrol_active_power", "number"), scale=1000.0, step=100.0)
-_SX_REPEAT = Role("autorepeat", "number", _key("remotecontrol_autorepeat_duration", "number"), step=1.0)
-_SX_TRIGGER = Role("trigger", "button", _key("remotecontrol_trigger", "button"), restored=False)
+_SX_POWER = Role(
+    "active_power", "number", _key("remotecontrol_active_power", "number"), scale=1000.0, step=100.0, readback="echo"
+)
+_SX_REPEAT = Role(
+    "autorepeat", "number", _key("remotecontrol_autorepeat_duration", "number"), step=1.0, readback="echo"
+)
+_SX_TRIGGER = Role("trigger", "button", _key("remotecontrol_trigger", "button"), restored=False, readback="none")
 
 
 def _sx(option: str, sign: float = 0.0) -> Callable[[float, int], tuple[Want, ...]]:
@@ -1306,10 +1504,10 @@ SOLAX_CONTROL: Final = BrandControl(
             {"Enabled No Discharge", "Enabled Battery Control", "Enabled Self Use", "Enabled Power Control"}
         )
     },
-    watchdog_roles=("trigger",),
+    # The remote control's autorepeat ends after its duration (the maker's word; not measured).
+    expiry=Expiry("device_lease", "spotnav", float(WATCHDOG_S), ("trigger",)),
     requires=(("power_control", frozenset({"Disabled"}), "remote_control_in_use"),),
     peak_first={ACTION_HOLD: ("power_control", "trigger"), ACTION_GRID_CHARGE: ("power_control", "trigger")},
-    local_readback=True,
     note="The integration holds the values and sends them on the trigger; only the battery's power shows the"
     " effect.",
 )
@@ -1319,24 +1517,30 @@ _SOL_BATTCTRL: Final = "EMS BattCtrl"  # 0x0303: the battery follows 50207
 _SOL_ACCTRL: Final = "EMS ACCtrl"  # 0x0301: the inverter's AC power follows 50203 or 50204-50206
 _SOL_EACH_PHASE: Final = "Power Setting on each Phase"  # 50202 = 2
 
-_SOL_MODE = Role("working_mode", "select", _key("working_mode", "select"), restored=False)
+# Every Solinteg role waits `READBACK_STALL_S` for its read-back: the dongle's link stalls now and then.
+_SOL_MODE = Role(
+    "working_mode", "select", _key("working_mode", "select"), restored=False, readback_s=READBACK_STALL_S
+)
 # 50207: the battery's power target (kW, negative charges). Handed back as 0, never as the value found.
 _SOL_TARGET = Role(
     "battery_target", "number", _key("battery_charge_discharge_power_target", "number"), step=0.01, restored=False,
-    write_class="setpoint",
+    write_class="setpoint", readback_s=READBACK_STALL_S,
 )
 # 50202: written only by the control per phase, and left as written (it acts only in EMS ACCtrl).
-_SOL_AC_MODE = Role("acctrl_mode", "select", _key("ems_acctrl_mode", "select"), restored=False)
+_SOL_AC_MODE = Role(
+    "acctrl_mode", "select", _key("ems_acctrl_mode", "select"), restored=False, readback_s=READBACK_STALL_S
+)
 _SOL_UNBALANCED: Final = Role(
-    "unbalanced_output", "select", _key("grid_unbalanced_output", "select"), restored=False
+    "unbalanced_output", "select", _key("grid_unbalanced_output", "select"), restored=False,
+    readback_s=READBACK_STALL_S,
 )
 _SOL_PHASE_TARGETS: Final = (
     Role("phase_l1_target", "number", _key("ems_acctrl_phase_a_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
     Role("phase_l2_target", "number", _key("ems_acctrl_phase_b_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
     Role("phase_l3_target", "number", _key("ems_acctrl_phase_c_power", "number"), step=0.01, restored=False,
-         write_class="setpoint"),
+         write_class="setpoint", readback_s=READBACK_STALL_S),
 )
 
 
@@ -1410,7 +1614,6 @@ SOLINTEG_CONTROL: Final = BrandControl(
     # A target left standing would run in the seconds between the mode's write and the target's own.
     watched=((_SOL_TARGET, 0.0, "stale_target"),),
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
-    readback_s=READBACK_STALL_S,
 )
 
 _SOLINTEG_NORMAL: Final = {
@@ -1443,7 +1646,7 @@ _VIC_NO_CHARGE = Role("disable_charge", "switch", _key("vebus_hub4_disable_charg
 _VIC_NO_FEED_IN = Role("disable_feed_in", "switch", _key("vebus_hub4_disable_feed_in", "switch"), restored=False)
 _VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
 #: The Multi falls back to passthru this long after the last write of a setpoint (s), by Victron's page, and how often
-#: each is renewed. The fallback is not yet seen on a plant, so it is not the recipe's `silence_fallback_s` (see the
+#: each is renewed. The fallback is not yet seen on a plant, so the recipe's expiry is stated, not measured (see the
 #: module for the field test that must come first).
 VICTRON_SILENCE_S: Final = 60
 VICTRON_RENEW_S: Final = 20
@@ -1495,10 +1698,12 @@ VICTRON_PHASES: Final = PhaseControl(
     park=False,
     behind=_vic_phase_roles("load", "vebus_inverter_output_power"),
     point=_vic_phase_roles("input", "vebus_inverter_input_power"),
-    watchdog_roles=tuple(role.name for role in _VIC_PHASE_TARGETS),
-    watchdog_renew_s=VICTRON_RENEW_S,
-    # Not stated until a field test shows the fallback (the module): the targets are reckoned as if they stay.
-    silence_fallback_s=None,
+    # The Multi's 60 s watchdog, renewed every `VICTRON_RENEW_S`: the page's word only, so stated, not measured (the
+    # module): the targets are reckoned as if they stay until a field test shows the fallback.
+    expiry=Expiry(
+        "device_deadman", "spotnav", float(VICTRON_SILENCE_S), tuple(role.name for role in _VIC_PHASE_TARGETS),
+        renew_s=VICTRON_RENEW_S,
+    ),
     three_phase_by_targets=True,
     limit_kw=VICTRON_SETPOINT_MAX_KW,
     own_states={"ESS mode": frozenset({_VIC_EXTERNAL})},
@@ -1565,10 +1770,17 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
 
 # --- GoodWe (the HACS fork) ---------------------------------------------------------------------------------------
 
-_GW_MODE = Role("operation_mode", "select", _goodwe("operation_mode", "select"))
-_GW_ECO_POWER = Role("eco_power", "number", _goodwe("eco_mode_power", "number"), step=1.0)
-_GW_ECO_SOC = Role("eco_soc", "number", _goodwe("eco_mode_soc", "number"), step=1.0)
-_GW_DEPTH = Role("depth_of_discharge", "number", _goodwe("battery_discharge_depth", "number"), step=1.0)
+# The numbers and the select do not poll, so only a reload shows a refused restore: Home Assistant's echo, watched
+# after a hand-back as any echo is.
+_GW_MODE = Role("operation_mode", "select", _goodwe("operation_mode", "select"), readback="echo", settle_s=900.0)
+_GW_ECO_POWER = Role(
+    "eco_power", "number", _goodwe("eco_mode_power", "number"), step=1.0, readback="echo", settle_s=900.0
+)
+_GW_ECO_SOC = Role("eco_soc", "number", _goodwe("eco_mode_soc", "number"), step=1.0, readback="echo", settle_s=900.0)
+_GW_DEPTH = Role(
+    "depth_of_discharge", "number", _goodwe("battery_discharge_depth", "number"), step=1.0, readback="echo",
+    settle_s=900.0,
+)
 
 
 def _gw_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
@@ -1597,9 +1809,6 @@ GOODWE_CONTROL: Final = BrandControl(
     own_states={"operating mode": frozenset({"eco_charge"})},
     # A grid charge stops with the mode back to general; no peak cover under a hold (the cut-off is a stored setting).
     peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
-    local_readback=True,
-    # The numbers and the select do not poll, so only a reload shows a refused restore; watched as any echo is.
-    settle_s=900.0,
     hacs_roles=("eco_power", "eco_soc"),
     hacs_repo="mletenay/home-assistant-goodwe-inverter",
     # Unconfirmed whether the inverter charges from the grid to a cut-off at the SoC: a hold that does is handed back.
@@ -1610,11 +1819,16 @@ GOODWE_CONTROL: Final = BrandControl(
 
 # --- Tesla Powerwall (cloud, slow) --------------------------------------------------------------------------------
 
-_TS_RESERVE = Role("reserve", "number", _tesla("backup_reserve_percent", "number"), step=1.0)
+# tesla_fleet echoes a write at once and polls the cloud every 60 s: the read-back waits for the cloud, and fifteen
+# polls after a hand-back show a refused restore.
+_TS_RESERVE = Role(
+    "reserve", "number", _tesla("backup_reserve_percent", "number"), step=1.0, readback="echo", readback_s=420.0,
+    settle_s=900.0,
+)
 #: Inverted by the integration: on means grid charging is allowed. Only on a site with battery and solar.
 _TS_GRID = Role(
     "grid_charging", "switch", _tesla("components_disallow_charge_from_grid_with_solar_installed", "switch"),
-    optional=True,
+    optional=True, readback="echo", readback_s=420.0, settle_s=900.0,
 )
 #: Tesla's cloud is slow and its energy settings may be limited to a few writes a day (unconfirmed): few writes.
 TESLA_WRITES_PER_DAY: Final = 24
@@ -1641,10 +1855,8 @@ TESLA_CONTROL: Final = BrandControl(
     # The reserve first: it stops a forced charge at once.
     restore_order=("reserve", "grid_charging"),
     peak_first={ACTION_GRID_CHARGE: ("reserve",)},
-    local_readback=True,
     slow=True,
     min_change_s=900.0,
-    readback_s=420.0,
     rearm_s=900.0,
     fixed_charge=True,
     fixed_charge_kw=5.0,
@@ -1652,10 +1864,9 @@ TESLA_CONTROL: Final = BrandControl(
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
-    charge_block_s=TESLA_CHARGE_BLOCK_S,
-    # tesla_fleet echoes a write at once and polls the cloud every 60 s: fifteen polls show a refused restore. A
-    # restore given up is tried hourly, not every 15 minutes (each is a billed command).
-    settle_s=900.0,
+    # The reserve one block ahead of the SoC, set again each block by SpotNav: a SoC bound, never a fuse argument.
+    expiry_by_action={ACTION_GRID_CHARGE: Expiry("soc_bound", "spotnav", TESLA_CHARGE_BLOCK_S, ("reserve",))},
+    # A restore given up is tried hourly, not every 15 minutes (each is a billed command).
     restore_retry_s=3600.0,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
@@ -1664,11 +1875,11 @@ TESLA_CONTROL: Final = BrandControl(
 _FA_CMD = Role(
     "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
     services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
-    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
-    device_field="target", duration=False,
+    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it): no lease.
+    device_field="target",
     normalize=ferroamp_last_cmd, write_class="setpoint",
     # The state is the request as published; only the hub's ack for that transaction shows it was taken.
-    answer=Answer("transId", "status", frozenset({"ack"})),
+    answer=Answer("transId", "status", frozenset({"ack"})), readback="answer",
 )
 
 
@@ -1705,7 +1916,6 @@ FERROAMP_CONTROL: Final = BrandControl(
     peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
     # The strategy set in EnergyCloud (peak shaving, FerroAI, a grid service) is not shown in Home Assistant.
     strategy_unread=True,
-    local_readback=True,
     # The cap counts the whole charge on one phase (the default): the API takes the system's total and nobody
     # documents how the hub spreads it, nor whether ACE acts on it. Raise it only once a hub has shown the split
     # (the adapter reads the inverter's power per phase).
@@ -1837,7 +2047,7 @@ def export_table() -> list[dict[str, Any]]:
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
     services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
-    duration: bool = True,
+    duration: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
@@ -1845,7 +2055,8 @@ def service_call(
     `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge,
     Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
     integration's service, for the battery's device in the role's `device_field`, with the power where the value has
-    one and, where the role says so (`Role.duration`), the watchdog as the duration in minutes."""
+    one and, where the role is a lease (`Role.lease`, passed as `duration`), the window as the duration in
+    minutes."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":

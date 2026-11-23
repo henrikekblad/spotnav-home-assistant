@@ -83,6 +83,10 @@ def test_the_recipe_data_of_each_brand() -> None:
     assert GOODWE_CONTROL.write_cap("setting") == 96 and not GOODWE_CONTROL.slow and not GOODWE_CONTROL.fixed_charge
     assert GOODWE_CONTROL.hacs_roles == ("eco_power", "eco_soc")
     assert TESLA_CONTROL.slow and TESLA_CONTROL.fixed_charge
+    # The grid charge's block is a SoC bound SpotNav sets again each block; the control itself has no expiry.
+    block = TESLA_CONTROL.expiry_by_action["grid_charge"]
+    assert (block.kind, block.renewer, block.window_s, block.renewed_roles) == ("soc_bound", "spotnav", 1800.0, ("reserve",))
+    assert TESLA_CONTROL.expiry.kind == "none" and TESLA_CONTROL.charge_block_s == 1800.0
     assert TESLA_CONTROL.write_cap("setting") == TESLA_WRITES_PER_DAY == 24
     assert TESLA_CONTROL.readback_s and TESLA_CONTROL.readback_s > READBACK_DEADLINE_S
     assert TESLA_CONTROL.rearm_s and TESLA_CONTROL.rearm_s > REARM_S
