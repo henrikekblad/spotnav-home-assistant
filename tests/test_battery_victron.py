@@ -914,3 +914,14 @@ def test_one_look_that_reads_like_passthru_is_a_glitch_not_a_fallback() -> None:
     modes = verification.report()["modes"]
     assert modes["expiry"]["outcome"] == "ignored" and modes["expiry"]["fallback_s"] is None
     assert not _measured(modes)
+
+
+def test_the_silence_needs_room_for_the_probes_own_power_coming_back() -> None:
+    """A fallback ends the probe's 1 kW discharge on L1 (about 4.3 A back on it): with less headroom than the margin
+    plus that, the test gives way before the plant can fall back over the fuse."""
+
+    def beside(model: Plant, since: float) -> None:
+        model.beside_kw[0] = 0.5 if since < 20 else 4.4  # L1 about 16 A: room for the margin, not for the probe
+
+    verification, _executor, _looks = _verify_expiry(Plant(), mutate=beside)
+    assert verification.report()["modes"]["expiry"]["outcome"] == "aborted:fuse_headroom"
