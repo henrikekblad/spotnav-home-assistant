@@ -68,6 +68,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   Energie battery (start 1, mode 2, 1800 s) [F]; no Nordic aggregator was found. The integration domains are senalse's
   `alphaess_modbus` (v1.15.0) and CharlesGillanders' cloud `alphaess` (v0.9.0)
   (`plans/research_integrations/alphaess_control_2026-11-23.md`).
+* E3/DC's own control is the portal's AI360 and Smart-Charge (price-driven charging that "overrides external charge
+  commands", the E3DC Maestro README and evcc's template note), the idle periods and the weather-regulated charge;
+  none of them is readable from Home Assistant. `e3dc_maestro` (TommiG1 `72c9754`) is a controller that calls
+  `e3dc_rscp`'s services and exists only to drive the battery: an outside integration that runs it. No aggregator is
+  named: no Nordic E3/DC owner was found (`plans/research_integrations/e3dc_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -146,6 +151,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("alphaess", "Alpha ESS", ("alphaess_modbus", "alphaess"),
                 "AlphaCloud app: grid-charge and discharge time windows, and supplier dispatch over the same registers",
                 ("Frank Energie VPP (Netherlands) [F]",)),
+    Coexistence("e3dc", "E3/DC", ("e3dc_rscp", "e3dc_rscp_connect"),
+                "E3/DC portal: AI360, Smart-Charge, idle periods and weather-regulated charge"),
     Coexistence("zendure", "Zendure", ("zendure_ha",),
                 "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
@@ -194,6 +201,10 @@ OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
     # senalse/ha-alphaess-modbus (`b256f55`, v1.15.0): reads the inverter and also has the force charge, force export and
     # dispatch switches, so its presence is only a hint (the `dispatch_start` mode names it when it runs).
     OutsideIntegration("alphaess_modbus", "Alpha ESS Modbus", "hint"),
+    # TommiG1/e3dc-maestro (manifest `domain`, 0.6.0-rc.2, `72c9754`): a price-driven controller on top of `e3dc_rscp`, which
+    # writes its power limits and charge modes. It exists to drive the battery, so its being set up marks it as run by
+    # someone else.
+    OutsideIntegration("e3dc_maestro", "E3DC Maestro", "runs"),
 )
 
 

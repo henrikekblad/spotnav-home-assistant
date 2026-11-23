@@ -2954,5 +2954,170 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "e3dc": {
+  "_source": "torbennehmer/hacs-e3dc 3fd5ab0 (4.0.0): `<config entry unique id, the device's serial>_<key>` on every platform (sensor.py, binary_sensor.py), the keys hyphenated; the day, month and year statistics are `db-day-`, `db-month-` and `db-year-` before the key; the device's manufacturer is \"E3DC\" (coordinator.py line 867). Not a real registry; built from the source, the signed `battery-netchange` and the idle-period sensors disabled by default as there.",
+  "platform": "e3dc_rscp",
+  "manufacturer": "E3DC",
+  "battery": "sensor.s10_battery_charge",
+  "entities": [
+   {
+    "entity_id": "sensor.s10_battery_charge",
+    "unique_id": "S10-123456789_battery-charge",
+    "device": "s10",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_battery_discharge",
+    "unique_id": "S10-123456789_battery-discharge",
+    "device": "s10",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_battery_netchange",
+    "unique_id": "S10-123456789_battery-netchange",
+    "device": "s10",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.s10_state_of_charge",
+    "unique_id": "S10-123456789_soc",
+    "device": "s10",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_installed_capacity",
+    "unique_id": "S10-123456789_system-battery-installed-capacity",
+    "device": "s10",
+    "state": "13800",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_max_charge_power",
+    "unique_id": "S10-123456789_system-battery-charge-max",
+    "device": "s10",
+    "state": "4000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_max_discharge_power",
+    "unique_id": "S10-123456789_system-battery-discharge-max",
+    "device": "s10",
+    "state": "4000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_power_mode",
+    "unique_id": "S10-123456789_power-mode",
+    "device": "s10",
+    "state": "2",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_day_battery_charge",
+    "unique_id": "S10-123456789_db-day-battery-charge",
+    "device": "s10",
+    "state": "4100",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_month_battery_charge",
+    "unique_id": "S10-123456789_db-month-battery-charge",
+    "device": "s10",
+    "state": "90000",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_year_battery_charge",
+    "unique_id": "S10-123456789_db-year-battery-charge",
+    "device": "s10",
+    "state": "900000",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.s10_day_battery_discharge",
+    "unique_id": "S10-123456789_db-day-battery-discharge",
+    "device": "s10",
+    "state": "3800",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.s10_power_limits_enabled",
+    "unique_id": "S10-123456789_pset-limit-enabled",
+    "device": "s10",
+    "state": "off",
+    "unit": null,
+    "device_class": "running",
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.s10_manual_charge_active",
+    "unique_id": "S10-123456789_manual-charge-active",
+    "device": "s10",
+    "state": "off",
+    "unit": null,
+    "device_class": "running",
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.s10_charge_idle_period_active",
+    "unique_id": "S10-123456789_system-charge-idle-period-active",
+    "device": "s10",
+    "state": "off",
+    "unit": null,
+    "device_class": "running",
+    "disabled": true
+   },
+   {
+    "entity_id": "binary_sensor.s10_discharge_idle_period_active",
+    "unique_id": "S10-123456789_system-discharge-idle-period-active",
+    "device": "s10",
+    "state": "off",
+    "unit": null,
+    "device_class": "running",
+    "disabled": true
+   }
+  ],
+  "expected": {
+   "brand": "e3dc",
+   "soc_pct": 64.0,
+   "capacity_kwh": 13.8,
+   "rated_charge_kw": 4.0,
+   "rated_discharge_kw": 4.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

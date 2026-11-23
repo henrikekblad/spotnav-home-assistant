@@ -471,6 +471,8 @@ PLAN_REASON = {
     "sonnen": "no_capacity",
     # Alpha ESS states the size only when its disabled sensor is enabled and no rating: learnt.
     "alphaess": "no_capacity",
+    # E3/DC states the size and both ratings (the device's specification): the plan has all it needs.
+    "e3dc": None,
 }
 
 

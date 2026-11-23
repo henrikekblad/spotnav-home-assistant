@@ -347,6 +347,21 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   unverified on hardware. Not read: the cloud integration `alphaess` (CharlesGillanders), whose unique id is
   `<entry id>_<serial> - <English display name>`, a name a rename or a translation moves.
 
+* E3/DC, `e3dc_rscp` (torbennehmer/hacs-e3dc `3fd5ab0`, 4.0.0, local RSCP, read 2026-11-23,
+  `plans/research_integrations/e3dc_control_2026-11-23.md`): read only. Unique id `<config entry unique id, the device's
+  serial>_<key>` on every platform, the keys hyphenated: the level `soc`, the size `system-battery-installed-capacity`
+  (Wh) and the ratings `system-battery-charge-max` and `-discharge-max` (W, the device's own specification). The day,
+  month and year statistics carry `db-day-`, `db-month-` and `db-year-` before the same key (`db-day-battery-charge`)
+  and are no lifetime counters, so they are not read: every key is anchored after the `_` that follows the serial. The
+  battery's power is two unsigned sensors, `battery-charge` and `battery-discharge`, the site's pair (the integration
+  splits the signed `battery-netchange`, positive = charging, which is disabled by default). There is no reserve and no
+  floor, and the firmware is the device's `sw_version`, not an entity. The device's own AI360 (price-driven charging),
+  Smart-Charge and the portal's schedules cannot be read at all (open requests in the integration), so the mode reads
+  only the negative evidence: `pset-limit-enabled` (someone's power limits are in force) and `manual-charge-active`, and
+  the two idle-period sensors (disabled by default) where they are enabled. `power-mode` is the EMS's present state
+  (idle, discharge, charge) and says nothing of who runs it. Not read: `e3dc_rscp_connect` (tobias-terhaar), whose
+  size and rating are no entities.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1305,10 +1320,31 @@ ALPHAESS: Final = Adapter(
     reserves=(ReserveSource(_key("discharging_cutoff_soc", "number")), ReserveSource(_key("discharging_cutoff_soc"))),
 )
 
+#: E3/DC through `e3dc_rscp` (see the module): read only. The statistics' keys carry `db-day-` and the like before the
+#: key, so each key is anchored on the `_` that follows the serial.
+E3DC: Final = Adapter(
+    brand="e3dc",
+    label="E3/DC",
+    platforms=("e3dc_rscp",),
+    facts={
+        "soc": _key("soc"),
+        "capacity": _key("system-battery-installed-capacity"),
+        "rated_charge": _key("system-battery-charge-max"),
+        "rated_discharge": _key("system-battery-discharge-max"),
+    },
+    modes=(
+        # AI360 and the portal's schedules are unreadable: only what someone's control leaves behind is.
+        ModeRule(_key("pset-limit-enabled", "binary_sensor"), frozenset({"off"}), "power limits"),
+        ModeRule(_key("manual-charge-active", "binary_sensor"), frozenset({"off"}), "manual charge"),
+        ModeRule(_key("system-charge-idle-period-active", "binary_sensor"), frozenset({"off"}), "charge idle period", required=False),
+        ModeRule(_key("system-discharge-idle-period-active", "binary_sensor"), frozenset({"off"}), "discharge idle period", required=False),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS,
+    SONNEN, ALPHAESS, E3DC,
 )
 
 

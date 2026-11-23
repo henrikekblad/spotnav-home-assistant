@@ -97,6 +97,9 @@ UPSTREAMS: dict[str, Source] = {
     "sonnenbatterie": _hacs("weltmeyer/ha_sonnenbatterie"),
     "alphaess_modbus": _hacs("senalse/ha-alphaess-modbus"),
     "alphaess": _hacs("CharlesGillanders/homeassistant-alphaESS"),
+    "e3dc_rscp": _hacs("torbennehmer/hacs-e3dc"),
+    "e3dc_rscp_connect": _hacs("tobias-terhaar/e3dc_rscp_connect"),
+    "e3dc_maestro": _hacs("TommiG1/e3dc-maestro"),
     # Vehicles.
     "kia_uvo": _hacs("Hyundai-Kia-Connect/kia_uvo", "Hyundai-Kia-Connect/hyundai_kia_connect_api"),
     "tesla_fleet": CORE,

@@ -167,6 +167,7 @@ NAMES: dict[str, str] = {
     "anker_solix": "Anker Solix",
     "sonnenbatterie": "sonnenBatterie",
     "alphaess_modbus": "Alpha ESS (Modbus)",
+    "e3dc_rscp": "E3/DC",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -887,6 +888,18 @@ OVERVIEW: tuple[Overview, ...] = (
         control="Not mapped. Power control is Modbus \"external battery control\", set up by the installer; no Home "
         "Assistant integration for it was found",
         note="External control falls back to the inverter's own after a timeout.",
+    ),
+    Overview(
+        "E3/DC (S10 E, S10 X, S10 mini)",
+        "`e3dc_rscp`, HACS (torbennehmer/hacs-e3dc), also `e3dc_rscp_connect`, HACS (tobias-terhaar/e3dc_rscp_connect): "
+        "only the first is read",
+        keys=("e3dc_rscp",),
+        adapter="e3dc",
+        control="Not mapped: read only. A power setpoint with a charge, discharge or grid-charge mode falls back to "
+        "the unit's own mode by itself when it is not repeated, and the integration repeats it",
+        note="E3/DC's AI360 and Smart-Charge cannot be read, and they override outside charge commands, so they must be "
+        "off. The mode is read from the power limits and manual charge that someone's control leaves on. Run by "
+        "E3DC Maestro where that is installed. The day, month and year energy are not lifetime counters and are not read.",
     ),
     Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
     Overview(

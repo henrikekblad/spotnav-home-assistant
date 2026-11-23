@@ -846,6 +846,15 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # evcc reads it as the battery's power as it is; the integration's own description string says the opposite. Read as
     # discharge-positive: sign unverified on hardware.
     BatteryRow(("alphaess_modbus",), _re(r"_power_battery$"), inverted=True, label="Alpha ESS (Modbus)"),
+    # E3/DC (`e3dc_rscp`, torbennehmer `3fd5ab0`): two unsigned sensors, `<serial>_battery-charge` and
+    # `<serial>_battery-discharge`, split from the signed `battery-netchange` (`coordinator.py` L572-L576, positive =
+    # charging). The day, month and year statistics (`<serial>_db-day-battery-charge`) have a hyphen before `battery`.
+    BatteryRow(
+        ("e3dc_rscp",),
+        _re(r"_battery-charge$"),
+        discharge_regex=_re(r"_battery-discharge$"),
+        label="E3/DC",
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery
