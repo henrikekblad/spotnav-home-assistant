@@ -9,7 +9,7 @@ written here.
      energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours, zones_kwh, zones_from} | null,
      buckets: [{key, kwh, hot_water_kwh, zones_kwh, cost, degree_days, outdoor_c, shadow_value,
                 parts: [{key, kwh, cost}], saving}],
-     parts: [{key, kind: "pump" | "hot_water" | "zone" | "other", name, kwh, cost}],
+     parts: [{key, kind: "pump" | "hot_water" | "zone" | "other" | "pool" | "spa" | "sauna", name, kwh, cost}],
      saving: {value, days} | null,
      model: {mae_kw, days} | null,
      degree_days: {base_c, outdoor: {entity_id, source} | null, sum, days, kwh, kwh_per_degree_day,
@@ -76,7 +76,10 @@ written here.
   recorder still has the 5-minute rows of: elsewhere the hot water stays in `pump`, as `split_days` of `days` says);
   a `zone` is a heat zone with a sensor of its own (`ZoneUse`, its climate as the key, its name as the household
   named it: an air-to-air heat pump), the `MAX_ZONE_PARTS` largest of the period; `other` is every other heat counted
-  (further zones, a meter the household moved to heat). A part's `cost` is its hours' energy at their buy price,
+  (further zones, a meter the household moved to heat). `pool`, `spa` and `sauna` are those loads' energy as their
+  shadow counted it (`LoadUse`, `pool/runtime.py`: the hours each drew, at its entered power or a typical one; kept
+  `DAYS_KEPT` days), on their own circuits beside the heat pump meter, so added to the use like the zones. A part's
+  `cost` is its hours' energy at their buy price,
   `null` without a priced hour. Parts with no energy in the period are left out.
 * **What SpotNav saved on heat** (`saving`): the sum of the days' heat parts of what SpotNav saved
   (`site/spotnav_saving.heat_part`: SpotNav's own lowerings, as the house card's earnings count them) over `days`
@@ -162,6 +165,14 @@ class ZoneUse:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadUse:
+    """The pool, the spa or the sauna (`kind`) with its energy per UTC hour start (kWh), as its shadow counted it."""
+
+    kind: str
+    hours: Mapping[datetime, float]
+
+
+@dataclass(frozen=True, slots=True)
 class HeatHistoryInputs:
     site_id: str
     now: datetime
@@ -194,6 +205,8 @@ class HeatHistoryInputs:
     reviews: Mapping[date, Mapping[str, Any]] = field(default_factory=dict)
     #: The zones of `zone_hours` one by one; without them the zones' energy is all "other" heat.
     zone_uses: Sequence[ZoneUse] = ()
+    #: The pool's, the spa's and the sauna's energy, each a part of its own (added to the use, as the zones).
+    loads: Sequence[LoadUse] = ()
     #: What SpotNav saved on heat per day (`site/spotnav_saving.heat_part`, minor unit), the days that have a figure.
     savings: Mapping[date, float] = field(default_factory=dict)
     #: The heat forecast's mean absolute error per reviewed day (kW, the forecast log's `heat_kw`).
@@ -348,7 +361,19 @@ def use_parts(
     parts.extend((f"{PART_ZONE}:{use.entity_id}", PART_ZONE, use.name, hours) for _total, _index, use, hours in shown)
     if other:
         parts.append((PART_OTHER, PART_OTHER, None, other))
+    for load in load_hours(inputs, in_period):
+        parts.append((load[0], load[0], None, load[1]))
     return [part for part in parts if part[0] == PART_PUMP or sum(part[3].values()) > 0]
+
+
+def load_hours(inputs: HeatHistoryInputs, in_period: Mapping[datetime, float]) -> list[tuple[str, dict[datetime, float]]]:
+    """Each load's energy in the meter's hours of the period (as the zones'), the loads without any left out."""
+    out = []
+    for load in inputs.loads:
+        hours = {moment: kwh for moment, kwh in load.hours.items() if moment in in_period and kwh > 0}
+        if hours:
+            out.append((load.kind, hours))
+    return out
 
 
 def run_causes(runs: Sequence[HotWaterRun], reference: Sequence[HotWaterRun]) -> list[dict[str, Any]]:
@@ -554,6 +579,19 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         if price is not None:
             bucket["cost"] = (bucket["cost"] or 0.0) + kwh * price
             cost += kwh * price
+    # The pool's, the spa's and the sauna's energy, the same way.
+    loads_kwh = 0.0
+    for _kind, hours in load_hours(inputs, in_period):
+        for moment, kwh in hours.items():
+            bucket = buckets.get(bucket_key(period, moment, tz))
+            if bucket is None:
+                continue
+            loads_kwh += kwh
+            bucket["kwh"] = (bucket["kwh"] or 0.0) + kwh
+            price = priced.get(moment)
+            if price is not None:
+                bucket["cost"] = (bucket["cost"] or 0.0) + kwh * price
+                cost += kwh * price
     outdoor_groups: dict[str, list[float]] = {}
     if period.kind == PERIOD_DAY:
         for moment, value in inputs.outdoor.items():
@@ -634,7 +672,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         hot = [split[day][0] for day in days if day in split]
         zone_days = sorted(local_date(moment, tz) for moment, kwh in inputs.zone_hours.items() if kwh > 0)
         energy = {
-            "total_kwh": _r(sum(in_period.values()) + sum(zones_in.values()), 3),
+            "total_kwh": _r(sum(in_period.values()) + sum(zones_in.values()) + loads_kwh, 3),
             "hours": len(in_period),
             "hot_water_kwh": _r(sum(hot), 3) if hot else None,
             "split_days": len(hot),

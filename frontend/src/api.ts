@@ -886,6 +886,45 @@ export async function heatBoost(
 }
 
 /** The shared settings popover's target: a site by its own id, or the site of a charger in it. */
+/**
+ * A press of a pool control (`spotnav/pool`): the wanted water temperature, the season, an extra filtering or its
+ * end; `unknown` until `decodeLoadAnswer()` decodes it. Any user who sees the heat card; nothing is written to a device.
+ */
+export async function poolAction(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  action: "target" | "season" | "extra_filtering" | "cancel_extra",
+  fields: { target_c?: number; open?: boolean; hours?: number } = {},
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/pool",
+    api_version: HEAT_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    action,
+    ...fields,
+  });
+}
+
+/**
+ * A press of a spa or sauna control (`spotnav/spa`, `spotnav/sauna`): a setting's new `value`, "now", or an answer
+ * to a session that will not be ready; `unknown` until `decodeLoadAnswer()` decodes it. Any user who sees the card.
+ */
+export async function deadlineAction(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  kind: "spa" | "sauna",
+  action: string,
+  value?: unknown,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: `spotnav/${kind}`,
+    api_version: HEAT_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    action,
+    ...(value === undefined ? {} : { value }),
+  });
+}
+
 export type SiteTarget = { site: string } | { charger: string };
 
 function siteKey(target: SiteTarget): Record<string, string> {

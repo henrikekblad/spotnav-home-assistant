@@ -47,17 +47,18 @@ export interface HeatBucket {
   saving: number | null;
 }
 
-/** A part of the use: the heat pump less its hot water, the hot water, a zone with a sensor of its own, the rest. */
+/** A part of the use: the heat pump less its hot water, the hot water, a zone with a sensor of its own, the rest, and
+ * the pool, the spa and the sauna as SpotNav counted them (when they ran, at their power). */
 export interface HeatPart {
   key: string;
-  kind: "pump" | "hot_water" | "zone" | "other";
+  kind: "pump" | "hot_water" | "zone" | "other" | "pool" | "spa" | "sauna";
   /** A zone's name as the household named it; `null` for the others (the card words them). */
   name: string | null;
   kwh: number;
   cost: number | null;
 }
 
-const PART_KINDS: readonly string[] = ["pump", "hot_water", "zone", "other"];
+const PART_KINDS: readonly string[] = ["pump", "hot_water", "zone", "other", "pool", "spa", "sauna"];
 
 export interface TrendMonth {
   month: string;

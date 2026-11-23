@@ -382,6 +382,10 @@ describe("the settings section", () => {
       ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstugaBevakas"],
       ["zone:climate.ovanvaning", "Värmepump ovanvåningBevakas"],
       ["waterHeater", "VarmvattenberedareIngen"],
+      // A detected pool, spa and sauna, none set up yet: the pool asks once, the others are picked.
+      ["poolSuggested", "PoolHittad: Poolpump"],
+      ["spa", "SpaIngen"],
+      ["sauna", "BastuIngen"],
       ["night", "Svalare natt−1,0 °C 23:00–06:00"],
       ["awayDelta", "Sänkning när borta−3,0 °C"],
     ]);

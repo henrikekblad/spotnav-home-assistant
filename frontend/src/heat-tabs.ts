@@ -1,5 +1,6 @@
-// The heat card's tabs (SpotNav 3.0): Now, Plan and Use, in that fixed order, on the house card's tab row
-// (`house-tabs.ts`: its classes, styles and period picker).
+// The heat card's tabs (SpotNav 3.0): Now, Plan and Use, then Pool, Spa and Sauna where the site has one (set up, or
+// detected for an administrator to set up), in that fixed order, on the house card's tab row (`house-tabs.ts`: its
+// classes, styles and period picker).
 //
 // * A tab says its name while the whole row fits the card, else an icon alone; the card measures the row as drawn
 //   (`fitHeatTabs`). Whatever is drawn, a tab's accessible name is its name, and an icon has it as its tooltip too.
@@ -7,16 +8,19 @@
 //   wrap), Home and End to the first and last; only the selected tab is in the page's tab order.
 // * The tab chosen is remembered per card in this browser (by the site or charger the card names), guarded like the
 //   chart preferences: a storage that is missing or throws means the first tab.
-// * The card's YAML may lock one tab (`tab: now | plan | use`): the row is then not drawn and the choice is neither
-//   read nor written.
+// * The card's YAML may lock one tab (`tab: now | plan | use | pool | spa | sauna`): the row is then not drawn and the
+//   choice is neither read nor written.
 // * The Use tab's unit (kWh or money) and the parts hidden in its legend are remembered the same way.
 
 import { browserStore, type PreferenceStore } from "./chart-preference";
 import { TAB_CLASSES as T } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
 
-export type HeatTab = "now" | "plan" | "use";
-export const HEAT_TABS: readonly HeatTab[] = ["now", "plan", "use"];
+export type HeatTab = "now" | "plan" | "use" | "pool" | "spa" | "sauna";
+/** Every tab, in the row's order. */
+export const HEAT_TABS: readonly HeatTab[] = ["now", "plan", "use", "pool", "spa", "sauna"];
+/** The tabs every card has; the pool's, the spa's and the sauna's are added where the site has one. */
+export const BASE_TABS: readonly HeatTab[] = ["now", "plan", "use"];
 
 /** How a tab is worded: its name, or its icon alone. */
 export type HeatTabFit = "long" | "icons";
@@ -93,17 +97,24 @@ const TAB_WORDS: Record<HeatTab, TranslationKey> = {
   now: "heat.tab.now",
   plan: "heat.tab.plan",
   use: "heat.tab.use",
+  pool: "heat.tab.pool",
+  spa: "heat.tab.spa",
+  sauna: "heat.tab.sauna",
 };
 
 export function heatTabWord(language: Language, tab: HeatTab): string {
   return translate(language, TAB_WORDS[tab]);
 }
 
-/** The tabs' icons, stroked, in a 24-unit box: a thermometer, a curve over a baseline, bars. */
+/** The tabs' icons, stroked, in a 24-unit box: a thermometer, a curve over a baseline, bars, waves, a tub, steam
+ * over benches. */
 const TAB_ICONS: Record<HeatTab, string[]> = {
   now: ["M10 13.6V5a2 2 0 0 1 4 0v8.6a4 4 0 1 1-4 0z", "M12 9v8"],
   plan: ["M3 20.5h18", "M3.5 15c3 0 3.5-8 7-8s3 6 6 6 2.500-3 4-3"],
   use: ["M3 20.5h18", "M6.5 20.5v-8M12 20.5V4.5M17.5 20.5v-11"],
+  pool: ["M3 9c2 0 2-1.5 4.5-1.5S10 9 12 9s2-1.5 4.5-1.5S19 9 21 9", "M3 14c2 0 2-1.5 4.5-1.5S10 14 12 14s2-1.5 4.5-1.5S19 14 21 14", "M3 19c2 0 2-1.5 4.5-1.5S10 19 12 19s2-1.5 4.5-1.5S19 19 21 19"],
+  spa: ["M3 12h18v3a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5z", "M8 9c-1-1.5 1-2.5 0-4M12 9c-1-1.5 1-2.5 0-4M16 9c-1-1.5 1-2.5 0-4"],
+  sauna: ["M3 20.5h18", "M5 20.5v-4h14v4", "M7 16.5v-4h10v4", "M9 9c-1-1.5 1-2.5 0-4M15 9c-1-1.5 1-2.5 0-4"],
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -167,25 +178,25 @@ export function heatPanelId(idPrefix: string, tab: HeatTab): string {
   return `${idPrefix}-panel-${tab}`;
 }
 
-/** The tab a key moves to from `current` (wrapping), or `null` for a key the tablist does not use. */
-export function heatTabForKey(key: string, current: HeatTab): HeatTab | null {
-  const index = HEAT_TABS.indexOf(current);
-  const last = HEAT_TABS.length - 1;
+/** The tab a key moves to from `current` among `tabs` (wrapping), or `null` for a key the tablist does not use. */
+export function heatTabForKey(key: string, current: HeatTab, tabs: readonly HeatTab[] = BASE_TABS): HeatTab | null {
+  const index = Math.max(0, tabs.indexOf(current));
+  const last = tabs.length - 1;
   switch (key) {
     case "ArrowRight":
-      return HEAT_TABS[index === last ? 0 : index + 1]!;
+      return tabs[index === last ? 0 : index + 1]!;
     case "ArrowLeft":
-      return HEAT_TABS[index === 0 ? last : index - 1]!;
+      return tabs[index === 0 ? last : index - 1]!;
     case "Home":
-      return HEAT_TABS[0]!;
+      return tabs[0]!;
     case "End":
-      return HEAT_TABS[last]!;
+      return tabs[last]!;
     default:
       return null;
   }
 }
 
-/** The tab row. `onSelect` gets the tab and whether the keyboard moved there (the card then focuses it again). */
+/** The tab row of `tabs`. `onSelect` gets the tab and whether the keyboard moved there (the card then focuses it again). */
 export function heatTabList(
   doc: Document,
   language: Language,
@@ -193,12 +204,13 @@ export function heatTabList(
   idPrefix: string,
   onSelect: (tab: HeatTab, byKey: boolean) => void,
   fit: HeatTabFit = "long",
+  tabs: readonly HeatTab[] = BASE_TABS,
 ): HTMLElement {
   const list = doc.createElement("div");
   list.className = T.list;
   list.setAttribute("role", "tablist");
   list.setAttribute("aria-label", translate(language, "heat.tabs"));
-  for (const tab of HEAT_TABS) {
+  for (const tab of tabs) {
     const button = doc.createElement("button");
     button.type = "button";
     button.className = T.tab;
@@ -214,7 +226,7 @@ export function heatTabList(
       }
     });
     button.addEventListener("keydown", (event) => {
-      const next = heatTabForKey(event.key, tab);
+      const next = heatTabForKey(event.key, tab, tabs);
       if (next === null) {
         return;
       }

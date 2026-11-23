@@ -463,7 +463,12 @@ def controlled_answer() -> dict[str, Any]:
         "baths": [{"weekdays": [4, 5], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
         "control": {"state": "watched", "reason": None, "paused_until": None},
         "would": {"action": "heat", "until": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "reason": "cheap"},
-        "not_ready": None, "notes": [],
+        "not_ready": None,
+        "planned": [
+            {"start": (MIDNIGHT + timedelta(hours=17)).isoformat(), "end": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "what": "heat", "reason": "cheap"},
+            {"start": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "end": (MIDNIGHT + timedelta(hours=21)).isoformat(), "what": "hold", "reason": "bath"},
+        ],
+        "notes": [],
     }
     sauna = {
         "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "rate_c_h": 80.0,
@@ -475,6 +480,7 @@ def controlled_answer() -> dict[str, Any]:
             "at": (MIDNIGHT + timedelta(days=1, hours=17)).isoformat(), "cause": "fuse", "reach_c": 60.0, "short_c": 20.0,
             "short_kwh": 2.25, "later": (MIDNIGHT + timedelta(days=1, hours=18)).isoformat(),
         },
+        "planned": [],
         "notes": [],
     }
     return villa_answer(

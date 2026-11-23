@@ -9,7 +9,8 @@ What is read, in the recorder's executor and kept: the heat zones' sensors' hour
 the heat pump meter's), the heat pump meter's hourly statistics from the degree-day
 trend's first month (eleven months before the period's last) to the last completed hour, its 5-minute rows where the
 recorder still holds them (the period's days and the week before, for the hot-water split and its runs), the outdoor
-sensor's, the chosen indoor sensors' and the immersion heater's hourly means (and the indoor minimums). The prices
+sensor's, the chosen indoor sensors' and the immersion heater's hourly means (and the indoor minimums), and the pool's,
+the spa's and the sauna's energy per hour as their shadow counted it (`pool/runtime.py`). The prices
 are the area's held day documents with the fees as set now (`pricing/period_prices.period_price_slots`). The answer is
 kept per site and period until the next hour (a day with today in it: the next 5-minute row) or, for a finished
 period, until the next day. Refusals as `spotnav/get_house_history`.
@@ -35,6 +36,7 @@ from ..heat.history import (
     OUTDOOR_SENSOR,
     TREND_MONTHS,
     HeatHistoryInputs,
+    LoadUse,
     ZoneUse,
     heat_history,
 )
@@ -278,6 +280,12 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             if review is not None:
                 reviews[day] = review
     savings = heat_savings(getattr(shadow, "days", None), period)
+    pool_spa = getattr(controller, "pool_spa", None)
+    loads = (
+        []
+        if pool_spa is None
+        else [LoadUse(kind, pool_spa.energy_hours(kind)) for kind in ("pool", "spa", "sauna") if pool_spa.energy.get(kind)]
+    )
     try:
         model_mae = dict(forecast_maes(controller.house_forecast.log).get(KIND_HEAT) or {})
     except Exception:  # noqa: BLE001 - the forecast log is extra: the rest is shown
@@ -306,6 +314,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             effect=effect,
             reviews=reviews,
             zone_uses=zone_uses,
+            loads=loads,
             savings=savings,
             model_mae=model_mae,
         )

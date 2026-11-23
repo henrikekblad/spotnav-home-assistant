@@ -112,6 +112,29 @@ async def test_the_shadow_keeps_its_days_and_extra_over_a_restart(hass: HomeAssi
     assert again.water_days == shadow.water_days and list(again.water_days.values())[0] == [24.6, 24.6]
 
 
+async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant) -> None:
+    """The circulation and the heat pump as they really run, at their entered powers, into their UTC hours; a gap over
+    two minutes is not counted; the hours are kept over a restart."""
+    _charger, _site_entry, controller = await _site(hass)
+    shadow = controller.pool_spa
+    start = dt_util.utcnow().replace(minute=59, second=0, microsecond=0)
+    shadow.tick(start)
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "heating", "current_temperature": 24.0})
+    shadow.tick(start + timedelta(minutes=2))
+    hours = shadow.energy_hours("pool")
+    first = start.replace(minute=0)
+    # One minute in each hour at 0.4 + 1.6 kW.
+    assert hours == {first: 2.0 / 60, first + timedelta(hours=1): 2.0 / 60}
+    shadow.tick(start + timedelta(minutes=10))
+    assert shadow.energy_hours("pool") == hours
+    from custom_components.spotnav.pool.runtime import PoolSpaShadow
+
+    again = PoolSpaShadow(hass, controller)
+    again._restore(shadow._book_data(), dt_util.now())  # noqa: SLF001
+    assert again.energy_hours("pool") == {moment: round(kwh, 4) for moment, kwh in hours.items()}
+
+
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [0, 1, 2, 3, 4, 5, 6], "time": "19:00"}]}
 SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
 
@@ -134,7 +157,8 @@ async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant)
     assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None} and spa["live"] is False
     assert set(spa) == {
         "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "rate_c_h", "rate_learned", "state",
-        "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "notes",
+        "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "planned",
+        "notes",
     }
     assert sauna["family"] == "harvia_sauna" and sauna["temp_c"] == 21.0 and sauna["locked"] is True
     assert sauna["next_session"] is None and sauna["would"]["action"] == "off" and sauna["would"]["reason"] == "no_session"
@@ -149,6 +173,10 @@ async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant) -> None:
     assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 45})["error"] == "spotnav_invalid_value"
     now = deadline_answer(hass, site, "spa", {"action": "bath_now"})
     assert now["ok"] and now["spa"]["bath_now"] is not None and now["spa"]["next_bath"]["source"] == "now"
+    # The day band's runs: heating from now, then the hold, each with its words' reason.
+    planned = now["spa"]["planned"]
+    assert planned and all(item["what"] in ("heat", "hold") for item in planned)
+    assert planned[0]["reason"] == "now" and planned[-1]["what"] == "hold"
     assert deadline_answer(hass, site, "spa", {"action": "bath_now"})["error"] == "spotnav_rate_limited"
     assert deadline_answer(hass, site, "spa", {"action": "cancel_now"})["spa"]["bath_now"] is None
     # Nothing that does not fit: the answers to it are refused.

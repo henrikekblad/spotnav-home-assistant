@@ -10,13 +10,16 @@
 // (`history-dialog.ts`, `heat-history.ts`). In a box of fixed height (a wall screen) the shown tab's picture takes
 // the box's spare height.
 //
+// The Pool, Spa and Sauna tabs (`pool-view.ts`, `spa-view.ts`) follow where the site has one: their dials, the season,
+// the extra filtering, the times and "now" go through `spotnav/pool`, `spotnav/spa` and `spotnav/sauna`, any user's.
+//
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
-// optionally `tab: now | plan | use` to show only that tab (no tab row).
+// optionally `tab: now | plan | use | pool | spa | sauna` to show only that tab (no tab row).
 
-import { getHeat, getPeriodHistory, heatBoost, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { deadlineAction, getHeat, getPeriodHistory, heatBoost, poolAction, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { browserStore, type PreferenceStore } from "./chart-preference";
-import { writeError, writeHeat, type HeatWriteOptions } from "./heat-editors";
-import { decodeHeat, decodeHeatBoost, type HeatAnswer, type HeatConfig } from "./heat-model";
+import { idleEditor, sessionsEditor, writeError, writeHeat, type HeatWriteOptions, type SessionsChoice } from "./heat-editors";
+import { decodeHeat, decodeHeatBoost, decodeLoadAnswer, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
 import {
   fitHeatTabs,
@@ -31,14 +34,29 @@ import {
   type HeatTab,
 } from "./heat-tabs";
 import { USE_STYLES } from "./heat-use";
-import { TARGET_MAX, TARGET_MIN, instantToLocal, localToInstant, heatBody, planChoice, type HeatLoadable, type HeatState, type HeatTabsData, type HeatUi } from "./heat-view";
+import {
+  TARGET_MAX,
+  TARGET_MIN,
+  instantToLocal,
+  localToInstant,
+  heatBody,
+  planChoice,
+  type HeatLoadable,
+  type HeatState,
+  type HeatTabsData,
+  type HeatUi,
+  type LoadKind,
+  type PoolPress,
+} from "./heat-view";
+import { POOL_TARGET_MAX, POOL_TARGET_MIN, POOL_TARGET_STEP } from "./pool-view";
+import { SAUNA_TARGET_MAX, SAUNA_TARGET_MIN, SPA_BATH_MAX, SPA_BATH_MIN } from "./spa-view";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
 import { TAB_STYLES, type PeriodChoice } from "./house-tabs";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHeatHistory, heatHistoryBody, type HeatHistory } from "./heat-history";
 import { HOUSE_STYLES } from "./house-styles";
 import { PERIOD_STYLES, type HistoryPeriod } from "./period-history";
-import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
+import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language, type TranslationKey } from "./i18n";
 import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
@@ -52,6 +70,29 @@ export const HEAT_REFRESH_MS = 60_000;
 export function boostErrorKey(code: string | null): "heat.boost.rateLimited" | "heat.boost.noHeadroom" | "heat.boost.failed" {
   return code === "spotnav_rate_limited" ? "heat.boost.rateLimited" : code === "spotnav_no_headroom" ? "heat.boost.noHeadroom" : "heat.boost.failed";
 }
+
+/** The sentence for a refused press in the pool's, the spa's or the sauna's tab. */
+export function loadErrorKey(code: string | null): TranslationKey {
+  switch (code) {
+    case "spotnav_rate_limited":
+      return "heat.load.rateLimited";
+    case "spotnav_no_later_bath":
+      return "heat.load.noLater";
+    case "spotnav_invalid_value":
+      return "heat.load.invalid";
+    case "spotnav_not_supported":
+      return "heat.load.notSupported";
+    default:
+      return "heat.error.generic";
+  }
+}
+
+/** Each load dial's range and step (the pool's water, the spa's bath, the sauna's whole degrees). */
+const LOAD_DIALS: Record<LoadKind, { min: number; max: number; step: number }> = {
+  pool: { min: POOL_TARGET_MIN, max: POOL_TARGET_MAX, step: POOL_TARGET_STEP },
+  spa: { min: SPA_BATH_MIN, max: SPA_BATH_MAX, step: 0.5 },
+  sauna: { min: SAUNA_TARGET_MIN, max: SAUNA_TARGET_MAX, step: 1 },
+};
 
 /** While the Boost button's start waits for its read-back: look again this often, this many times. */
 const BOOST_POLL_MS = 5_000;
@@ -151,6 +192,8 @@ export class SpotnavHeatCard extends HTMLElement {
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
   private settle: ReturnType<typeof setTimeout> | null = null;
+  /** The pool's, the spa's and the sauna's dials' pending writes. */
+  private readonly loadSettle = new Map<LoadKind, ReturnType<typeof setTimeout>>();
   /** The boost poll's next look, and how many looks are left (kept over a disconnect, picked up again on connect). */
   private boostTimer: number | null = null;
   private boostLeft = 0;
@@ -250,6 +293,10 @@ export class SpotnavHeatCard extends HTMLElement {
       clearTimeout(this.settle);
       this.settle = null;
     }
+    for (const timer of this.loadSettle.values()) {
+      clearTimeout(timer);
+    }
+    this.loadSettle.clear();
     if (this.boostTimer !== null) {
       window.clearTimeout(this.boostTimer);
       this.boostTimer = null;
@@ -577,6 +624,132 @@ export class SpotnavHeatCard extends HTMLElement {
     }, DIAL_SETTLE_MS);
   }
 
+  /** A load's stored target, the dial's figure without a pending change. */
+  private loadTarget(kind: LoadKind): number | null {
+    const answer = this.answer();
+    if (answer === null) {
+      return null;
+    }
+    return kind === "pool" ? (answer.pool?.target_c ?? null) : kind === "spa" ? (answer.spa?.bath_c ?? null) : (answer.sauna?.target_c ?? null);
+  }
+
+  /** A load's dial stepped: shown at once, written `DIAL_SETTLE_MS` after the last tap. */
+  private stepLoad(kind: LoadKind, delta: number): void {
+    const stored = this.loadTarget(kind);
+    if (stored === null) {
+      return;
+    }
+    const range = LOAD_DIALS[kind];
+    const base = this.ui.pendingLoad?.[kind] ?? stored;
+    const next = Math.min(range.max, Math.max(range.min, Math.round((base + delta) / range.step) * range.step));
+    this.ui = { ...this.ui, pendingLoad: { ...this.ui.pendingLoad, [kind]: next }, loadError: { ...this.ui.loadError, [kind]: null } };
+    this.render();
+    const old = this.loadSettle.get(kind);
+    if (old !== undefined) {
+      clearTimeout(old);
+    }
+    this.loadSettle.set(
+      kind,
+      setTimeout(() => {
+        this.loadSettle.delete(kind);
+        const wanted = this.ui.pendingLoad?.[kind];
+        const clear = (): void => {
+          const pending = { ...this.ui.pendingLoad };
+          delete pending[kind];
+          this.ui = { ...this.ui, pendingLoad: pending };
+        };
+        if (wanted === undefined || wanted === this.loadTarget(kind)) {
+          clear();
+          this.render();
+          return;
+        }
+        const press = kind === "pool"
+          ? this.loadPress("pool", (hass, target) => poolAction(hass, target, "target", { target_c: wanted }))
+          : this.loadPress(kind, (hass, target) => deadlineAction(hass, target, kind, kind === "spa" ? "bath_c" : "target_c", wanted));
+        void press.then(() => {
+          clear();
+          this.render();
+        });
+      }, DIAL_SETTLE_MS),
+    );
+  }
+
+  /** Send a pool, spa or sauna press; the refusal's sentence is shown in its tab. Returns that sentence, or `null`. */
+  private async loadPress(
+    kind: LoadKind,
+    send: (hass: HomeAssistantLike, target: { site: string } | { charger: string }) => Promise<unknown>,
+  ): Promise<string | null> {
+    const hass = this.hassObject;
+    const target = this.target();
+    const language = this.cardLanguage();
+    if (hass === null || target === null) {
+      return translate(language, "heat.error.generic");
+    }
+    this.ui = { ...this.ui, loadBusy: kind, loadError: { ...this.ui.loadError, [kind]: null } };
+    this.render();
+    let error: string | null = null;
+    try {
+      const decoded = decodeLoadAnswer(kind, await send(hass, target));
+      if (!decoded.ok) {
+        error = translate(language, "heat.error.generic");
+      } else if (!decoded.value.ok) {
+        error = translate(language, loadErrorKey(decoded.value.error));
+      }
+    } catch {
+      error = translate(language, "heat.error.generic");
+    }
+    this.ui = { ...this.ui, loadBusy: null, loadError: { ...this.ui.loadError, [kind]: error } };
+    await this.refresh();
+    this.render();
+    return error;
+  }
+
+  private pressPool(press: PoolPress): void {
+    void this.loadPress("pool", (hass, target) =>
+      press.action === "season"
+        ? poolAction(hass, target, "season", { open: press.open })
+        : press.action === "extra_filtering"
+          ? poolAction(hass, target, "extra_filtering", { hours: press.hours })
+          : poolAction(hass, target, "cancel_extra"),
+    );
+  }
+
+  /** The spa's or the sauna's times, or the spa's idle temperature, in an editor of their own (any user's). */
+  editLoad(kind: "spa" | "sauna", what: "times" | "idle"): void {
+    const answer = this.answer();
+    const load = kind === "spa" ? answer?.spa : answer?.sauna;
+    if (answer === null || load === null || load === undefined) {
+      return;
+    }
+    const doc = this.ownerDocument;
+    const language = this.cardLanguage();
+    const send = (action: string, value: unknown): Promise<string | null> =>
+      this.loadPress(kind, (hass, target) => deadlineAction(hass, target, kind, action, value));
+    if (what === "idle" && answer.spa !== null) {
+      const spa = answer.spa;
+      this.ensurePopover().openFormAlone(translate(language, "heat.spa.idleLabel"), (handlers) =>
+        idleEditor(doc, language, this.idPrefix, spa.idle_c, (value) => (value === spa.idle_c ? Promise.resolve(null) : send("idle_c", value)), handlers),
+      );
+      return;
+    }
+    const current: SessionsChoice = answer.spa !== null && kind === "spa"
+      ? { weekly: answer.spa.baths, once: answer.spa.bath_once }
+      : { weekly: answer.sauna?.sessions ?? [], once: answer.sauna?.session_once ?? null };
+    this.ensurePopover().openFormAlone(translate(language, `heat.${kind}.times` as TranslationKey), (handlers) =>
+      sessionsEditor(doc, language, answer, kind, current, async (choice) => {
+        const weeklyKey = kind === "spa" ? "baths" : "sessions";
+        const onceKey = kind === "spa" ? "bath_once" : "session_once";
+        if (JSON.stringify(choice.weekly) !== JSON.stringify(current.weekly)) {
+          const error = await send(weeklyKey, choice.weekly);
+          if (error !== null) {
+            return error;
+          }
+        }
+        return choice.once === current.once ? null : await send(onceKey, choice.once);
+      }, handlers),
+    );
+  }
+
   private ensurePopover(): SettingsPopover {
     if (this.settingsPopover === null) {
       this.settingsPopover = new SettingsPopover({
@@ -756,6 +929,10 @@ export class SpotnavHeatCard extends HTMLElement {
             this.ui = { ...this.ui, bar: key };
           },
           onBoost: (action) => void this.boost(action),
+          onLoadStep: (kind, delta) => this.stepLoad(kind, delta),
+          onPool: (press) => this.pressPool(press),
+          onDeadline: (kind, action, value) => void this.loadPress(kind, (hass, target) => deadlineAction(hass, target, kind, action, value)),
+          onLoadEdit: (kind, what) => this.editLoad(kind, what),
         },
       }),
     );

@@ -1,10 +1,11 @@
 // The heat card's body: a header (the live status after the name, the details' "i" and, for an administrator, the
-// settings button) and three tabs (`heat-tabs.ts`). Now: the thermostat dial with the comfort band and the measured
+// settings button) and its tabs (`heat-tabs.ts`). Now: the thermostat dial with the comfort band and the measured
 // room, home or away, what SpotNav would do and the relay, a thin strip of the plan's next 24 hours, today's heat
 // and hot water, and the notes the household can act on. Plan: the day's chart (`heat-day-chart.ts`), today's or a
-// past day's. Use: the period's energy or cost by what is measured (`heat-use.ts`). Below, the "Heating" settings
-// section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state with `textContent`
-// only; every figure is the backend's.
+// past day's, with the pool's, the spa's and the sauna's next hours under it. Use: the period's energy or cost by what
+// is measured (`heat-use.ts`). Pool, Spa and Sauna where the site has one (`pool-view.ts`, `spa-view.ts`). Below, the
+// "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
+// with `textContent` only; every figure is the backend's.
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, kwhText, kwText, pad2, type FormatContext } from "./format";
@@ -24,7 +25,7 @@ import {
 import { dayChart, hoursOf, type DayNote, type DayPeak, type DayPlannedWater, type DaySpan } from "./heat-day-chart";
 import type { HeatHistory } from "./heat-history";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { heatTabList, heatTabPanel, type HeatTab, type HeatTabFit, type UseUnit } from "./heat-tabs";
+import { BASE_TABS, heatTabList, heatTabPanel, type HeatTab, type HeatTabFit, type UseUnit } from "./heat-tabs";
 import { usePanel } from "./heat-use";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
@@ -32,6 +33,8 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import { sectionHeading, settingRow } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
+import { poolPanel, poolPlanLine, poolStatusLine, poolWouldLine } from "./pool-view";
+import { deadlinePanel, deadlinePlanLine, deadlineWouldLine } from "./spa-view";
 
 export const TARGET_MIN = 16;
 export const TARGET_MAX = 25;
@@ -86,7 +89,19 @@ export interface HeatUi {
   boostError?: string | null;
   /** A press of the Boost button is on its way. */
   boostBusy?: boolean;
+  /** The pool's, the spa's or the sauna's dial figure while a change waits to be written. */
+  pendingLoad?: Partial<Record<LoadKind, number>>;
+  /** A sentence in the pool's, the spa's or the sauna's tab after a refused press. */
+  loadError?: Partial<Record<LoadKind, string | null>>;
+  /** A press in the pool's, the spa's or the sauna's tab is on its way. */
+  loadBusy?: LoadKind | null;
 }
+
+/** The loads with a tab of their own. */
+export type LoadKind = "pool" | "spa" | "sauna";
+
+/** A press in the pool's tab (`spotnav/pool`): the season, an extra filtering, or its end. */
+export type PoolPress = { action: "season"; open: boolean } | { action: "extra_filtering"; hours: 2 | 4 } | { action: "cancel_extra" };
 
 export interface HeatHandlers {
   onStep(delta: number): void;
@@ -108,6 +123,14 @@ export interface HeatHandlers {
   onBar?(key: string | null): void;
   /** The Boost button: start the hot water now, or stop the household's own boost. */
   onBoost?(action: "start" | "stop"): void;
+  /** The pool's, the spa's or the sauna's dial stepped. */
+  onLoadStep?(kind: LoadKind, delta: number): void;
+  /** A press in the pool's tab. */
+  onPool?(press: PoolPress): void;
+  /** A press in the spa's or the sauna's tab (`spotnav/spa`, `spotnav/sauna`): its action and value. */
+  onDeadline?(kind: "spa" | "sauna", action: string, value?: unknown): void;
+  /** The spa's or the sauna's times, or the spa's idle temperature, to change (an editor of their own). */
+  onLoadEdit?(kind: "spa" | "sauna", what: "times" | "idle"): void;
 }
 
 export interface HeatRenderInput {
@@ -212,6 +235,16 @@ export function whenLabel(language: Language, answer: HeatAnswer, instantMs: num
   const time = clock(context(language, answer), instantMs);
   const day = instantToLocal(instantMs, answer.time_zone).date;
   return day === instantToLocal(Date.parse(answer.now), answer.time_zone).date ? time : `${dateLabel(language, day)} ${time}`;
+}
+
+/** A local time ("18:40") in the site's zone. */
+export function heatClock(language: Language, answer: HeatAnswer, instantMs: number): string {
+  return clock(context(language, answer), instantMs);
+}
+
+/** Hours as the card says them: whole, else one decimal ("8 h", "8,3 h"). */
+export function hoursText(language: Language, hours: number): string {
+  return hoursWord(language, hours);
 }
 
 /** The entity names the answer knows (choices, sensors, zones, meter), for the settings rows. */
@@ -380,10 +413,6 @@ function point(angle: number): [number, number] {
   return [DIAL.cx + DIAL.r * Math.cos(radians), DIAL.cy + DIAL.r * Math.sin(radians)];
 }
 
-function share(value: number): number {
-  return Math.min(1, Math.max(0, (value - TARGET_MIN) / (TARGET_MAX - TARGET_MIN)));
-}
-
 function arc(from: number, to: number): string {
   const a = DIAL.start + DIAL.sweep * from;
   const b = DIAL.start + DIAL.sweep * to;
@@ -392,68 +421,115 @@ function arc(from: number, to: number): string {
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${DIAL.r} ${DIAL.r} 0 ${b - a > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers, height: number | null = null, readOnly = false): HTMLElement {
+/** What a dial shows and how it steps: the house's comfort target, the pool's water, the spa's bath, the sauna's. */
+export interface DialSpec {
+  target: number;
+  min: number;
+  max: number;
+  step: number;
+  /** The figure's decimals (the sauna's whole degrees: 0). */
+  decimals: number;
+  /** The reading drawn as a dot on the arc; `null` without one. */
+  measured: number | null;
+  /** The shaded band around the target, `null` for none. */
+  band: [number, number] | null;
+  /** The dial's accessible name's lead ("Måltemperatur"). */
+  label: string;
+  /** The line under the figure. */
+  sub: string;
+  lowerLabel: string;
+  raiseLabel: string;
+  onStep: (delta: number) => void;
+  /** No buttons: the figure is shown, with nothing to press. */
+  readOnly: boolean;
+  /** A sentence under the dial after a refused write. */
+  error: string | null;
+  /** In a box of fixed height: the dial's height (px). */
+  height: number | null;
+}
+
+/** A dial with − and + beside it (the heat card's thermostat, and the pool's, the spa's and the sauna's). */
+export function dialBlock(doc: Document, language: Language, spec: DialSpec): HTMLElement {
   const wrap = element(doc, "div", X.dialWrap);
-  const step = (delta: number, label: TranslationKey, text: string, disabled: boolean): HTMLButtonElement => {
+  const span = spec.max - spec.min;
+  const share = (value: number): number => Math.min(1, Math.max(0, (value - spec.min) / span));
+  const step = (delta: number, label: string, text: string, disabled: boolean): HTMLButtonElement => {
     const button = element(doc, "button", X.dialStep, text);
     button.type = "button";
     button.dataset["step"] = delta > 0 ? "up" : "down";
-    button.setAttribute("aria-label", translate(language, label));
+    button.setAttribute("aria-label", label);
     button.disabled = disabled;
-    button.addEventListener("click", () => handlers.onStep(delta));
+    button.addEventListener("click", () => spec.onStep(delta));
     return button;
   };
   const picture = svg(doc, "svg", { viewBox: "0 0 200 170", class: X.dial, role: "img" });
-  if (height !== null) {
+  if (spec.height !== null) {
     // In a box of fixed height the dial takes the height it is given, as wide as that makes it.
-    picture.style.height = `${Math.round(height)}px`;
-    picture.style.maxWidth = `${Math.round((height * 200) / 170)}px`;
+    picture.style.height = `${Math.round(spec.height)}px`;
+    picture.style.maxWidth = `${Math.round((spec.height * 200) / 170)}px`;
   }
-  const low = target - 0.5;
-  const high = target + 0.5;
-  const measured = answer.indoor.value_c;
-  const label = [translate(language, "heat.dial.label"), degrees(language, target)];
-  if (measured !== null) {
-    label.push(degrees(language, measured));
+  const figure = (value: number): string => formatFixed(language, value, spec.decimals);
+  const label = [spec.label, `${figure(spec.target)} °C`];
+  if (spec.measured !== null) {
+    label.push(`${formatFixed(language, spec.measured, 1)} °C`);
   }
   picture.setAttribute("aria-label", label.join(", "));
-  picture.append(
-    svg(doc, "path", { d: arc(0, 1), class: X.dialTrack }),
-    svg(doc, "path", { d: arc(share(low), share(high)), class: X.dialBand }),
-    svg(doc, "path", { d: arc(0, Math.max(0.002, share(target))), class: X.dialValue }),
-  );
-  if (measured !== null) {
-    const [x, y] = point(DIAL.start + DIAL.sweep * share(measured));
+  picture.append(svg(doc, "path", { d: arc(0, 1), class: X.dialTrack }));
+  if (spec.band !== null) {
+    picture.append(svg(doc, "path", { d: arc(share(spec.band[0]), share(spec.band[1])), class: X.dialBand }));
+  }
+  picture.append(svg(doc, "path", { d: arc(0, Math.max(0.002, share(spec.target))), class: X.dialValue }));
+  if (spec.measured !== null) {
+    const [x, y] = point(DIAL.start + DIAL.sweep * share(spec.measured));
     picture.append(svg(doc, "circle", { cx: x.toFixed(2), cy: y.toFixed(2), r: 6, class: X.dialMeasured, "data-measured": "true" }));
   }
-  const figure = svg(doc, "text", { x: DIAL.cx, y: DIAL.cy + 8, class: X.dialFigure });
-  figure.textContent = `${formatFixed(language, target, 1)}°`;
+  const big = svg(doc, "text", { x: DIAL.cx, y: DIAL.cy + 8, class: X.dialFigure });
+  big.textContent = `${figure(spec.target)}°`;
   const sub = svg(doc, "text", { x: DIAL.cx, y: DIAL.cy + 32, class: X.dialSub });
-  // The big figure is the target; the line under it says what it keeps, so the same number is not said twice.
-  sub.textContent = translate(language, "heat.dial.band", {
-    low: formatFixed(language, low, 1),
-    high: formatFixed(language, high, 1),
-  });
+  sub.textContent = spec.sub;
   sub.dataset["line"] = "band";
-  picture.append(figure, sub);
-  // Read-only (SpotNav cannot steer this heating): the target is shown, with nothing to press.
+  picture.append(big, sub);
   wrap.append(
-    ...(readOnly
+    ...(spec.readOnly
       ? [picture]
       : [
-          step(-TARGET_STEP, "heat.dial.lower", "−", target - TARGET_STEP < TARGET_MIN - 1e-9),
+          step(-spec.step, spec.lowerLabel, "−", spec.target - spec.step < spec.min - 1e-9),
           picture,
-          step(TARGET_STEP, "heat.dial.raise", "+", target + TARGET_STEP > TARGET_MAX + 1e-9),
+          step(spec.step, spec.raiseLabel, "+", spec.target + spec.step > spec.max + 1e-9),
         ]),
   );
   const block = element(doc, "div");
   block.append(wrap);
-  if (ui.error !== null) {
-    const error = element(doc, "p", X.error, ui.error);
+  if (spec.error !== null) {
+    const error = element(doc, "p", X.error, spec.error);
     error.setAttribute("role", "alert");
     block.append(error);
   }
   return block;
+}
+
+function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers, height: number | null = null, readOnly = false): HTMLElement {
+  const low = target - 0.5;
+  const high = target + 0.5;
+  return dialBlock(doc, language, {
+    target,
+    min: TARGET_MIN,
+    max: TARGET_MAX,
+    step: TARGET_STEP,
+    decimals: 1,
+    measured: answer.indoor.value_c,
+    band: [low, high],
+    label: translate(language, "heat.dial.label"),
+    // The big figure is the target; the line under it says what it keeps, so the same number is not said twice.
+    sub: translate(language, "heat.dial.band", { low: formatFixed(language, low, 1), high: formatFixed(language, high, 1) }),
+    lowerLabel: translate(language, "heat.dial.lower"),
+    raiseLabel: translate(language, "heat.dial.raise"),
+    onStep: (delta) => handlers.onStep(delta),
+    // Read-only (SpotNav cannot steer this heating): the target is shown, with nothing to press.
+    readOnly,
+    error: ui.error,
+    height,
+  });
 }
 
 /** "Inne 20,4 °C (kallast: Toalett NV)" (the coldest of several), with the outdoor reading after it. A figure and its
@@ -900,6 +976,59 @@ function aheadStrip(doc: Document, language: Language, answer: HeatAnswer): HTML
   line.dataset["line"] = "ahead";
   block.append(row, axis, line);
   return block;
+}
+
+/** A run of a load's plan as its band draws it: what it does ("filter", "heat", "extra", "hold") from start to end. */
+export interface BandRun {
+  start: string;
+  end: string;
+  what: string;
+}
+
+/**
+ * The pool's, the spa's or the sauna's day band: the next 24 hours from the running one, a cell an hour coloured by
+ * what the load does (or would do) in it (the run that covers most of the hour, at least a quarter), the hours under
+ * it and `words` under them. Drawn as the Now tab's strip of the heat plan.
+ */
+export function runBand(doc: Document, language: Language, answer: HeatAnswer, runs: readonly BandRun[], words: string | null, block: string): HTMLElement {
+  const nowMs = Date.parse(answer.now);
+  const first = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
+  const band = element(doc, "div", X.ahead);
+  band.dataset["block"] = block;
+  const row = element(doc, "div", X.aheadRow);
+  row.setAttribute("aria-hidden", "true");
+  const axis = element(doc, "div", `${X.aheadAxis} ${C.muted}`);
+  axis.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < AHEAD_HOURS; index += 1) {
+    const from = first + index * HOUR_MS;
+    let best: { what: string; overlap: number } | null = null;
+    for (const run of runs) {
+      const overlap = Math.min(from + HOUR_MS, Date.parse(run.end)) - Math.max(from, Date.parse(run.start));
+      if (overlap >= HOUR_MS / 4 && (best === null || overlap > best.overlap)) {
+        best = { what: run.what, overlap };
+      }
+    }
+    const cell = element(doc, "span", X.aheadCell);
+    if (best !== null) {
+      cell.dataset["run"] = best.what;
+    }
+    row.append(cell);
+    if (index % 3 === 0) {
+      axis.append(element(doc, "span", undefined, heatClock(language, answer, from)));
+    }
+  }
+  band.append(row, axis);
+  if (words !== null) {
+    const line = element(doc, "p", `${X.aheadLine} ${C.muted}`, words);
+    line.dataset["line"] = block;
+    band.append(line);
+  }
+  return band;
+}
+
+/** The first runs of a plan in words, each as its time span ("22:00–02:00, 12:00–14:00"), at most `count`. */
+export function runsText(language: Language, answer: HeatAnswer, runs: readonly { start: string; end: string }[], count = 3): string {
+  return windowsText(language, answer, [...runs], count);
 }
 
 // ------------------------------------------------------------------------------------------------ the day
@@ -1362,6 +1491,7 @@ function planPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElemen
   block.dataset["block"] = "band";
   block.append(chart);
   panel.append(block);
+  panel.append(...loadBands(doc, language, answer));
   if (boxed(input)) {
     return;
   }
@@ -1370,6 +1500,23 @@ function planPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElemen
     line.dataset["line"] = review.key;
     panel.append(line);
   }
+}
+
+/** Plan: under the day's chart, the pool's, the spa's and the sauna's next 24 hours, each a band named by its load
+ * ("Pool: Filtrerar 22:00–02:00 · Värmer 12:00–14:00"). */
+function loadBands(doc: Document, language: Language, answer: HeatAnswer): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  const named = (kind: LoadKind, words: string | null): string => `${translate(language, `heat.tab.${kind}` as TranslationKey)}: ${words ?? translate(language, "heat.pool.plan.none")}`;
+  if (answer.pool !== null && answer.pool.season_open) {
+    out.push(runBand(doc, language, answer, answer.pool.planned, named("pool", poolPlanLine(language, answer, answer.pool)), "plan-pool"));
+  }
+  if (answer.spa !== null) {
+    out.push(runBand(doc, language, answer, answer.spa.planned, named("spa", deadlinePlanLine(language, answer, "spa", answer.spa)), "plan-spa"));
+  }
+  if (answer.sauna !== null) {
+    out.push(runBand(doc, language, answer, answer.sauna.planned, named("sauna", deadlinePlanLine(language, answer, "sauna", answer.sauna)), "plan-sauna"));
+  }
+  return out;
 }
 
 /** The Use tab's bars' height (px) outside a box. */
@@ -1431,10 +1578,13 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     return card;
   }
   const locked = input.ui.locked ?? null;
-  const tab: HeatTab = locked ?? input.ui.tab ?? "now";
+  const tabs = heatTabsOf(answer);
+  const wanted: HeatTab = locked ?? input.ui.tab ?? "now";
+  // A tab remembered for a pool, spa or sauna that is no longer there falls back to Now.
+  const tab: HeatTab = locked !== null || tabs.includes(wanted) ? wanted : "now";
   card.dataset["tab"] = tab;
   if (locked === null) {
-    card.append(heatTabList(doc, language, tab, idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long"));
+    card.append(heatTabList(doc, language, tab, idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long", tabs));
   }
   const panel = heatTabPanel(doc, tab, idPrefix, locked === null);
   card.append(panel);
@@ -1443,10 +1593,62 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     nowPanel(input, answer, panel);
   } else if (tab === "plan") {
     planPanel(input, answer, panel, today);
-  } else {
+  } else if (tab === "use") {
     useTab(input, panel, today);
+  } else {
+    loadTab(input, answer, tab, panel);
   }
   return card;
+}
+
+/** What the site has of a load with a tab: set up (its block in the answer), detected (an administrator's choices
+ * hold a sure candidate, not set up yet), or nothing. */
+export function loadFound(answer: HeatAnswer, kind: LoadKind): "set_up" | "detected" | null {
+  if (answer[kind] !== null) {
+    return "set_up";
+  }
+  const choices = answer.choices;
+  if (choices === null || answer.config[kind] !== null) {
+    return null;
+  }
+  const detected = kind === "pool" ? choices.pool?.suggested != null : choices[kind].some((choice) => !choice.ask);
+  return detected ? "detected" : null;
+}
+
+/** The tabs this card shows: Now, Plan and Use, then the pool's, the spa's and the sauna's where the site has one. */
+export function heatTabsOf(answer: HeatAnswer): HeatTab[] {
+  return [...BASE_TABS, ...(["pool", "spa", "sauna"] as const).filter((kind) => loadFound(answer, kind) !== null)];
+}
+
+/** The pool's, the spa's or the sauna's tab; a detected one not set up yet says where it is set up. */
+function loadTab(input: HeatRenderInput, answer: HeatAnswer, kind: LoadKind, panel: HTMLElement): void {
+  const { doc, language } = input;
+  const fill = input.ui.fill ?? null;
+  const loadInput = { doc, language, answer, ui: input.ui, handlers: input.handlers, fill };
+  if (kind === "pool" && answer.pool !== null) {
+    poolPanel(loadInput, answer.pool, panel);
+    return;
+  }
+  if (kind === "spa" && answer.spa !== null) {
+    deadlinePanel(loadInput, "spa", answer.spa, panel);
+    return;
+  }
+  if (kind === "sauna" && answer.sauna !== null) {
+    deadlinePanel(loadInput, "sauna", answer.sauna, panel);
+    return;
+  }
+  const found = loadFound(answer, kind);
+  const line = element(doc, "p", `${C.muted} ${H.line}`, translate(language, found === "detected" ? `heat.${kind}.detected` as TranslationKey : `heat.${kind}.none` as TranslationKey));
+  line.setAttribute("role", "status");
+  line.dataset["line"] = `${kind}-none`;
+  panel.append(line);
+  if (found === "detected" && answer.writable) {
+    const button = element(doc, "button", X.boostButton, translate(language, "heat.load.setUp")) as HTMLButtonElement;
+    button.type = "button";
+    button.dataset["action"] = `${kind}-set-up`;
+    button.addEventListener("click", () => input.handlers.onSettings());
+    panel.append(button);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------ settings
@@ -1503,6 +1705,100 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
   return translate(language, `${scope}.wait.${reason}` as TranslationKey, { name: control.automation?.name ?? "" });
 }
 
+/** A kW figure as a settings row says it, or "not given". */
+function kwOrNone(language: Language, kw: number | null): string {
+  return kw === null ? translate(language, "heat.settings.kwNone") : kwText(language, kw);
+}
+
+/**
+ * The pool's, the spa's and the sauna's rows in the "Heating" section, and the heat card's phones: a detected pool
+ * not set up yet is one row that asks once; a set-up one has its heat pump, circulation, water sensor, filtering hours
+ * and powers. The spa's and the sauna's entity, the spa's lowest temperature, the heaters' power, a relay sauna's
+ * safety declaration; the phones and their events while any of them is set up. Each row says what SpotNav would do
+ * under it where it has something to say (SpotNav only watches them).
+ */
+function loadSettingRows(
+  doc: Document,
+  language: Language,
+  answer: HeatAnswer,
+  names: Map<string, string>,
+  none: string,
+  row: (key: HeatSettingKey, label: string, value: string, help?: string, editable?: boolean) => void,
+  section: HTMLElement,
+): void {
+  const config = answer.config;
+  const choices = answer.choices;
+  const t = (key: TranslationKey, params?: Record<string, string>): string => translate(language, key, params);
+  const pool = config.pool;
+  const poolChoices = choices?.pool ?? null;
+  const helpLine = (key: string, text: string | null): void => {
+    if (text !== null) {
+      const help = element(doc, "p", C.settingRowHelp, text);
+      help.dataset["help"] = key;
+      section.append(help);
+    }
+  };
+  if (pool === null && poolChoices?.suggested != null) {
+    // Detected, not set up: one row that asks once ("Är detta poolens värmepump?").
+    row("poolSuggested", t("heat.settings.pool"), t("heat.settings.poolFound", { name: nameOf(names, poolChoices.suggested.heat_pump.entity_id, none) }));
+  } else if (pool !== null || (poolChoices?.heat_pump.length ?? 0) > 0) {
+    row("poolHeatPump", t("heat.settings.poolHeatPump"), nameOf(names, pool?.heat_pump?.entity_id ?? null, none));
+    if (pool !== null) {
+      row("poolCirculation", t("heat.settings.poolCirculation"), nameOf(names, pool.circulation_id, none));
+      row("poolSensor", t("heat.settings.poolSensor"), pool.water_sensor === null ? t("heat.settings.poolSensorPump") : nameOf(names, pool.water_sensor, none));
+      row(
+        "poolFilterHours",
+        t("heat.settings.poolFilterHours"),
+        pool.filter_hours === null ? t("heat.settings.poolFilterAuto") : hoursWord(language, pool.filter_hours),
+      );
+      if (pool.heat_pump !== null) {
+        row("poolHeatPumpKw", t("heat.settings.poolHeatPumpKw"), kwOrNone(language, pool.heat_pump_kw));
+      }
+      if (pool.circulation_id !== null) {
+        row("poolCirculationKw", t("heat.settings.poolCirculationKw"), kwOrNone(language, pool.circulation_kw));
+      }
+      helpLine("pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
+    }
+  }
+  const spa = config.spa;
+  if (spa !== null || (choices?.spa.length ?? 0) > 0) {
+    row("spa", t("heat.settings.spa"), nameOf(names, spa?.entity_id ?? null, none));
+    if (spa !== null) {
+      row("spaFloor", t("heat.settings.spaFloor"), degrees(language, spa.floor_c));
+      row("spaKw", t("heat.settings.spaKw"), kwOrNone(language, spa.heater_kw));
+      helpLine("spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
+    }
+  }
+  const sauna = config.sauna;
+  if (sauna !== null || (choices?.sauna.length ?? 0) > 0) {
+    row("sauna", t("heat.settings.sauna"), nameOf(names, sauna?.entity_id ?? null, none));
+    if (sauna !== null) {
+      row("saunaKw", t("heat.settings.saunaKw"), kwOrNone(language, sauna.heater_kw));
+      if (sauna.family === "relay") {
+        row("saunaSafety", t("heat.settings.saunaSafety"), t(sauna.safety_declared ? "heat.settings.saunaSafetyYes" : "heat.settings.saunaSafetyNo"));
+      }
+      helpLine("sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
+    }
+  }
+  if (pool !== null || spa !== null || sauna !== null) {
+    const phones = config.heat_notifications.targets;
+    const phoneNames = new Map((choices?.phones ?? []).map((phone) => [phone.service, phone.name]));
+    row(
+      "heatPhones",
+      t("heat.settings.phones"),
+      phones.length === 0 ? t("heat.settings.phonesNone") : phones.map((service) => phoneNames.get(service) ?? service).join(", "),
+    );
+    row(
+      "heatEvents",
+      t("heat.settings.events"),
+      HEAT_EVENTS.filter((event) => config.heat_notifications.events.includes(event)).map((event) => t(`heat.settings.event.${event}` as TranslationKey)).join(", ") || t("heat.settings.eventsNone"),
+    );
+  }
+}
+
+/** The events the heat card's phones can hear (`heat_notifications.events`). */
+export const HEAT_EVENTS = ["plan_at_risk", "pool_season"] as const;
+
 export type HeatSettingKey =
   | "indoor"
   | "outdoor"
@@ -1520,7 +1816,22 @@ export type HeatSettingKey =
   | "awayDelta"
   | "waterHeater"
   | "waterHeaterControl"
-  | "tankSensor";
+  | "tankSensor"
+  | "poolSuggested"
+  | "poolHeatPump"
+  | "poolCirculation"
+  | "poolSensor"
+  | "poolFilterHours"
+  | "poolHeatPumpKw"
+  | "poolCirculationKw"
+  | "spa"
+  | "spaFloor"
+  | "spaKw"
+  | "sauna"
+  | "saunaKw"
+  | "saunaSafety"
+  | "heatPhones"
+  | "heatEvents";
 
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
@@ -1652,6 +1963,7 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     }
     row("tankSensor", translate(language, "heat.settings.tankSensor"), nameOf(names, heater.tank_sensor, none));
   }
+  loadSettingRows(doc, language, answer, names, none, row, section);
   if (!steers) {
     return section;
   }

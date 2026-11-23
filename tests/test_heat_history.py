@@ -20,6 +20,7 @@ from custom_components.spotnav.heat.history import (
     CAUSE_DRAW,
     CAUSE_STANDBY,
     HeatHistoryInputs,
+    LoadUse,
     BUCKET_KEYS,
     HISTORY_KEYS,
     MAX_ZONE_PARTS,
@@ -500,6 +501,26 @@ def test_only_the_largest_zones_are_parts_of_their_own() -> None:
     # Zones without their own figures (an older caller): all of them are other heat.
     plain = heat_history(month_inputs(zone_hours=zone_hours))
     assert [part["key"] for part in plain["parts"]] == ["pump", "hot_water", "other"]
+
+
+def test_the_pool_spa_and_sauna_are_parts_of_their_own_added_to_the_use() -> None:
+    """The loads' counted energy is a part each (after the heat's), added to the buckets and the total like a zone;
+    a load with no energy in the meter's hours is left out."""
+    day = period_of(PERIOD_DAY, date(2026, 11, 15))
+    start, _ = utc_bounds(day, TZ)
+    pool = {start + timedelta(hours=hour): 0.5 for hour in (10, 11, 12)}
+    spa = {start + timedelta(hours=18): 2.25}
+    late = {datetime(2027, 1, 1, tzinfo=timezone.utc): 9.0}
+    plain = heat_history(month_inputs(period=day))
+    answer = heat_history(month_inputs(period=day, loads=(LoadUse("pool", pool), LoadUse("spa", spa), LoadUse("sauna", late))))
+    assert [part["kind"] for part in answer["parts"]][-2:] == ["pool", "spa"]
+    parts = {part["key"]: part for part in answer["parts"]}
+    assert parts["pool"]["kwh"] == pytest.approx(1.5) and parts["spa"]["kwh"] == pytest.approx(2.25) and "sauna" not in parts
+    assert answer["energy"]["total_kwh"] == pytest.approx(plain["energy"]["total_kwh"] + 3.75, abs=0.01)
+    assert answer["energy"]["cost"] > plain["energy"]["cost"]
+    for bucket in answer["buckets"]:
+        if bucket["kwh"] is not None:
+            assert sum(part["kwh"] for part in bucket["parts"]) == pytest.approx(bucket["kwh"], abs=0.01)
 
 
 def test_what_spotnav_saved_on_heat_and_how_well_the_heat_is_forecast() -> None:

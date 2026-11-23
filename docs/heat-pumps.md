@@ -51,7 +51,8 @@ a pump to it and only watch.
 
 ## The heat card
 
-The heat card (`type: custom:spotnav-heat-card`, with `site:` or `charger:`) has a header and three tabs. The header
+The heat card (`type: custom:spotnav-heat-card`, with `site:` or `charger:`) has a header and three tabs, and a
+**Pool**, **Spa** and **Sauna** tab where the site has one (set up, or found for an administrator to set up). The header
 says after the card's name what the heating does now: **Heating 2.1 kW**, **Hot water 2.9 kW** or **Resting** from the
 heat pump's own facts or its meter, and **Lowered until 06:00** or **Raised until 15:00** while SpotNav's own control holds
 the heat down or up. Before SpotNav controls anything, **Test** stands first (tap it for what that means). The **i**
@@ -95,6 +96,28 @@ out until there is a path SpotNav steers.
 
   ![The heat card's Use tab: today's heat per hour in kWh, the heat pump and the hot water stacked](images/heat-card-use.png)
 
+* **Pool**, **Spa** and **Sauna** (only where set up; SpotNav only watches them for now and says what it *would* do):
+  * **Pool**: the dial for the water the pool should keep, **Season open** or **Closed** (closed: SpotNav leaves the
+    pool alone), what the heat pump and the circulation do now and what SpotNav would do, **Extra filtering** +2 h or
+    +4 h (placed in the cheapest or sunniest hours of the next 24, with when), the next 24 hours as a band, and today's
+    filtering hours done and planned against the day's need, and the heat pump's. When the water has stayed around
+    10 °C for a few autumn days the tab asks whether it is time to close the season.
+  * **Spa**: the dial for the bathing temperature, the status (**Ready 18:40, heating 2 °C/h** once the rate is
+    learnt), what SpotNav would do, **Bathe now**, the **bath times** like the car's departures (weekly times on their
+    weekdays, and one date), the temperature **between baths**, and the heat-up and hold as a band. A bath that will not
+    be ready says why and offers **Take what fits**, **Later bath time** and, under the import target or a power
+    level, **Allow the peak**.
+  * **Sauna**: as the spa without the temperature between sessions, with **Heat now** and its **sessions**. A door or
+    safety lock that reads locked is said plainly; a heater on a relay without its own declared safety measure is
+    never started by SpotNav, which only says when to start it by hand.
+
+  The dial, the season, the extra filtering, the times and the press are anyone's who sees the card. The pool's heat
+  pump, circulation and water sensor (a detected pool is confirmed once), the filtering hours (by default the water
+  temperature divided by three, 2 to 12 hours), the spa's lowest temperature, the heaters' power, the sauna and a relay
+  sauna's safety declaration, and the phones that hear about them are in the gear's **Heating** section. Plan shows the
+  pool's, the spa's and the sauna's next hours under the day's chart, and Use stacks their energy as parts of their own
+  (counted from when they ran and their power, kept 14 days).
+
 Plan and Use share the period: a day chosen in one is the day in the other, and a month or year chosen in Use is
 still there after a look at Plan. The tab, the unit and the hidden parts are remembered per card in the browser.
 
@@ -104,7 +127,7 @@ days** and kWh per degree day with the monthly trend, **comfort** (the coldest r
 **what SpotNav would have done** in shadow, a day's review of the relay beside SpotNav's plan, **the house model**
 (how far its forecast of the heating was from the meter, in kW, over the reviewed days) and a day's hot-water runs.
 
-A wall screen can show one tab only, without the tab row: `tab: now`, `plan` or `use` (the card editor's **Show only
+A wall screen can show one tab only, without the tab row: `tab: now`, `plan`, `use`, `pool`, `spa` or `sauna` (the card editor's **Show only
 tab**). It is a setting of this card, not of SpotNav. In a box of fixed height the dial, the chart or the bars take
 the box's spare height and the explaining lines and notes go. Every tab fits a 650×520 box with the tab row shown.
 
