@@ -131,6 +131,24 @@ delivered, also by **Charge now** or by the sun) the periods still ahead are cle
 period started is stopped; a charge you started yourself goes on.
 A period's start the charger acknowledges only after 30 seconds, while a new answer to wait lands, drops the plan once the start reads unanswered and off; the charge that then arrives is the charger's own, which SpotNav does not stop.
 
+**Charging on after a missed departure.** When the departure passes with the car still short of what the plan
+was for (its target, by the rule that ends a plan as reached: a reading within 1 percentage point, an estimate
+within 3; or its requested energy, as counted), still plugged in, and with Auto not paused (your own **Start** or
+**Stop** pauses it), SpotNav charges on at once, whatever the price, instead of leaving the car idle until the next
+departure's cheapest hours. It goes on until the first of: the need is met (the plan ends as reached, as ever), the
+car is unplugged, you press **Stop** or pause Auto, three hours after the departure, or the car ends the charge
+itself (full, or its own limit). It is the plan's own charge at your set current: load balancing, the fuse, the
+import target and a safety stop's hold and resume apply as to any planned period. An amount counted with an energy
+register ends once the missing energy is delivered; without one, the period holds what was missing at the planned
+power. A charge you started (**Charge now**) and the car's minimum charge level keep their own rules. Nothing
+changes without a departure, when the need was met, or when the car had been unplugged. Only the departure's own
+moment starts it: Home Assistant starting again after the departure never does, and a restart while it runs goes on
+to the same end, never later. The status says *Charging after the departure: the target was not reached (68 % of
+100 %, at most until 09:00)* (the delivered and requested kWh for an amount); one that ends at its three hours still
+short says so until the car is unplugged, with no notification (*The charge will not be ready by the departure* was
+sent before it). Afterwards the next departure is planned as ever, counting the energy delivered meanwhile. Not for
+the **Solar** strategy, which has no departure to miss.
+
 **Counting the requested energy.** With a departure, energy delivered since that departure's
 previous occurrence counts toward the request, also across unplugging and plugging in again. With no
 departure, each plug-in starts a new count; a charger that cannot report a plug-in starts one with the

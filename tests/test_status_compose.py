@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.planning.status_compose import (
     STATUS_CODES,
+    CatchUpFacts,
     HybridFacts,
     LoadBalancingFacts,
     OwnModeFacts,
@@ -1396,6 +1397,84 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "a charge after a missed departure says the target, the level and its latest end",
+        base(
+            charging=True,
+            installed_periods=((at(-1), at(2)),),
+            catch_up=CatchUpFacts(until=at(2), target=100.0, level=68.04),
+        ),
+        "normal",
+        [
+            {
+                "code": "charging_after_departure",
+                "params": {"target": 100.0, "level": 68.0, "until": iso(2), "kwh": None, "requested_kwh": None},
+            },
+        ],
+    ),
+    (
+        "a charge after a missed departure for an amount says the energy instead of percentages",
+        base(
+            charging=True,
+            installed_periods=((at(-1), at(1)),),
+            catch_up=CatchUpFacts(until=at(1), kwh=12.345, requested_kwh=20.0),
+        ),
+        "normal",
+        [
+            {
+                "code": "charging_after_departure",
+                "params": {"target": None, "level": None, "until": iso(1), "kwh": 12.35, "requested_kwh": 20.0},
+            },
+        ],
+    ),
+    (
+        "a charge after a missed departure under hybrid takes the hybrid line's place",
+        base(
+            charging=True,
+            strategy="hybrid",
+            installed_periods=((at(-1), at(2)),),
+            hybrid=HybridFacts(reason="satisfied_need_met"),
+            catch_up=CatchUpFacts(until=at(2), target=80.0, level=70.0),
+        ),
+        "normal",
+        [
+            {
+                "code": "charging_after_departure",
+                "params": {"target": 80.0, "level": 70.0, "until": iso(2), "kwh": None, "requested_kwh": None},
+            },
+        ],
+    ),
+    (
+        "a charge after a missed departure that load balancing paused is told as the pause",
+        base(
+            charging=False,
+            balancing_paused=True,
+            installed_periods=((at(-1), at(2)),),
+            proposal=proposal(periods=((at(-1), at(2)),)),
+            catch_up=CatchUpFacts(until=at(2), target=100.0, level=68.0),
+        ),
+        "normal",
+        [
+            {"code": "balancing_paused", "params": {"retry_at": None, "cause": None}},
+            {"code": "plan_energy", "params": {"kwh": 20.0}},
+            {"code": "plan_cost", "params": {"amount_minor": 1250, "currency": "SEK"}},
+        ],
+    ),
+    (
+        "a charge after a missed departure that ended short says where it ended, until the unplug",
+        base(
+            planning=planning("nothing_to_charge", "already_at_target"),
+            catch_up=CatchUpFacts(until=at(-0.5), target=100.0, level=85.0, ended_short=True),
+        ),
+        "normal",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {
+                "code": "not_reached_after_departure",
+                "params": {"target": 100.0, "level": 85.0, "kwh": None, "requested_kwh": None},
+            },
+        ],
+    ),
+    (
         "a pause says nothing about the car's own limit",
         base(paused=True, vehicle_limit_percent=90.0),
         "normal",
@@ -1821,7 +1900,14 @@ def test_a_line_that_is_blocking_is_never_composed_with_normal_life() -> None:
 
 
 #: Headlines that say the car is charging now: a stop told after one would contradict it.
-CHARGING_HEADLINES = ("solar_charging", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices")
+CHARGING_HEADLINES = (
+    "solar_charging",
+    "charging_now",
+    "min_soc_charging",
+    "topping_off",
+    "charging_after_departure",
+    "charging_without_prices",
+)
 
 
 def _with_stop(facts: StatusFacts) -> StatusFacts:

@@ -107,6 +107,11 @@ APP_READS_SOLAR_NO_CAR_STATUS: Final = "solar_no_car_status"
 #: place of `min_soc_charging`, and vehicle rows without `min_percent` (its settings row is never offered).
 APP_UNREAD_MIN_SOC_CODES: Final = ("min_soc_charging",)
 APP_READS_MIN_SOC: Final = "min_soc"
+#: The charge after a missed departure (`execution/catch_up.py`): an app that does not read
+#: `APP_READS_CHARGING_AFTER_DEPARTURE` gets the ordinary charging line, to the same end, in place of
+#: `charging_after_departure`, and nothing for `not_reached_after_departure` (its tone is `normal`).
+APP_UNREAD_CATCH_UP_CODES: Final = ("charging_after_departure", "not_reached_after_departure")
+APP_READS_CHARGING_AFTER_DEPARTURE: Final = "charging_after_departure"
 #: Automatic charge periods (`max_periods` null): an app that does not read `APP_READS_AUTO_PERIODS` gets the
 #: effective number, `MAX_PERIODS`, in its place, and its replacement echoing that number keeps automatic.
 APP_READS_AUTO_PERIODS: Final = "auto_periods"
@@ -246,6 +251,11 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
         return {"code": "solar_waiting_for_sun", "params": {}}
     if code in APP_UNREAD_MIN_SOC_CODES and APP_READS_MIN_SOC not in opted_in:
         return {"code": "charging_now", "params": {"until": None}}
+    if code in APP_UNREAD_CATCH_UP_CODES and APP_READS_CHARGING_AFTER_DEPARTURE not in opted_in:
+        if code == "charging_after_departure":
+            params = line.get("params") if isinstance(line.get("params"), dict) else {}
+            return {"code": "charging_now", "params": {"until": params.get("until")}}
+        return None
     if code in APP_UNREAD_BALANCING_PAUSED_CODES and APP_READS_BALANCING_PAUSED not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         return {"code": "load_balancing_limited", "params": {"limit_a": 0, "phase": None, "cause": params.get("cause")}}
@@ -369,7 +379,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
-    the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
+    the car's level after the car ended its charge; `charging_after_departure` for the status lines of the charge after
+    a missed departure; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line

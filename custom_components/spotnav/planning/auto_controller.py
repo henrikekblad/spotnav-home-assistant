@@ -52,7 +52,7 @@ from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.price_source import entry_source_for, PriceSource, SIGNAL_PRICE_SOURCES, with_source
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import charger_data, domain_data, holiday_dates
-from ..execution.controller import CONNECTION_PLUGGED_IN
+from ..execution.controller import CONNECTION_PLUGGED_IN, CONNECTION_UNPLUGGED
 from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
 from ..vehicles.soc_estimate import (
@@ -67,7 +67,9 @@ from ..vehicles.guest import is_guest
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from ..vehicles.vehicle_properties import resolved_vehicle_id, stored_properties
 from ..execution.min_soc_floor import effective_floor, known_soc
-from ..execution.target_stop import car_ended_full_percent
+from ..execution import catch_up as catch_up_rules
+from ..execution.catch_up import CatchUp
+from ..execution.target_stop import car_ended_full_percent, target_stop_time
 from .auto_settings import (
     AutoSettings,
     AutoSettingsError,
@@ -118,6 +120,7 @@ from .phases import effective_phases
 from .car_demand import CarCeiling, plan_under_ceiling, shadow_facts
 from .planner import (
     calculate_plan,
+    capped_power_kw,
     ending_at_need,
     FiscalChoice,
     local_instant,
@@ -634,6 +637,9 @@ class AutoSnapshot:
     #: `None` when the charger's own settings are its price source. A change of it is news, and it enters the
     #: application's identity, so a fee change on the price entry replans and reinstalls.
     price_revision: str | None = None
+    #: The catch-up after a missed departure (`execution/catch_up.py`) while it runs (the proposal is its plan) or
+    #: after it ended short of the need, until the unplug; `None` otherwise.
+    catch_up: CatchUp | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -673,6 +679,7 @@ class AutoSnapshot:
             self.fill,
             None if self.learned_capacity_kwh is None else round(self.learned_capacity_kwh),
             None if self.proposal is None else self._proposal_key(self.proposal),
+            None if self.catch_up is None else self.catch_up.as_dict(),
         )
 
     @staticmethod
@@ -834,6 +841,11 @@ class AutoPlannerController:
         #: The calendar reads in flight (`_start_calendar_read`), cancelled at the shutdown.
         self._calendar_tasks: set[asyncio.Task[None]] = set()
         self._calendar_status: dict[str, Any] | None = None
+        # A catch-up whose energy is delivered is being ended (`_on_energy_reading`): one task at a time.
+        self._catch_up_ending = False
+        # The departure the appointment is armed for until its catch-up is decided (`_arm_departure`): a calculation
+        # that runs after it passed but before the appointment fires decides it first (`_catch_up_departure_passed`).
+        self._departure_pending: datetime | None = None
 
     async def async_start(self) -> AutoSnapshot:
         """Bring the controller in line with the stored settings, once."""
@@ -1286,6 +1298,8 @@ class AutoPlannerController:
         """
         if self._executor is not None:
             await self._executor.async_pause(choice)
+            # A person's pause ends a catch-up after a missed departure for good: a Resume does not start it again.
+            await self._async_end_catch_up(need_met=False)
         snapshot = await self._calculate(self._store.settings(self._entry_id))
         self._publish(snapshot, force=True)
         return self.snapshot()
@@ -1328,6 +1342,9 @@ class AutoPlannerController:
                 EXECUTION_ACTION_UNAVAILABLE, "this charger has no execution boundary"
             )
         decision = await self._executor.async_manual_action(action, choice)
+        if action != ACTION_RESUME:
+            # A person's Start, Stop or pause ends a catch-up after a missed departure for good.
+            await self._async_end_catch_up(need_met=False)
         try:
             if action == ACTION_STOP:
                 snapshot = await self._calculate(self._store.settings(self._entry_id))
@@ -1478,6 +1495,7 @@ class AutoPlannerController:
         settings = self._with_calendar(with_source(settings, source), record=True)
         self._price_revision = None if source is None else source.plan_revision
         self._lapse_target_stop(settings)
+        await self._catch_up_departure_passed()
         snapshot = await self._compute(settings, attempt)
         if (self._shutdown or attempt != self._attempt) and self._snapshot is not None:
             # A newer calculation (or the shutdown) began while this one planned in the executor: its answer is the
@@ -1551,6 +1569,9 @@ class AutoPlannerController:
             solar_reason: AutoReason = (
                 "solar_running" if site_supports_solar(self._hass, self._entry_id) else "solar_execution_unavailable"
             )
+            if not preview and self._store.catch_up(self._entry_id) is not None:
+                # The sun's strategy has no departure to catch up with.
+                await self._store.async_update(self._entry_id, clear_catch_up=True)
             return self._fresh_snapshot(
                 settings,
                 "planning_unavailable",
@@ -1584,6 +1605,12 @@ class AutoPlannerController:
             )
 
         resolved = await self._energy_for(settings, calculated_at, entry, area_snapshot, preview=preview)
+        if not preview and self._store.catch_up(self._entry_id) is not None:
+            caught = await self._catch_up_snapshot(
+                settings, resolved, calculated_at, entry, area_snapshot, fiscal, attempt, energy
+            )
+            if caught is not None:
+                return caught
         if isinstance(resolved, AutoSnapshot):
             return resolved
         energy_kwh = resolved.kwh
@@ -1752,6 +1779,185 @@ class AutoPlannerController:
         if not preview:
             await self._plan_demand_shadow(plan_request, result)
         return snapshot
+
+    async def _catch_up_snapshot(
+        self,
+        settings: AutoSettings,
+        resolved: _EnergyResolution | AutoSnapshot,
+        calculated_at: datetime,
+        entry: AreaEntry,
+        area_snapshot: Any,
+        fiscal: FiscalChoice,
+        attempt: int,
+        energy: dict[str, Any],
+    ) -> AutoSnapshot | None:
+        """While a catch-up after a missed departure runs (`execution/catch_up.py`), its plan: one period from the
+        departure to its end at the charge's full current, whatever the price; `None` when none runs, and the plan for
+        the next departure is made as ever. Settled first (`_settle_catch_up`): its ends are seen here. One that ended
+        short of the need stays in `energy` for the status until the unplug."""
+        record = await self._settle_catch_up(settings, resolved, calculated_at)
+        if record is None:
+            return None
+        if not record.running(calculated_at):
+            energy["catch_up"] = record
+            return None
+        if settings.amps is None:
+            return None
+        documents = tuple(
+            day.document
+            for day in (area_snapshot.today_snapshot, area_snapshot.tomorrow_snapshot)
+            if day.document is not None
+        )
+        power = capped_power_kw(
+            settings.amps,
+            effective_phases(self._hass, self._entry_id),
+            voltage_between_phases_v(self._hass, self._entry_id),
+            self._plan_power_cap_kw(settings),
+        )
+        proposal = catch_up_rules.plan_result(
+            record,
+            now=calculated_at,
+            documents=documents,
+            area_id=entry.id,
+            tz=entry.tz,
+            currency=entry.currency,
+            major_unit=entry.major_unit,
+            minor_unit=entry.minor_unit,
+            fiscal=fiscal,
+            power_kw=power,
+            consumption_kwh_per_10km=self._consumption_for(settings),
+        )
+        snapshot = self._fresh_snapshot(
+            settings,
+            "proposal_unpriced" if proposal.unpriced else "proposal_ready",
+            "unpriced" if proposal.unpriced else "ready",
+            calculated_at,
+            entry=entry,
+            price_snapshot=area_snapshot,
+            proposal=proposal,
+            attempt=attempt,
+        )
+        # The plan's deadline is the catch-up's own end: a top-off after its period never runs past it.
+        energy["departure_at"] = record.until
+        energy["catch_up"] = record
+        if isinstance(resolved, _EnergyResolution) and resolved.basis is not None:
+            # The next departure's count, as ever: what it delivers counts toward the catch-up and the next departure
+            # alike. The battery's room stays out: it is not what the catch-up's plan is for.
+            energy.update(
+                energy_basis=resolved.basis,
+                remaining_kwh=resolved.kwh if resolved.uncapped_kwh is None else resolved.uncapped_kwh,
+                delivered_kwh=resolved.delivered_kwh,
+            )
+        # Its end, planned again: the plan for the next departure takes over then.
+        self._arm_wake(record.end)
+        if not await self._persist_proposal(settings, snapshot):
+            failed = replace(snapshot, last_error_code="proposal_not_saved")
+            self._publish(failed, force=True)
+            return failed
+        return snapshot
+
+    async def _settle_catch_up(
+        self, settings: AutoSettings, resolved: _EnergyResolution | AutoSnapshot, now: datetime
+    ) -> CatchUp | None:
+        """The saved catch-up as it stands now, ended where one of its ends has come: the car unplugged, a person's
+        pause or Stop (Auto paused), its need met (the target reached by the plan's rule, a target's stop since the
+        departure, or the energy delivered by the count), or its end. One that reaches its end short of the need is kept
+        as ended short (the status says so) until the unplug, the need reads met or another departure passes; every
+        other end drops it. Saved when it changed."""
+        record = self._store.catch_up(self._entry_id)
+        if record is None:
+            return None
+        controller = None if self._executor is None else self._executor.controller
+        drop = controller is None or controller.known_connected is False
+        met = False if drop else self._catch_up_met(record, settings, resolved)
+        updated: CatchUp | None = record
+        if drop or met:
+            updated = None
+        elif record.ended is None:
+            if self._store.settings(self._entry_id).pause.admitted:
+                updated = None
+            elif now >= record.end:
+                level, delivered = self._catch_up_reached(record, settings, resolved)
+                updated = (
+                    None if level is None and delivered is None
+                    else record.ended_short(level_percent=level, delivered_kwh=delivered)
+                )
+        if updated == record:
+            return record
+        if updated is None:
+            await self._store.async_update(self._entry_id, clear_catch_up=True)
+            _LOGGER.info("SpotNav charger %s: the charge after the missed departure is over", self._entry_id)
+        else:
+            await self._store.async_update(self._entry_id, catch_up=updated)
+            _LOGGER.info(
+                "SpotNav charger %s: the charge after the missed departure reached its end short of the need",
+                self._entry_id,
+            )
+        return updated
+
+    def _catch_up_met(
+        self, record: CatchUp, settings: AutoSettings, resolved: _EnergyResolution | AutoSnapshot
+    ) -> bool:
+        """Whether a catch-up's need is met now: a target read reached by the plan's rule, nothing left to charge, or a
+        target's stop since the departure; an energy need delivered by the count since the departure."""
+        if isinstance(resolved, AutoSnapshot) and resolved.state == "nothing_to_charge":
+            return resolved.reason != "waiting_for_vehicle_update"
+        if record.energy_need:
+            delivered = None if isinstance(resolved, AutoSnapshot) else resolved.delivered_kwh
+            if delivered is None or isinstance(resolved, AutoSnapshot) or resolved.basis != "register":
+                return False
+            return delivered >= record.short_kwh - catch_up_rules.EPSILON_KWH
+        controller = None if self._executor is None else self._executor.controller
+        stopped = None if controller is None else target_stop_time(controller.target_stop_record)
+        if stopped is not None and stopped >= record.departure:
+            return True
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        if facts is None or facts.soc_percent is None or record.target_percent is None:
+            return False
+        return car_ended_full_percent(
+            facts.soc_percent,
+            estimated=facts.soc_estimated,
+            target_soc_percent=record.target_percent,
+            vehicle_max_percent=facts.max_percent,
+        )
+
+    def _catch_up_reached(
+        self, record: CatchUp, settings: AutoSettings, resolved: _EnergyResolution | AutoSnapshot
+    ) -> tuple[float | None, float | None]:
+        """Where a catch-up that reached its end short of the need ended: the car's level for a target, the energy
+        delivered toward the missed departure for an energy need; `(None, None)` when nothing says."""
+        if record.energy_need:
+            if isinstance(resolved, AutoSnapshot) or resolved.delivered_kwh is None or resolved.basis != "register":
+                return None, None
+            return None, record.requested_kwh - record.short_kwh + resolved.delivered_kwh
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        return (None if facts is None else facts.soc_percent), None
+
+    async def _async_end_catch_up(self, *, need_met: bool) -> None:
+        """End a running catch-up from outside a calculation (an unplug, a person's pause or Stop, its energy delivered):
+        the record is dropped, and a delivered need ends the plan's charge as any met need does. The next calculation
+        plans for the next departure."""
+        record = self._store.catch_up(self._entry_id)
+        if record is None or self._shutdown:
+            return
+        try:
+            await self._store.async_update(self._entry_id, clear_catch_up=True)
+        except Exception as err:  # noqa: BLE001 - the next calculation settles it again
+            _LOGGER.warning("Ending the charge after a missed departure failed: %s", type(err).__name__)
+            return
+        _LOGGER.info("SpotNav charger %s: the charge after the missed departure is over", self._entry_id)
+        if need_met and self._executor is not None and self._executor.applied is not None:
+            try:
+                await self._executor.async_end_plan_need_met()
+            except Exception as err:  # noqa: BLE001 - reported; the next calculation ends it
+                _LOGGER.warning("Ending a plan whose energy is delivered failed: %s", type(err).__name__)
+
+    async def _async_catch_up_delivered(self) -> None:
+        try:
+            await self._async_end_catch_up(need_met=True)
+            await self.async_recalculate()
+        finally:
+            self._catch_up_ending = False
 
     async def _plan_demand_shadow(self, request: PlanRequest, result: PlanResult) -> None:
         """Plan the car once more under the site's soft demand ceiling, in shadow (`car_demand.py`, plan
@@ -3087,9 +3293,11 @@ class AutoPlannerController:
         return self._executor.controller.plugged_in_at
 
     def _arm_departure(self, settings: AutoSettings) -> None:
-        """One appointment at the departure the plan is for: when it passes, the next occurrence is
-        planned (and its energy counted afresh) without waiting for the next price."""
+        """One appointment at the departure the plan is for: when it passes, a car still short of it is caught up
+        (`_async_start_catch_up`), and the next occurrence is planned (and its energy counted afresh) without waiting
+        for the next price."""
         self._cancel_departure()
+        self._departure_pending = None
         if self._shutdown or not settings.departure_enabled or not settings.area_id:
             return
         entry = self._manager.catalogue_snapshot().area(settings.area_id)
@@ -3104,6 +3312,7 @@ class AutoPlannerController:
             return
         target = instant.astimezone(timezone.utc) + timedelta(seconds=1)
         generation = self._generation
+        self._departure_pending = instant
 
         @callback
         def departed(_now: datetime) -> None:
@@ -3114,9 +3323,147 @@ class AutoPlannerController:
                 # Early (a scheduler that fired ahead of time): wait for the instant itself.
                 self._departure_cancel = self._manager.schedule_at(target, departed)
                 return
-            self._hass.async_create_task(self._on_area_changed(generation))
+            if self._departure_pending != instant:
+                # A calculation since the departure has decided its catch-up already (`_catch_up_departure_passed`).
+                self._hass.async_create_task(self._on_area_changed(generation))
+                return
+            self._departure_pending = None
+            self._hass.async_create_task(self._async_departure_passed(generation, instant))
 
         self._departure_cancel = self._manager.schedule_at(target, departed)
+
+    async def _async_departure_passed(self, generation: int, departure: datetime) -> None:
+        """The departure the plan was for has passed: decide its catch-up, then plan again."""
+        if self._shutdown or generation != self._generation:
+            return
+        try:
+            await self._async_start_catch_up(departure)
+        except Exception as err:  # noqa: BLE001 - the replan below still runs; a catch-up is never a failure
+            _LOGGER.warning("Deciding the charge after a missed departure failed: %s", type(err).__name__)
+        await self._on_area_changed(generation)
+
+    async def _catch_up_departure_passed(self) -> None:
+        """A calculation that runs after the armed departure passed but before its appointment fired (another event in
+        the same second, or timers that fire together) decides that departure's catch-up first: arming the next
+        departure would otherwise drop it."""
+        passed = self._departure_pending
+        if passed is None or self._now() < passed.astimezone(timezone.utc) + timedelta(seconds=1):
+            return
+        self._departure_pending = None
+        try:
+            await self._async_start_catch_up(passed)
+        except Exception as err:  # noqa: BLE001 - the calculation still runs; a catch-up is never a failure
+            _LOGGER.warning("Deciding the charge after a missed departure failed: %s", type(err).__name__)
+
+    async def _async_start_catch_up(self, departure: datetime) -> None:
+        """Start the catch-up after `departure` (`execution/catch_up.py`) when the plan in force was for it and had a
+        need for it that is not met, the car is still plugged in, Auto is not paused (a person's Stop or Start pauses
+        it) and no charge a person started runs. Only this appointment starts one: a restart never does.
+
+        The need is the plan's: its target, met by the rule that ends a plan as reached (a reading within 1 percentage
+        point, an estimate within 3), or its requested energy, met once the count has delivered it. A need nothing can
+        judge (no level, no count) starts nothing."""
+        executor = self._executor
+        snapshot = self._snapshot
+        if executor is None or snapshot is None or self._shutdown:
+            return
+        stored = self._store.settings(self._entry_id)
+        settings = self._effective(stored)
+        if settings.strategy == STRATEGY_SOLAR or settings.amps is None:
+            return
+        controller = executor.controller
+        planned = (
+            snapshot.departure_at is not None
+            and snapshot.departure_at == departure
+            and snapshot.state in ("proposal_ready", "proposal_unpriced")
+            and snapshot.proposal is not None
+        )
+        now = self._now()
+        until = departure.astimezone(timezone.utc) + catch_up_rules.LIMIT
+        met: bool | None = None
+        target: float | None = None
+        level: float | None = None
+        requested = short = 0.0
+        if planned and settings.driver == DRIVER_TARGET_SOC:
+            plan = controller.plan
+            target = (
+                plan.target_soc_percent
+                if plan is not None and plan.target_soc_percent is not None
+                else settings.target.target_percent
+            )
+            facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+            level = None if facts is None else facts.soc_percent
+            if target is not None and level is not None and facts is not None:
+                met = car_ended_full_percent(
+                    level, estimated=facts.soc_estimated, target_soc_percent=target, vehicle_max_percent=facts.max_percent
+                )
+            requested = short = max(0.0, snapshot.proposal.requested_kwh if snapshot.proposal is not None else 0.0)
+        elif planned:
+            counted = self._departure_count(departure, snapshot)
+            if counted is not None:
+                requested, delivered = counted
+                short = max(0.0, requested - delivered)
+                met = short <= catch_up_rules.EPSILON_KWH
+        if not catch_up_rules.starts(
+            planned=planned,
+            met=met,
+            plugged_in=controller.known_connected,
+            paused=stored.pause.admitted,
+            person_charging=controller.charging and controller.charge_origin == "other",
+        ):
+            if self._store.catch_up(self._entry_id) is not None:
+                # Another departure passed: what an earlier one left is over.
+                await self._store.async_update(self._entry_id, clear_catch_up=True)
+            return
+        end = until
+        if target is None and not (self._energy_register_entity_id() is not None and controller.energy_count_reports()):
+            # Nothing counts the energy as it goes: the period holds what is missing at the planned power.
+            power = capped_power_kw(
+                settings.amps,
+                effective_phases(self._hass, self._entry_id),
+                voltage_between_phases_v(self._hass, self._entry_id),
+                self._plan_power_cap_kw(settings),
+            )
+            end = catch_up_rules.energy_end(departure.astimezone(timezone.utc), until, short, power)
+        record = CatchUp(
+            departure=departure.astimezone(timezone.utc),
+            until=until,
+            end=end,
+            requested_kwh=requested,
+            short_kwh=short,
+            target_percent=target,
+            level_percent=level,
+        )
+        if not record.running(now):
+            return
+        await self._store.async_update(self._entry_id, catch_up=record)
+        _LOGGER.info(
+            "SpotNav charger %s: the departure passed short of the need (%s); charging on until %s at the latest",
+            self._entry_id,
+            f"{level:.0f} % of {target:.0f} %" if target is not None and level is not None
+            else f"{short:.1f} of {requested:.1f} kWh missing",
+            end.isoformat(),
+        )
+
+    def _departure_count(self, departure: datetime, snapshot: AutoSnapshot) -> tuple[float, float] | None:
+        """An energy need's request for `departure` and what was delivered toward it, as the count for that departure
+        says (its energy register, else the charger's recorded sessions when it has no register); `None` when nothing
+        counts it."""
+        baseline = self._baseline()
+        if baseline is None or baseline.departure_key != departure.isoformat():
+            return None
+        if snapshot.remaining_kwh is None:
+            return None
+        requested = snapshot.remaining_kwh + (snapshot.delivered_kwh or 0.0)
+        if baseline.met_at is not None:
+            return requested, requested
+        if baseline.register_kwh is not None and baseline.last_register_kwh is not None:
+            return requested, counted_kwh(baseline)
+        if self._energy_register_entity_id() is None and baseline.started_at is not None:
+            sessions = self._session_energy_since(baseline.started_at)
+            if sessions is not None:
+                return requested, sessions
+        return None
 
     def _cancel_departure(self) -> None:
         if self._departure_cancel is not None:
@@ -3135,6 +3482,9 @@ class AutoPlannerController:
         self._cancel_connection()
         if event == CONNECTION_PLUGGED_IN:
             self._plug_in_pending = True
+        elif event == CONNECTION_UNPLUGGED and self._store.catch_up(self._entry_id) is not None:
+            # The car left: a catch-up after its missed departure is over, at once.
+            self._hass.async_create_task(self._async_end_catch_up(need_met=False))
 
         @callback
         def settled(_now: datetime) -> None:
@@ -3264,6 +3614,21 @@ class AutoPlannerController:
         if not step.accepted:
             return
         key = step.baseline.departure_key
+        catch_up = self._store.catch_up(self._entry_id)
+        if (
+            catch_up is not None
+            and catch_up.running(self._now())
+            and catch_up.energy_need
+            and key != catch_up.departure.isoformat()
+            and step.baseline.started_at is not None
+            and step.baseline.started_at >= catch_up.departure
+            and step.delivered_kwh >= catch_up.short_kwh - catch_up_rules.EPSILON_KWH
+            and not self._catch_up_ending
+        ):
+            # What the missed departure still needed is delivered (counted from the departure): the catch-up ends as
+            # any met need does, and the plan for the next departure takes over.
+            self._catch_up_ending = True
+            self._hass.async_create_task(self._async_catch_up_delivered())
         met = self._energy_met_done == key or step.baseline.met_at is not None
         if step.delivered_kwh < settings.requested_kwh:
             if not met:

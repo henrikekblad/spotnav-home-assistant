@@ -27,6 +27,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..execution.catch_up import CatchUp
 from ..execution.power_energy import configured_register_entity
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from .planner import high_load_window_problem, HighLoadWindow, MAX_PERIODS, MIN_PERIODS
@@ -1576,6 +1577,8 @@ class _Entry:
     energy_baseline: EnergyBaseline | None = None
     #: Which settings were filled in by first-run defaults and not yet confirmed by an edit.
     suggested: tuple[str, ...] = ()
+    #: The catch-up after a missed departure, while one runs or ended short (`execution/catch_up.py`).
+    catch_up: CatchUp | None = None
 
 
 class AutoSettingsStore:
@@ -1639,8 +1642,8 @@ class AutoSettingsStore:
 
         A missing file, other schema, malformed record, missing field or invalid value each logs one
         warning and leaves that entry at its defaults. A field a later release added to a charger's settings record
-        is kept and written back (`AutoSettings.from_stored`); one beside a charger's four parts is read past and not
-        kept (3.0 writes none).
+        is kept and written back (`AutoSettings.from_stored`); one beside a charger's four parts and its catch-up after a
+        missed departure (`catch_up`, written only while there is one) is read past and not kept.
         """
         async with self._lock:
             if self._loaded:
@@ -1663,8 +1666,8 @@ class AutoSettingsStore:
                 if not isinstance(entry_id, str) or not entry_id:
                     _LOGGER.warning("Ignoring a stored Auto settings record with no entry id")
                     continue
-                # A key beside these four is a later release's: read past (not kept on save; 3.0 writes none), never
-                # a reason to drop the charger's settings when going back to this release.
+                # A key beside these four and `catch_up` is a later release's: read past (not kept on save), never a
+                # reason to drop the charger's settings when going back to this release.
                 if not isinstance(record, dict):
                     _LOGGER.warning("Ignoring a malformed stored Auto settings record")
                     continue
@@ -1701,11 +1704,17 @@ class AutoSettingsStore:
                 ):
                     # `phases` is no longer a first-run suggestion (the charger's wiring says it).
                     suggested = tuple(item for item in stored_suggested if item != "phases")
+                catch_up = None
+                if record.get("catch_up") is not None:
+                    catch_up = CatchUp.from_stored(record["catch_up"])
+                    if catch_up is None:
+                        _LOGGER.warning("Ignoring a stored catch-up after a missed departure")
                 self._entries[entry_id] = _Entry(
                     settings=settings,
                     proposal=proposal,
                     energy_baseline=energy_baseline,
                     suggested=suggested,
+                    catch_up=catch_up,
                 )
 
     def settings(self, entry_id: str) -> AutoSettings:
@@ -1723,6 +1732,11 @@ class AutoSettingsStore:
     def energy_baseline(self, entry_id: str) -> EnergyBaseline | None:
         entry = self._entries.get(entry_id)
         return None if entry is None else entry.energy_baseline
+
+    def catch_up(self, entry_id: str) -> CatchUp | None:
+        """The catch-up after a missed departure saved for this charger (`execution/catch_up.py`), or `None`."""
+        entry = self._entries.get(entry_id)
+        return None if entry is None else entry.catch_up
 
     def suggested(self, entry_id: str) -> tuple[str, ...]:
         """Settings filled in by first-run defaults that no edit has confirmed yet."""
@@ -1747,6 +1761,8 @@ class AutoSettingsStore:
         energy_baseline: EnergyBaseline | None = None,
         clear_energy_baseline: bool = False,
         confirm: bool = False,
+        catch_up: CatchUp | None = None,
+        clear_catch_up: bool = False,
     ) -> AutoSettings:
         """The one way settings change: validate, bump the revision, save, return.
 
@@ -1774,6 +1790,7 @@ class AutoSettingsStore:
                 settings=updated,
                 proposal=None if existing is None else existing.proposal,
                 energy_baseline=None if existing is None else existing.energy_baseline,
+                catch_up=None if existing is None else existing.catch_up,
                 suggested=(
                     ()
                     if existing is None or (confirm and mutate is not None)
@@ -1788,6 +1805,10 @@ class AutoSettingsStore:
                 entry.energy_baseline = None
             elif energy_baseline is not None:
                 entry.energy_baseline = energy_baseline
+            if clear_catch_up:
+                entry.catch_up = None
+            elif catch_up is not None:
+                entry.catch_up = catch_up
             await self._async_commit(entry_id, entry)
         if mutate is not None:
             for listener in list(self._write_listeners):
@@ -1814,6 +1835,7 @@ class AutoSettingsStore:
                 settings=seeded,
                 proposal=None if existing is None else existing.proposal,
                 energy_baseline=None if existing is None else existing.energy_baseline,
+                catch_up=None if existing is None else existing.catch_up,
                 suggested=tuple(suggested),
             )
             await self._async_commit(entry_id, entry)
@@ -1860,6 +1882,7 @@ class AutoSettingsStore:
                 settings=settings,
                 proposal=existing.proposal,
                 energy_baseline=existing.energy_baseline,
+                catch_up=existing.catch_up,
                 suggested=tuple(dict.fromkeys((*existing.suggested, "area"))),
             )
             await self._async_commit(entry_id, entry)
@@ -1903,6 +1926,7 @@ class AutoSettingsStore:
                 settings=updated,
                 proposal=None if existing is None else existing.proposal,
                 energy_baseline=None if existing is None else existing.energy_baseline,
+                catch_up=None if existing is None else existing.catch_up,
                 suggested=() if existing is None else existing.suggested,
             )
             self._entries = {**self._entries, entry_id: entry}
@@ -1963,6 +1987,8 @@ class AutoSettingsStore:
                         else entry.energy_baseline.as_dict()
                     ),
                     "suggested": list(entry.suggested),
+                    # Only while there is one: a record without it stays as an older release wrote it.
+                    **({} if entry.catch_up is None else {"catch_up": entry.catch_up.as_dict()}),
                 }
                 for entry_id, entry in entries.items()
             },

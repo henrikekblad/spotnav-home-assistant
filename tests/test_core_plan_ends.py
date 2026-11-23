@@ -46,7 +46,8 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
     """08:00 with a departure at 10:00 and far more asked than two hours give: every slot to the departure is the
     plan's own charge, started at once. At 10:00 its last window ends while the next departure's plan (rising prices),
     waiting for that boundary, opens a window then: that plan takes the charge over, with no stop and no start (no
-    contactor cycle, no `plan_done`), and the departure appointment's replan a second later changes nothing of it."""
+    contactor cycle, no `plan_done`), and the departure appointment's replan a second later changes nothing of it: the car
+    is still short, so it is the charge after the missed departure (`execution/catch_up.py`) that goes on."""
     serve_prices(transport, rising=True)
     calls = _record_charger_commands(hass)
     with freeze_time(NOW) as frozen:
@@ -72,7 +73,10 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
         assert [call[0] for call in calls] == ["turn_on"], "one charge across the departure"
         assert car.controller.charging
         snapshot = car.preview.snapshot()
-        assert snapshot.departure_at is not None and snapshot.departure_at > dt_util.utcnow() + timedelta(hours=20)
+        # The car left short of its need while still plugged in: the plan charges on after the departure (3.0's
+        # catch-up, at most three hours), and the next departure's plan follows it.
+        assert snapshot.catch_up is not None
+        assert snapshot.departure_at == departing.end_time + timedelta(hours=3)
         assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)

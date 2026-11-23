@@ -137,6 +137,12 @@ a vehicle integration, charge a fixed number of kWh instead.
   drawing when the last planned period ends is let finish: the charge stays on until the car stops by
   itself, at most an hour past the period and never past the departure (*Charging until the car is full
   (at most until 06:40)*). A target below the car's limit still ends with its last period.
+- **After a missed departure.** A car still below its target (by the rule above: a reading more than 1
+  percentage point short, an estimate more than 3) and plugged in when its departure passes is charged on
+  at once, at most three hours, until the target's stop ends it as any plan's
+  ([strategies](strategies.md), *Charging on after a missed departure*). The
+  top-off is not needed then: the catch-up covers a car charging to its own limit, and a top-off after it
+  never runs past its three hours.
 - **Unreadable levels never stop a charge and never prevent one.** A sleeping car reports
   nothing; the period's own end remains the guard.
 - **Manual Start** is a decision by a person and is not vetoed by a level at or above the

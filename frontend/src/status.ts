@@ -194,6 +194,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   stop_unplug_unseen: "status.stopUnplugUnseen",
   charging_now: "status.chargingNow",
   topping_off: "status.toppingOff",
+  charging_after_departure: "status.chargingAfterDeparture",
+  not_reached_after_departure: "status.notReachedAfterDeparture",
   charging_without_prices: "issue.chargingWithoutPrices",
   waiting_for_publication: "status.waitingForPublication",
   waiting_for_history: "status.waitingForHistory",
@@ -617,6 +619,33 @@ function manualPauseKey(action: unknown, ends: unknown): TranslationKey {
 }
 
 /**
+ * The figures of a charge after a missed departure: the car's level of its target (whole percent), else the energy
+ * delivered of the energy asked for; `null` when neither is known.
+ */
+function catchUpFigures(
+  language: Language,
+  p: Record<string, StatusParam>,
+): { kwh: boolean; params: Record<string, string> } | null {
+  const target = num(p["target"]);
+  const level = num(p["level"]);
+  if (target !== null && level !== null) {
+    return {
+      kwh: false,
+      params: { level: formatNumber(language, Math.floor(level), 0), target: formatNumber(language, target, 0) },
+    };
+  }
+  const kwh = num(p["kwh"]);
+  const requested = num(p["requested_kwh"]);
+  if (target === null && kwh !== null && requested !== null) {
+    return {
+      kwh: true,
+      params: { kwh: formatNumber(language, kwh, 1), requested: formatNumber(language, requested, 1) },
+    };
+  }
+  return null;
+}
+
+/**
  * One status line in words. `publicationAt` is the planning record's `publication_at`, the time the
  * history-based wait names; a line that needs no time ignores it.
  */
@@ -658,6 +687,32 @@ export function lineText(
       return until === null || !zoned
         ? say("status.toppingOffOpen")
         : say("status.toppingOff", { time: clock(format, until) });
+    }
+    case "charging_after_departure": {
+      // The departure passed short of the plan's need: the car charges on at once, at most until `until`, with the
+      // target and the car's level, or the energy delivered and asked for.
+      const until = ms(p["until"]);
+      const time = until === null || !zoned ? null : clock(format, until);
+      const shown = catchUpFigures(language, p);
+      if (shown === null) {
+        return say("status.chargingAfterDepartureOpen");
+      }
+      if (shown.kwh) {
+        return time === null
+          ? say("status.chargingAfterDepartureKwhNoTime", shown.params)
+          : say("status.chargingAfterDepartureKwh", { ...shown.params, time });
+      }
+      return time === null
+        ? say("status.chargingAfterDepartureNoTime", shown.params)
+        : say("status.chargingAfterDeparture", { ...shown.params, time });
+    }
+    case "not_reached_after_departure": {
+      // That charge reached its end short of the need: where it ended.
+      const shown = catchUpFigures(language, p);
+      if (shown === null) {
+        return say("status.notReachedAfterDepartureOpen");
+      }
+      return say(shown.kwh ? "status.notReachedAfterDepartureKwh" : "status.notReachedAfterDeparture", shown.params);
     }
     case "waiting_for_publication": {
       const at = ms(p["publication_at"]);

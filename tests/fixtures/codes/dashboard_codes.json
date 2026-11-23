@@ -204,6 +204,16 @@
       ],
       "tone": "blocking"
     },
+    "charging_after_departure": {
+      "params": [
+        "kwh",
+        "level",
+        "requested_kwh",
+        "target",
+        "until"
+      ],
+      "tone": "normal"
+    },
     "charging_now": {
       "params": [
         "until"
@@ -380,6 +390,15 @@
     },
     "no_plan": {
       "params": [],
+      "tone": "normal"
+    },
+    "not_reached_after_departure": {
+      "params": [
+        "kwh",
+        "level",
+        "requested_kwh",
+        "target"
+      ],
       "tone": "normal"
     },
     "nothing_to_charge": {
