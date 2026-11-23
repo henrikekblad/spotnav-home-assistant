@@ -809,7 +809,11 @@ def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_n
 # --- the expiry measured through the per-phase probe -------------------------------------------------------------------
 
 
-def _verify_expiry(plant: Plant, looks: int = 900) -> tuple[Verification, Executor, list[dict[str, Any]]]:
+def _verify_expiry(
+    plant: Plant, looks: int = 900, *, mutate: Any = None, glitch_at_s: float | None = None,
+) -> tuple[Verification, Executor, list[dict[str, Any]]]:
+    """The routine's hold, `per_phase` and `expiry` on the model plant. `mutate(plant, s)`: changes the plant `s`
+    into the silence; `glitch_at_s`: one look that far into it reads L1 as in passthru (the house unchanged)."""
     executor = Executor(VICTRON_CONTROL)
     now = T0
     verification = Verification(
@@ -818,12 +822,23 @@ def _verify_expiry(plant: Plant, looks: int = 900) -> tuple[Verification, Execut
     )
     capability = Capability(rated_charge_kw=plant.rating_kw, rated_discharge_kw=plant.rating_kw)
     seen_looks: list[dict[str, Any]] = []
+    silent_at: datetime | None = None
     for _ in range(looks):
+        if silent_at is None and verification.expiry_probe():
+            silent_at = now
+        since = None if silent_at is None else (now - silent_at).total_seconds()
+        if mutate is not None and since is not None:
+            mutate(plant, since)
         seen = plant.inputs(executor, now, None)
         deficit = max((seen.grid_import_kw or 0.0) - (seen.facts.power_kw or 0.0), 0.0)
+        grid, out, point = seen.grid_phase_kw, seen.plant_phase_kw, seen.phase_point_kw
+        if glitch_at_s is not None and since == glitch_at_s and grid and out and point:
+            out = (0.0, out[1], out[2])
+            grid = (grid[0] + 1.0, grid[1], grid[2])
+            point = (point[0] + 1.0, point[1], point[2])
         sample = Sample(
-            seen.facts.power_kw, 5.0, 50.0, deficit, seen.grid_import_kw, seen.grid_phase_kw, seen.plant_phase_kw,
-            headroom_a=seen.headroom_a,
+            seen.facts.power_kw, 5.0, 50.0, deficit, seen.grid_import_kw, grid, out,
+            headroom_a=seen.headroom_a, phase_point_kw=point,
         )
         action, rate = verification.command(now, sample, plant.rating_kw)
         probe = verification.expiry_probe()
@@ -871,3 +886,31 @@ def test_a_multi_that_never_falls_back_leaves_the_dead_man_stated() -> None:
     assert not gate.expiry_measured(VICTRON_PHASES.expiry, "v3.60 | victron_gx 1", report)
     # A failed expiry never fails the report.
     assert gate.report_status({**report, "modes": {**modes, "normal": {"outcome": "restored"}}}) == "passed"
+
+
+def _measured(modes: dict[str, Any]) -> bool:
+    key = "v3.60 | victron_gx 1"
+    return gate.expiry_measured(VICTRON_PHASES.expiry, key, {"key": key, "modes": modes})
+
+
+@pytest.mark.parametrize(("start", "end"), [(0.6, 0.1), (0.8, 0.3), (1.0, 0.0)])
+def test_a_load_that_drops_on_the_probed_phase_is_never_a_fallback(start: float, end: float) -> None:
+    """The review's case: the Multi never falls back (its setpoints stand), and L1's load drops 30 s into the
+    silence, by more than the tolerance and by exactly the probe's 1 kW: the plant's power reads as passthru."""
+    plant = Plant(fallback=False)
+    plant.out_kw[0] = start
+
+    def drop(model: Plant, since: float) -> None:
+        model.out_kw[0] = start if since < 30 else end
+
+    verification, _executor, _looks = _verify_expiry(plant, mutate=drop)
+    modes = verification.report()["modes"]
+    assert modes["expiry"]["outcome"] == "not_judgeable:house_changed"
+    assert not _measured(modes)
+
+
+def test_one_look_that_reads_like_passthru_is_a_glitch_not_a_fallback() -> None:
+    verification, _executor, _looks = _verify_expiry(Plant(fallback=False), glitch_at_s=30.0)
+    modes = verification.report()["modes"]
+    assert modes["expiry"]["outcome"] == "ignored" and modes["expiry"]["fallback_s"] is None
+    assert not _measured(modes)

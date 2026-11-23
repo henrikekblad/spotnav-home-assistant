@@ -717,7 +717,8 @@ def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_repo
     other = _expiry("device_lease", "spotnav", 60.0, evidence="stated", renew_s=20)
     now = datetime(2026, 11, 23, 20, 0, tzinfo=timezone.utc)
     passed = {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}
-    run = {"started_at": now.isoformat(), "modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": phase.expiry_id}}}
+    run = {"started_at": now.isoformat(),
+           "modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": phase.expiry_id, "fallback_s": 45.0}}}
     report = merge_report({"modes": passed}, run, key=_KEY, attempts=2, now=now)
     assert expiry_measured(phase, _KEY, report) and not expiry_measured(other, _KEY, report)
     assert not expiry_measured(phase, "fw2 | brand 1.0", report)
@@ -731,8 +732,8 @@ def test_an_expiry_row_counts_only_for_its_own_expiry_and_never_decides_the_repo
     assert allowed_actions(failed, Options()) == allowed_actions({"modes": passed}, Options())
     # A run for another expiry (the recipe changed) replaces the decided row.
     again = merge_report(
-        failed, {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id}}}, key=_KEY, attempts=3,
-        now=now,
+        failed, {"modes": {MODE_EXPIRY: {"outcome": "obeyed", "expiry_id": other.expiry_id, "fallback_s": 70.0}}},
+        key=_KEY, attempts=3, now=now,
     )
     assert expiry_measured(other, _KEY, again) and not expiry_measured(phase, _KEY, again)
 

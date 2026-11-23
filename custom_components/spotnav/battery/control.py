@@ -1398,7 +1398,8 @@ class BatteryControl:
             inputs.grid_import_kw if inputs.measurement_ok else None,
             self._grid_phase_kw() if inputs.measurement_ok else None, inputs.plant_phase_kw,
             curtailing=self._curtailing(), soc_min_pct=inputs.facts.reserve_soc_pct or 0.0,
-            headroom_a=inputs.headroom_a,
+            headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
+            volts_between_phases=inputs.volts_between_phases,
         )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         probe = verification.probe()

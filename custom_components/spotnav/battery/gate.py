@@ -172,6 +172,9 @@ MIN_RATE_KW: Final = 0.5
 #: phase for the HA-down cap to be lifted on its account (s): about what a fuse and a breaker carry a phase's
 #: overload for without opening (see `grid_charge_phase_caps_kw`).
 SILENCE_FALLBACK_MAX_S: Final = 60.0
+#: How far apart the looks are that see a fallback (s, `runtime.TICK_S`): a fallback measured by the verification's
+#: mode `expiry` counts once it came within `SILENCE_FALLBACK_MAX_S` and one look of the last write.
+EXPIRY_LOOK_S: Final = 10.0
 #: A held car's departure has room when this many hours at its planned power are left over (h).
 DEPARTURE_ROOM_H: Final = 2.0
 
@@ -725,7 +728,14 @@ def expiry_measured(expiry: Expiry, key: str | None, report: Mapping[str, Any] |
 def expiry_row_passed(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
     """Whether the report's mode `expiry` is `obeyed` for this very expiry (`Expiry.expiry_id`)."""
     row = _modes(report).get(MODE_EXPIRY)
-    return isinstance(row, Mapping) and row.get("outcome") == "obeyed" and row.get("expiry_id") == expiry.expiry_id
+    if not isinstance(row, Mapping) or row.get("outcome") != "obeyed" or row.get("expiry_id") != expiry.expiry_id:
+        return False
+    # The fallback counted from the last write, within the minute the lift rests on (and one look).
+    fallback = row.get("fallback_s")
+    return (
+        isinstance(fallback, (int, float)) and not isinstance(fallback, bool) and math.isfinite(fallback)
+        and 0 <= fallback <= SILENCE_FALLBACK_MAX_S + EXPIRY_LOOK_S
+    )
 
 
 def expiry_due(report: Mapping[str, Any] | None, expiry: Expiry) -> bool:
