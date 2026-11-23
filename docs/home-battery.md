@@ -441,9 +441,11 @@ off in the app. That is the same exposure Sigenergy's own AI mode runs with ever
 3. In the card's battery settings, press the button on the import limit's line and confirm:
    * **Set 13.1 kW…** when the plant's limit reads more than 3 x (fuse - safety margin) x voltage, or nothing:
      SpotNav lowers `Grid Import Limitation` to that figure (13.1 kW on 20 A with a 1 A margin), reads it back, and
-     only then says the limit acts. It never raises the limit, and writes nothing while battery control is off. If
-     the value does not read back within 15 seconds nothing else changes and the line says so: set it in the
-     Sigenergy app instead and press again.
+     only then says the limit acts. It never raises the limit, never writes over a limit that reads nothing, and
+     writes nothing to the plant while battery control is off or only watches (shadow): then the line says to set
+     it in the Sigenergy app. If the value does not read back within 15 seconds nothing else changes and the line
+     says so: set it in the Sigenergy app instead and press again. Many integrations show a written value at once,
+     so the plant's own reading at the next poll is the real check; SpotNav checks the limit again at every look.
    * **Turn on…** when the limit already reads low enough: only "The import limit acts" is turned on.
 
 The battery section says what is still missing, one step at a time, with a button to the entity or the setting
