@@ -235,6 +235,22 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   three-phase definitions), the time-of-use switch `use_timer` (1p) or `prog_time_of_use_enabled` (3p) and
   `battery_power`, a signed register with the same sign (`micro_hybrid_ess.py` line 31: "positive = discharging").
 
+* Anker SOLIX Solarbank Max AC, Max, XE and 4 E5000 Pro, `anker_solix_official` (anker-charging/ha-anker-solix-official
+  `a9930d7`, 1.5.1, local Modbus TCP, read 2026-11-23, `plans/research_integrations/anker_solix_control_2026-11-23.md`):
+  read only. One config entry per device; unique id `<config entry id>_<key>` (`base_entity.py` line 48), the keys from
+  the model's YAML profile in `config/` (the same four in all four battery profiles): the level `battery_soc` (10014),
+  the size `rated_energy` (10250, kWh), the firmware `device_sw_version`, the inverter's discharge floor
+  `discharge_limit_soc` (60001, 0-20 %) and the select `operating_mode` (10064), free only in `self_consumption`: every
+  other option is the Anker app's own (time-of-use, smart, custom, dynamic pricing) or someone's third-party control. The
+  battery's power is two unsigned sensors split from one signed register, `battery_charging_power` from its negative
+  values and `battery_discharging_power` from its positive (`power_split_mode`, the YAML's lines 112-135), the site's
+  pair. Not read: the lifetime counters `cumulative_charge_energy` and `cumulative_discharge_energy` (the discharge one
+  under-counts by about half on a Max AC on firmware 1.0.2.23, issue 181, open, so a round trip from them would be wrong);
+  the backup reserve `backup_reserve_soc` (60002), which the unit holds (and grid-charges up to, at its full input power,
+  also in self-consumption) only while the backup switch (60003) is on, a register that is no entity, so the value says
+  nothing on its own; and any rating (`max_charge_power` and `max_discharge_power` are internal to the integration, not
+  entities). The cloud integration `anker_solix` (thomluther) has no adapter: its sign and its totals are unstated.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1054,9 +1070,23 @@ DEYE: Final = Adapter(
     ),
 )
 
+#: Anker SOLIX through `anker_solix_official` (see the module): read only.
+ANKER: Final = Adapter(
+    brand="anker",
+    label="Anker SOLIX",
+    platforms=("anker_solix_official",),
+    facts={
+        "soc": _key("battery_soc"),
+        "capacity": _key("rated_energy"),
+        "firmware": _key("device_sw_version"),
+    },
+    modes=(ModeRule(_key("operating_mode", "select"), frozenset({"self_consumption"}), "operating mode"),),
+    reserves=(ReserveSource(_key("discharge_limit_soc", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER,
 )
 
 

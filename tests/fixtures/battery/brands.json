@@ -2189,5 +2189,116 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "anker": {
+  "_source": "anker-charging/ha-anker-solix-official a9930d7 (1.5.1), Solarbank Max AC profile (config/8fcbb87c...yaml): `<config entry id>_<key>` (base_entity.py line 48). Not a real registry; built from the profile's keys.",
+  "platform": "anker_solix_official",
+  "manufacturer": "Anker",
+  "battery": "sensor.solarbank_battery_charging_power",
+  "entities": [
+   {
+    "entity_id": "sensor.solarbank_battery_charging_power",
+    "unique_id": "01janksolixofficial0000_battery_charging_power",
+    "device": "sb",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_battery_discharging_power",
+    "unique_id": "01janksolixofficial0000_battery_discharging_power",
+    "device": "sb",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_battery_soc",
+    "unique_id": "01janksolixofficial0000_battery_soc",
+    "device": "sb",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_rated_energy",
+    "unique_id": "01janksolixofficial0000_rated_energy",
+    "device": "sb",
+    "state": "7.0",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_device_sw_version",
+    "unique_id": "01janksolixofficial0000_device_sw_version",
+    "device": "sb",
+    "state": "1.0.2.23",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_cumulative_charge_energy",
+    "unique_id": "01janksolixofficial0000_cumulative_charge_energy",
+    "device": "sb",
+    "state": "207.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarbank_cumulative_discharge_energy",
+    "unique_id": "01janksolixofficial0000_cumulative_discharge_energy",
+    "device": "sb",
+    "state": "122.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solarbank_discharge_limit_soc",
+    "unique_id": "01janksolixofficial0000_discharge_limit_soc",
+    "device": "sb",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solarbank_backup_reserve_soc",
+    "unique_id": "01janksolixofficial0000_backup_reserve_soc",
+    "device": "sb",
+    "state": "30",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solarbank_operating_mode",
+    "unique_id": "01janksolixofficial0000_operating_mode",
+    "device": "sb",
+    "state": "self_consumption",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "anker",
+   "soc_pct": 64.0,
+   "capacity_kwh": 7.0,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

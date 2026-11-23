@@ -49,6 +49,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   write and which `solarman`'s `Time of Use` select and kellerza's `Use Timer` switch show as on or off
   (davidrapan `84982c5`, kellerza `49efe3f`); no aggregator is named: none was found in the Nordics
   (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`).
+* Anker's own modes are the options of `anker_solix_official`'s `operating_mode` select (`tou_mode`, `custom_mode`,
+  `smart_mode`, `dynamic_pricing`, `socket_overlay_mode`: what the Anker app sets, anker-charging `a9930d7`). Below its
+  backup reserve a Max AC grid-charges at its configured input power in any mode (Anker's own answer in the
+  integration's issue 152). No aggregator is named: none was found (`plans/research_integrations/anker_solix_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -121,6 +125,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     # brand of the facts there.
     Coexistence("deye", "Deye / Sunsynk", ("solarman",),
                 "Deye Cloud or SunSynk Connect: time-of-use programmes and work modes"),
+    Coexistence("anker", "Anker SOLIX", ("anker_solix_official",),
+                "Anker app: time-of-use, smart, custom and dynamic-pricing modes, and the backup reserve"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

@@ -164,6 +164,7 @@ NAMES: dict[str, str] = {
     "zha": "frient EMIZB-132 (ZHA)",
     "zendure_ha": "Zendure",
     "anker_solix": "Anker Solix",
+    "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
     "kostal_plenticore": "Kostal Plenticore",
@@ -931,9 +932,15 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Anker Solix (Solarbank)",
-        "`anker_solix`, HACS (thomluther/ha-anker-solix)",
-        keys=("anker_solix",),
-        note="Read from Anker's cloud, a minute or more between values.",
+        "`anker_solix`, HACS (thomluther/ha-anker-solix); `anker_solix_official`, HACS "
+        "(anker-charging/ha-anker-solix-official, Solarbank Max AC, Max, XE and 4 E5000 Pro)",
+        keys=("anker_solix", "anker_solix_official"),
+        adapter="anker",
+        control="Not mapped: read only. The official integration has a power setpoint in third-party control with no "
+        "timeout, and below its backup reserve the unit grid-charges by itself",
+        note="The cloud integration is read from Anker's cloud, a minute or more between values, and only its power "
+        "is read. The official one is read for level, size and mode; its energy counters under-count, so the ratings "
+        "and the round trip are learnt.",
     ),
     Overview(
         "EcoFlow (PowerStream, Ocean Pro)",

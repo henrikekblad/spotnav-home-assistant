@@ -821,6 +821,16 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         reject=_re(r"(?:solarbank|pps)_battery_power_signed$"),
         label="Anker Solix, one device",
     ),
+    # Anker's own local integration (`anker_solix_official`, `a9930d7`): one register (10008, positive = discharging)
+    # split into two non-negative sensors, `<entry id>_battery_charging_power` (its negative values, shown positive) and
+    # `<entry id>_battery_discharging_power` (its positive values), per the YAML profile's `power_split_mode`. One
+    # entry per device: a site with several Solarbanks reads the first.
+    BatteryRow(
+        ("anker_solix_official",),
+        _re(r"_battery_charging_power$"),
+        discharge_regex=_re(r"_battery_discharging_power$"),
+        label="Anker Solix (local, official)",
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

@@ -459,6 +459,8 @@ PLAN_REASON = {
     "homevolt": "no_capacity",
     # Deye states a size only where `solarman` has learnt one, and no rating (the current limits are settings): learnt.
     "deye": "no_rated_power",
+    # Anker's local integration states the size and no rating (the limits are internal to it): learnt.
+    "anker": "no_rated_power",
 }
 
 
