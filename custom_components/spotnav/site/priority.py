@@ -193,22 +193,29 @@ def _car_slots(order: Sequence[str]) -> list[int]:
     return [index for index, item in enumerate(order) if item.startswith(CHARGER_PREFIX)]
 
 
-def with_charger_priority(order: Sequence[str], entry_id: str, value: str) -> list[str]:
-    """An older app's `charger_priority` write as a list change: the cars sorted by their derived class with this one
-    set to `value` (first, normal, last), each class keeping its order, back into the cars' own places."""
+def with_charger_priority(
+    order: Sequence[str], entry_id: str, value: str, current: Mapping[str, str] | None = None
+) -> list[str]:
+    """An older app's `charger_priority` write as a list change: the cars sorted by their class (`current`, each
+    charger's old value as the app was shown it; derived from the list where not given) with this one set to `value`,
+    each class keeping its order, this one at the top of the cars for "first" and at their bottom for "last"; back
+    into the cars' own places."""
     slots = _car_slots(order)
     cars = [order[index] for index in slots]
-    ranks = {charger_entry_of(item): _LEGACY_RANK[level] for item, level in _derived_rows(order).items()}
-    ranks[entry_id] = _LEGACY_RANK.get(value, 1)
-    cars.sort(key=lambda item: (ranks.get(charger_entry_of(item), 1), cars.index(item)))
+    levels = dict(derived_charger_priorities(order))
+    levels.update(current or {})
+    levels[entry_id] = value
+    ranks = {charger_id(key): _LEGACY_RANK.get(level, 1) for key, level in levels.items()}
+    place = {item: index for index, item in enumerate(cars)}
+    cars.sort(key=lambda item: (ranks.get(item, 1), place[item]))
+    row = charger_id(entry_id)
+    if row in cars and value in (CHARGER_PRIORITY_FIRST, CHARGER_PRIORITY_LAST):
+        cars.remove(row)
+        cars.insert(0 if value == CHARGER_PRIORITY_FIRST else len(cars), row)
     out = list(order)
     for index, item in zip(slots, cars, strict=True):
         out[index] = item
     return out
-
-
-def _derived_rows(order: Sequence[str]) -> dict[str, str]:
-    return {charger_id(entry_id): level for entry_id, level in derived_charger_priorities(order).items()}
 
 
 def with_solar_priority(order: Sequence[str], value: str) -> list[str]:

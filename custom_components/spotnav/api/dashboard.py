@@ -46,11 +46,7 @@ from ..const import (
     CONF_PHASE_SWITCHING,
     MEASUREMENT_MODE_DIRECT,
     CONF_SOLAR_FORECAST_ENTRIES,
-    CONF_SOLAR_PRIORITY,
-    DEFAULT_SOLAR_PRIORITY,
     CHARGER_PRIORITIES,
-    CONF_CHARGER_PRIORITY,
-    DEFAULT_CHARGER_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
@@ -151,6 +147,7 @@ from ..site.phase_detection import (
     UNKNOWN as UNKNOWN_PHASES,
 )
 from ..site.measurement_problem import MeasurementProblem
+from ..site.priority_store import charger_priority_value, site_solar_priority
 from ..site.site_detection import direction_hint, site_detection
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
@@ -381,7 +378,7 @@ class CapturedSite:
     solar_reason: str | None
     #: Count of `CONF_CHARGER_ENTRY_IDS`, for "applies to all N chargers on this site" wording.
     charger_count: int
-    #: Solar priority (`const.CONF_SOLAR_PRIORITY`) and hybrid's forecast sources
+    #: Solar priority (derived from the site's priority list, `site/priority.py`) and hybrid's forecast sources
     #: (`const.CONF_SOLAR_FORECAST_ENTRIES`) from the site entry's data.
     solar_priority: str
     solar_forecast_selected: tuple[str, ...]
@@ -1115,7 +1112,7 @@ def capture_site(
         None,
     )
     members = entry.data.get(CONF_CHARGER_ENTRY_IDS) or []
-    solar_priority = entry.data.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
+    solar_priority = site_solar_priority(hass, entry)
     selected_forecast_ids = tuple(entry.data.get(CONF_SOLAR_FORECAST_ENTRIES, []) or ())
     solar_snapshot = controller.solar_surplus_snapshot.get(charger_entry_id)
     hybrid_snapshot = controller.hybrid_snapshot.get(charger_entry_id)
@@ -1567,10 +1564,12 @@ def _own_current_sensors(hass: HomeAssistant, entry_id: str, site: CapturedSite 
 
 def capture_charger_priority(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
     """The charger's own priority on its site ("first", "normal" or "last"), `None` when it belongs to
-    no site (only a site has an order to take a place in)."""
-    if site_binding(hass, entry.entry_id) is None:
+    no site (only a site has an order to take a place in). Derived from the site's priority list once one is
+    stored (`priority_store.charger_priority_value`): an older app reads it."""
+    site = site_binding(hass, entry.entry_id)
+    if site is None:
         return None
-    return str(entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY)
+    return charger_priority_value(hass, site, entry.entry_id)
 
 
 def serialize_charger_priority(priority: str | None, *, can_act: bool) -> dict[str, Any] | None:
@@ -2568,7 +2567,7 @@ def capture_site_block(
     return _site_dict(
         name=entry.title,
         charger_count=len(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []),
-        solar_priority=str(entry.data.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)),
+        solar_priority=site_solar_priority(hass, entry),
         selected=selected,
         choices=solar_forecast_choices(hass, forecast_domains, selected),
         available=controller.capability_snapshot.load_balancing.active_available,

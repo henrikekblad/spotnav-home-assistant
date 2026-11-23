@@ -22,6 +22,11 @@ charger's site when a charger is named:
   `api/price_source.py`, `api/grid_tariff.py`).
 * `site` (additive): the site's own `site` block as the dashboard and `spotnav/update_site_settings` state it (solar
   priority, forecast sources and their choices, load balancing), `null` while the site is not running.
+* `priority` (additive, since 3.0): the site's one priority list (`site/priority.py`), `{order: [{id, name}],
+  writable}`: the rows of the loads the site has, top first (the top gets energy first and gives way last); `id` is
+  `heat`, `charger:<entry id>`, `spa`, `sauna`, `cooling`, `water_heater`, `battery`, `spa_idle`, `pool_circulation`
+  or `pool_heat`; `name` a charger's title (`null` for the other rows). `writable` for an administrator's WebSocket
+  connection only (`spotnav/update_site_settings`' `priority`); a webhook reads it.
 * `setup`: the site's own "Get started" rows (`setup_checklist.capture_site_setup`), in the dashboard's shape.
 
 Refusals are WebSocket errors with stable codes: `spotnav_unsupported_api_version`, `spotnav_unknown_site`,
@@ -51,6 +56,7 @@ from ..pricing.price_source import PriceSource, site_price_source
 from ..runtime import domain_data
 from ..runtime import site_controller_for
 from ..setup_checklist import capture_site_setup, serialize_setup
+from ..site.priority_store import priority_block
 from .dashboard import serialize_fiscal, capture_site_block
 from ..site.solar_capability import solar_capability
 from .grid_tariff import DEMAND_NEEDS_TOTAL_GRID_POWER, capture_site_grid_tariff, serialize_grid_tariff
@@ -205,6 +211,8 @@ def site_settings_view(
             can_act=writable,
             active_control_writable=active_control_writable,
         ),
+        # The list is written over the WebSocket only: a webhook (the apps) reads it.
+        "priority": priority_block(hass, site, writable=writable and active_control_writable is not False),
     }
 
 

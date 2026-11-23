@@ -7,7 +7,7 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   of a home with or without chargers) `site_id` names the site itself; the `site` block is then read from the site
   (`dashboard_api.capture_site_block`), in the same shape. The webhook stays charger-bound.
 * A stale write is a `conflict`: `expected` carries the values (a subset of
-  `solar_priority`/`solar_forecast`) the card last saw, and the current `site` block travels back.
+  `solar_priority`/`solar_forecast`/`priority`) the card last saw, and the current `site` block travels back.
 * One write, only the fields this command owns. `changes` names `solar_priority` and/or
   `solar_forecast` (validated against the site options flow's vocabulary and
   `dashboard_api.solar_forecast_choices`), or `active_control_enabled` alone (one write, one
@@ -22,6 +22,14 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   recompute). `expected` may name it (the value last seen, `null` for none) for the compare-and-set. A write that
   names it answers with `import_target_kw` beside the `site` block (the value stored now); one that does not is
   answered as before, and leaves the stored target as it is.
+* `priority` (since 3.0, the site's one priority list, `site/priority.py`): the rows the site has, top first, as
+  `get_site_settings_view`'s `priority.order` lists them (`[id, ...]`); a write must name exactly those ids in a new
+  order (else `invalid_value`), and `expected` may name the order last seen (else `conflict`). Stored without a
+  reload; the rows of loads the site does not have keep their places. A write that names it answers with `priority`
+  beside the `site` block (`{order, writable}`, as the view states it). WebSocket only (the apps show the list read
+  only): over a webhook it is `spotnav_not_permitted_over_webhook`. `solar_priority` is no longer stored: the `site`
+  block derives it from the list, and an older app's write of it moves the battery in the list
+  (`priority.with_solar_priority`); naming both in one write is `invalid_value`.
 * `meter_belongs` (since 3.0, the house pie's "belongs to" choice, `site/house_loads.py`): `{statistic id: "house" |
   "heat" | "car" | "none"}`, merged into the stored choices (`house` removes one: the default), at most
   `MAX_BELONGS` kept; written without a reload (read where the pies and the flow are read). `expected` may name the
@@ -51,14 +59,14 @@ from ..const import (
     CONF_IMPORT_TARGET_KW,
     CONF_METER_BELONGS,
     CONF_SOLAR_FORECAST_ENTRIES,
-    CONF_SOLAR_PRIORITY,
-    DEFAULT_SOLAR_PRIORITY,
     SOLAR_PRIORITY_CHOICES,
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..runtime import site_controller_for
 from ..site.house_loads import merged_belongs, stored_belongs
 from ..site.import_target import stored_import_target_kw
+from ..site.priority import merged as merged_order, with_solar_priority
+from ..site.priority_store import priority_block, shown_order, site_order, site_solar_priority, store_order
 from ..site.site_capacity_controller import (
     ENABLE_ALREADY,
     ENABLE_ENABLED,
@@ -110,9 +118,10 @@ _SOLAR_FORECAST: Final = "solar_forecast"
 _ACTIVE_CONTROL: Final = CONF_ACTIVE_CONTROL_ENABLED
 _IMPORT_TARGET: Final = "import_target_kw"
 _METER_BELONGS: Final = CONF_METER_BELONGS
-_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL, _IMPORT_TARGET, _METER_BELONGS)
+_PRIORITY: Final = "priority"
+_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL, _IMPORT_TARGET, _METER_BELONGS, _PRIORITY)
 #: What the webhook's secret may never name.
-_NOT_OVER_WEBHOOK: Final = (_ACTIVE_CONTROL, _METER_BELONGS)
+_NOT_OVER_WEBHOOK: Final = (_ACTIVE_CONTROL, _METER_BELONGS, _PRIORITY)
 
 
 class SiteSettingsRefusal(Exception):
@@ -135,11 +144,11 @@ class SiteSettingsRefusal(Exception):
         self.restore = restore
 
 
-def _current_values(entry: ConfigEntry) -> tuple[str, tuple[str, ...]]:
-    """The two solar fields' stored values, read as `dashboard_api.capture_site` reads them (entry data)."""
-    priority = entry.data.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
+def _current_values(hass: HomeAssistant, entry: ConfigEntry) -> tuple[str, tuple[str, ...]]:
+    """The two solar fields' values, read as `dashboard_api.capture_site` reads them: the solar priority derived from
+    the site's priority list, the forecast sources from the entry's data."""
     forecast = tuple(entry.data.get(CONF_SOLAR_FORECAST_ENTRIES, []) or ())
-    return str(priority), forecast
+    return site_solar_priority(hass, entry), forecast
 
 
 async def _site_block(
@@ -308,7 +317,8 @@ async def _update_locked(
         # A name this command does not own is refused, never dropped or written.
         await _refuse(ERROR_INVALID_VALUE)
 
-    current_priority, current_forecast = _current_values(site_entry)
+    current_priority, current_forecast = _current_values(hass, site_entry)
+    current_shown = shown_order(hass, site_entry)
 
     if not isinstance(expected, dict):
         await _refuse(ERROR_INVALID_VALUE)
@@ -318,6 +328,8 @@ async def _update_locked(
         expected_forecast = expected[_SOLAR_FORECAST]
         if not isinstance(expected_forecast, list) or tuple(expected_forecast) != current_forecast:
             await _refuse(ERROR_CONFLICT)
+    if _PRIORITY in expected and expected[_PRIORITY] != current_shown:
+        await _refuse(ERROR_CONFLICT)
 
     if _ACTIVE_CONTROL in changes:
         return await _change_active_control(
@@ -364,12 +376,25 @@ async def _update_locked(
             await _refuse(ERROR_INVALID_VALUE)
         new_target = None if candidate_target is None else float(candidate_target)
 
-    new_priority = current_priority
+    full_order = site_order(hass, site_entry)
+    new_order = full_order
     if _SOLAR_PRIORITY in changes:
+        # An older app's write: the battery moved in the list (`priority.with_solar_priority`).
         candidate_priority = changes[_SOLAR_PRIORITY]
-        if candidate_priority not in SOLAR_PRIORITY_CHOICES:
+        if candidate_priority not in SOLAR_PRIORITY_CHOICES or _PRIORITY in changes:
             await _refuse(ERROR_INVALID_VALUE)
-        new_priority = candidate_priority
+        if candidate_priority != current_priority:
+            new_order = with_solar_priority(full_order, candidate_priority)
+    if _PRIORITY in changes:
+        candidate_order = changes[_PRIORITY]
+        if (
+            not isinstance(candidate_order, list)
+            or not all(isinstance(item, str) for item in candidate_order)
+            or len(candidate_order) != len(current_shown)
+            or set(candidate_order) != set(current_shown)
+        ):
+            await _refuse(ERROR_INVALID_VALUE)
+        new_order = merged_order(full_order, candidate_order)
 
     new_forecast = current_forecast
     if _SOLAR_FORECAST in changes:
@@ -406,9 +431,12 @@ async def _update_locked(
         hass.config_entries.async_update_entry(site_entry, data=belongs_data)
         _forget_energy_reads(hass, site_entry.entry_id)
 
-    if (new_priority, new_forecast) != (current_priority, current_forecast):
+    if new_order != full_order:
+        # The list in the entry's data and the running site's config, with no reload (`priority_store.store_order`).
+        store_order(hass, site_entry, new_order)
+
+    if new_forecast != current_forecast:
         updated_data = dict(site_entry.data)
-        updated_data[CONF_SOLAR_PRIORITY] = new_priority
         updated_data[CONF_SOLAR_FORECAST_ENTRIES] = list(new_forecast)
         # `entry.data`, not `entry.options`: every other site field lives in `entry.data`, so
         # writing options would be invisible to the flow and the controller. One write, once.
@@ -514,8 +542,9 @@ def _with_target(
     hass: HomeAssistant, charger_id: Any, changes: Any, answer: dict[str, Any], site_id: Any = None
 ) -> dict[str, Any]:
     """`answer` with the site's import target as stored now (`import_target_kw`), where the request named it: the
-    `site` block does not carry it (the dashboard's `grid_tariff.demand.import_target_kw` does)."""
-    if not isinstance(changes, dict) or (_IMPORT_TARGET not in changes and _METER_BELONGS not in changes):
+    `site` block does not carry it (the dashboard's `grid_tariff.demand.import_target_kw` does); likewise the
+    meter choices and the priority list."""
+    if not isinstance(changes, dict) or not any(key in changes for key in (_IMPORT_TARGET, _METER_BELONGS, _PRIORITY)):
         return answer
     if site_id is not None:
         site_entry = lookup_site(hass, site_id)[0]
@@ -528,6 +557,8 @@ def _with_target(
         out[_IMPORT_TARGET] = None if site_entry is None else stored_import_target_kw(site_entry.data)
     if _METER_BELONGS in changes:
         out[_METER_BELONGS] = {} if site_entry is None else stored_belongs(site_entry.data, CONF_METER_BELONGS)
+    if _PRIORITY in changes:
+        out[_PRIORITY] = None if site_entry is None else priority_block(hass, site_entry, writable=True)
     return out
 
 
