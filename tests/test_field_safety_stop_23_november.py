@@ -288,3 +288,27 @@ async def test_an_overload_that_keeps_coming_back_backs_the_resume_off_after_two
     assert night.starts == starts + 2, night.log()
     await night.run(24 * _STEP_S)
     assert night.starts == starts + 3 and night.on, "resumed once the back-off is over\n" + night.log()
+
+
+async def test_a_second_safety_stop_in_the_plug_in_doubles_the_gap(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """The safety stop, resumed after five minutes; the same overload again: the second safety stop of the plug-in is
+    resumed no sooner than ten minutes after it, so a load that comes back every few minutes cannot cycle the charger
+    every five."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov23twice")
+    starts = night.starts
+    await _stopped_for_safety(night)
+    night.house = _HOUSE
+    await night.run(SAFETY_RESUME_GAP_S + REGULATOR_DWELL_S)
+    assert night.starts == starts + 1 and night.on, night.log()
+    # The write interval has passed since the resume's start: the first cut goes out again, the second does not.
+    await night.run(30.0)
+
+    await _stopped_for_safety(night)
+    assert night.cc.session_runner.session.safety_stops == 2
+    night.house = _HOUSE
+    await night.run(2 * SAFETY_RESUME_GAP_S - 2 * _STEP_S)
+    assert night.starts == starts + 1 and not night.on, "not within the doubled gap\n" + night.log()
+    assert _resumes_fed(night) == 1
+    await night.run(2 * _STEP_S + REGULATOR_DWELL_S)
+    assert night.starts == starts + 2 and night.on, night.log()
+

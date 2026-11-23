@@ -251,9 +251,12 @@ It is best effort and is not a protective device. Turning it off gives back any 
   A safety stop for the fuse and a person's Stop always go out. A stop under a person's Stop that sent
   nothing for this reason does not count toward giving up on a charger that ignores the Stop.
 - A person's, the plan's or a top-off's charge that load balancing stopped for safety (the current could
-  not be lowered in time) is started again when there is room, as a paused charge is (margin, dwell and
-  the limit on resumes), no sooner than five minutes after that stop, and only within the same plug-in;
-  the plan's charge only while its window is open.
+  not be lowered in time) is started again when there is room, as a paused charge is (margin and dwell),
+  no sooner than five minutes after that stop, and only within the same plug-in; the plan's charge only
+  while its window is open. Each further safety stop in the same plug-in doubles the wait (10, then 20,
+  at most 30 minutes), so a load that keeps coming back cannot cycle the charger every few minutes; an
+  unplug starts again from five. Neither the resume nor the battery probe tries within the wait. The
+  wait is not kept across a restart of Home Assistant.
 - It requires a site with usable measurement and a charger SpotNav can command: one whose
   current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
   with a current number or service, see [supported hardware](supported.md)), or one it can only

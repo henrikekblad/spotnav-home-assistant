@@ -467,7 +467,8 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
 ) -> None:
     """P3 kept a safety stop of a person's charge for load balancing to resume. A fuse that keeps needing it
     must not cycle the charger: such a charge is resumed at most once per five minutes. (Review D: the five
-    minutes count from the last safety stop, so the first resume waits for them too.)"""
+    minutes count from the last safety stop, so the first resume waits for them too.) The plug-in's second safety
+    stop waits ten (2.5.7)."""
     from datetime import timedelta
 
     world = await pause_world(hass, timers)
@@ -486,5 +487,7 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
     assert not await controller.async_battery_probe_start(8), "resumed again within five minutes"
     assert controller.paused_by_balancing, "still held for later"
     freezer.tick(timedelta(minutes=3, seconds=1))
+    assert not await controller.async_battery_probe_start(8), "resumed within the second stop's ten minutes"
+    freezer.tick(timedelta(minutes=5))
     assert await controller.async_battery_probe_start(8)
     await world.shutdown()

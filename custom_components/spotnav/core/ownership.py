@@ -153,8 +153,11 @@ PERSON_HOLD_WINDOW_S: Final = 600.0
 #: fuse waited for the next window however much room came back). Another owner's is not held, as before.
 SAFETY_STOP_HELD: Final = frozenset({OWNER_PERSON, OWNER_PLAN, OWNER_TOP_OFF})
 #: Such a charge is resumed by the regulator no sooner than this many seconds after the last such stop (and then only
-#: with its margin and dwell, within its resume limit), so a fuse that keeps needing the stop never cycles it.
+#: with its margin and dwell, within its resume limit), so a fuse that keeps needing the stop never cycles it. Each
+#: further safety stop in the same plug-in doubles the gap, up to `SAFETY_RESUME_GAP_MAX_S` (`safety_resume_gap_s`):
+#: the gap alone keeps resumes more than ten minutes apart, so the resume limit's back-off never comes for them.
 SAFETY_RESUME_GAP_S: Final = 300.0
+SAFETY_RESUME_GAP_MAX_S: Final = 1800.0
 #: How far the car's level must have dropped since it ended a charge for its need to have grown: the hysteresis the
 #: sun's rules use (`execution/solar_execution.SOC_DROP_PCT`, which is this one).
 SOC_DROP_PCT: Final = 2.0
@@ -430,6 +433,13 @@ def self_started(session: ChargeSession, *, charging: bool, start_pending: bool,
     )
 
 
+def safety_resume_gap_s(session: ChargeSession) -> float:
+    """The gap (seconds) after the last safety stop before load balancing may resume the charge it holds back: 300 s
+    after the plug-in's first safety stop, doubled for each one after it (600, 1200), at most 1800 s."""
+    doublings = min(max(session.safety_stops - 1, 0), 3)
+    return min(SAFETY_RESUME_GAP_S * 2**doublings, SAFETY_RESUME_GAP_MAX_S)
+
+
 def window_end_spared(session: ChargeSession) -> bool:
     """Whether a plan window's end leaves the charge running: it is a person's, a Charge-now start's or the sun's, or
     nobody runs one and load balancing holds such a charge back (its regulator still gives it back). The controller
@@ -501,7 +511,12 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
         # A new plug-in session: what load balancing held, a safety stop and the hold belong to the one that ended.
         s = _plug_in_ended(
             _no_balancing(s).with_changes(
-                held_for_safety=False, safety_stopped_at=None, held=False, overridden=False, guest_met=False
+                held_for_safety=False,
+                safety_stopped_at=None,
+                safety_stops=0,
+                held=False,
+                overridden=False,
+                guest_met=False,
             )
         )
     if previous is not None:
@@ -521,7 +536,13 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
 
 def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
     s = _plug_in_ended(_no_balancing(session)).with_changes(
-        plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False, guest_met=False
+        plugged=False,
+        held_for_safety=False,
+        safety_stopped_at=None,
+        safety_stops=0,
+        held=False,
+        overridden=False,
+        guest_met=False,
     )
     if event.previous is not None:
         s = _reset_person_hold(s).with_changes(car_ended=None)
@@ -936,7 +957,7 @@ def _balancing_resume(session: ChargeSession, event: BalancingResume, now: datet
         return session, ()
     if session.held_for_safety and session.safety_stopped_at is not None:
         since = (now - session.safety_stopped_at).total_seconds()
-        if 0 <= since < SAFETY_RESUME_GAP_S:
+        if 0 <= since < safety_resume_gap_s(session):
             return session, ()
     # The charge balancing paused goes on as what it was; nobody's stays nobody's (the charger's own once it is
     # seen charging), never a Charge-now start a window's end would spare.
@@ -1023,6 +1044,7 @@ def _restart(session: ChargeSession, event: Restart, now: datetime) -> Decision:
         hold_stop_pending=False,
         held_for_safety=False,
         safety_stopped_at=None,
+        safety_stops=0,
         spotnav_resumed=False,
         pending=(),
     )
@@ -1208,8 +1230,11 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
             # then. Nothing is held back for the regulator to give back.
             pass
         elif session.balancing_paused:
-            # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
+            # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge. A safety
+            # stop among them is one more: its gap runs from it.
             s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)
+            if pending.code != "pause":
+                s = s.with_changes(held_for_safety=True, safety_stopped_at=now, safety_stops=s.safety_stops + 1)
         elif (
             pending.was_on
             and pending.owner_before != OWNER_NONE
@@ -1226,6 +1251,7 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
                 paused_origin=origin,
                 held_for_safety=safety,
                 safety_stopped_at=now if safety else s.safety_stopped_at,
+                safety_stops=s.safety_stops + 1 if safety else s.safety_stops,
             )
     elif pending is not None and event.reason == REASON_REARM and pending.was_on and not car_gone:
         # A charge that ran was stopped outside the windows: the rest of the plug-in session is held, never for a

@@ -217,9 +217,9 @@ async def test_a_start_reads_the_sites_allowance_only_after_a_lowering_write_on_
 async def test_a_persons_charge_stopped_for_safety_waits_five_minutes_from_the_last_safety_stop(
     hass: HomeAssistant, timers: Any, freezer: Any
 ) -> None:
-    """P3: the five minutes are counted from the last safety stop, not from the last resume. Resumed five
-    minutes after the first stop and stopped again five and a half minutes later, the charge is not resumed
-    at once (five minutes after the resume), only five minutes after that second stop."""
+    """P3: the gap is counted from the last safety stop, not from the last resume. Resumed five minutes after the
+    first stop and stopped again five and a half minutes later, the charge is not resumed at once (five minutes
+    after the resume), only after that second stop's gap: ten minutes, the plug-in's second safety stop (2.5.7)."""
     from datetime import timedelta
 
     from .pause_world import pause_world
@@ -239,6 +239,8 @@ async def test_a_persons_charge_stopped_for_safety_waits_five_minutes_from_the_l
     await hass.async_block_till_done()
     assert not await controller.async_battery_probe_start(8), "resumed within five minutes of the safety stop"
     freezer.tick(timedelta(minutes=5, seconds=1))
+    assert not await controller.async_battery_probe_start(8), "resumed within the second stop's ten minutes"
+    freezer.tick(timedelta(minutes=5))
     assert await controller.async_battery_probe_start(8)
     await world.shutdown()
 

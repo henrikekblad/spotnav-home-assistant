@@ -11,6 +11,7 @@ import pytest
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import (
     automatic_allowed,
+    safety_resume_gap_s,
     car_ended_holds_window,
     car_ended_known_full,
     CarFacts,
@@ -1235,6 +1236,62 @@ def test_a_balancing_stop_remembers_the_charge_it_holds_back(owner, code, was_on
 def test_load_balancing_resumes_the_charge_it_held_back(session: ChargeSession, resumes: bool) -> None:
     _, commands = run(session, ev.BalancingResume())
     assert kinds(commands) == (["start"] if resumes else [])
+
+
+def _safety_stopped(session: ChargeSession, now: datetime) -> ChargeSession:
+    session, _ = run(session, ev.BalancingPause(code="safety_stop", was_on=True), ok("stop", "balancing"), now=now)
+    return session
+
+
+def _resumes_at(session: ChargeSession, now: datetime) -> bool:
+    _, commands = run(session, ev.BalancingResume(), now=now)
+    return kinds(commands) == ["start"]
+
+
+def test_each_further_safety_stop_of_the_plug_in_doubles_the_gap() -> None:
+    """A load that keeps coming back: the plug-in's first safety stop waits 300 s, the second 600 s, the third 1200 s,
+    and every one after at most 1800 s. Only an unplug (or a new plug-in) starts again from 300 s."""
+    session = ChargeSession(plugged=True, owner="plan")
+    now = T0
+    for count, gap in ((1, 300.0), (2, 600.0), (3, 1200.0), (4, 1800.0), (5, 1800.0)):
+        session = _safety_stopped(session, now)
+        assert session.safety_stops == count and session.held_for_safety and session.paused_origin == "plan"
+        assert safety_resume_gap_s(session) == gap
+        assert not _resumes_at(session, now + timedelta(seconds=gap - 1)), count
+        assert _resumes_at(session, now + timedelta(seconds=gap)), count
+        now += timedelta(seconds=gap)
+        session, _ = run(session, ev.BalancingResume(), ok("start", "balancing_resume"), now=now)
+        assert session.owner == "plan" and not session.held_for_safety and session.safety_stops == count
+        now += timedelta(seconds=60)
+
+    unplugged, _ = run(session, ev.Unplug(previous=True))
+    assert unplugged.safety_stops == 0
+    replugged, _ = run(session, ev.PlugIn(previous=False))
+    assert replugged.safety_stops == 0
+    restarted, _ = run(session, ev.Restart())
+    assert restarted.safety_stops == 0
+    assert safety_resume_gap_s(_safety_stopped(unplugged.with_changes(plugged=True, owner="plan"), now)) == 300.0
+
+
+def test_a_below_floor_pause_does_not_count_as_a_safety_stop() -> None:
+    session, _ = run(ChargeSession(plugged=True, owner="plan"), ev.BalancingPause(), ok("stop", "balancing"))
+    assert session.balancing_paused and not session.held_for_safety and session.safety_stops == 0
+
+
+def test_a_safety_stop_of_a_charge_already_held_back_holds_it_for_its_gap() -> None:
+    """Load balancing paused the charge (below its floor), and a safety stop follows while it holds it back: the gap
+    runs from that second stop, which counts toward the doubling."""
+    session, _ = run(ChargeSession(plugged=True, owner="plan"), ev.BalancingPause(), ok("stop", "balancing"))
+    assert session.balancing_paused and not session.held_for_safety
+    later = T0 + timedelta(seconds=40)
+    session = _safety_stopped(session, later)
+    assert session.balancing_paused and session.paused_origin == "plan"
+    assert session.held_for_safety and session.safety_stopped_at == later and session.safety_stops == 1
+    assert not _resumes_at(session, later + timedelta(seconds=SAFETY_RESUME_GAP_S - 1))
+    assert _resumes_at(session, later + timedelta(seconds=SAFETY_RESUME_GAP_S))
+    # A pause repeated after it keeps the safety stop's gap.
+    again, _ = run(session, ev.BalancingPause(), ok("stop", "balancing"), now=later + timedelta(seconds=10))
+    assert again.held_for_safety and again.safety_stopped_at == later and again.safety_stops == 1
 
 
 def test_a_balancing_resume_gives_the_charge_back_what_it_was() -> None:
