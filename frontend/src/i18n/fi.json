@@ -2305,5 +2305,15 @@
   "doesNotFit.choice.acceptPeak": "Salli huippu",
   "doesNotFit.choice.acceptPeakKw": "Salli huippu (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Salli huippu (≈ {kw} kW, ≈ {cost})",
-  "doesNotFit.choice.acceptPeakAgain": "Kyllä, salli huippu"
+  "doesNotFit.choice.acceptPeakAgain": "Kyllä, salli huippu",
+  "house.plan.load.pool_circulation": "Altaan kierto",
+  "house.plan.load.pool_heat": "Altaan lämpöpumppu",
+  "house.plan.lane.poolCirculation": "Suodattaa {hours} h / {need} h vuorokaudessa",
+  "house.plan.lane.poolHeat": "Lämmittää {hours} h",
+  "house.plan.run.pool_circulation.filter": "Allas suodattaa",
+  "house.plan.run.pool_circulation.extra": "Allas lisäsuodattaa",
+  "house.plan.run.pool_heat.heat": "Altaan lämpöpumppu lämmittää",
+  "house.plan.reason.sun": "aurinko",
+  "house.plan.reason.need": "vuorokauden suodatus",
+  "house.plan.reason.extra": "lisäsuodatus"
 }

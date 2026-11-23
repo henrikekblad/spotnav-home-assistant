@@ -272,6 +272,29 @@ export const WATER_HEATER = O({
   automation: N(O({ entity_id: "string", name: "string" })),
   paused_until: N("string"),
 });
+const POOL_PART = { live: "boolean", state: "string", reason: N("string") } as const;
+/** The pool in shadow (`get_heat`'s `pool`, `pool/runtime.py`). */
+const POOL = O({
+  season_open: "boolean",
+  water_c: N("number"),
+  water_source: N("string"),
+  target_c: "number",
+  heat_pump: N(O({ on: N("boolean"), heating: N("boolean"), kw: N("number"), ...POOL_PART })),
+  circulation: N(O({ on: N("boolean"), kw: N("number"), ...POOL_PART })),
+  today: O({
+    need_h: N("number"),
+    need_source: N("string"),
+    done_h: "number",
+    planned_h: "number",
+    heat_h: N("number"),
+    kwh: N("number"),
+  }),
+  planned: A(O({ start: "string", end: "string", what: "string", reason: "string" })),
+  extra: N(O({ hours: "number", until: "string" })),
+  season_hint: "boolean",
+  would: N(O({ action: "string", until: N("string"), reason: "string" })),
+  notes: A(O({ code: "string", params: "any" })),
+});
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
 
 const ANSWER = O({
@@ -445,6 +468,7 @@ const ANSWER = O({
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
   hot_water: N(HOT_WATER),
   water_heater: N(WATER_HEATER),
+  pool: N(POOL),
 });
 
 const WRITE = O({
@@ -821,6 +845,43 @@ export interface HeatAnswer {
   hot_water: HeatHotWater | null;
   /** A plain water heater on a switch; `null` without one. */
   water_heater: HeatWaterHeater | null;
+  /** The pool in shadow; `null` without one. */
+  pool: HeatPool | null;
+}
+
+export interface HeatPoolPart {
+  on: boolean | null;
+  kw: number | null;
+  /** SpotNav steers it (never yet: watched). */
+  live: boolean;
+  /** "watched" or "season_closed". */
+  state: string;
+  reason: string | null;
+}
+
+export interface HeatPool {
+  season_open: boolean;
+  water_c: number | null;
+  /** "sensor" or "heat_pump" (its own reading once it has run), `null` while none reads. */
+  water_source: string | null;
+  target_c: number;
+  heat_pump: (HeatPoolPart & { heating: boolean | null }) | null;
+  circulation: HeatPoolPart | null;
+  today: {
+    need_h: number | null;
+    /** "water", "override" or "default". */
+    need_source: string | null;
+    done_h: number;
+    planned_h: number;
+    heat_h: number | null;
+    kwh: number | null;
+  };
+  /** From now on: "filter", "heat" or "extra", with "sun", "cheap", "need" or "extra". */
+  planned: { start: string; end: string; what: string; reason: string }[];
+  extra: { hours: number; until: string } | null;
+  season_hint: boolean;
+  would: { action: string; until: string | null; reason: string } | null;
+  notes: { code: string; params: Record<string, unknown> }[];
 }
 
 /** The Boost button (`hot_water.boost`). */

@@ -2305,5 +2305,15 @@
   "doesNotFit.choice.acceptPeak": "Permitir el pico",
   "doesNotFit.choice.acceptPeakKw": "Permitir el pico (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Permitir el pico (≈ {kw} kW, ≈ {cost})",
-  "doesNotFit.choice.acceptPeakAgain": "Sí, permitir el pico"
+  "doesNotFit.choice.acceptPeakAgain": "Sí, permitir el pico",
+  "house.plan.load.pool_circulation": "Circulación de la piscina",
+  "house.plan.load.pool_heat": "Bomba de calor de la piscina",
+  "house.plan.lane.poolCirculation": "Filtra {hours} h de {need} h al día",
+  "house.plan.lane.poolHeat": "Calienta {hours} h",
+  "house.plan.run.pool_circulation.filter": "La piscina filtra",
+  "house.plan.run.pool_circulation.extra": "Filtrado extra de la piscina",
+  "house.plan.run.pool_heat.heat": "La bomba de calor de la piscina calienta",
+  "house.plan.reason.sun": "sol",
+  "house.plan.reason.need": "el filtrado del día",
+  "house.plan.reason.extra": "filtrado extra"
 }

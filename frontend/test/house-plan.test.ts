@@ -158,6 +158,25 @@ describe("the Plan tab", () => {
     }
   });
 
+  it("draws the pool's circulation and heat pump as watched lanes, worded in every language", () => {
+    const pool = plan("pool.json");
+    const circulation = pool.loads.find((load) => load.kind === "pool_circulation")!;
+    const heat = pool.loads.find((load) => load.kind === "pool_heat")!;
+    expect(circulation.would && heat.would && circulation.in_house).toBe(true);
+    const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
+    expect(laneReason("sv", ctx, circulation)).toContain("Filtrerar 6 h av 5 h per dygn");
+    expect(laneReason("en", ctx, heat)).toContain("Heats 2 h");
+    expect(runWords("sv", heat, heat.runs[0]!)).toBe("Poolens värmepump värmer: sol");
+    for (const language of LANGUAGES) {
+      for (const load of [circulation, heat]) {
+        for (const run of load.runs) {
+          expect(runWords(language, load, run), language).not.toMatch(/house\.plan\./);
+        }
+      }
+    }
+    expect(body(pool).querySelectorAll("[data-load='pool_circulation']").length).toBeGreaterThan(0);
+  });
+
   it("says on the battery's lane when the fuse's cap held grid charging back, in every language", () => {
     const battery = plan().loads.find((load) => load.kind === "home_battery")!;
     const ctx = { language: "en", timeZone: "Europe/Stockholm", clock24: true } as never;

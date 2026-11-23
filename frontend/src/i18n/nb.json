@@ -2305,5 +2305,15 @@
   "doesNotFit.choice.acceptPeak": "Tillat toppen",
   "doesNotFit.choice.acceptPeakKw": "Tillat toppen (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Tillat toppen (≈ {kw} kW, ≈ {cost})",
-  "doesNotFit.choice.acceptPeakAgain": "Ja, tillat toppen"
+  "doesNotFit.choice.acceptPeakAgain": "Ja, tillat toppen",
+  "house.plan.load.pool_circulation": "Bassengsirkulasjon",
+  "house.plan.load.pool_heat": "Bassengets varmepumpe",
+  "house.plan.lane.poolCirculation": "Filtrerer {hours} t av {need} t i døgnet",
+  "house.plan.lane.poolHeat": "Varmer {hours} t",
+  "house.plan.run.pool_circulation.filter": "Bassenget filtrerer",
+  "house.plan.run.pool_circulation.extra": "Bassenget ekstrafiltrerer",
+  "house.plan.run.pool_heat.heat": "Bassengets varmepumpe varmer",
+  "house.plan.reason.sun": "sol",
+  "house.plan.reason.need": "døgnets filtrering",
+  "house.plan.reason.extra": "ekstra filtrering"
 }

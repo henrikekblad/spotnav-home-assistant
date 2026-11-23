@@ -2305,5 +2305,15 @@
   "doesNotFit.choice.acceptPeak": "Spitze zulassen",
   "doesNotFit.choice.acceptPeakKw": "Spitze zulassen (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Spitze zulassen (≈ {kw} kW, ≈ {cost})",
-  "doesNotFit.choice.acceptPeakAgain": "Ja, Spitze zulassen"
+  "doesNotFit.choice.acceptPeakAgain": "Ja, Spitze zulassen",
+  "house.plan.load.pool_circulation": "Poolumwälzung",
+  "house.plan.load.pool_heat": "Poolwärmepumpe",
+  "house.plan.lane.poolCirculation": "Filtert {hours} h von {need} h am Tag",
+  "house.plan.lane.poolHeat": "Heizt {hours} h",
+  "house.plan.run.pool_circulation.filter": "Pool filtert",
+  "house.plan.run.pool_circulation.extra": "Pool filtert extra",
+  "house.plan.run.pool_heat.heat": "Poolwärmepumpe heizt",
+  "house.plan.reason.sun": "Sonne",
+  "house.plan.reason.need": "die Filterung des Tages",
+  "house.plan.reason.extra": "Extra-Filterung"
 }

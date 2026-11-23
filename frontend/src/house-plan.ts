@@ -9,7 +9,7 @@
 // Read-only; every figure is the backend's. Built with `textContent` only.
 
 import { exactKeys, flag, list, numberOrNull, record, text, textOrNull, Malformed } from "./decode-primitives";
-import { clock, dateLabel, dayCue, formatFixed, hourLabel, kwText, kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
+import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwText, kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
 import { localDayKey } from "./chart";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
@@ -33,8 +33,8 @@ const HISTORY_KEYS = ["days", "first"] as const;
 const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh", "active_min"] as const;
 const MONEY_KEYS = ["currency", "major_unit", "minor_unit"] as const;
 
-export type PlanLoadKind = "car" | "home_battery" | "heat" | "heat_zone" | "water_heater";
-const LOAD_KINDS: readonly PlanLoadKind[] = ["car", "home_battery", "heat", "heat_zone", "water_heater"];
+export type PlanLoadKind = "car" | "home_battery" | "heat" | "heat_zone" | "water_heater" | "pool_circulation" | "pool_heat";
+const LOAD_KINDS: readonly PlanLoadKind[] = ["car", "home_battery", "heat", "heat_zone", "water_heater", "pool_circulation", "pool_heat"];
 export type CeilingKind = "import_target" | "power_level" | "power_tariff" | "fuse";
 const CEILINGS: readonly CeilingKind[] = ["import_target", "power_level", "power_tariff", "fuse"];
 
@@ -633,6 +633,13 @@ export function laneReason(language: Language, ctx: FormatContext, load: PlanLoa
     line = translate(language, "house.plan.lane.heat", { lowered: String(num("lowered_hours")), raised: String(num("raised_hours")) });
   } else if (load.kind === "heat_zone") {
     line = translate(language, "house.plan.lane.zone", { lowered: String(num("lowered_hours")) });
+  } else if (load.kind === "pool_circulation") {
+    line = translate(language, "house.plan.lane.poolCirculation", {
+      hours: formatFixed(language, num("planned_h"), 0),
+      need: formatNumber(language, num("need_h"), 2),
+    });
+  } else if (load.kind === "pool_heat") {
+    line = translate(language, "house.plan.lane.poolHeat", { hours: formatFixed(language, num("planned_h"), 0) });
   } else {
     line = translate(language, "house.plan.lane.waterHeater", { hours: formatFixed(language, num("on_hours"), 0) });
   }
