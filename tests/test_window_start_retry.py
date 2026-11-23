@@ -281,7 +281,6 @@ async def _finished_after_a_try(hass: HomeAssistant, freezer: Any, level: list[f
     _easee(hass, "completed")
     await hass.async_block_till_done()
     await _walk(hass, freezer, 65 * 60, step=60)  # into the second window: its one try
-    assert commands.count("resume") == 2, commands
     return controller, commands
 
 
@@ -289,6 +288,7 @@ async def test_a_raised_target_after_the_car_finished_is_tried_again(hass: HomeA
     level = [75.0]  # the car stopped below the target (its own limit)
     plan = {**_windows((0, 30), (60, 90), (120, 150)), "target_soc_percent": 80}
     controller, commands = await _finished_after_a_try(hass, freezer, level, plan)
+    assert commands.count("resume") == 2, commands
     # A new plan for a raised target, made while the car still says `completed`.
     raised = {**_windows((0, 20), (40, 60)), "target_soc_percent": 95}
     await install_schedule(controller, raised)
@@ -297,18 +297,34 @@ async def test_a_raised_target_after_the_car_finished_is_tried_again(hass: HomeA
 
 
 async def test_a_car_level_dropped_since_the_try_is_tried_again(hass: HomeAssistant, freezer: Any) -> None:
-    level = [100.0]
-    controller, commands = await _finished_after_a_try(hass, freezer, level, _windows((0, 30), (60, 90), (120, 150)))
-    level[0] = 100.0 - SOC_DROP_PCT
+    # A car that finished short of the target (its own limit): the plan stays, its next window has one try.
+    level = [75.0]
+    plan = {**_windows((0, 30), (60, 90), (120, 150)), "target_soc_percent": 80}
+    controller, commands = await _finished_after_a_try(hass, freezer, level, plan)
+    assert commands.count("resume") == 2, commands
+    level[0] = 75.0 - SOC_DROP_PCT
     await _walk(hass, freezer, 60 * 60, step=60)  # the third window
     assert commands.count("resume") == 3, commands
 
 
-async def test_a_full_car_is_tried_once_per_plan(hass: HomeAssistant, freezer: Any) -> None:
-    level = [100.0]
-    controller, commands = await _finished_after_a_try(hass, freezer, level, _windows((0, 30), (60, 90), (120, 150)))
+async def test_a_car_short_of_its_target_is_tried_once_per_plan(hass: HomeAssistant, freezer: Any) -> None:
+    # Short of the target: the plan stays and its later windows get one try for the plan, no more.
+    level = [75.0]
+    plan = {**_windows((0, 30), (60, 90), (120, 150)), "target_soc_percent": 80}
+    controller, commands = await _finished_after_a_try(hass, freezer, level, plan)
+    assert commands.count("resume") == 2, commands
     await _walk(hass, freezer, 60 * 60, step=60)  # the third window: nothing new
     assert commands.count("resume") == 2, commands
+
+
+async def test_a_car_that_finished_full_in_a_window_ends_the_plan(hass: HomeAssistant, freezer: Any) -> None:
+    """An Easee whose car says `completed` at 100 % inside the plan's window: the car ended the plan's charge itself,
+    full, so the plan ends there and no later window starts the car again."""
+    level = [100.0]
+    controller, commands = await _finished_after_a_try(hass, freezer, level, _windows((0, 30), (60, 90), (120, 150)))
+    await _walk(hass, freezer, 60 * 60, step=60)
+    assert controller.plan is None
+    assert commands.count("resume") == 1, commands
 
 
 async def test_a_charger_that_reads_finished_after_our_stop_is_started_at_the_next_window(
