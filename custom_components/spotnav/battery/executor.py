@@ -339,6 +339,9 @@ _SELF_CLEARING: Final = (
     "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
     "call_timeout",
 )
+#: Blocks the expiry test's silence never leaves behind (`ExecInputs.expiry_probe`): nothing new was asked of the plant,
+#: and a fallback reads as a command not obeyed.
+_PROBE_UNBLOCKED: Final = ("not_obeyed", "no_effect")
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -1274,7 +1277,8 @@ class Executor:
     def step(self, inputs: ExecInputs) -> StepResult:
         now = inputs.now
         self._sense(inputs)
-        if not self._probing(inputs):
+        probing = self._probing(inputs)
+        if not probing:
             self.expired = self.diverged = ()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
@@ -1307,6 +1311,10 @@ class Executor:
             reason = self._exit_reason(inputs)
             if reason is not None:
                 events += self._begin_restore(now, reason)
+        if probing and self.state.phase == "restoring" and (self.state.blocked or "").startswith(_PROBE_UNBLOCKED):
+            # Handed back in the expiry test's silence for what the plant did after nothing more was written: that is
+            # the test's to judge, never a lasting block of the control (the hand-back itself goes on).
+            self.state = replace(self.state, blocked=None)
         persist_first = False
         if self.state.phase == "idle" and inputs.stopping is None:
             started, start_events = self._try_start(inputs)
@@ -1484,7 +1492,8 @@ class Executor:
         while that change settles (`PHASE_GRACE_S`); a change of the targets does not start the count again.
         **Taking nothing or too little**: after `PHASE_GRACE_S` since the last change, every `PHASE_GAP_S`, not near
         full. `CONFIRM_READINGS` in a row hand the charge back, blocked. Nothing is judged while a write is awaited
-        or without the reading; for the verification's probe only the runaway (the rest it judges itself)."""
+        or without the reading; for the verification's probe only the runaway (the rest it judges itself), and in the
+        expiry test's silence nothing (`_probing`: a passthru is no charge; the test ends on a real one itself)."""
         state = self.state
         now = inputs.now
         measured = self._phase_measured(inputs)
@@ -1499,7 +1508,7 @@ class Executor:
                 self.state = replace(state, phase_bad=())
             return []
         settling = (now - changed).total_seconds() < PHASE_GRACE_S
-        if (now - entered).total_seconds() >= PHASE_OVER_GRACE_S and (
+        if not self._probing(inputs) and (now - entered).total_seconds() >= PHASE_OVER_GRACE_S and (
             state.phase_over_at is None or (now - state.phase_over_at).total_seconds() >= PHASE_OVER_GAP_S
         ):
             aims = self._phase_aims(phases, state.phase_behind_kw)
