@@ -2176,7 +2176,8 @@ class AutoExecutor:
             control_on=controller.charge_control_on,
             drawing=controller.car_drawing(),
             held=controller.held_by_charger,
-            balancing_paused=controller.paused_by_balancing,
+            # Load balancing's stop on its way is its pause too: the core holds the charge back only at its result.
+            balancing_paused=controller.paused_by_balancing or controller.balancing_stop_on_its_way,
             start_pending=controller.start_pending,
             connection=controller.connection()[0],
             connector_status=controller.charge_progress_facts().connector_status,

@@ -153,6 +153,7 @@ from ..core.ownership import (
     NO_CAR_FACTS,
     automatic_allowed,
     owner_as_sent,
+    REASON_BALANCING,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -895,6 +896,9 @@ class ChargingController:
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
+        # Load balancing's stop (`_regulated_stop`) between its decision and its result: the watches of a person's and
+        # the plan's charge read the charger turned off then as balancing's pause, never as the car ending the charge.
+        self._balancing_stop_in_flight = False
         # A start of ours on its way (`_start_locked`, from the moment the charge is SpotNav's until the start
         # returns): an observation of the command, not ownership. The hold counts such a charge SpotNav's
         # (`_spotnav_owned`) before the start's result gives the session its owner.
@@ -2184,7 +2188,7 @@ class ChargingController:
             ),
             connector_status=facts.connector_status,
             held=self.adapter.held_by_charger(),
-            balancing_paused=self._balancing.paused,
+            balancing_paused=self._balancing.paused or self.balancing_stop_on_its_way,
             start_pending=self.start_pending,
             phase_switch_settling=self.phase_switch_settling,
         )
@@ -3698,6 +3702,17 @@ class ChargingController:
         return self._balancing.paused and not self.charging
 
     @property
+    def balancing_stop_on_its_way(self) -> bool:
+        """Whether load balancing's stop is on its way: the core's stop for it awaits its result, or the controller
+        sends it (`_regulated_stop`). The core holds the charge back only once that result comes, so a look at the
+        charge in between (the charger already reads off) must take it for balancing's pause, as after the result."""
+        if self._balancing_stop_in_flight:
+            return True
+        return any(
+            item.command == "stop" and item.reason == REASON_BALANCING for item in self._runner.session.pending
+        )
+
+    @property
     def paused_charge_origin(self) -> str | None:
         """What the charge load balancing holds back was (`manual` for a person's), or `None`."""
         return None if self._balancing.charge is None else self._balancing.charge[0]
@@ -4356,6 +4371,7 @@ class ChargingController:
                 token = self._runner.begin(early=pause)
                 outcome = CommandOutcome(False)
                 stop_sent_before = self._stop_sent_at
+                self._balancing_stop_in_flight = True
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
                     # A safety stop is never taken for a pause on its way (`_stop_settling`): the fuse needs it now.
@@ -4363,6 +4379,7 @@ class ChargingController:
                     outcome = self._core_stop_outcome(True)
                 finally:
                     self._runner.end(token, pause, outcome=outcome)
+                    self._balancing_stop_in_flight = False
                 # Saved soon once decided: the core's session, and today's `balancing_pause` key derived from it.
                 self._save_memory_soon()
                 # Looked at again later: a charge this paused in an open window is either held back for the
