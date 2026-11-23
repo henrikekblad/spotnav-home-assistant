@@ -455,6 +455,15 @@ export function importLimitPhaseStep(
   ) {
     return null;
   }
+  // A limit that reads nothing is never written over (it may hide a lower value set on purpose): it is set in the
+  // maker's app, and the line says the most that guards.
+  if (limit.value_kw === null && (phase.why === null || phase.why === "not_said_to_act")) {
+    if (phase.max_kw === null || phase.max_kw < 0.1) {
+      return null;
+    }
+    const max = formatNumber(language, Math.floor(phase.max_kw * 10 + 1e-9) / 10, 1);
+    return { code: "limit_unread", text: translate(language, "battery.cap.phase.limitUnset", { max }), entityId: null, setKw: null };
+  }
   // The backend's own figure (`set_kw`): what the tap writes, `null` when the limit already guards.
   const setKw = phase.set_kw;
   const tooHigh = setKw !== null;
@@ -1080,7 +1089,12 @@ export class SiteSections {
     if (!admin) {
       return note;
     }
-    if (step.code === "not_said_to_act" || step.setKw !== null) {
+    if (step.setKw !== null && status.options.battery_control_shadow_only) {
+      // Control only watches: SpotNav writes nothing to the plant, so the limit is set in the maker's app.
+      note.append(" ", translate(language, "battery.cap.phase.setInApp"));
+    } else if (step.code === "limit_unread") {
+      note.append(" ", translate(language, "battery.cap.phase.setInApp"));
+    } else if (step.code === "not_said_to_act" || step.setKw !== null) {
       const setKw = step.setKw;
       const label = setKw === null
         ? translate(language, "battery.cap.phase.turnOn")
