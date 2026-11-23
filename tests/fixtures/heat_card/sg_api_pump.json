@@ -537,6 +537,7 @@
         "value": null
       }
     ],
+    "sauna": [],
     "setpoint": [],
     "spa": [],
     "tank_sensor": [],
@@ -578,6 +579,7 @@
     },
     "outdoor_sensor": null,
     "pool": null,
+    "sauna": null,
     "spa": null,
     "target_c": 21.0,
     "water_heater": null,
@@ -663,8 +665,10 @@
   },
   "relay": null,
   "review": null,
+  "sauna": null,
   "shadow": true,
   "site_id": "site_nibe_s",
+  "spa": null,
   "status": {
     "guard": null,
     "kw": null,

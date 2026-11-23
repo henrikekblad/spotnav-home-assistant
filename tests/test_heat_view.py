@@ -29,6 +29,7 @@ from custom_components.spotnav.heat.automations import SteeringAutomation
 from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, WaterHeater, Zone
 from custom_components.spotnav.notifications.heat_settings import HeatNotifications
 from custom_components.spotnav.pool.config import PoolConfig, PoolHeatPump
+from custom_components.spotnav.sauna.config import SaunaConfig
 from custom_components.spotnav.spa.config import Bath, SpaConfig
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
@@ -189,6 +190,7 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
         water_heater=WaterHeater("switch.varmvattenberedare", True) if more else None,
         pool=POOL if more else None,
         spa=SPA if more else None,
+        sauna=SaunaConfig("switch.bastu", "relay", heater_kw=9.0) if more else None,
         heat_notifications=HeatNotifications(("mobile_app_pixel",)) if more else HeatNotifications(),
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
@@ -247,6 +249,12 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
             {
                 **_choice("climate.spa", "Spa", "heat"),
                 "score": 1.0, "ask": False, "family": "balboa", "controllable": True, "cloud": False,
+            }
+        ],
+        "sauna": [
+            {
+                **_choice("climate.harvia", "Bastu", "off"),
+                "score": 1.0, "ask": False, "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door", "cloud": True,
             }
         ],
         "phones": [{"service": "mobile_app_pixel", "name": "Pixel"}],
@@ -448,9 +456,32 @@ def controlled_answer() -> dict[str, Any]:
         "would": {"action": "off", "until": (MIDNIGHT + timedelta(hours=22)).isoformat(), "reason": "waiting"},
         "notes": [],
     }
+    spa = {
+        "family": "balboa", "water_c": 36.5, "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heating": True, "kw": 3.0,
+        "rate_c_h": 2.0, "rate_learned": True, "state": "heating", "ready_at": (MIDNIGHT + timedelta(hours=18, minutes=40)).isoformat(),
+        "next_bath": {"at": (MIDNIGHT + timedelta(hours=19)).isoformat(), "source": "weekly"},
+        "baths": [{"weekdays": [4, 5], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
+        "control": {"state": "watched", "reason": None, "paused_until": None},
+        "would": {"action": "heat", "until": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "reason": "cheap"},
+        "not_ready": None, "notes": [],
+    }
+    sauna = {
+        "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "rate_c_h": 80.0,
+        "rate_learned": False, "state": "idle", "ready_at": None, "next_session": None, "sessions": [], "session_once": None,
+        "session_now": None, "locked": None, "lock_id": None, "safety_declared": False, "live": False,
+        "control": {"state": "watch_only", "reason": "no_safety", "paused_until": None},
+        "would": {"action": "off", "until": None, "reason": "no_session"},
+        "not_ready": {
+            "at": (MIDNIGHT + timedelta(days=1, hours=17)).isoformat(), "cause": "fuse", "reach_c": 60.0, "short_c": 20.0,
+            "short_kwh": 2.25, "later": (MIDNIGHT + timedelta(days=1, hours=18)).isoformat(),
+        },
+        "notes": [],
+    }
     return villa_answer(
         more=True,
         pool=pool,
+        spa=spa,
+        sauna=sauna,
         water_heater=heater,
         controlled=frozenset({"climate.golvvarme_toalett_uppe", "switch.varmvattenberedare"}),
         relay=relay,
@@ -547,7 +578,7 @@ def sg_api_pump_answer() -> dict[str, Any]:
             money=("SEK", "kr", "öre"),
             choices={
                 "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None, "water_heater": [], "tank_sensor": [],
-                "pool": None, "spa": [], "phones": [],
+                "pool": None, "spa": [], "sauna": [], "phones": [],
                 "offset": [{"entity_id": "number.s1155_heating_offset_climate_system_1_40031", "name": "Heating offset climate system 1", "value": "0"}],
                 "relay": [
                     {"entity_id": mode, "name": "Requested operating mode (SG Ready)", "value": None},

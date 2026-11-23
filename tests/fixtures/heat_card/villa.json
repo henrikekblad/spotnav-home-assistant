@@ -623,6 +623,18 @@
         "value": "off"
       }
     ],
+    "sauna": [
+      {
+        "ask": false,
+        "cloud": true,
+        "entity_id": "climate.harvia",
+        "family": "harvia_sauna",
+        "lock_id": "binary_sensor.harvia_door",
+        "name": "Bastu",
+        "score": 1.0,
+        "value": "off"
+      }
+    ],
     "setpoint": [],
     "spa": [
       {
@@ -726,6 +738,7 @@
     },
     "outdoor_sensor": null,
     "pool": null,
+    "sauna": null,
     "spa": null,
     "target_c": 21.0,
     "water_heater": null,
@@ -1480,8 +1493,10 @@
       "value": 158.0
     }
   },
+  "sauna": null,
   "shadow": true,
   "site_id": "site_villa",
+  "spa": null,
   "status": {
     "guard": null,
     "kw": 1.13,

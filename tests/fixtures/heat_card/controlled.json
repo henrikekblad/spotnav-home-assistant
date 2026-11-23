@@ -623,6 +623,18 @@
         "value": "off"
       }
     ],
+    "sauna": [
+      {
+        "ask": false,
+        "cloud": true,
+        "entity_id": "climate.harvia",
+        "family": "harvia_sauna",
+        "lock_id": "binary_sensor.harvia_door",
+        "name": "Bastu",
+        "score": 1.0,
+        "value": "off"
+      }
+    ],
     "setpoint": [],
     "spa": [
       {
@@ -743,6 +755,17 @@
       "season_open": true,
       "target_c": 27.0,
       "water_sensor": "sensor.pool_vatten"
+    },
+    "sauna": {
+      "control": false,
+      "entity_id": "switch.bastu",
+      "family": "relay",
+      "heater_kw": 9.0,
+      "lock_id": null,
+      "safety_declared": false,
+      "session_once": null,
+      "sessions": [],
+      "target_c": 80.0
     },
     "spa": {
       "bath_c": 38.0,
@@ -1541,8 +1564,87 @@
       "value": 158.0
     }
   },
+  "sauna": {
+    "control": {
+      "paused_until": null,
+      "reason": "no_safety",
+      "state": "watch_only"
+    },
+    "family": "relay",
+    "heating": false,
+    "kw": 9.0,
+    "live": false,
+    "lock_id": null,
+    "locked": null,
+    "next_session": null,
+    "not_ready": {
+      "at": "2026-11-17T16:00:00+00:00",
+      "cause": "fuse",
+      "later": "2026-11-17T17:00:00+00:00",
+      "reach_c": 60.0,
+      "short_c": 20.0,
+      "short_kwh": 2.25
+    },
+    "notes": [],
+    "rate_c_h": 80.0,
+    "rate_learned": false,
+    "ready_at": null,
+    "safety_declared": false,
+    "session_now": null,
+    "session_once": null,
+    "sessions": [],
+    "state": "idle",
+    "target_c": 80.0,
+    "temp_c": null,
+    "would": {
+      "action": "off",
+      "reason": "no_session",
+      "until": null
+    }
+  },
   "shadow": false,
   "site_id": "site_villa",
+  "spa": {
+    "bath_c": 38.0,
+    "bath_now": null,
+    "bath_once": null,
+    "baths": [
+      {
+        "time": "19:00",
+        "weekdays": [
+          4,
+          5
+        ]
+      }
+    ],
+    "control": {
+      "paused_until": null,
+      "reason": null,
+      "state": "watched"
+    },
+    "family": "balboa",
+    "floor_c": 10.0,
+    "heating": true,
+    "idle_c": 30.0,
+    "kw": 3.0,
+    "live": false,
+    "next_bath": {
+      "at": "2026-11-16T18:00:00+00:00",
+      "source": "weekly"
+    },
+    "not_ready": null,
+    "notes": [],
+    "rate_c_h": 2.0,
+    "rate_learned": true,
+    "ready_at": "2026-11-16T17:40:00+00:00",
+    "state": "heating",
+    "water_c": 36.5,
+    "would": {
+      "action": "heat",
+      "reason": "cheap",
+      "until": "2026-11-16T17:45:00+00:00"
+    }
+  },
   "status": {
     "guard": null,
     "kw": 1.13,

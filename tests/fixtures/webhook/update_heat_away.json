@@ -31,6 +31,7 @@
     },
     "outdoor_sensor": null,
     "pool": null,
+    "sauna": null,
     "spa": null,
     "target_c": 21.5,
     "water_heater": null,

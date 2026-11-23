@@ -112,6 +112,7 @@ from ..heat.view import (
 from ..notifications.targets import available_targets, encoded_available
 from ..pool.detect import Candidate, circulations, heat_pumps, read_seen, suggest, water_sensors
 from ..pricing.price_source import site_price_source
+from ..sauna.detect import SaunaCandidate, saunas
 from ..spa.detect import SpaCandidate, spas
 from ..runtime import site_controller_for
 from ..site.heat_meter import (
@@ -865,12 +866,12 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
         out.update(pool_spa_choices(hass, config))
     except Exception:  # noqa: BLE001 - the pool's and the spa's detection is extra: the other choices stand
         _LOGGER.debug("SpotNav heat: the pool and spa could not be detected", exc_info=True)
-        out.update({"pool": None, "spa": [], "phones": encoded_available(available_targets(hass))})
+        out.update({"pool": None, "spa": [], "sauna": [], "phones": encoded_available(available_targets(hass))})
     return out
 
 
 def pool_spa_choices(hass: HomeAssistant, config: HeatConfig) -> dict[str, Any]:
-    """The pool's, the spa's and the heat card's phones' choices (spec section 3): ranked candidates (`score`, `ask`
+    """The pool's, the spa's, the sauna's and the heat card's phones' choices (spec section 3): ranked candidates (`score`, `ask`
     below 0.9: asked once), the one-time grouping the pool block is filled from (`suggested`), what is chosen now
     always listed first. `pool` is `null` with nothing to offer and no pool chosen."""
     seen = read_seen(hass)
@@ -909,7 +910,20 @@ def pool_spa_choices(hass: HomeAssistant, config: HeatConfig) -> dict[str, Any]:
         ({**_choice(hass, c.entity_id), **{k: v for k, v in c.as_dict().items() if k != "entity_id"}} for c in found_spas.values()),
         key=lambda item: (spa is None or item["entity_id"] != spa.entity_id, -item["score"], str(item["name"]).casefold()),
     )
-    return {"pool": pool_block, "spa": spa_rows, "phones": encoded_available(available_targets(hass))}
+    found_saunas = {c.entity_id: c for c in saunas(seen)}
+    sauna = config.sauna
+    if sauna is not None and sauna.entity_id not in found_saunas:
+        found_saunas[sauna.entity_id] = SaunaCandidate(sauna.entity_id, 0.0, sauna.family, lock_id=sauna.lock_id)
+    sauna_rows = sorted(
+        ({**_choice(hass, c.entity_id), **{k: v for k, v in c.as_dict().items() if k != "entity_id"}} for c in found_saunas.values()),
+        key=lambda item: (sauna is None or item["entity_id"] != sauna.entity_id, -item["score"], str(item["name"]).casefold()),
+    )
+    return {
+        "pool": pool_block,
+        "spa": spa_rows,
+        "sauna": sauna_rows,
+        "phones": encoded_available(available_targets(hass)),
+    }
 
 
 async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any]:
@@ -945,12 +959,16 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
         + ([config.water_heater.entity_id] if config.water_heater is not None and config.water_heater.control else [])
     )
     pool_status: dict[str, Any] | None = None
+    spa_status: dict[str, Any] | None = None
+    sauna_status: dict[str, Any] | None = None
     pool_spa = getattr(controller, "pool_spa", None)
-    if pool_spa is not None and config.pool is not None:
+    if pool_spa is not None:
         try:
             pool_status = pool_spa.pool_status(config, now)
-        except Exception:  # noqa: BLE001 - the pool is extra: the card shows the rest
-            _LOGGER.debug("SpotNav heat: the pool could not be read", exc_info=True)
+            spa_status = pool_spa.spa_status(config, now)
+            sauna_status = pool_spa.sauna_status(config, now)
+        except Exception:  # noqa: BLE001 - the pool, the spa and the sauna are extra: the card shows the rest
+            _LOGGER.debug("SpotNav heat: the pool, the spa or the sauna could not be read", exc_info=True)
     rooms = await read_indoor(hass, site.entry_id, config, zones, now)
     meter = await read_meter(hass, site.entry_id, controller, now, day_start)
     following = local.date() + timedelta(days=1)
@@ -1027,6 +1045,8 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             controlled=controlled,
             water_heater_not_full=not_full,
             pool=pool_status,
+            spa=spa_status,
+            sauna=sauna_status,
         )
     )
     return answer
