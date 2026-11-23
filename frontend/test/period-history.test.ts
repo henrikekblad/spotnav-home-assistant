@@ -99,7 +99,7 @@ describe("the periods", () => {
 
 describe("the house history", () => {
   it("decodes every fixture and refuses a newer version or a mistyped field", () => {
-    for (const name of ["villa_month.json", "villa_day.json", "house_alone_year.json"]) {
+    for (const name of ["villa_month.json", "villa_day.json", "house_alone_year.json", "solar_alone_day.json", "solar_alone_month.json"]) {
       expect(decodeHouseHistory(read(`house_history/${name}`)).ok).toBe(true);
     }
     expect(decodeHouseHistory({ ...read("house_history/villa_month.json"), api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
@@ -116,6 +116,20 @@ describe("the house history", () => {
     expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/52 kr på 1 dygn$/);
     expect(money.querySelector("[data-row='sun']")?.textContent).not.toContain("dygn");
     expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
+  });
+
+  it("shows the sun's value in the money of a site without a battery, and says where days are estimated", () => {
+    const answer = house("house_history/solar_alone_month.json");
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const money = body.querySelector("[data-part='money']")!;
+    expect(money.querySelector("[data-row='sun']")?.textContent).toMatch(/^Solen sparade.*135 kr$/);
+    expect(money.querySelector("[data-line='sun-estimated']")?.textContent).toBe(translate("sv", "house.sun.estimated"));
+    // No battery review is missing on a site without a battery.
+    expect(money.querySelector("[data-line='no-review']")).toBeNull();
+    // Fewer days valued than the period's: the row names them.
+    answer.sun!.days = 3;
+    const fewer = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(fewer.querySelector("[data-part='money'] [data-row='sun']")?.textContent).toMatch(/på 3 dygn$/);
   });
 
   it("shows a month: the card's picker, a bar a day, the money and every section; no flow, no forward step past today", () => {

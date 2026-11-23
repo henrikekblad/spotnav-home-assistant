@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "Die Ersparnis der Wärme ist eine Schätzung.",
   "house.earn.note.sun": "Der Teil der Sonne ist die Sonnenenergie, die das Haus verbraucht hat, zum damaligen Preis, plus das Verkaufte: was die Sonne gebracht hat, nicht etwas, das SpotNav getan hat.",
   "house.earn.note.sunDay": "Der Teil der Sonne ist die Sonnenenergie, die das Haus verbraucht hat, zum damaligen Preis, plus das Verkaufte: was die Sonne gebracht hat, nicht etwas, das SpotNav getan hat. Er gilt für den ganzen Tag und hat keinen Stundenbalken.",
+  "house.sun.estimated": "Tage ohne die nächtliche Viertelstundenprüfung sind aus der Stundenstatistik geschätzt: Innerhalb einer Stunde gleichen sich gekaufte und verkaufte Energie aus.",
   "house.details.open": "Details",
   "heat.tabs": "Heizungsansichten",
   "heat.tab.now": "Jetzt",

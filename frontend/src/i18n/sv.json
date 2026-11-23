@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "Värmens besparing är en uppskattning.",
   "house.earn.note.sun": "Solens del är solenergin huset använde, till priset då, plus det som såldes: vad solen gav, inte något SpotNav gjorde.",
   "house.earn.note.sunDay": "Solens del är solenergin huset använde, till priset då, plus det som såldes: vad solen gav, inte något SpotNav gjorde. Den gäller hela dagen och ritas inte per timme.",
+  "house.sun.estimated": "Dagar utan nattens kvartsgranskning är uppskattade från timstatistiken: inom en timme tar köpt och såld energi ut varandra.",
   "house.details.open": "Detaljer",
   "heat.tabs": "Värmens vyer",
   "heat.tab.now": "Nu",

@@ -314,6 +314,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last
         # forecast for the next 48 hours, and the log of each hour's first forecast with the daily reviews.
         "load_forecast": None if controller is None else _load_forecast_diagnostics(controller),
+        # The nightly sun review of a site without a home battery (`site/sun_review.py`): its last run, the days kept
+        # by basis, why days or runs were not reviewed (no meters, no short-term statistics) and the last week's days.
+        "sun_review": None if controller is None else _part_snapshot(controller.sun_review.diagnostics),
         # The heat card's settings (`heat/config.py`) as stored and as read, and what its shadow rule would have done;
         # shadow only, nothing is controlled.
         "heat_settings": _part_snapshot(lambda: _heat_settings(hass, entry)),

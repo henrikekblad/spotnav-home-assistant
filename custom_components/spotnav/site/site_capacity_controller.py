@@ -79,6 +79,8 @@ from .decision_recorder import DecisionRecorder
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
+from .sun_review import SiteSunReview
+from ..pricing.period_prices import period_price_slots
 from .demand_ceiling import SiteDemandCeiling
 from .shed_order import ShedOrder
 from .import_target import (
@@ -853,6 +855,15 @@ class SiteCapacityController:
         )
         # A broken statistic hour of a heat zone stays out of the heat split's learning.
         self.house_forecast.heat.cap_kw = self._main_fuse_kw
+        # The sun's value per quarter hour on a site without a home battery, reviewed each night (`site/sun_review.py`):
+        # the house card's Earnings tab and Money section. Shown only.
+        self.sun_review = SiteSunReview(
+            hass,
+            entry_id,
+            self.demand,
+            has_battery=lambda: self.battery_shadow.facts.battery_entity_id is not None,
+            prices=lambda period: period_price_slots(hass, entry_id, period),
+        )
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -1044,6 +1055,7 @@ class SiteCapacityController:
         self._register_controller_listeners()
         await self.demand.async_load()
         await self.house_forecast.async_load()
+        await self.sun_review.async_load()
         await self._async_load_released()
         await self._async_load_grid_sign()
         await self.battery_shadow.async_start()
@@ -1143,6 +1155,7 @@ class SiteCapacityController:
             ("battery", self.battery_shadow.async_shutdown),
             ("switched load", self.switch_load.async_shutdown),
             ("house forecast", self.house_forecast.async_close),
+            ("sun review", self.sun_review.async_close),
             ("solar correction", self.solar_correction.async_shutdown),
             ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
@@ -1184,6 +1197,7 @@ class SiteCapacityController:
             ("zones", self.zones_control.halt),
             ("water heater", self.water_heater_control.halt),
             ("house forecast", self.house_forecast.halt),
+            ("sun review", self.sun_review.halt),
         )
         for name, halt in halts:
             try:
@@ -1607,6 +1621,7 @@ class SiteCapacityController:
                 power_level=lambda: site_power_level(self.hass, self.entry_id),
             )
             self.house_forecast.tick()
+            self.sun_review.tick()
             self.demand_ceiling.refresh(self.demand.now())
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)

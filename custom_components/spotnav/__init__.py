@@ -166,6 +166,7 @@ from .site.site_capacity_controller import (
 )
 from .site.decision_recorder import DecisionRecorder
 from .site.site_history import charger_alone_values, SiteHistory
+from .site.sun_review import SiteSunReview
 from .site.phase_peaks import SitePhasePeaks
 from .site.demand_tracker import SiteDemand
 from .site.house_forecast import SiteHouseForecast
@@ -1031,6 +1032,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SitePhasePeaks.async_remove_stored(hass, entry.entry_id)
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
         await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)
+        await SiteSunReview.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         await BatteryShadow.async_remove_stored(hass, entry.entry_id)
         await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))

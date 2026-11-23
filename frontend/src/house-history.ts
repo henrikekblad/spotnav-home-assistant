@@ -78,8 +78,19 @@ export interface HouseBucket {
   own_battery: number | null;
   would_battery: number | null;
   /** The sun's value over the bucket's reviewed days (minor unit): the same nightly reviews' figure as the period's
-   * `review.sun_gave`; `null` on a day's hours, where no day has it, and from a backend before it. */
+   * `review.sun_gave` (or, without a battery, `sun.gave`); `null` on a battery site's day's hours, where no day has
+   * it, and from a backend before it. A site without a battery has it on a day's hours too. */
   sun_gave: number | null;
+}
+
+/** The sun's value on a site without a battery (`site/sun_value.py`): over `days` of the period's `period_days` days
+ * before today, `estimated_days` of them from the hourly statistics. `null` on a battery site (its `review` has it),
+ * without the sun and from a backend before it. */
+export interface HouseSun {
+  gave: number;
+  days: number;
+  period_days: number;
+  estimated_days: number;
 }
 
 /** Before SpotNav controls the battery: what the battery's own control earned over the period's such days, and what
@@ -168,6 +179,7 @@ export interface HouseHistory {
   saving: HouseSaving | null;
   /** `null` where SpotNav controlled the battery throughout, without a battery and from a backend before it. */
   own_control: HouseOwnControl | null;
+  sun: HouseSun | null;
 }
 
 export type HouseHistoryDecode = { ok: true; value: HouseHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -200,6 +212,14 @@ function ownControl(value: unknown): HouseOwnControl | null {
   }
   const source = record(value);
   return { earned: number(source.earned), would: numberOrNull(source.would), days: count(source.days), would_days: count(source.would_days) };
+}
+
+function sunBlock(value: unknown): HouseSun | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const source = record(value);
+  return { gave: number(source.gave), days: count(source.days), period_days: count(source.period_days), estimated_days: count(source.estimated_days) };
 }
 
 function count(value: unknown): number {
@@ -364,6 +384,7 @@ export function decodeHouseHistory(raw: unknown): HouseHistoryDecode {
         },
         saving: savingSums(source.saving),
         own_control: ownControl(source.own_control),
+        sun: sunBlock(source.sun),
       },
     };
   } catch {
@@ -509,6 +530,23 @@ function moneySection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
     }
   }
   const reviewed = answer.review;
+  const sun = answer.sun;
+  if (reviewed === null && sun !== null) {
+    // A site without a battery: the sun's value of its own, over the days valued.
+    const figure = amount(language, sun.gave, answer.money);
+    block.append(
+      figureRow(
+        doc,
+        translate(language, "hist.house.saved.sun"),
+        sun.days < sun.period_days ? translate(language, `hist.house.savedDays.${pluralForm(language, sun.days)}`, { figure, days: String(sun.days) }) : figure,
+        "sun",
+      ),
+    );
+    if (sun.estimated_days > 0) {
+      block.append(note(doc, translate(language, "house.sun.estimated"), "sun-estimated"));
+    }
+    return block;
+  }
   if (reviewed === null) {
     block.append(note(doc, translate(language, "hist.house.noReview"), "no-review"));
     return block;

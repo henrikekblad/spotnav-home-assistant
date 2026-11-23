@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "Lämmön säästö on arvio.",
   "house.earn.note.sun": "Auringon osuus on talon käyttämä aurinkoenergia sen hetken hintaan sekä myyty energia: mitä aurinko antoi, ei mitään, mitä SpotNav teki.",
   "house.earn.note.sunDay": "Auringon osuus on talon käyttämä aurinkoenergia sen hetken hintaan sekä myyty energia: mitä aurinko antoi, ei mitään, mitä SpotNav teki. Se koskee koko päivää, eikä sitä piirretä tunneittain.",
+  "house.sun.estimated": "Päivät ilman yön varttitarkastusta on arvioitu tuntitilastoista: tunnin sisällä ostettu ja myyty energia kumoavat toisensa.",
   "house.details.open": "Tiedot",
   "heat.tabs": "Lämmityksen näkymät",
   "heat.tab.now": "Nyt",

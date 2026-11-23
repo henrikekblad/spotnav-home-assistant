@@ -343,6 +343,36 @@ describe("the sun's part", () => {
     expect(sunOnly.querySelector("[data-part='earn-bars']")).toBeNull();
     expect(earnNotes("sv", day, new Set(["own", "car"]), kr)).toEqual([translate("sv", "house.earn.note.sunDay")]);
   });
+
+  it("has its own hourly bars in a day's view on a site without a battery", () => {
+    const day = history("solar_alone_day.json");
+    expect(day.review).toBeNull();
+    expect(day.sun).toEqual({ gave: 900, days: 1, period_days: 1, estimated_days: 0 });
+    expect(partTotal(day, "sun")).toBe(900);
+    const card = render(day, { choice: { period: "day", date: "2026-11-15" } });
+    expect(Array.from(card.querySelectorAll<HTMLElement>("button[data-legend]")).map((toggle) => toggle.dataset["legend"])).toEqual(["earn-sun"]);
+    expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 9,00 kr");
+    // The sunny hours each have their bar; the night has none.
+    const noon = card.querySelector("[data-bar='2026-11-15T12:00:00+01:00']")!;
+    expect(lanes(noon)[0]!.series).toEqual(["earn-sun"]);
+    expect(noon.getAttribute("aria-label")).toContain("Sol 2,25 kr");
+    expect(card.querySelectorAll(".spotnav-house-pbar-part[data-series='earn-sun']")).toHaveLength(4);
+    // The notes say what the sun counts, not that it is a whole day's figure; no estimate on a reviewed day.
+    expect(earnNotes("sv", day, new Set(), kr)).toEqual([translate("sv", "house.earn.note.sun")]);
+  });
+
+  it("says where a site without a battery has days estimated from the hourly statistics", () => {
+    const month = history("solar_alone_month.json");
+    expect(month.sun).toEqual({ gave: 13512.5, days: 15, period_days: 15, estimated_days: 14 });
+    expect(partTotal(month, "sun")).toBe(13512.5);
+    expect(earnNotes("en", month, new Set(), kr)).toEqual([translate("en", "house.earn.note.sun"), translate("en", "house.sun.estimated")]);
+    expect(bucketPart(month.buckets.find((bucket) => bucket.key === "2026-11-14")!, "sun")).toBe(912.5);
+    // An older backend's answer has no sun block: decoded as none.
+    const old = history("solar_alone_month.json", (raw) => {
+      delete raw["sun"];
+    });
+    expect(old.sun).toBeNull();
+  });
 });
 
 describe("the card element", () => {

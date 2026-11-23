@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "The heat's saving is an estimate.",
   "house.earn.note.sun": "The sun's part is the sun's energy the house used, at the price then, plus what was sold: what the sun gave, not something SpotNav did.",
   "house.earn.note.sunDay": "The sun's part is the sun's energy the house used, at the price then, plus what was sold: what the sun gave, not something SpotNav did. It is a figure for the whole day and has no hourly bar.",
+  "house.sun.estimated": "Days without the nightly quarter-hour review are estimated from the hourly statistics: within an hour, the energy bought and the energy sold net against each other.",
   "house.details.open": "Details",
   "heat.tabs": "Heating views",
   "heat.tab.now": "Now",
