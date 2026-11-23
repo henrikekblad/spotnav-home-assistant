@@ -461,6 +461,8 @@ PLAN_REASON = {
     "deye": "no_rated_power",
     # Anker's local integration states the size and no rating (the limits are internal to it): learnt.
     "anker": "no_rated_power",
+    # Zendure states the size and the output's rating but not the charge rating (a raw sensor with no unit): learnt.
+    "zendure": "no_rated_power",
 }
 
 

@@ -53,6 +53,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   `smart_mode`, `dynamic_pricing`, `socket_overlay_mode`: what the Anker app sets, anker-charging `a9930d7`). Below its
   backup reserve a Max AC grid-charges at its configured input power in any mode (Anker's own answer in the
   integration's issue 152). No aggregator is named: none was found (`plans/research_integrations/anker_solix_control_2026-11-23.md`).
+* Zendure's own manager is the app's HEMS (`hems_state`: the device takes its energy reports and its own loop overrides
+  local writes after about ten seconds) and, in `zendure_ha`, the Zendure Manager (`zendure_manager_operation`, every
+  option but `off` writes the limits from the P1 meter), Zendure-HA `e67b04e`. Ffunes/Omnibattery drives Zendure too and is
+  in the outside integrations. No aggregator is named: none was found
+  (`plans/research_integrations/zendure_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -127,6 +132,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "Deye Cloud or SunSynk Connect: time-of-use programmes and work modes"),
     Coexistence("anker", "Anker SOLIX", ("anker_solix_official",),
                 "Anker app: time-of-use, smart, custom and dynamic-pricing modes, and the backup reserve"),
+    Coexistence("zendure", "Zendure", ("zendure_ha",),
+                "Zendure app: HEMS, and the integration's own Zendure Manager"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

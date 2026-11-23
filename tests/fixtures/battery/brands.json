@@ -2300,5 +2300,143 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "zendure": {
+  "_source": "Zendure/Zendure-HA e67b04e: `snakecase(<device name lower>_<property>)` (entity.py lines 24-35, 59-65), one config entry for all devices; the manager is a device of its own. Not a real registry; built from the source.",
+  "platform": "zendure_ha",
+  "manufacturer": "Zendure",
+  "battery": "sensor.solarflow_2400_ac_plus_output_pack_power",
+  "entities": [
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_output_pack_power",
+    "unique_id": "solarflow_2400_ac_plus_output_pack_power",
+    "device": "sf",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_pack_input_power",
+    "unique_id": "solarflow_2400_ac_plus_pack_input_power",
+    "device": "sf",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_electric_level",
+    "unique_id": "solarflow_2400_ac_plus_electric_level",
+    "device": "sf",
+    "state": "58",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_total_kwh",
+    "unique_id": "solarflow_2400_ac_plus_total_kwh",
+    "device": "sf",
+    "state": "5.76",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_inverse_max_power",
+    "unique_id": "solarflow_2400_ac_plus_inverse_max_power",
+    "device": "sf",
+    "state": "2400",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_charge_max_limit",
+    "unique_id": "solarflow_2400_ac_plus_charge_max_limit",
+    "device": "sf",
+    "state": "3200",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_aggr_charge",
+    "unique_id": "solarflow_2400_ac_plus_aggr_charge",
+    "device": "sf",
+    "state": "120.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_aggr_discharge",
+    "unique_id": "solarflow_2400_ac_plus_aggr_discharge",
+    "device": "sf",
+    "state": "108.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solarflow_2400_ac_plus_min_soc",
+    "unique_id": "solarflow_2400_ac_plus_min_soc",
+    "device": "sf",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.solarflow_2400_ac_plus_hems_state",
+    "unique_id": "solarflow_2400_ac_plus_hems_state",
+    "device": "sf",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solarflow_2400_ac_plus_soc_status",
+    "unique_id": "solarflow_2400_ac_plus_soc_status",
+    "device": "sf",
+    "state": "0",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.zendure_manager_total_kwh",
+    "unique_id": "zendure_manager_total_kwh",
+    "device": "manager",
+    "state": "5.76",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.zendure_manager_operation",
+    "unique_id": "zendure_manager_operation",
+    "device": "manager",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "zendure",
+   "soc_pct": 58.0,
+   "capacity_kwh": 5.76,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": 2.4,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

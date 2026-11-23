@@ -928,7 +928,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "Zendure (SolarFlow, Hyper, AIO)",
         "`zendure_ha`, HACS (Zendure/Zendure-HA)",
         keys=("zendure_ha",),
-        note="With several devices on one account only one is read.",
+        adapter="zendure",
+        control="Not mapped: read only. Charge and discharge limits with an AC mode exist on the newer SolarFlow; "
+        "the device has no timeout and its own HEMS or the integration's Zendure Manager overrides local writes",
+        note="With several devices on one account only one is read. The charge rating is learnt. The mode is read "
+        "from the Zendure Manager, the HEMS state and the level calibration.",
     ),
     Overview(
         "Anker Solix (Solarbank)",

@@ -251,6 +251,28 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   nothing on its own; and any rating (`max_charge_power` and `max_discharge_power` are internal to the integration, not
   entities). The cloud integration `anker_solix` (thomluther) has no adapter: its sign and its totals are unstated.
 
+* Zendure SolarFlow, Hyper, AIO and Hub, `zendure_ha` (Zendure/Zendure-HA `e67b04e`, read 2026-11-23,
+  `plans/research_integrations/zendure_control_2026-11-23.md`): read only. The unique id is the device's name in the
+  Zendure app and the property, `snakecase("<name lower>_<property>")` (`entity.py` lines 24-35 and 59-65), with no
+  serial and no config entry id in it, and every device of the account is in one config entry. So an entity is found by
+  the property at the end of the id and on the battery entity's own device first (`facts.find_entity`), which is what
+  keeps two devices apart; a rename in the app renames the ids at the next load. A battery pack is a child device of
+  its own. Per device: the level `electric_level` (`device.py` line 181), the size `total_kwh` (line 193, worked out
+  from the packs' serial prefixes, 0 until they are seen and for an unknown prefix, which reads as no size), the rating
+  of the output `inverse_max_power` (the device's `inverseMaxPower`, W, `entity.py` line 105; the output the device allows
+  now, and one 2400 Pro firmware reported 800 W for a while), the floor `min_soc` (the number `minSoc`, shown 0-100 %, line
+  159) and the counters `aggr_charge` and `aggr_discharge` (kWh, lines 200-201), which the integration adds up itself
+  from the two pack power sensors, not counters of the device (they stand still while Home Assistant is down, both
+  alike, and the round trip learns from their change). Not read: the charge rating, `charge_max_limit` (the device's
+  `chargeMaxLimit`, W) is a plain raw sensor with no unit (`entity.py` line 380), which `facts.to_kw` would read as
+  kW; and the firmware, which is the device's `sw_version` in the registry (`updateVersion`, line 408). Who runs it: the
+  integration's own Zendure Manager, a device of its own (`select` `zendure_manager_operation`, `manager.py` line 106),
+  rewrites the limits every few seconds from the P1 meter while it is not `off`; the Zendure app's HEMS takes the
+  device over (`hems_state`, on for a minute after its last report, `device.py` line 190); and a state-of-charge
+  calibration (`soc_status` 1) ignores any setpoint. The battery's power is the pair `output_pack_power` (into the
+  battery) and `pack_input_power` (out of it), both non-negative (`device.py` lines 185-186 and 258-268), as the site
+  detection's Zendure row reads them.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1084,9 +1106,32 @@ ANKER: Final = Adapter(
     reserves=(ReserveSource(_key("discharge_limit_soc", "number")),),
 )
 
+#: Zendure through `zendure_ha` (see the module): read only. The ids are built from the device's name in the app, so
+#: every match is a key at the end, found on the battery's own device first.
+ZENDURE: Final = Adapter(
+    brand="zendure",
+    label="Zendure",
+    platforms=("zendure_ha",),
+    facts={
+        "soc": _key("electric_level"),
+        "capacity": _key("total_kwh"),
+        "rated_discharge": _key("inverse_max_power"),
+        "charged_total": _key("aggr_charge"),
+        "discharged_total": _key("aggr_discharge"),
+    },
+    modes=(
+        # The integration's own manager, a device of its own, writes the limits while it is not off.
+        ModeRule(_key("zendure_manager_operation", "select"), frozenset({"off"}), "Zendure Manager"),
+        ModeRule(_key("hems_state", "binary_sensor"), frozenset({"off"}), "Zendure HEMS", required=False),
+        # 1 while the device calibrates its level and ignores every setpoint.
+        ModeRule(_key("soc_status"), frozenset({"0"}), "SoC calibration", required=False),
+    ),
+    reserves=(ReserveSource(_key("min_soc", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE,
 )
 
 
