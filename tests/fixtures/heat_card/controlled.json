@@ -742,7 +742,7 @@
     "pool": {
       "circulation_id": "switch.pool_cirkulation",
       "circulation_kw": null,
-      "control_circulation": false,
+      "control_circulation": true,
       "control_heat_pump": false,
       "filter_hours": null,
       "heat_pump": {
@@ -1472,18 +1472,22 @@
   },
   "pool": {
     "circulation": {
+      "failures": 1,
       "kw": null,
-      "live": false,
+      "live": true,
       "on": false,
+      "paused_until": null,
       "reason": "waiting",
-      "state": "watched"
+      "state": "controlled"
     },
     "extra": null,
     "heat_pump": {
+      "failures": 0,
       "heating": false,
       "kw": 1.6,
       "live": false,
       "on": true,
+      "paused_until": null,
       "reason": "waiting",
       "state": "watched"
     },
@@ -1566,6 +1570,7 @@
   },
   "sauna": {
     "control": {
+      "failures": 0,
       "paused_until": null,
       "reason": "no_safety",
       "state": "watch_only"
@@ -1619,6 +1624,7 @@
       }
     ],
     "control": {
+      "failures": 0,
       "paused_until": null,
       "reason": null,
       "state": "watched"

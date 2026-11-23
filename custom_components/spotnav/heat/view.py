@@ -57,7 +57,8 @@
                     check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
                     automation: {entity_id, name} | null, paused_until} | null,
      pool: {season_open, water_c, water_source: "sensor" | "heat_pump" | null, target_c,
-            heat_pump: {on, heating, kw, live, state, reason} | null, circulation: {on, kw, live, state, reason} | null,
+            heat_pump: {on, heating, kw, live, state, reason, paused_until, failures} | null,
+            circulation: {on, kw, live, state, reason, paused_until, failures} | null,
             today: {need_h, need_source: "water" | "override" | "default", done_h, planned_h, heat_h, kwh},
             planned: [{start, end, what: "filter" | "heat" | "extra", reason: "sun" | "cheap" | "need" | "extra"}],
             extra: {hours, until} | null, season_hint, would: {action: "heat" | "filter" | "off", until, reason} | null,
@@ -65,7 +66,8 @@
      spa: {family, water_c, bath_c, idle_c, floor_c, heating, kw, rate_c_h, rate_learned,
            state: "idle" | "heating" | "ready" | "late", ready_at, next_bath: {at, source: "weekly" | "once" | "now"} | null,
            baths: [{weekdays, time}], bath_once, bath_now: {until} | null, live,
-           control: {state: "watched" | "watch_only", reason: "cloud_slow" | null, paused_until},
+           control: {state: "watched" | "watch_only" | "controlled" | "paused" | "handed_back", reason, paused_until,
+                     failures},
            would: {action: "heat" | "hold" | "idle" | "floor", until, reason} | null,
            not_ready: {at, cause: "rate" | "import_target" | "power_level" | "fuse", reach_c, short_c, short_kwh,
                        later} | null,
@@ -73,13 +75,16 @@
      sauna: {family, temp_c, target_c, heating, kw, rate_c_h, rate_learned, state, ready_at,
              next_session: {at, source} | null, sessions: [{weekdays, time}], session_once, session_now: {until} | null,
              locked: bool | null, lock_id, safety_declared: bool | null (a relay's), live,
-             control: {state, reason: "cloud_slow" | "no_safety" | null, paused_until},
+             control: {state, reason, paused_until, failures},
              would: {action: "heat" | "hold" | "off" | "blocked" | "start_by_hand", until, reason} | null, not_ready,
              planned, notes} | null}
 
 `pool` is the pool in shadow (`pool/runtime.py`, spec `plans/v3_pool_spa_spec.md` section 10.1), `null` without one:
 the water now and where it is read (`null` until the heat pump has run long enough to read it), the heat pump and the
-circulation as they are (`state` "watched": SpotNav only watches; "season_closed": it touches nothing), today's
+circulation as they are (`state` "watched": the opt-in is off and SpotNav only watches; "season_closed": it touches
+nothing; with the opt-in on, the control's state, `pool/control.py`: "controlled", "paused" or "handed_back", its
+`reason`, `paused_until` the next local day it waits to, `failures` the writes that did not read back, and `live` true
+where its steps count in the shed order, never through a cloud), today's
 filtering need and where it comes from, the hours SpotNav would have run so far (`done_h`), would run still today
 (`planned_h`) and would heat (`heat_h`), the energy of those at the entered powers (`kwh`, `null` without them), the
 planned runs from now on (the heat pump's runs are `heat`, the circulation runs under them), the household's extra
@@ -92,7 +97,11 @@ session and where it comes from, the household's "now" press, what SpotNav would
 not be ready (`not_ready`: why, the temperature it reaches, what is short and the earliest later hour that fits) and the
 heat-up and hold planned from now on (`planned`, the heat card's day band). The
 sauna is never heated but for a booked session or a "now" press; a lock that reads `locked` makes a heat-up `blocked`,
-and a relay without its declared safety measure `start_by_hand`.
+and a relay without its declared safety measure `start_by_hand`. Their `control` is the shadow's (`watched`,
+`watch_only`, with `cloud_slow` or `no_safety`) while the opt-in is off, else the control's (`spa/control.py`):
+`controlled`, `paused` or `handed_back` with its reason (`no_read_back`, `write_cap`, `foreign_change`, `automation`,
+`unavailable`, `foreign_mode`, `own_scheduler`, `unsupported`, `cloud_slow`, `floor`, `lock`, `max_on`), and `failures`
+either way.
 
 A zone's `control` is SpotNav setting its thermostat (`heat/zones_control.py`, `ZonesControl.status`), `null` for a
 zone watched only: `home_c` is the person's own setpoint, `held_c` what SpotNav holds now (`null`: nothing), `action`

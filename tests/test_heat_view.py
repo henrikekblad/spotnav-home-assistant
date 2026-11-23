@@ -57,6 +57,7 @@ POOL = PoolConfig(
     circulation_id="switch.pool_cirkulation",
     water_sensor="sensor.pool_vatten",
     heat_pump_kw=1.6,
+    control_circulation=True,
 )
 SPA = SpaConfig("climate.spa", "balboa", baths=(Bath((4, 5), "19:00"),), heater_kw=3.0)
 
@@ -445,8 +446,14 @@ def controlled_answer() -> dict[str, Any]:
     }
     pool = {
         "season_open": True, "water_c": 24.6, "water_source": "sensor", "target_c": 27.0,
-        "heat_pump": {"on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting"},
-        "circulation": {"on": False, "kw": None, "live": False, "state": "watched", "reason": "waiting"},
+        "heat_pump": {
+            "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting", "paused_until": None,
+            "failures": 0,
+        },
+        # The circulation SpotNav controls (its opt-in on): one write did not read back once.
+        "circulation": {
+            "on": False, "kw": None, "live": True, "state": "controlled", "reason": "waiting", "paused_until": None, "failures": 1,
+        },
         "today": {"need_h": 8.25, "need_source": "water", "done_h": 3.0, "planned_h": 4.0, "heat_h": 2.0, "kwh": None},
         "planned": [
             {"start": (MIDNIGHT + timedelta(hours=22)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=2)).isoformat(), "what": "filter", "reason": "cheap"},
@@ -461,7 +468,7 @@ def controlled_answer() -> dict[str, Any]:
         "rate_c_h": 2.0, "rate_learned": True, "state": "heating", "ready_at": (MIDNIGHT + timedelta(hours=18, minutes=40)).isoformat(),
         "next_bath": {"at": (MIDNIGHT + timedelta(hours=19)).isoformat(), "source": "weekly"},
         "baths": [{"weekdays": [4, 5], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
-        "control": {"state": "watched", "reason": None, "paused_until": None},
+        "control": {"state": "watched", "reason": None, "paused_until": None, "failures": 0},
         "would": {"action": "heat", "until": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "reason": "cheap"},
         "not_ready": None,
         "planned": [
@@ -474,7 +481,7 @@ def controlled_answer() -> dict[str, Any]:
         "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "rate_c_h": 80.0,
         "rate_learned": False, "state": "idle", "ready_at": None, "next_session": None, "sessions": [], "session_once": None,
         "session_now": None, "locked": None, "lock_id": None, "safety_declared": False, "live": False,
-        "control": {"state": "watch_only", "reason": "no_safety", "paused_until": None},
+        "control": {"state": "watch_only", "reason": "no_safety", "paused_until": None, "failures": 0},
         "would": {"action": "off", "until": None, "reason": "no_session"},
         "not_ready": {
             "at": (MIDNIGHT + timedelta(days=1, hours=17)).isoformat(), "cause": "fuse", "reach_c": 60.0, "short_c": 20.0,
