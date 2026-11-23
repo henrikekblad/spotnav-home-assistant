@@ -68,13 +68,14 @@
            control: {state: "watched" | "watch_only", reason: "cloud_slow" | null, paused_until},
            would: {action: "heat" | "hold" | "idle" | "floor", until, reason} | null,
            not_ready: {at, cause: "rate" | "import_target" | "power_level" | "fuse", reach_c, short_c, short_kwh,
-                       later} | null, notes} | null,
+                       later} | null,
+           planned: [{start, end, what: "heat" | "hold", reason: "sun" | "cheap" | "bath" | "now" | "floor"}], notes} | null,
      sauna: {family, temp_c, target_c, heating, kw, rate_c_h, rate_learned, state, ready_at,
              next_session: {at, source} | null, sessions: [{weekdays, time}], session_once, session_now: {until} | null,
              locked: bool | null, lock_id, safety_declared: bool | null (a relay's), live,
              control: {state, reason: "cloud_slow" | "no_safety" | null, paused_until},
              would: {action: "heat" | "hold" | "off" | "blocked" | "start_by_hand", until, reason} | null, not_ready,
-             notes} | null}
+             planned, notes} | null}
 
 `pool` is the pool in shadow (`pool/runtime.py`, spec `plans/v3_pool_spa_spec.md` section 10.1), `null` without one:
 the water now and where it is read (`null` until the heat pump has run long enough to read it), the heat pump and the
@@ -87,8 +88,9 @@ do now.
 
 `spa` and `sauna` are the deadline heat loads in shadow (`spa/runtime.py`, `spa/plan.py`): the temperature now, the
 learnt rate (`rate_learned` false: the seed), the state and when it will be ready ("Klar 18:40, värmer 2 °C/h"), the next
-session and where it comes from, the household's "now" press, what SpotNav would do now and why, and a session that will
-not be ready (`not_ready`: why, the temperature it reaches, what is short and the earliest later hour that fits). The
+session and where it comes from, the household's "now" press, what SpotNav would do now and why, a session that will
+not be ready (`not_ready`: why, the temperature it reaches, what is short and the earliest later hour that fits) and the
+heat-up and hold planned from now on (`planned`, the heat card's day band). The
 sauna is never heated but for a booked session or a "now" press; a lock that reads `locked` makes a heat-up `blocked`,
 and a relay without its declared safety measure `start_by_hand`.
 

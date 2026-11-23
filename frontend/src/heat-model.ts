@@ -340,6 +340,7 @@ const DEADLINE_COMMON = {
   control: O({ state: "string", reason: N("string"), paused_until: N("string") }),
   would: N(O({ action: "string", until: N("string"), reason: "string" })),
   not_ready: N(NOT_READY),
+  planned: A(O({ start: "string", end: "string", what: "string", reason: "string" })),
   notes: A(O({ code: "string", params: "any" })),
 } as const;
 const SPA = O({
@@ -964,6 +965,8 @@ interface HeatDeadlineCommon {
   control: { state: string; reason: string | null; paused_until: string | null };
   would: { action: string; until: string | null; reason: string } | null;
   not_ready: HeatNotReady | null;
+  /** The heat-up ("heat", by "sun", "cheap", "bath", "now" or "floor") and the hold at the target ("hold") from now on. */
+  planned: { start: string; end: string; what: string; reason: string }[];
   notes: { code: string; params: Record<string, unknown> }[];
 }
 

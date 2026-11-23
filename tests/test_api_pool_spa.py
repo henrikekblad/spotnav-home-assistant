@@ -134,7 +134,8 @@ async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant)
     assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None} and spa["live"] is False
     assert set(spa) == {
         "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "rate_c_h", "rate_learned", "state",
-        "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "notes",
+        "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "planned",
+        "notes",
     }
     assert sauna["family"] == "harvia_sauna" and sauna["temp_c"] == 21.0 and sauna["locked"] is True
     assert sauna["next_session"] is None and sauna["would"]["action"] == "off" and sauna["would"]["reason"] == "no_session"
@@ -149,6 +150,10 @@ async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant) -> None:
     assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 45})["error"] == "spotnav_invalid_value"
     now = deadline_answer(hass, site, "spa", {"action": "bath_now"})
     assert now["ok"] and now["spa"]["bath_now"] is not None and now["spa"]["next_bath"]["source"] == "now"
+    # The day band's runs: heating from now, then the hold, each with its words' reason.
+    planned = now["spa"]["planned"]
+    assert planned and all(item["what"] in ("heat", "hold") for item in planned)
+    assert planned[0]["reason"] == "now" and planned[-1]["what"] == "hold"
     assert deadline_answer(hass, site, "spa", {"action": "bath_now"})["error"] == "spotnav_rate_limited"
     assert deadline_answer(hass, site, "spa", {"action": "cancel_now"})["spa"]["bath_now"] is None
     # Nothing that does not fit: the answers to it are refused.

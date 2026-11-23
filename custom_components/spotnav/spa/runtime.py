@@ -22,6 +22,8 @@ from .plan import (
     HOLD,
     KIND_SAUNA,
     QUARTER,
+    REASON_BATH,
+    REASON_NOW,
     SAUNA,
     SOURCE_NOW,
     SPA,
@@ -253,19 +255,46 @@ class DeadlineShadow:
             "not_ready": None if plan is None or plan.not_ready is None else plan.not_ready.as_dict(),
             "next": None if nxt is None else {"at": nxt[0].isoformat(), "source": nxt[1]},
             "now": None if self.now_until is None or self.now_until <= now else {"until": self.now_until.isoformat()},
+            "planned": self.planned(now),
             "notes": [],
         }
+
+    def planned(self, now: datetime) -> list[dict[str, Any]]:
+        """The heat-up and the hold from now on, as the card's day band draws them: the planned quarter hours joined
+        into runs of one reason (`heat`), then the hold at the target to its end (`hold`)."""
+        plan = self.plan
+        if plan is None:
+            return []
+        out: list[dict[str, Any]] = []
+        for start, why in sorted(plan.quarters.items()):
+            end = start + QUARTER
+            if end <= now:
+                continue
+            if out and out[-1]["reason"] == why and out[-1]["end"] == start.isoformat():
+                out[-1]["end"] = end.isoformat()
+            else:
+                out.append({"start": start.isoformat(), "end": end.isoformat(), "what": "heat", "reason": why})
+        hold = self._hold(plan)
+        now_press = plan.next_session is not None and plan.next_session[1] == SOURCE_NOW
+        why_held = REASON_NOW if now_press else REASON_BATH
+        if hold is not None and hold[1] > now:
+            out.append({"start": max(hold[0], now).isoformat(), "end": hold[1].isoformat(), "what": "hold", "reason": why_held})
+        return out
+
+    @staticmethod
+    def _hold(plan: DeadlinePlan) -> tuple[datetime, datetime] | None:
+        if plan.quarters and plan.hold_until is not None:
+            return max(plan.quarters) + QUARTER, plan.hold_until
+        if plan.next_session is not None and plan.next_session[1] == SOURCE_NOW and plan.hold_until is not None:
+            return plan.made_at, plan.hold_until
+        return None
 
     def lanes(self, config: SpaConfig | SaunaConfig) -> dict[str, Any] | None:
         """What the Plan tab draws (`site/plan_view.DeadlinePlanView`)."""
         plan = self.plan
         if plan is None:
             return None
-        hold: tuple[datetime, datetime] | None = None
-        if plan.quarters and plan.hold_until is not None:
-            hold = (max(plan.quarters) + QUARTER, plan.hold_until)
-        elif plan.next_session is not None and plan.next_session[1] == SOURCE_NOW and plan.hold_until is not None:
-            hold = (plan.made_at, plan.hold_until)
+        hold = self._hold(plan)
         return {
             "kind": self.profile.kind,
             "quarters": dict(plan.quarters),

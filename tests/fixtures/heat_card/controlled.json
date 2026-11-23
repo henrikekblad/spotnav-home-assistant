@@ -1586,6 +1586,7 @@
       "short_kwh": 2.25
     },
     "notes": [],
+    "planned": [],
     "rate_c_h": 80.0,
     "rate_learned": false,
     "ready_at": null,
@@ -1634,6 +1635,20 @@
     },
     "not_ready": null,
     "notes": [],
+    "planned": [
+      {
+        "end": "2026-11-16T17:45:00+00:00",
+        "reason": "cheap",
+        "start": "2026-11-16T16:00:00+00:00",
+        "what": "heat"
+      },
+      {
+        "end": "2026-11-16T20:00:00+00:00",
+        "reason": "bath",
+        "start": "2026-11-16T17:45:00+00:00",
+        "what": "hold"
+      }
+    ],
     "rate_c_h": 2.0,
     "rate_learned": true,
     "ready_at": "2026-11-16T17:40:00+00:00",

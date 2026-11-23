@@ -660,6 +660,7 @@ class PoolSpaShadow:
             "control": common["control"],
             "would": common["would"],
             "not_ready": common["not_ready"],
+            "planned": common["planned"],
             "notes": common["notes"],
         }
 
@@ -691,6 +692,7 @@ class PoolSpaShadow:
             "control": common["control"],
             "would": common["would"],
             "not_ready": common["not_ready"],
+            "planned": common["planned"],
             "notes": common["notes"],
         }
 
