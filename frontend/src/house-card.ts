@@ -14,6 +14,7 @@
 // optionally `tab: now | plan | flow | graph | earn | price` to show only that tab (no tab row).
 
 import {
+  deadlineAction,
   getHouse,
   getHouseNow,
   getPeriodHistory,
@@ -31,6 +32,7 @@ import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
 import { decodePlan, PLAN_STYLES, planStepDate, type PlanAnswer } from "./house-plan";
+import { NOT_READY_STYLES, openedForNotReady, type NotReadyPress } from "./not-ready-sheet";
 import { dayOnly, fitTabs, HOUSE_TABS, houseTabs, isHouseTab, readTab, shownHouseTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
@@ -184,7 +186,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES + PLAN_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES + PLAN_STYLES + NOT_READY_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -297,7 +299,8 @@ export class SpotnavHouseCard extends HTMLElement {
     this.config = parseHouseConfig(config);
     this.generation += 1;
     const locked = this.config.tab ?? null;
-    const tab = locked ?? readTab(this.targetKey()) ?? "now";
+    // A tap on the phones' "not ready in time" notice opens the Plan tab, where its choice sheet is.
+    const tab = locked ?? (openedForNotReady() ? "plan" : null) ?? readTab(this.targetKey()) ?? "now";
     this.ui = {
       selected: null,
       view: "energy",
@@ -598,6 +601,37 @@ export class SpotnavHouseCard extends HTMLElement {
       }
     } catch {
       // Not written: the line stays until the next read says otherwise.
+    }
+    void this.loadPlan(true);
+  }
+
+  /**
+   * A choice on the sheet of what will not be ready in time: a car's to its charger, a bath's or a session's to the
+   * spa or the sauna; "Allow the peak" to every load under the ceiling. The plan is read again after.
+   */
+  private async notReadyChoice(press: NotReadyPress): Promise<void> {
+    const hass = this.hassObject;
+    const target = this.target();
+    if (hass === null || target === null) {
+      return;
+    }
+    for (const load of press.loads) {
+      try {
+        if (load.kind === "car") {
+          if (press.code === "accept_peak") {
+            await releaseImportTarget(hass, load.load_id);
+          } else if (press.code === "takes_what_fits") {
+            await takeWhatFits(hass, load.load_id);
+          } else {
+            await laterDeparture(hass, load.load_id);
+          }
+        } else {
+          const action = press.code === "later" ? (load.kind === "spa" ? "later_bath" : "later_session") : press.code === "accept_peak" ? "accept_peak" : "take_what_fits";
+          await deadlineAction(hass, target, load.kind, action);
+        }
+      } catch {
+        // Not written: the sheet stays until the next read says otherwise.
+      }
     }
     void this.loadPlan(true);
   }
@@ -931,6 +965,9 @@ export class SpotnavHouseCard extends HTMLElement {
           onHouseLoads: (opener, kind, period) => this.showLoads(opener, kind, period ?? null),
           onDoesNotFit: (chargerId, code) => {
             void this.doesNotFitChoice(chargerId, code);
+          },
+          onNotReady: (press) => {
+            void this.notReadyChoice(press);
           },
           onPlanStep: (next) => {
             this.planStep = Math.max(0, next);

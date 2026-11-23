@@ -7,6 +7,7 @@
 // "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
 // with `textContent` only; every figure is the backend's.
 
+import type { NotReady, NotReadyPress } from "./not-ready-sheet";
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, kwhText, kwText, pad2, type FormatContext } from "./format";
 import {
@@ -131,6 +132,8 @@ export interface HeatHandlers {
   onDeadline?(kind: "spa" | "sauna", action: string, value?: unknown): void;
   /** The spa's or the sauna's times, or the spa's idle temperature, to change (an editor of their own). */
   onLoadEdit?(kind: "spa" | "sauna", what: "times" | "idle"): void;
+  /** A choice on the sheet of what will not be ready in time across the site (`not-ready-sheet.ts`). */
+  onNotReady?(press: NotReadyPress): void;
 }
 
 export interface HeatRenderInput {
@@ -145,6 +148,8 @@ export interface HeatRenderInput {
   idPrefix?: string;
   /** What the shown tab needs besides the answer. */
   tabs?: HeatTabsData;
+  /** What will not be ready in time across the site, where a bath or a session is not ready (`null`: not read). */
+  notReady?: NotReady | null;
 }
 
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K, attributes: Record<string, string | number>): SVGElementTagNameMap[K] {
@@ -217,7 +222,7 @@ export function offsetValue(language: Language, value: number): string {
   return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), Number.isInteger(value) ? 0 : 1)}`;
 }
 
-function context(language: Language, answer: HeatAnswer): FormatContext {
+export function context(language: Language, answer: HeatAnswer): FormatContext {
   return { language, timeZone: answer.time_zone, unit: "kWh", currency: answer.today?.money?.currency ?? null, majorUnit: answer.today?.money?.major_unit ?? null };
 }
 
@@ -1624,7 +1629,7 @@ export function heatTabsOf(answer: HeatAnswer): HeatTab[] {
 function loadTab(input: HeatRenderInput, answer: HeatAnswer, kind: LoadKind, panel: HTMLElement): void {
   const { doc, language } = input;
   const fill = input.ui.fill ?? null;
-  const loadInput = { doc, language, answer, ui: input.ui, handlers: input.handlers, fill };
+  const loadInput = { doc, language, answer, ui: input.ui, handlers: input.handlers, fill, notReady: input.notReady ?? null };
   if (kind === "pool" && answer.pool !== null) {
     poolPanel(loadInput, answer.pool, panel);
     return;

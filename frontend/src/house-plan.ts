@@ -16,12 +16,13 @@ import { element } from "./dom";
 import en from "./i18n/en.json";
 import { browserStore, readPlanSectionOpen, writePlanSectionOpen, type PlanSection, type PreferenceStore } from "./chart-preference";
 import { choiceLabel, decodeDoesNotFit, doesNotFitText, type DoesNotFit, type DoesNotFitChoiceCode } from "./does-not-fit";
+import { decodeNotReady, notReadySheet, type NotReady, type NotReadyPress } from "./not-ready-sheet";
 
 export const PLAN_API_VERSION = 1;
 const HOUR_MS = 3_600_000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const PLAN_KEYS = ["api_version", "site_id", "time_zone", "generated_at", "money", "window", "house", "power_tariff", "would", "month_peak", "summary", "hours", "loads", "past", "date", "history"] as const;
+const PLAN_KEYS = ["api_version", "site_id", "time_zone", "generated_at", "money", "window", "house", "power_tariff", "would", "month_peak", "summary", "hours", "loads", "past", "date", "history", "not_ready"] as const;
 const WINDOW_KEYS = ["start", "end", "hours", "prices_end"] as const;
 const HOUSE_KEYS = ["basis", "sun_in_house"] as const;
 const SUMMARY_KEYS = ["cost", "peak_kw", "peak_start", "peak_ceiling_kw", "peak_ceiling", "over"] as const;
@@ -143,6 +144,8 @@ export interface PlanAnswer {
   date: string | null;
   /** How far back the tab may step, and the first hour the history holds (`null` before any). */
   history: { days: number; firstMs: number | null };
+  /** What will not be ready in time across every deadline, with the choices ranked (`not-ready-sheet.ts`). */
+  not_ready: NotReady | null;
 }
 
 export type PlanDecodeResult = { ok: true; value: PlanAnswer } | { ok: false; failure: "unsupported" | "malformed" };
@@ -304,6 +307,7 @@ export function decodePlan(raw: unknown): PlanDecodeResult {
         past: flag(source.past),
         date: textOrNull(source.date),
         history: { days: numberOrNull(history.days) ?? 0, firstMs: first === null ? null : instant(first) },
+        not_ready: decodeNotReady(source.not_ready),
       },
     };
   } catch (error) {
@@ -441,6 +445,8 @@ export interface PlanRenderInput {
    * it the line is said with no buttons. "Later departure" is the charger card's: its departure editor is there.
    */
   onDoesNotFit?: (chargerId: string, code: DoesNotFitChoiceCode) => void;
+  /** A choice on the sheet of what will not be ready in time (`not-ready-sheet.ts`); without it no buttons. */
+  onNotReady?: (press: NotReadyPress) => void;
   /** Where the folded sections are remembered; this browser's storage unless a test hands in its own. */
   store?: () => PreferenceStore | null;
   /**
@@ -1231,6 +1237,10 @@ export function planBody(input: PlanRenderInput): HTMLElement {
     element(doc, "p", P.lede, translate(language, plan.past ? (mixed ? "house.plan.todayLede" : "house.plan.pastLede") : "house.plan.lede")),
     summary(input, ctx),
   );
+  if (plan.not_ready !== null && plan.not_ready.items.length > 0) {
+    // What will not be ready in time across the site: first, as the phones' notice opens it.
+    panel.append(notReadySheet(doc, ctx, plan.not_ready, plan.money, input.onNotReady));
+  }
   if (!plan.past && plan.hours.every((hour) => hour.price === null)) {
     panel.append(element(doc, "p", P.note, translate(language, "house.plan.noPrices")));
   }

@@ -4,6 +4,7 @@
 // every figure is the backend's.
 
 import type { DoesNotFitChoiceCode } from "./does-not-fit";
+import type { NotReadyPress } from "./not-ready-sheet";
 import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, percentWhole, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
@@ -103,6 +104,8 @@ export interface HouseHandlers {
   onEarnPart?(hidden: string[]): void;
   /** A choice on a car's "does not fit" line in the Plan tab (`house-plan.ts`). Without it the line has no buttons. */
   onDoesNotFit?(chargerId: string, code: DoesNotFitChoiceCode): void;
+  /** A choice on the sheet of what will not be ready in time (`not-ready-sheet.ts`). */
+  onNotReady?(press: NotReadyPress): void;
   /** The Plan tab's arrows: another day (`HouseTabsData.planStep`). Without it the tab has no arrows. */
   onPlanStep?(next: number): void;
 }
@@ -1108,6 +1111,7 @@ function planPanel(input: HouseRenderInput, panel: HTMLElement): void {
   const plan = input.tabs?.plan ?? { kind: "loading" };
   if (plan.kind === "ready") {
     const choose = input.handlers.onDoesNotFit;
+    const notReady = input.handlers.onNotReady;
     const onStep = input.handlers.onPlanStep;
     const step = input.tabs?.planStep ?? 0;
     panel.append(
@@ -1118,6 +1122,7 @@ function planPanel(input: HouseRenderInput, panel: HTMLElement): void {
         width: input.width,
         // A choice on a day gone by is not one to make: only the live plan and today have the buttons.
         ...(choose === undefined || step > 1 ? {} : { onDoesNotFit: (chargerId: string, code: DoesNotFitChoiceCode) => choose(chargerId, code) }),
+        ...(notReady === undefined || step > 1 ? {} : { onNotReady: (press: NotReadyPress) => notReady.call(input.handlers, press) }),
         ...(onStep === undefined ? {} : { step, onStep: (next: number) => onStep.call(input.handlers, next) }),
       }),
     );

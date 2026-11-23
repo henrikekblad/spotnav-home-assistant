@@ -4,6 +4,7 @@
 // it would filter and heat, and today's filtering hours. Every figure is `get_heat`'s `pool` (`pool/runtime.py`); the
 // presses go through `spotnav/pool`, for anyone who sees the card. Text is written with `textContent` only.
 
+import type { NotReady } from "./not-ready-sheet";
 import { formatFixed, kwhText } from "./format";
 import type { HeatAnswer, HeatPool } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -154,6 +155,8 @@ export interface LoadPanelInput {
   handlers: HeatHandlers;
   /** In a box of fixed height: the dial's height; explaining lines are left out. */
   fill: number | null;
+  /** What will not be ready in time across the site (`get_plan`'s, read where a bath or a session is not ready). */
+  notReady?: NotReady | null;
 }
 
 /** The Pool tab's content (see the module). */
