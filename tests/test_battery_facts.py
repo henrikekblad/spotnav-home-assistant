@@ -455,6 +455,8 @@ PLAN_REASON = {
     "kostal": "no_capacity",
     # Fronius states all the plan needs where the inverter accepts control over Modbus (the rating is WChaMax).
     "fronius": None,
+    # Homevolt reads the level only: no size, no rating, no counters (see the adapter).
+    "homevolt": "no_capacity",
 }
 
 

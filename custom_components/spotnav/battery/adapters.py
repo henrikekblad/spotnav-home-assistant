@@ -194,6 +194,23 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   is the device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's. The size is
   the storage's *designed* capacity, not the usable or aged one; `capacity_maximum` (line 1026) is not read.
 
+* Homevolt (Tibber, Polarium), core `homevolt` (home-assistant/core `42f4a32`, pyHomevolt 0.7.0 `634bcbc`, read 2026-11-23,
+  `plans/research_integrations/homevolt_control_2026-11-23.md`): read only. Unique ids are `<ecu id>_<key>` (`sensor.py`
+  line 324; `number.py`, `select.py`, `switch.py` the same with the entity's own key), and a sensor's key is the
+  library's display key with spaces and capitals (`homevolt.py` lines 815-860: `State of Charge`, `Power`), so the match
+  is on the lower-cased `<12 hex>_state of charge`; the per-blade `Homevolt battery <n> ...` and the external CTs'
+  `Power <type>` end otherwise and are not the system's. The level is the system's `State of Charge` (the library divides
+  `soc_avg` by 100, which the one fixture reads as %, and the vendor's own example reads as whole percent: scale
+  unverified on a unit). The mode is the switch `local_mode` (`switch.py` line 305): Tibber's cloud schedules (Smart
+  Control, Grid Rewards) replace anything local while it is off, so the battery is the person's only while it is on. The
+  unit has no self-consumption mode of its own to compare a schedule type with. Nothing else is read: core exposes no
+  size (the vendor's `rated_capacity` is in `/ems.json`, which the library does not read; `Available Charging Energy` plus
+  `Available Discharge Energy` is a two-sensor sum that one example supports and nothing else), no rating
+  (`Available ... Power` is what is available now), no firmware, and no battery counters (`Energy imported` and
+  `exported` are the system aggregate through the inverter, solar pass-through and losses included). The battery's power
+  is the EMS `Power`, disabled by default, discharge-positive per the vendor's API document, negated by the site: sign
+  unverified on hardware (the library's fixture reads -17 at idle).
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -976,9 +993,21 @@ FRONIUS: Final = Adapter(
     reserves=(ReserveSource(_fronius("battery_minimum_reserve", "number")),),
 )
 
+#: Homevolt through core `homevolt` (see the module): read only. A sensor's key is a display key with spaces.
+HOMEVOLT: Final = Adapter(
+    brand="homevolt",
+    label="Homevolt",
+    platforms=("homevolt",),
+    facts={"soc": Match(("sensor",), re.compile(r"^[0-9a-f]{12}_state of charge$"))},
+    modes=(
+        # Off: Tibber's cloud schedules run the battery (and replace any local one).
+        ModeRule(Match(("switch",), re.compile(r"_local_mode$")), frozenset({"on"}), "local mode"),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT,
 )
 
 

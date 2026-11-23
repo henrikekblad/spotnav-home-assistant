@@ -846,6 +846,11 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # unverified on hardware: the research found no owner's reading.
     BatteryRow(("kostal_plenticore",), _re(r"_devices:local:battery_p$"), inverted=True, label="Kostal Plenticore"),
     BatteryRow(("kostal_modbus_control",), _re(r"_battery_power$"), inverted=True, label="Kostal Plenticore (Modbus)"),
+    # Homevolt (core `homevolt`, pyHomevolt 0.7.0): the EMS's `Power` (`<ecu id>_Power`, disabled by default), the
+    # battery's power, positive = discharge per the vendor's API document ("battery positive = discharge, grid
+    # positive = import", tibber/homevolt-local-api-doc `API_DOCUMENTATION.md`). The per-blade `<ecu id>_Homevolt battery
+    # <n> power` and the external CTs' `Power <type>` end otherwise. Sign unverified on hardware.
+    BatteryRow(("homevolt",), _re(r"^[0-9a-f]{12}_power$"), inverted=True, label="Homevolt"),
     # Marstek over the local API (`marstek_local_api`, jaapp, `624881c`). The integration reads `bat_power`
     # as charging when positive and discharging when negative (`sensor.py` L146-L170), per device as
     # `<mac>_battery_power` and summed over the devices as `<macs>_system_total_power` ("Total battery

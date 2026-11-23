@@ -165,6 +165,7 @@ NAMES: dict[str, str] = {
     "zendure_ha": "Zendure",
     "anker_solix": "Anker Solix",
     "ecoflow_cloud": "EcoFlow",
+    "homevolt": "Homevolt",
     "kostal_plenticore": "Kostal Plenticore",
     "kostal_modbus_control": "Kostal Plenticore (Modbus)",
     "ef_powerocean_tcpmodbus": "EcoFlow PowerOcean (Modbus)",
@@ -911,9 +912,12 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Homevolt (Tibber)",
-        "`homevolt`, Home Assistant core: not read",
-        control="Not mapped. Battery mode, a power setpoint and grid limits exist locally",
-        note="The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards.",
+        "`homevolt`, Home Assistant core",
+        keys=("homevolt",),
+        adapter="homevolt",
+        control="Not mapped: read only. Battery mode, a power setpoint and grid limits exist locally",
+        note="The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards. The battery is the "
+        "person's only while Local mode is on. The size and ratings are learnt.",
     ),
     Overview("HomeWizard (its battery)", "`homewizard`, Home Assistant core", keys=("homewizard",)),
     Overview(

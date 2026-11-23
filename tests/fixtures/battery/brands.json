@@ -1958,5 +1958,125 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "homevolt": {
+  "_source": "Core homevolt (home-assistant/core 42f4a32, pyHomevolt 0.7.0): `<ecu id>_<key>` (sensor.py line 324) with the library's display keys (homevolt.py lines 815-860), `<ecu id>_local_mode` (switch.py line 305). Not a real registry; built from the source.",
+  "platform": "homevolt",
+  "manufacturer": "Tibber",
+  "battery": "sensor.homevolt_power",
+  "entities": [
+   {
+    "entity_id": "sensor.homevolt_power",
+    "unique_id": "b8747fe8c066_Power",
+    "device": "ems",
+    "state": "-1500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_state_of_charge",
+    "unique_id": "b8747fe8c066_State of Charge",
+    "device": "ems",
+    "state": "68.0",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_available_charging_energy",
+    "unique_id": "b8747fe8c066_Available Charging Energy",
+    "device": "ems",
+    "state": "10743",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_available_discharge_energy",
+    "unique_id": "b8747fe8c066_Available Discharge Energy",
+    "device": "ems",
+    "state": "74",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_available_charging_power",
+    "unique_id": "b8747fe8c066_Available Charging Power",
+    "device": "ems",
+    "state": "6028",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_energy_imported",
+    "unique_id": "b8747fe8c066_Energy imported",
+    "device": "ems",
+    "state": "812.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_energy_exported",
+    "unique_id": "b8747fe8c066_Energy exported",
+    "device": "ems",
+    "state": "700.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_battery_1_power",
+    "unique_id": "b8747fe8c066_Homevolt battery 1 power",
+    "device": "blade",
+    "state": "-700",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_battery_1",
+    "unique_id": "b8747fe8c066_Homevolt battery 1",
+    "device": "blade",
+    "state": "66",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.homevolt_power_grid",
+    "unique_id": "b8747fe8c066_Power grid",
+    "device": "grid",
+    "state": "900",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.homevolt_local_mode",
+    "unique_id": "b8747fe8c066_local_mode",
+    "device": "ems",
+    "state": "on",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "homevolt",
+   "soc_pct": 68.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

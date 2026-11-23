@@ -42,6 +42,9 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   schedules, the Energy Cost Assistant in Solar.web and a grid operator's dynamic power reduction, all of which outrank or
   precede Modbus limits ([EVCC] requirement text in `plans/research_integrations/fronius_control_2026-11-23.md`). No
   aggregator is named: no Nordic one was found.
+* Homevolt's Smart Control and Grid Rewards are Tibber's cloud schedules, which the unit replaces its local ones with
+  while its `local_mode` is off (tibber/homevolt-local-api-doc `58af3c4`, core `homevolt` `42f4a32`); the unit has no
+  self-consumption mode of its own, so the battery is SpotNav's to read as free only while `local_mode` is on.
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
