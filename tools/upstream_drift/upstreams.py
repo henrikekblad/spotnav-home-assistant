@@ -87,6 +87,13 @@ UPSTREAMS: dict[str, Source] = {
     "powerwall": CORE,
     "fronius": CORE,
     "sma": CORE,
+    "kostal_plenticore": CORE,
+    "homevolt": CORE,
+    "kostal_modbus_control": _hacs("mbuhansen/kostal_plenticore_battery_control"),
+    "anker_solix_official": _hacs("anker-charging/ha-anker-solix-official"),
+    "ef_powerocean_tcpmodbus": _hacs("MaxGrmm/EF-PowerOcean-TcpModbus"),
+    "ecoflow_energy": _hacs("shuette42/ecoflow-energy-ha"),
+    "omnibattery": _hacs("ffunes/Omnibattery"),
     # Vehicles.
     "kia_uvo": _hacs("Hyundai-Kia-Connect/kia_uvo", "Hyundai-Kia-Connect/hyundai_kia_connect_api"),
     "tesla_fleet": CORE,
