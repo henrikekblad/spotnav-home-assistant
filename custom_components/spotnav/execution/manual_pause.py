@@ -4,8 +4,8 @@ Pure: no Home Assistant imports, the clock is passed in. A person's Start pauses
 session (`auto_settings.PAUSE_MANUAL`); the pause also ends when the car ends that charge by itself, by
 the same reading the sun's rules use for a charge they run (`solar_execution._watch_charge`):
 
-* the charge control went off after it was seen on, not by load balancing's pause, with the connector
-  saying `Finishing` or `SuspendedEV` or the car having stopped drawing just before;
+* the charge control went off after it was seen on, not by load balancing's pause (nor its stop on its way), with
+  the connector saying `Finishing` or `SuspendedEV` or the car having stopped drawing just before;
 * the control still on and the car drawing nothing for `MANUAL_CAR_IDLE_S` in a row.
 
 An unplug is not the car ending it (the unplug ends the pause on its own), nor is a control turned off
