@@ -47,7 +47,9 @@ _EXACT: Final = 1e-6
 _NO_READING: Final = frozenset({"", "unavailable", "unknown", "none"})
 
 Verdict = Literal["pending", "owned", "settling", "external", "unavailable"]
-EventKind = Literal["confirmed", "unconfirmed", "external"]
+#: `expired`: a role SpotNav stopped renewing on purpose (the verification's expiry test) diverged: the device's own
+#: fallback, never someone else's change.
+EventKind = Literal["confirmed", "unconfirmed", "external", "expired"]
 #: What the counters count; `shadow_external` is a change seen during a dry run.
 COUNTERS: Final[tuple[str, ...]] = ("confirmed", "unconfirmed", "external", "shadow_external")
 
@@ -243,9 +245,11 @@ class Ledger:
         """The part's next decision gives the control back (a restore, the part stops): the claim ends."""
         return self._claims.pop(entity_id, None)
 
-    def observe(self, entity_id: str, read: str | None, now: datetime) -> LedgerEvent | None:
+    def observe(self, entity_id: str, read: str | None, now: datetime, *, expiring: bool = False) -> LedgerEvent | None:
         """A read of the control; an event when a write is confirmed, not taken, or the control was changed outside
-        SpotNav."""
+        SpotNav. `expiring`: SpotNav stopped renewing this control on purpose (`ExecInputs.expiry_probe`), so a
+        divergence is the device's own fallback (`expired`, at once): the claim ends, nothing is counted as an
+        outside change and no one is told."""
         claim = self._claims.get(entity_id)
         if claim is None:
             return None
@@ -261,6 +265,10 @@ class Ledger:
         if match:
             self._claims[entity_id] = replace(claim, diverging_since=None, verdict="owned", last_read=read)
             return None
+        if expiring:
+            # Without the dwell: the test's span is shorter than it, and the role must not be written again in it.
+            del self._claims[entity_id]
+            return LedgerEvent("expired", entity_id, now, claim.intended, claim.owned, read, claim.adopted)
         since = claim.diverging_since or now
         if (now - since).total_seconds() < MIN_DIVERGENCE_S:
             self._claims[entity_id] = replace(claim, diverging_since=since, verdict="settling", last_read=read)

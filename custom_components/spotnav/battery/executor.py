@@ -444,6 +444,12 @@ class ExecInputs:
     #: then the first less the second.
     phase_behind_kw: Phases | None = None
     phase_point_kw: Phases | None = None
+    #: The verification's expiry test (`verify.MODE_EXPIRY`) runs on the active command: no renewal round starts,
+    #: nothing else is written for it (a change of action or rate is refused for the span; a peak cover and every
+    #: hand-back still write), and a renewed role (`BrandControl.watchdog_roles`) that diverges is the device's own
+    #: fallback (`expired`), never someone else's change. The effect is not judged meanwhile (the test judges it),
+    #: except a charge per phase over its targets.
+    expiry_probe: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1150,6 +1156,9 @@ class Executor:
         self._soc_pct: float | None = None
         self._rated_kw: float | None = None
         self._capacity_kwh: float | None = None
+        #: The renewed roles read as expired in the running expiry test (`ExecInputs.expiry_probe`); not stored: a
+        #: restart ends the test.
+        self.expired: tuple[str, ...] = ()
         self._absent: frozenset[str] = frozenset()
 
     def _sense(self, inputs: ExecInputs) -> None:
@@ -1243,6 +1252,8 @@ class Executor:
     def step(self, inputs: ExecInputs) -> StepResult:
         now = inputs.now
         self._sense(inputs)
+        if not self._probing(inputs):
+            self.expired = ()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1322,10 +1333,17 @@ class Executor:
             if entity_id is None or claim is None:
                 continue
             read = inputs.reads.get(role.name)
-            event = self.ledger.observe(entity_id, reading(role, None if read is None else read.state), now)
+            expiring = self._probing(inputs) and role.name in self.control.watchdog_roles
+            event = self.ledger.observe(
+                entity_id, reading(role, None if read is None else read.state), now, expiring=expiring
+            )
             if event is None:
                 continue
-            if event.kind == "confirmed":
+            if event.kind == "expired":
+                # The device's own fallback while the test renews nothing: not written again for the test's span.
+                self.expired = (*self.expired, role.name)
+                events.append(_event(now, "expired", role.name, entity_id=entity_id, read=event.read))
+            elif event.kind == "confirmed":
                 if self.state.pending == role.name or role.name in self.state.in_flight:
                     retries = {name: row for name, row in self.state.retries.items() if name != role.name}
                     self.state = replace(
@@ -1362,7 +1380,8 @@ class Executor:
                 events += self._begin_restore(now, f"not_obeyed:{self.state.action}:{judged.outcome}")
         elif self.state.phase == "active" and self.state.phase_kw is not None:
             events += self._judge_phases(inputs)
-        elif self.state.phase == "active":
+        elif self.state.phase == "active" and not self._probing(inputs):
+            # The expiry test judges the effect itself: a fallback is what it looks for, not a command not obeyed.
             facts = inputs.facts
             capability = Capability(
                 rated_charge_kw=facts.max_charge_kw,
@@ -2311,6 +2330,11 @@ class Executor:
         rate, phases, why = self._aim(inputs, False)
         if why is not None:
             return self._begin_restore(now, why)
+        if self._probing(inputs):
+            # The expiry test: the command stands as written, nothing renews it and nothing changes it.
+            if state.renew:
+                self.state = replace(state, renew=())
+            return []
         events: list[dict[str, Any]] = []
         if state.priming and state.pending is None and self._next_role(state, inputs) is None:
             # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
@@ -2628,6 +2652,9 @@ class Executor:
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue
+            if not restoring and name in self.expired and not self._covering(state, name):
+                # Expired in the running expiry test: writing it would renew the command the test watches end.
+                continue
             retry = state.retries.get(name)
             if retry is not None and inputs.now < retry[1]:
                 continue
@@ -2699,6 +2726,17 @@ class Executor:
         if wait is None or state.phase == "restoring" or self._covering(state, name):
             return READBACK_DEADLINE_S
         return wait
+
+    def _probing(self, inputs: ExecInputs) -> bool:
+        """Whether the verification's expiry test runs on the active command (`ExecInputs.expiry_probe`): only on a
+        hold or a discharge per phase (every phase's target at most 0), so a command left unrenewed, and a fallback,
+        can never add import. On anything else the flag is ignored and the command runs (and is renewed) as ever."""
+        state = self.state
+        if not inputs.expiry_probe or state.phase != "active":
+            return False
+        if state.action == ACTION_HOLD and state.phase_kw is None:
+            return True
+        return state.action == ACTION_GRID_CHARGE and state.phase_kw is not None and max(state.phase_kw) <= 0.0
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval
