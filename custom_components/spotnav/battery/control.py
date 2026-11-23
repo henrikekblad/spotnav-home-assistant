@@ -83,12 +83,11 @@ from ..const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_CURRENT_CONTROL,
     CONF_MAIN_FUSE_A,
-    CONF_SOLAR_PRIORITY,
     CURRENT_CONTROL_POWER,
-    DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     SOLAR_PRIORITY_CAR_FIRST,
 )
+from ..site.priority import solar_priority
 from ..core.electric import phase_volts, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
@@ -2842,7 +2841,7 @@ class BatteryControl:
         except Exception:  # noqa: BLE001 - a part of the site that raises must not stop the battery's look
             self._look_failed("held_cars")
             return True, False
-        car_first = config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST
+        car_first = solar_priority(config) == SOLAR_PRIORITY_CAR_FIRST
         room = False
         if held and car_first:
             try:
