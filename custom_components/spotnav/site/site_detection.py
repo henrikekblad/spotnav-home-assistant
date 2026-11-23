@@ -763,7 +763,7 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         inverted=True,
         reject=_re(r"total_field_energy_storage_active_power"),
     ),
-    BatteryRow(("modbus",), _re(r"^sg_battery_power$"), inverted=True),
+    BatteryRow(("modbus",), _re(r"^sg_battery_power(?:_inv_\d+)?$"), inverted=True),
     BatteryRow(("sungrow",), _re(r"total_field_energy_storage_active_power$")),
     BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
     # Solis Modbus (Pho3niX90 v4.5.0): the derived "Battery Power Net" (unique key `battery_power_combined`) is the
@@ -1549,6 +1549,10 @@ def _battery_candidates(
                 continue
             texts = _texts(entity)
             scope = entity.config_entry_id or entity.device_id or ""
+            if not scope:
+                # A YAML package has no entry and no device: a second inverter's set (`_inv_<n>`) is its own battery.
+                inverter = re.search(r"_(inv_\d+)$", entity.unique_id or "")
+                scope = inverter.group(1) if inverter else ""
             if row.reject is not None and any(row.reject.search(text) for text in texts):
                 continue
             if any(row.regex.search(text) for text in texts):
