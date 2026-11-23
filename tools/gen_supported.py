@@ -976,7 +976,8 @@ OVERVIEW: tuple[Overview, ...] = (
     Overview(
         "Marstek (Venus E, C, D, A)",
         "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS "
-        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek)",
+        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek), whose battery "
+        "power has no direction",
         keys=("marstek_local_api", "marstek_modbus"),
         adapter="marstek",
         control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "

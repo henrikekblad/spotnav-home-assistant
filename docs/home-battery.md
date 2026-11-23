@@ -193,7 +193,7 @@ only in the *Operating mode* "Auto" (local API; "AI", "Manual", "Passive" and "U
 *User Work Mode* "Self Consumption" with *RS485 Control Mode* off (Modbus). The local API reports the mode every
 5 minutes, and the *Marstek System* device has none, so with several batteries in one entry SpotNav cannot tell who
 runs them. SpotNav has no control for Marstek and writes nothing to it: the mode, Passive mode, the time slots and the
-RS485 control stay yours. The official Marstek integration (`marstek`) is not read yet. Read from the integrations'
+RS485 control stay yours. The official Marstek integration (`marstek`) is not read: it reports the battery's power as a number with no direction. Read from the integrations'
 source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the

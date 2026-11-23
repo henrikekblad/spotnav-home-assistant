@@ -14,6 +14,7 @@ import pytest
 
 from custom_components.spotnav.battery import commands
 from custom_components.spotnav.battery.adapters import MARSTEK, adapter_for
+from custom_components.spotnav.battery.coexist import coexistence_for
 from custom_components.spotnav.battery.facts import EntityFact, battery_facts
 
 from tests.test_battery_facts import _facts
@@ -216,3 +217,14 @@ def test_modbus_without_its_optional_entities_still_reads_level_and_power() -> N
     assert facts.brand == "marstek" and facts.soc_pct == 47.0 and facts.power_kw == 1.2
     assert facts.capacity_kwh is None and facts.reserve_soc_pct is None
     assert facts.management.state == "unknown"
+
+
+def test_the_official_marstek_integration_is_named_but_not_read_because_its_power_has_no_direction() -> None:
+    """`marstek` (MarstekEnergy/ha_marstek 0.3.0): `battery_power` is `abs(bat_power)`, so there is no sign to read. The
+    coexistence row still names Marstek's own modes for it."""
+    from custom_components.spotnav.site.site_detection import BATTERY_ROWS  # noqa: PLC0415
+
+    assert adapter_for("marstek", "Marstek") is None
+    assert not any("marstek" in row.platforms for row in BATTERY_ROWS)
+    row = coexistence_for(platform="marstek")
+    assert row is not None and row.brand == "marstek"

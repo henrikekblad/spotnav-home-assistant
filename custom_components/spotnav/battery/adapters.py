@@ -132,6 +132,11 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     `max_charge_power` and `max_discharge_power` (44002/44003) are settings an outside controller writes (evcc writes
     0 there to hold), not the battery's rating, so the ratings are learnt. The battery's power `battery_power`
     (32102, or 30001) is charge-positive (`site_detection.BATTERY_ROWS`).
+  * Not read: the official `marstek` (MarstekEnergy/ha_marstek `6394e6a`, 0.3.0, `<stable id>_<key>`, `entity.py` line 32).
+    Its keys (`battery_soc`, `battery_rated_capacity`, the lower-case `device_mode`) would match, but its
+    `battery_power` is the library's `abs(bat_power)` (aiomarstek 0.2.2, `models.py` line 355), an unsigned magnitude with no
+    direction, which the site's power cannot be read from (the direction is in the separate `battery_status`, which no
+    site row reads), so no battery entity of it is found. Read 2026-11-23 (`plans/research_integrations/marstek_control_2026-11-23.md`).
 
 * EcoFlow PowerOcean, read 2026-11-23 (`plans/research_integrations/ecoflow_control_2026-11-23.md`), one adapter for two
   integrations, read only (no control is mapped; both write a battery setpoint under a heartbeat that SpotNav does not
