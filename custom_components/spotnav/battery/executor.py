@@ -1132,7 +1132,7 @@ class Executor:
 
     def __init__(
         self, control: BrandControl, ledger: Ledger | None = None, monitor: Monitor | None = None,
-        state: ExecState | None = None, *, watchdog_s: int = WATCHDOG_S,
+        state: ExecState | None = None, *, watchdog_s: int | None = None,
     ) -> None:
         self.ledger = ledger or Ledger()
         self.monitor = monitor or Monitor()
@@ -1142,7 +1142,9 @@ class Executor:
         control = control.with_hold(self.state.variant) if self.state.variant else control
         self.control = control.with_phases(True) if self.state.phased else control
         self.state = replace(self.state, variant=self.control.variant, phased=self.control.phased)
-        self.watchdog_s = watchdog_s
+        #: The window written into a command that carries one (a timeout, an autorepeat, a lease's duration): the
+        #: recipe's expiry window (`Expiry.window_s`), `WATCHDOG_S` where it states none; a caller's own wins.
+        self.watchdog_s = watchdog_s if watchdog_s is not None else int(self.control.expiry.window_s or WATCHDOG_S)
         #: What a state that depends on the plant is filled in with (`BrandControl.wanted`): the SoC, the rating and the
         #: optional roles this plant lacks, as of the last look; not stored.
         self._soc_pct: float | None = None
@@ -2733,7 +2735,7 @@ class Preview:
 
 
 def preview(
-    control: BrandControl, inputs: ExecInputs, *, writes_today: int = 0, watchdog_s: int = WATCHDOG_S
+    control: BrandControl, inputs: ExecInputs, *, writes_today: int = 0, watchdog_s: int | None = None
 ) -> Preview:
     """The executor's own start rules and commands for `inputs.action`, run on a throw-away executor: nothing is
     written, nothing is kept. The shadow parts (`hold.py`) use it so that what they log as "would write" is exactly

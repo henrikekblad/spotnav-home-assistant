@@ -62,7 +62,7 @@ def _controls() -> dict[str, BrandControl]:
 
 def _lease(role: Role) -> bool:
     """Whether a service role's call with a power carries the window as its duration."""
-    return role.duration
+    return role.lease
 
 
 def _service(role: Role, value: str, window_s: int) -> list[Any]:

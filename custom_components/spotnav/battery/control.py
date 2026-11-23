@@ -99,7 +99,6 @@ from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
-    WATCHDOG_S,
     BrandControl,
     Phases,
     answered,
@@ -240,12 +239,12 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
     return reads
 
 
-async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> str | None:
+async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | None:
     """One write as a service call; why it was not taken (`_failure`), `None` when it was."""
     role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-        services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
+        services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
     )
     try:
         await _async_service(hass, domain, service, data)
@@ -305,7 +304,7 @@ async def async_hand_back_stored(
                 now=dt_util.now(), facts=facts, reads=reads, measurement_ok=False, stopping="removed", failed=failed,
                 timed_out=timed_out,
             ))
-            whys = {op.role: await _async_call(hass, op, executor, WATCHDOG_S) for op in result.ops if op.restore}
+            whys = {op.role: await _async_call(hass, op, executor) for op in result.ops if op.restore}
             failed = tuple(role for role, why in whys.items() if why is not None)
             timed_out = tuple(role for role, why in whys.items() if why == "call_timeout")
             if executor.state.phase != "restoring":
@@ -375,7 +374,7 @@ class BatteryControl:
 
     def __init__(
         self, hass: HomeAssistant, site: SiteCapacityController, *, plan_source: PlanSource | None = None,
-        sell_source: SellSource | None = None, watchdog_s: int = WATCHDOG_S,
+        sell_source: SellSource | None = None, watchdog_s: int | None = None,
     ) -> None:
         self.hass = hass
         self.site = site
@@ -2770,8 +2769,8 @@ class BatteryControl:
         role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-            services=role.services, watchdog_s=self._watchdog_s, device_field=role.device_field,
-            duration=role.duration,
+            services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
+            duration=role.lease,
         )
         try:
             await _async_service(self.hass, domain, service, data)

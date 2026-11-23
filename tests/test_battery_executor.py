@@ -108,7 +108,10 @@ def test_service_calls_use_core_entity_services_and_huaweis_own_services() -> No
     assert service_call("switch", "switch.x", False)[1] == "turn_off"
     assert service_call("button", "button.x", True)[:2] == ("button", "press")
     services = HUAWEI_CONTROL.role("forcible").services
-    assert service_call("service", None, "charge:3000", device_id="D", services=services, watchdog_s=1800) == (
+    lease = HUAWEI_CONTROL.role("forcible").lease
+    assert service_call(
+        "service", None, "charge:3000", device_id="D", services=services, watchdog_s=1800, duration=lease
+    ) == (
         "huawei_solar", "forcible_charge", {"device_id": "D", "power": 3000, "duration": 30}
     )
     assert service_call("service", None, "stop", device_id="D", services=services) == (

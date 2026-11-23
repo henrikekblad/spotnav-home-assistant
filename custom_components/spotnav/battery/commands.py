@@ -460,9 +460,10 @@ class Role:
     #: For a service role: `(write, service)` pairs by the kind of value wanted (`charge`, `discharge`, `stop`).
     services: Mapping[str, str] = field(default_factory=dict)
     #: For a service role: the call's field that names the battery's device (Huawei `device_id`, Ferroamp `target`),
-    #: and whether a call with a power carries the watchdog as its `duration` in minutes (`service_call`).
+    #: and whether a call with a power is a lease: it carries the recipe's expiry window (`Expiry.window_s`) as its
+    #: `duration` in minutes (`service_call`).
     device_field: str = "device_id"
-    duration: bool = True
+    lease: bool = False
     #: A read that is the register's "never set" (restored as the rating): its kind (`charge`, `discharge`).
     unset_as_rating: str | None = None
     #: Read as unset when `unknown` (Sigenergy 2.0.1 shows the all-ones value as `unknown`).
@@ -1333,7 +1334,7 @@ _HW_FORCIBLE = Role(
     "forcible", "service", _key("forcible_charge_discharge_write"), restored=False,
     services={"charge": "huawei_solar.forcible_charge", "discharge": "huawei_solar.forcible_discharge",
               "stop": "huawei_solar.stop_forcible_charge"},
-    normalize=huawei_forcible,
+    normalize=huawei_forcible, lease=True,
 )
 _HW_DISCHARGE = Role(
     "discharge_power", "number", _key("storage_maximum_discharging_power", "number"), scale=1000.0, step=1.0
@@ -1763,8 +1764,8 @@ TESLA_CONTROL: Final = BrandControl(
 _FA_CMD = Role(
     "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
     services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
-    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
-    device_field="target", duration=False,
+    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it): no lease.
+    device_field="target",
     normalize=ferroamp_last_cmd, write_class="setpoint",
     # The state is the request as published; only the hub's ack for that transaction shows it was taken.
     answer=Answer("transId", "status", frozenset({"ack"})),
@@ -1936,7 +1937,7 @@ def export_table() -> list[dict[str, Any]]:
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
     services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
-    duration: bool = True,
+    duration: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
@@ -1944,7 +1945,8 @@ def service_call(
     `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge,
     Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
     integration's service, for the battery's device in the role's `device_field`, with the power where the value has
-    one and, where the role says so (`Role.duration`), the watchdog as the duration in minutes."""
+    one and, where the role is a lease (`Role.lease`, passed as `duration`), the window as the duration in
+    minutes."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":
