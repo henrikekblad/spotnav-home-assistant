@@ -2,9 +2,17 @@
  "ferroamp/charge_zero/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": true,
    "readback_s": null,
+   "role_readback": {
+    "command": {
+     "kind": "answer",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "command": {
      "answer": true,
@@ -1141,9 +1149,17 @@
  "ferroamp/discharge_zero/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": true,
    "readback_s": null,
+   "role_readback": {
+    "command": {
+     "kind": "answer",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "command": {
      "answer": true,
@@ -2280,9 +2296,32 @@
  "goodwe/-/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": true,
    "readback_s": null,
+   "role_readback": {
+    "depth_of_discharge": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    },
+    "eco_power": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    },
+    "eco_soc": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    },
+    "operation_mode": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "depth_of_discharge": {
      "answer": false,
@@ -3427,9 +3466,27 @@
  "huawei/-/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "forcible": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_power": {
      "answer": false,
@@ -4600,9 +4657,17 @@
  "sigenergy/export": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "export_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "export_limit": {
      "answer": false,
@@ -4628,9 +4693,32 @@
  "sigenergy/msc_no_discharge/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "control_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "remote_ems": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_limit": {
      "answer": false,
@@ -6359,9 +6447,57 @@
  "sigenergy/msc_no_discharge/phased": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "control_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_control": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l1_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l2_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l3_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "power_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "remote_ems": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_limit": {
      "answer": false,
@@ -8162,9 +8298,32 @@
  "sigenergy/pv_first/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "control_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "remote_ems": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_limit": {
      "answer": false,
@@ -9893,9 +10052,57 @@
  "sigenergy/pv_first/phased": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "control_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_control": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l1_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l2_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l3_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "power_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "remote_ems": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_limit": {
      "answer": false,
@@ -11696,9 +11903,42 @@
  "solaredge/-/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "ac_charge_policy": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "charge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "command_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "command_timeout": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "control_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "ac_charge_policy": {
      "answer": false,
@@ -12866,9 +13106,32 @@
  "solax/-/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": true,
    "readback_s": null,
+   "role_readback": {
+    "active_power": {
+     "kind": "echo",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "autorepeat": {
+     "kind": "echo",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "power_control": {
+     "kind": "echo",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "trigger": {
+     "kind": "none",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "active_power": {
      "answer": false,
@@ -14025,9 +14288,22 @@
  "solinteg/battctrl_idle/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": 180.0,
+   "role_readback": {
+    "battery_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "working_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    }
+   },
    "roles": {
     "battery_target": {
      "answer": false,
@@ -15150,9 +15426,47 @@
  "solinteg/battctrl_idle/phased": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": 180.0,
+   "role_readback": {
+    "acctrl_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "battery_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "phase_l1_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "phase_l2_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "phase_l3_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "unbalanced_output": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    },
+    "working_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": 180.0
+    }
+   },
    "roles": {
     "acctrl_mode": {
      "answer": false,
@@ -16335,9 +16649,22 @@
  "tesla/-/balanced": {
   "facts": {
    "charge_block_s": 1800.0,
+   "executor_window_s": 1800,
    "fixed_charge": true,
    "local_readback": true,
    "readback_s": 420.0,
+   "role_readback": {
+    "grid_charging": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": 420.0
+    },
+    "reserve": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": 420.0
+    }
+   },
    "roles": {
     "grid_charging": {
      "answer": false,
@@ -17458,9 +17785,27 @@
  "victron/-/balanced": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "grid_setpoint": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_power": {
      "answer": false,
@@ -18623,9 +18968,87 @@
  "victron/-/phased": {
   "facts": {
    "charge_block_s": null,
+   "executor_window_s": 1800,
    "fixed_charge": false,
    "local_readback": false,
    "readback_s": null,
+   "role_readback": {
+    "charge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "disable_charge": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "disable_feed_in": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "discharge_power": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "ess_mode": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "grid_setpoint": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l1_input": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l1_load": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l1_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l2_input": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l2_load": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l2_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l3_input": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l3_load": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "phase_l3_target": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
    "roles": {
     "charge_power": {
      "answer": false,

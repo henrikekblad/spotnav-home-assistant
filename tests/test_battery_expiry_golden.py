@@ -6,7 +6,8 @@ The rows: each control in `CONTROLS` and `EXPORT_CONTROLS`, each of its hold var
 phase, its phased control: the legacy facts the engine reads (watchdog roles and interval, the charge block, slow,
 fixed charge, local read-back, read-back wait, settle, the phase spec's dead-man, per role whether a call carries a
 duration and whether the device answers), the state every action wants at two rates, each service role's calls, and
-the gate's HA-down caps over a grid of sites.
+the gate's HA-down caps over a grid of sites. Extended on purpose once (2026-11-23, after review): each role's
+read-back kind, wait and settle and the executor's own window, every earlier value left as recorded.
 
 Regenerate only on purpose, on the engine whose behaviour is wanted: `python -m tests.test_battery_expiry_golden`."""
 
@@ -45,19 +46,25 @@ SITE_MARGIN_A = 1.0
 KEY = "V100R001C21SPC117 | sigen 2.0.3"
 
 
-def _lifts(control: BrandControl, *, phased: bool) -> bool:
-    """Whether the grid charge's own expiry lifts its HA-down cap, as the shell reckons it
+def _lifts(control: BrandControl) -> bool:
+    """Whether the grid charge's own expiry lifts its balanced HA-down cap, as the shell reckons it
     (`control.BatteryControl._expiry_lifts`)."""
     base = control.with_phases(False)
-    if phased:
-        if base.phase_control is None:
-            return False
-        expiry = base.phase_control.expiry
-    else:
-        expiry = base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
+    expiry = base.expiry_by_action.get(ACTION_GRID_CHARGE, base.expiry)
     return gate.expiry_lifts(
         expiry, measured=gate.expiry_measured(expiry, KEY), slow=base.slow, fixed_charge=base.fixed_charge
     )
+
+
+def _phase_lifts(control: BrandControl) -> tuple[bool, bool, bool]:
+    """Per phase, whether the phase spec's expiry lifts that phase's cap (`BatteryControl._phase_expiry_lifts`)."""
+    base = control.with_phases(False)
+    if base.phase_control is None:
+        return (False, False, False)
+    expiry = base.phase_control.expiry
+    if not gate.expiry_lifts(expiry, measured=True, slow=base.slow, fixed_charge=base.fixed_charge):
+        return (False, False, False)
+    return gate.expiry_phases_measured(expiry, KEY, None)
 
 
 def _controls() -> dict[str, BrandControl]:
@@ -105,7 +112,7 @@ def _facts(control: BrandControl) -> dict[str, Any]:
         "readback_s": control.readback_s,
         "settle_s": control.settle_s,
         # The phase spec's dead-man the gate lifts a phase's cap on (none measured).
-        "silence_fallback_s": spec.expiry.window_s if spec is not None and _lifts(control, phased=True) else None,
+        "silence_fallback_s": spec.expiry.window_s if spec is not None and any(_phase_lifts(control)) else None,
         "roles": {
             role.name: {
                 "lease": _lease(role) if role.method == "service" else None,
@@ -113,6 +120,13 @@ def _facts(control: BrandControl) -> dict[str, Any]:
             }
             for role in control.roles
         },
+        # What the executor reads per role since the read-back moved onto the roles (`Executor._readback_s`), and
+        # the window it writes into a command (`Executor.watchdog_s`).
+        "role_readback": {
+            role.name: {"kind": role.readback, "wait_s": role.readback_s, "settle_s": role.settle_s}
+            for role in control.roles
+        },
+        "executor_window_s": Executor(control).watchdog_s,
     }
 
 
@@ -147,7 +161,7 @@ def _services(control: BrandControl, window_s: int) -> dict[str, Any]:
 def _gate(control: BrandControl) -> dict[str, Any]:
     """The HA-down caps as the shell reckons them for this control (`control._phase_caps_kw`, `_grid_charge_cap_kw`,
     `_ha_down_status`), over the grid of sites."""
-    phase_lifts, lifts = _lifts(control, phased=True), _lifts(control, phased=False)
+    phase_lifts, lifts = _phase_lifts(control), _lifts(control)
     applies = _accept_applies(control)
     phase_tested = control.import_limit_phases is not None and control.import_limit_phases.field_tested
     phase_caps: list[Any] = []
@@ -168,7 +182,7 @@ def _gate(control: BrandControl) -> dict[str, Any]:
             ))
     return {
         "accept_applies": applies,
-        "ha_down_lifted": phase_lifts or lifts,
+        "ha_down_lifted": any(phase_lifts) or lifts,
         "phase_caps_kw": phase_caps,
         "caps_kw": caps,
     }
