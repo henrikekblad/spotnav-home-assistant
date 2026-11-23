@@ -49,7 +49,7 @@ CONTROLLABLE: Final = (
 WATCH_ONLY: Final = (FAMILY_GENERIC, FAMILY_CONTROL_MY_SPA, FAMILY_ARCTIC_SPA, FAMILY_JOYONWAY)
 FAMILIES: Final = (*CONTROLLABLE, *WATCH_ONLY)
 #: Families read through the maker's cloud: slow planned actions only (spec section 6).
-CLOUD: Final = frozenset({FAMILY_SMARTTUB, FAMILY_MSPA, FAMILY_BESTWAY})
+CLOUD: Final = frozenset({FAMILY_SMARTTUB, FAMILY_MSPA, FAMILY_BESTWAY, FAMILY_CONTROL_MY_SPA})
 
 SPA_DOMAINS: Final = ("climate", "water_heater")
 

@@ -33,6 +33,9 @@ from custom_components.spotnav.battery import adapters as ba  # noqa: E402
 from custom_components.spotnav.battery import commands as bc  # noqa: E402
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
 from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
+from custom_components.spotnav.pool import detect as pool_detect  # noqa: E402
+from custom_components.spotnav.spa import config as spa_config  # noqa: E402
+from custom_components.spotnav.spa import detect as spa_detect  # noqa: E402
 from custom_components.spotnav.site import site_detection as sd  # noqa: E402
 from custom_components.spotnav.site.import_target import RAISE_LOCK_S  # noqa: E402
 
@@ -119,6 +122,26 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
 
 #: Display names by Home Assistant domain.
 NAMES: dict[str, str] = {
+    # pool heat pumps and spas (`pool/detect.py`, `spa/detect.py`)
+    "tuya_local": "Tuya Local",
+    "tuya": "Tuya",
+    "aqua_temp": "Aquatemp",
+    "warmlink": "WarmLink",
+    "fairland": "Fairland iGarden",
+    "poolex_silverline": "Poolex Silverline",
+    "poolsync_custom": "PoolSync",
+    "iaqualink": "iAquaLink",
+    "screenlogic": "Pentair ScreenLogic",
+    "intellicenter": "Pentair IntelliCenter",
+    "balboa": "Balboa",
+    "smarttub": "SmartTub",
+    "gecko": "Gecko in.touch",
+    "bestway": "Bestway Lay-Z-Spa",
+    "intex_spa": "Intex PureSpa",
+    "mspa": "MSpa",
+    "control_my_spa": "ControlMySpa",
+    "arctic_spa": "Arctic Spa",
+    "joyonway": "Joyonway",
     # chargers: taken from the profiles themselves; see `charger_name`
     "ocpp": "OCPP (Home Assistant OCPP integration)",
     # meters and batteries
@@ -1375,6 +1398,65 @@ def heat_pumps_section() -> list[str]:
     return lines
 
 
+# ---- pool heat pumps and spas ---------------------------------------------------------------------
+
+POOL_SPA_HEADER = ("Kind", "Integration", "Local or cloud", "How SpotNav finds it", "SpotNav controls")
+WATCHED = "Not yet: watched and planned in shadow"
+
+
+def pool_spa_rows() -> list[tuple[str, ...]]:
+    """The pool heat pump routes and spa families the detection knows (`pool/detect.py`, `spa/detect.py`)."""
+    rows: list[tuple[str, ...]] = []
+
+    def cloud(domain: str) -> str:
+        return "Cloud" if domain in pool_detect.CLOUD_DOMAINS else "Local"
+
+    rows.append(
+        ("Pool heat pump", f"{name_of('tuya_local')} (`tuya_local`)", "Local", "Its pool heat pump climate (sure)", WATCHED)
+    )
+    rows.append(
+        (
+            "Pool heat pump", f"{name_of('tuya')} (`tuya`)", "Cloud",
+            "A temperature number, a switch and a compressor sensor on one device (sure)", WATCHED,
+        )
+    )
+    for domain in sorted(pool_detect.POOL_DOMAINS):
+        rows.append(("Pool heat pump", f"{name_of(domain)} (`{domain}`)", cloud(domain), "The integration (sure)", WATCHED))
+    for domain in sorted(pool_detect.PANEL_DOMAINS):
+        rows.append(
+            ("Pool heat pump", f"{name_of(domain)} (`{domain}`)", cloud(domain), "The integration; you say pool or spa", WATCHED)
+        )
+    rows.append(
+        (
+            "Pool heat pump", "Any climate entity", "Local",
+            "A pool brand, an 18 to 40 °C range and no fan modes; you confirm it", WATCHED,
+        )
+    )
+    rows.append(("Circulation pump", "Any switch", "Local", "You choose it (a pool or pump name is suggested)", WATCHED))
+    for domain, family in sorted(spa_detect.SPA_DOMAINS.items()):
+        control = WATCHED if family in spa_config.CONTROLLABLE else "No: watched only"
+        local = "Cloud" if family in spa_config.CLOUD else "Local"
+        rows.append(("Spa", f"{name_of(domain)} (`{domain}`)", local, "The integration (sure)", control))
+    rows.append(("Spa", f"{name_of('tuya_local')} (`tuya_local`), Intex", "Local", "An Intex water heater (sure)", WATCHED))
+    rows.append(
+        ("Spa", "Any climate or water heater", "Local", "A spa's range and name; you confirm it", "No: watched only")
+    )
+    return rows
+
+
+def pool_spa_section() -> list[str]:
+    return [
+        "## Supported pool heat pumps and spas",
+        "",
+        "SpotNav 3.0 plans a pool (its circulation pump and its heat pump) and a spa as flexible loads. They are found "
+        "from the integrations below and chosen once in the heat settings. In this release SpotNav only watches them "
+        "and shows what it would do; it writes nothing to them.",
+        "",
+        *table(POOL_SPA_HEADER, pool_spa_rows()),
+        "",
+    ]
+
+
 # ---- vehicles -------------------------------------------------------------------------------------
 
 
@@ -1640,7 +1722,8 @@ def render() -> str:
         "",
         "Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), "
         "[chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
-        "[house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [vehicles](#supported-vehicles), "
+        "[house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), "
+        "[pool heat pumps and spas](#supported-pool-heat-pumps-and-spas), [vehicles](#supported-vehicles), "
         "[solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).",
         "",
         *overview_section(),
@@ -1648,6 +1731,7 @@ def render() -> str:
         *meters_section(),
         *batteries_section(),
         *heat_pumps_section(),
+        *pool_spa_section(),
         *vehicles_section(),
         *forecast_section(),
         *prices_section(),
