@@ -109,7 +109,10 @@ from ..heat.view import (
     ZoneReading,
     heat_view,
 )
+from ..notifications.targets import available_targets, encoded_available
+from ..pool.detect import Candidate, circulations, heat_pumps, read_seen, suggest, water_sensors
 from ..pricing.price_source import site_price_source
+from ..spa.detect import SpaCandidate, spas
 from ..runtime import site_controller_for
 from ..site.heat_meter import (
     HEAT_WORDS,
@@ -187,7 +190,7 @@ def entity_check(hass: HomeAssistant) -> Any:
         known = hass.states.get(entity_id) is not None or er.async_get(hass).async_get(entity_id) is not None
         if not known:
             return None
-        if role in ("indoor", "outdoor", "tank") and entity_id.startswith("sensor."):
+        if role in ("indoor", "outdoor", "tank", "pool_water") and entity_id.startswith("sensor."):
             return bool(is_temperature(hass, entity_id))
         if role == PATH_SG_READY_API:
             # The SG Ready API writes 0..2 to its mode: only the pump's own SG Ready number, never any number.
@@ -197,6 +200,23 @@ def entity_check(hass: HomeAssistant) -> Any:
         return True
 
     return check
+
+
+def setpoint_of(hass: HomeAssistant) -> Any:
+    """An entity's setpoint now in °C (a climate's or a water heater's `temperature`), `None` when it has none: a new
+    spa's idle temperature starts at it."""
+
+    def read(entity_id: str) -> float | None:
+        state = hass.states.get(entity_id)
+        if state is None:
+            return None
+        value = state.attributes.get("temperature")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        # Home Assistant shows a climate's and a water heater's temperatures in the system's unit.
+        return to_celsius(float(value), hass.config.units.temperature_unit)
+
+    return read
 
 
 class HeatWriteRefusal(Exception):
@@ -285,7 +305,9 @@ def write_heat(
     heat = stored_config(site)
     heat_changes = {name: value for name, value in changes.items() if name != F_METER}
     updated, errors = (
-        apply_changes(heat, heat_changes, now=dt_util.utcnow(), check=entity_check(hass)) if heat_changes else (heat, [])
+        apply_changes(heat, heat_changes, now=dt_util.utcnow(), check=entity_check(hass), setpoint_of=setpoint_of(hass))
+        if heat_changes
+        else (heat, [])
     )
     meter = stored_meter(site)
     if F_METER in changes:
@@ -837,7 +859,55 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
             for entity_id in ids
         ]
         out[name] = sorted(items, key=lambda item: (item["entity_id"] not in chosen[name], str(item["name"]).casefold()))
+    try:
+        out.update(pool_spa_choices(hass, config))
+    except Exception:  # noqa: BLE001 - the pool's and the spa's detection is extra: the other choices stand
+        _LOGGER.debug("SpotNav heat: the pool and spa could not be detected", exc_info=True)
+        out.update({"pool": None, "spa": [], "phones": encoded_available(available_targets(hass))})
     return out
+
+
+def pool_spa_choices(hass: HomeAssistant, config: HeatConfig) -> dict[str, Any]:
+    """The pool's, the spa's and the heat card's phones' choices (spec section 3): ranked candidates (`score`, `ask`
+    below 0.9: asked once), the one-time grouping the pool block is filled from (`suggested`), what is chosen now
+    always listed first. `pool` is `null` with nothing to offer and no pool chosen."""
+    seen = read_seen(hass)
+    pool = config.pool
+    pumps = {c.entity_id: c for c in heat_pumps(seen)}
+    if pool is not None and pool.heat_pump is not None and pool.heat_pump.entity_id not in pumps:
+        pumps[pool.heat_pump.entity_id] = Candidate(
+            pool.heat_pump.entity_id, 0.0, pool.heat_pump.shape, pool.heat_pump.switch_id, pool.heat_pump.number_id
+        )
+    device = next(iter(pumps.values())).device_id if pumps else None
+
+    def rows(found: list[Candidate], chosen: str | None, *, full: bool) -> list[dict[str, Any]]:
+        listed = {c.entity_id: c for c in found}
+        if chosen is not None and chosen not in listed:
+            listed[chosen] = Candidate(chosen, 0.0)
+        items = [
+            {**_choice(hass, c.entity_id), **({k: v for k, v in c.as_dict().items() if k != "entity_id"} if full else {"score": round(c.score, 2), "ask": c.ask})}
+            for c in listed.values()
+        ]
+        return sorted(items, key=lambda item: (item["entity_id"] != chosen, -item["score"], str(item["name"]).casefold()))
+
+    chosen_pump = None if pool is None or pool.heat_pump is None else pool.heat_pump.entity_id
+    pool_block = None
+    if pumps or pool is not None:
+        pool_block = {
+            "heat_pump": rows(list(pumps.values()), chosen_pump, full=True),
+            "circulation": rows(circulations(seen, device), None if pool is None else pool.circulation_id, full=False),
+            "water_sensor": rows(water_sensors(seen), None if pool is None else pool.water_sensor, full=False),
+            "suggested": suggest(seen) if pool is None else None,
+        }
+    found_spas = {c.entity_id: c for c in spas(seen)}
+    spa = config.spa
+    if spa is not None and spa.entity_id not in found_spas:
+        found_spas[spa.entity_id] = SpaCandidate(spa.entity_id, 0.0, spa.family)
+    spa_rows = sorted(
+        ({**_choice(hass, c.entity_id), **{k: v for k, v in c.as_dict().items() if k != "entity_id"}} for c in found_spas.values()),
+        key=lambda item: (spa is None or item["entity_id"] != spa.entity_id, -item["score"], str(item["name"]).casefold()),
+    )
+    return {"pool": pool_block, "spa": spa_rows, "phones": encoded_available(available_targets(hass))}
 
 
 async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any]:

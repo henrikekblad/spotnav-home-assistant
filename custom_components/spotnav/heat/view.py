@@ -23,8 +23,14 @@
      indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
                  the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
-     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter, water_heater, tank_sensor} | null
-              (administrators only),
+     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter, water_heater, tank_sensor,
+               pool: {heat_pump: [{entity_id, name, value, score, ask, shape, switch_id, number_id, cloud}],
+                      circulation: [{entity_id, name, value, score, ask}],
+                      water_sensor: [{entity_id, name, value, score, ask}],
+                      suggested: {heat_pump: {entity_id, shape, switch_id, number_id}, circulation_id, water_sensor,
+                                  ask} | null} | null,
+               spa: [{entity_id, name, value, score, ask, family, controllable, cloud}],
+               phones: [{service, name}]} | null (administrators only),
      relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,

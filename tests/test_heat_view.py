@@ -27,6 +27,9 @@ import pytest
 from custom_components.spotnav.api.heat import config_block
 from custom_components.spotnav.heat.automations import SteeringAutomation
 from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, WaterHeater, Zone
+from custom_components.spotnav.notifications.heat_settings import HeatNotifications
+from custom_components.spotnav.pool.config import PoolConfig, PoolHeatPump
+from custom_components.spotnav.spa.config import Bath, SpaConfig
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
@@ -46,6 +49,15 @@ from custom_components.spotnav.heat.view import (
 )
 
 from .test_heat_meter_split import villa_day
+
+#: The villa's pool (the owner's: a Madimack on `tuya_local`, a Fibaro relay for the circulation) and a Balboa spa.
+POOL = PoolConfig(
+    heat_pump=PoolHeatPump("climate.poolpump"),
+    circulation_id="switch.pool_cirkulation",
+    water_sensor="sensor.pool_vatten",
+    heat_pump_kw=1.6,
+)
+SPA = SpaConfig("climate.spa", "balboa", baths=(Bath((4, 5), "19:00"),), heater_kw=3.0)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "heat_card"
 ZONE = ZoneInfo("Europe/Stockholm")
@@ -175,6 +187,9 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
         control_entity="switch.larm_utgang_1",
         control_enabled=True,
         water_heater=WaterHeater("switch.varmvattenberedare", True) if more else None,
+        pool=POOL if more else None,
+        spa=SPA if more else None,
+        heat_notifications=HeatNotifications(("mobile_app_pixel",)) if more else HeatNotifications(),
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
     # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
@@ -212,6 +227,29 @@ def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: A
         "meter": [_choice("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", "1128.84 W")],
         "water_heater": [_choice("switch.varmvattenberedare", "Varmvattenberedare", "on"), _choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
         "tank_sensor": [_choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C")],
+        "pool": {
+            "heat_pump": [
+                {
+                    **_choice("climate.poolpump", "Poolpump", "heat"),
+                    "score": 0.95, "ask": False, "shape": "climate", "switch_id": None, "number_id": None, "cloud": False,
+                }
+            ],
+            "circulation": [{**_choice("switch.pool_cirkulation", "Pool cirkulation", "off"), "score": 0.5, "ask": True}],
+            "water_sensor": [{**_choice("sensor.pool_vatten", "Pool vatten", "14.5 °C"), "score": 0.5, "ask": True}],
+            "suggested": {
+                "heat_pump": {"entity_id": "climate.poolpump", "shape": "climate", "switch_id": None, "number_id": None},
+                "circulation_id": "switch.pool_cirkulation",
+                "water_sensor": "sensor.pool_vatten",
+                "ask": True,
+            },
+        },
+        "spa": [
+            {
+                **_choice("climate.spa", "Spa", "heat"),
+                "score": 1.0, "ask": False, "family": "balboa", "controllable": True, "cloud": False,
+            }
+        ],
+        "phones": [{"service": "mobile_app_pixel", "name": "Pixel"}],
     }
     upstairs = (
         {
@@ -495,6 +533,7 @@ def sg_api_pump_answer() -> dict[str, Any]:
             money=("SEK", "kr", "öre"),
             choices={
                 "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None, "water_heater": [], "tank_sensor": [],
+                "pool": None, "spa": [], "phones": [],
                 "offset": [{"entity_id": "number.s1155_heating_offset_climate_system_1_40031", "name": "Heating offset climate system 1", "value": "0"}],
                 "relay": [
                     {"entity_id": mode, "name": "Requested operating mode (SG Ready)", "value": None},

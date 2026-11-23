@@ -9,6 +9,13 @@
     "control_entity_b": null,
     "control_path": "none",
     "heat_meter_entity": null,
+    "heat_notifications": {
+      "events": [
+        "plan_at_risk",
+        "pool_season"
+      ],
+      "targets": []
+    },
     "hot_water_entity": null,
     "indoor_offsets": [],
     "indoor_sensors": [
@@ -23,6 +30,8 @@
       "start": "23:00"
     },
     "outdoor_sensor": null,
+    "pool": null,
+    "spa": null,
     "target_c": 21.5,
     "water_heater": null,
     "zones": []
