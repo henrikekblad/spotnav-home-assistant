@@ -1577,5 +1577,71 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "solaredge_modbus": {
+  "_source": "Core solaredge_modbus (home-assistant/core d33dfe3a, solaredged 0.5.0): `<entry serial>_battery_<battery serial>_<key>` on the Battery 1 device. Not a real registry; built from entity.py and sensor.py.",
+  "platform": "solaredge_modbus",
+  "manufacturer": "SolarEdge",
+  "battery": "sensor.battery_1_dc_power",
+  "entities": [
+   {
+    "entity_id": "sensor.battery_1_dc_power",
+    "unique_id": "01JSEMODBUSCORE000000000_battery_B1SERIAL_dc_power",
+    "device": "battery",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_1_state_of_energy",
+    "unique_id": "01JSEMODBUSCORE000000000_battery_B1SERIAL_state_of_energy",
+    "device": "battery",
+    "state": "55",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_1_usable_capacity",
+    "unique_id": "01JSEMODBUSCORE000000000_battery_B1SERIAL_energy_max",
+    "device": "battery",
+    "state": "9700",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_1_maximum_charge_power",
+    "unique_id": "01JSEMODBUSCORE000000000_battery_B1SERIAL_max_charge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_1_maximum_discharge_power",
+    "unique_id": "01JSEMODBUSCORE000000000_battery_B1SERIAL_max_discharge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "solaredge_modbus",
+   "soc_pct": 55.0,
+   "capacity_kwh": 9.7,
+   "rated_charge_kw": 5.0,
+   "rated_discharge_kw": 5.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

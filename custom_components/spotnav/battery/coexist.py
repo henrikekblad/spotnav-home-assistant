@@ -85,7 +85,7 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Enequi [F]", "Tibber [U]")),
     Coexistence("marstek", "Marstek", ("marstek_local_api", "marstek_modbus"),
                 "Marstek app: AI mode and Manual time slots"),
-    Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
+    Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),
     Coexistence("tesla", "Tesla Powerwall", ("powerwall",), "Tesla app: time-based control, Storm Watch"),
