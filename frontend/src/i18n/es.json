@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "El ahorro del calor es una estimación.",
   "house.earn.note.sun": "La parte del sol es la energía solar que usó la casa, al precio de ese momento, más lo que se vendió: lo que dio el sol, no algo que hiciera SpotNav.",
   "house.earn.note.sunDay": "La parte del sol es la energía solar que usó la casa, al precio de ese momento, más lo que se vendió: lo que dio el sol, no algo que hiciera SpotNav. Es una cifra de todo el día y no tiene barra por hora.",
+  "house.sun.estimated": "Los días sin la revisión nocturna por cuartos de hora se estiman a partir de las estadísticas horarias: dentro de una hora, la energía comprada y la vendida se compensan.",
   "house.details.open": "Detalles",
   "heat.tabs": "Vistas de la calefacción",
   "heat.tab.now": "Ahora",

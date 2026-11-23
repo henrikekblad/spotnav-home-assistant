@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "L'économie du chauffage est une estimation.",
   "house.earn.note.sun": "La part du soleil est l'énergie solaire utilisée par la maison, au prix du moment, plus ce qui a été vendu : ce que le soleil a apporté, pas une action de SpotNav.",
   "house.earn.note.sunDay": "La part du soleil est l'énergie solaire utilisée par la maison, au prix du moment, plus ce qui a été vendu : ce que le soleil a apporté, pas une action de SpotNav. Elle vaut pour la journée entière, sans barre horaire.",
+  "house.sun.estimated": "Les jours sans l'examen de la nuit au quart d'heure sont estimés à partir des statistiques horaires : au sein d'une heure, l'énergie achetée et l'énergie vendue se compensent.",
   "house.details.open": "Détails",
   "heat.tabs": "Vues du chauffage",
   "heat.tab.now": "Maintenant",

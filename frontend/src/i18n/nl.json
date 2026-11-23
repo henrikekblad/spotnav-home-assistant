@@ -2081,6 +2081,7 @@
   "house.earn.note.heat": "De besparing van de warmte is een schatting.",
   "house.earn.note.sun": "Het deel van de zon is de zonne-energie die het huis gebruikte, tegen de prijs van toen, plus wat werd verkocht: wat de zon opleverde, niet iets wat SpotNav deed.",
   "house.earn.note.sunDay": "Het deel van de zon is de zonne-energie die het huis gebruikte, tegen de prijs van toen, plus wat werd verkocht: wat de zon opleverde, niet iets wat SpotNav deed. Het geldt voor de hele dag en heeft geen uurstaaf.",
+  "house.sun.estimated": "Dagen zonder de nachtelijke kwartierbeoordeling zijn geschat uit de uurstatistieken: binnen een uur vallen gekochte en verkochte energie tegen elkaar weg.",
   "house.details.open": "Details",
   "heat.tabs": "Verwarmingsweergaven",
   "heat.tab.now": "Nu",

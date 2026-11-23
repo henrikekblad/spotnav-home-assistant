@@ -12,7 +12,9 @@
 //   day's hours have the battery's own bars and the plan's figure in words.
 // * Where the nightly reviews value the sun, the sun has a part of its own (`sun`): the same figure as Details → Money's
 //   (each reviewed day's `sun_value`: the sun's energy the house used at the price then, plus what was sold). It is
-//   money the house got, so it is in the headline, but it is not SpotNav's doing; a whole day's figure, like the heat.
+//   money the house got, so it is in the headline, but it is not SpotNav's doing. On a battery site it is a whole
+//   day's figure, like the heat; on a site without a battery (`sun`, the night's quarter-hour figure or an hourly
+//   estimate) a day's hours have their own, drawn in the hour's bar, and an estimate is said in the notes.
 // * The car's saving is counted where its charge started: on that day, and in a day's hours in that hour. The heat's
 //   is an estimate for a whole day: in a day's view it is in the headline and its toggle, not in an hour's bar.
 // * Hours are kept 40 days: an older day has its sums and says its hours are no longer kept.
@@ -106,7 +108,7 @@ export function partTotal(answer: HouseHistory, part: EarnPart): number | null {
     case "car":
       return answer.saving?.car ?? null;
     case "sun":
-      return answer.review?.sun_gave ?? null;
+      return answer.review?.sun_gave ?? answer.sun?.gave ?? null;
   }
 }
 
@@ -275,7 +277,12 @@ export function earnNotes(language: Language, answer: HouseHistory, hidden: Read
     notes.push(translate(language, day ? "house.earn.note.heatDay" : "house.earn.note.heat"));
   }
   if (parts.includes("sun")) {
-    notes.push(translate(language, day ? "house.earn.note.sunDay" : "house.earn.note.sun"));
+    // A day's hours with their own sun figure (a site without a battery) are drawn: no whole-day wording then.
+    const sunHours = day && answer.buckets.some((bucket) => bucket.sun_gave !== null);
+    notes.push(translate(language, day && !sunHours ? "house.earn.note.sunDay" : "house.earn.note.sun"));
+    if ((answer.sun?.estimated_days ?? 0) > 0) {
+      notes.push(translate(language, "house.sun.estimated"));
+    }
   }
   return notes;
 }
