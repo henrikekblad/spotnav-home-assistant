@@ -112,6 +112,11 @@ its goal, handles, hard rules, give and choices (`site/flexible_loads.py`, `plan
 `state` (running, paused, blocked or watched) and `state_reason` (`ceiling` while the shed order holds it); and
 `shed_order`: the steps the shed order under the ceiling has taken, the projection, what blocks a step and its log
 (`site/shed_order.py`).
+
+Since 3.0 a site's `diagnostics` also carry `sun_review` (additive, no new version): the nightly sun review of a site
+without a home battery (`site/sun_review.py`): its status and last run (the days reviewed, the days that failed and
+why), the days kept by basis and with their hours, the failures counted (`no_meters`, `no_short_term`,
+`no_short_term_data`, `no_prices`, `partial`, `error`), the days left to the hourly estimate and the last week's days.
 """
 
 from __future__ import annotations
