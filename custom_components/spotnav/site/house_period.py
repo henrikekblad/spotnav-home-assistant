@@ -8,7 +8,7 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
                 battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, arbitrage, buy,
-                sell, own_battery, would_battery}],
+                sell, own_battery, would_battery, sun_gave}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
@@ -63,6 +63,12 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   arbitrage in the day's controlled share; kept 40 days, `null` on an older day) and the car's in the hour its charge
   started; the heat's is a whole day's estimate and stays in the period's sums alone (`saving_heat` `null` on an
   hour), so a day's `saving.total` may hold more than its hours' `saving` add up to.
+* **The sun's value** (bucket `sun_gave`): the reviews' `sun_value` (`battery/review_baselines.sun_gave`: the sun's
+  energy the house used at the buying price, plus what was sold, over the quarter hours with a production figure)
+  over the bucket's reviewed days that have it, for the card's Earnings tab; the period's sum is the review's
+  `sun_gave` (the same reviews, so the two never disagree). `null` where no day of the bucket has it, without a
+  battery (no review), without the sun's production, and on a day's hours (the review is a whole day's). Never inside
+  `saving`: it is the sun's, not something SpotNav did.
 * **Before SpotNav controls the battery** (`own_control`, `site/spotnav_saving.own_control`): over the days (or the
   share of a day) the battery ran under its own control, what it earned (`earned`, over `days`) and what SpotNav's
   plan would have earned on the same days (`would`: `earned` plus what the nightly reviews say the plan would have
@@ -137,6 +143,7 @@ BUCKET_KEYS: Final = (
     "sell",
     "own_battery",
     "would_battery",
+    "sun_gave",
 )
 #: The forecast log's kinds the history scores, by the answer's name.
 FORECAST_KINDS: Final = (
@@ -244,6 +251,7 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "sell": None,
         "own_battery": None,
         "would_battery": None,
+        "sun_gave": None,
     }
 
 
@@ -322,6 +330,11 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             if target is not None:
                 _add(target, "battery_saving", saving)
                 target["battery_days"] += 1
+        # The sun's value of each reviewed day (one review per day, as the period's `review` block counts them).
+        for day, sun in _sun_days(inputs).items():
+            target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+            if target is not None:
+                _add(target, "sun_gave", sun)
         for day, day_saving in inputs.savings.items():
             if not period.contains(day):
                 continue
@@ -409,6 +422,21 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
     return rows, cost
 
 
+def _period_reviews(inputs: HouseHistoryInputs) -> list[DayReview]:
+    """The period's reviewed days, one per day (the last one read for a day wins), by day."""
+    period = inputs.period
+    days = sorted((review for review in inputs.reviews or () if period.contains(review.day)), key=lambda review: review.day)
+    unique: dict[date, DayReview] = {}
+    for review in days:
+        unique[review.day] = review
+    return list(unique.values())
+
+
+def _sun_days(inputs: HouseHistoryInputs) -> dict[date, float]:
+    """Each reviewed day's sun value (`DayReview.sun_value`), the days without it left out."""
+    return {review.day: review.sun_value for review in _period_reviews(inputs) if review.sun_value is not None}
+
+
 def own_control_days(inputs: HouseHistoryInputs) -> dict[date, tuple[float, float | None]]:
     """Per day of the period the battery ran (in part) under its own control: what it earned there and what SpotNav's
     plan would have (`site/spotnav_saving.own_control`; `None` without the day's review)."""
@@ -447,11 +475,7 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
     if inputs.reviews is None:
         return None
     period = inputs.period
-    days = sorted((review for review in inputs.reviews if period.contains(review.day)), key=lambda review: review.day)
-    unique: dict[date, DayReview] = {}
-    for review in days:
-        unique[review.day] = review
-    reviews = list(unique.values())
+    reviews = _period_reviews(inputs)
     if not reviews:
         return None
     today = local_date(inputs.now, inputs.tz)
