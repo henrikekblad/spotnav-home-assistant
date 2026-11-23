@@ -279,8 +279,9 @@ class ChargerRequest:
     phase: PhaseName | None = None
     min_current_a: float = DEFAULT_MIN_CURRENT_A
     measured_current_a: DirectPhaseMeasurement | None = None
-    #: "first", "normal" or "last": where this charger stands in the allocation order.
-    priority: str = DEFAULT_CHARGER_PRIORITY
+    #: Where this charger stands in the allocation order: its row in the site's priority list (an `int`, 0 the
+    #: top), or, while the site stores none, "first", "normal" or "last".
+    priority: str | int = DEFAULT_CHARGER_PRIORITY
     #: The charger's place in the site's own charger list (the order they joined), which settles
     #: chargers of one priority; equal places fall back to the entry id, so the order never depends
     #: on how the requests are listed.
@@ -1046,7 +1047,8 @@ def _limiting_phase(
 
 
 def allocation_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]:
-    """The order a site serves its chargers in: "first" before "normal" before "last".
+    """The order a site serves its chargers in: down the site's priority list (`site/priority.py`); before one is
+    stored, "first" before "normal" before "last".
 
     Chargers of one priority are taken in the site's own charger order (`order`, the order they
     joined), not by their random entry ids; only equal places fall back to the id.
@@ -1057,11 +1059,14 @@ def allocation_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]
     )
 
 
-def charger_order_key(priority: str, order: int, charger_entry_id: str) -> tuple[int, int, str]:
-    """Where a charger stands in its site's order: "first" before "normal" before "last" (an unknown
-    priority counts as "normal"), then the site's own charger order, then the entry id. Shared by the
+def charger_order_key(priority: str | int, order: int, charger_entry_id: str) -> tuple[int, int, str]:
+    """Where a charger stands in its site's order: its row in the site's priority list (an `int`, 0 the top,
+    `site/priority.py`) once one is stored; before that "first" before "normal" before "last" (an unknown
+    priority counts as "normal"); then the site's own charger order, then the entry id. Shared by the
     capacity allocation and the solar surplus split, so both serve chargers in the same order.
     """
+    if isinstance(priority, int) and not isinstance(priority, bool):
+        return (priority, order, charger_entry_id)
     return (_PRIORITY_RANK.get(priority, 1), order, charger_entry_id)
 
 

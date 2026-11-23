@@ -154,7 +154,6 @@ describe("the Settings page's charger and site cards", () => {
       "start_stop",
       "current",
       "energy_register",
-      "charger_priority",
       "charge_periods",
       "users_change_plan",
     ]);
@@ -247,37 +246,73 @@ describe("the Settings page's charger and site cards", () => {
     expect(openDialog(element)?.querySelector("[data-section='entities'] [data-edit-entities]")).toBeNull();
   });
 
-  it("shows the charger's priority in words from the dashboard block, and hides it when the block is null or unreadable", async () => {
-    const shown = await mounted({
-      patchDashboard: (payload) => {
-        (payload["charger_priority"] as Record<string, unknown>)["value"] = "last";
-      },
-    });
-    openSettings(shown.element);
-    await settle();
-    expect(rowText(shown.element, "charger_priority")).toContain(translate("en", "entity.field.chargerPriority"));
-    expect(rowText(shown.element, "charger_priority")).toContain(translate("en", "entity.priority.last"));
-
-    for (const block of [null, "junk", { value: 3 }]) {
+  it("shows no charger priority row: the charger's place is a row of the site's priority list", async () => {
+    for (const value of ["last", "first"]) {
       document.body.innerHTML = "";
-      const hidden = await mounted({
+      const shown = await mounted({
         patchDashboard: (payload) => {
-          payload["charger_priority"] = block;
+          (payload["charger_priority"] as Record<string, unknown>)["value"] = value;
         },
       });
-      openSettings(hidden.element);
+      openSettings(shown.element);
       await settle();
-      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods", "users_change_plan"]);
+      expect(sectionRows(shown.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods", "users_change_plan"]);
     }
-    document.body.innerHTML = "";
-    const absent = await mounted({
-      patchDashboard: (payload) => {
-        delete payload["charger_priority"];
-      },
-    });
-    openSettings(absent.element);
+  });
+
+  it("reads the site's priority list once and saves a new order through the charger's site", async () => {
+    const view = JSON.parse(readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "site_view", "villa.json"), "utf8")) as Record<string, unknown>;
+    view["priority"] = {
+      order: [
+        { id: "charger:entry_a", name: "Garage" },
+        { id: "charger:entry_b", name: "Carport" },
+        { id: "battery", name: null },
+      ],
+      writable: true,
+    };
+    const { hass, element } = await mounted();
+    hass.siteHandler = async () => view;
+    openSettings(element);
     await settle();
-    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods", "users_change_plan"]);
+    await settle();
+    expect(hass.siteMessages.filter((m) => m["type"] === "spotnav/get_site_settings_view")).toEqual([
+      { type: "spotnav/get_site_settings_view", api_version: 1, charger_id: "entry_a" },
+    ]);
+    expect(rowText(element, "priority")).toContain(translate("en", "site.priority.title"));
+    expect(rowText(element, "priority")).toContain("Garage first");
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-row='priority'] button")!.click();
+    await settle();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='priority']")!;
+    expect(form.textContent).toContain(translate("en", "site.priority.intro"));
+    form.querySelector<HTMLButtonElement>("[data-priority-row='charger:entry_a'] [data-move='down']")!.click();
+    form.requestSubmit();
+    await settle();
+    expect(hass.messages.filter((m) => m["type"] === "spotnav/update_site_settings")).toEqual([
+      {
+        type: "spotnav/update_site_settings",
+        api_version: 1,
+        charger_id: "entry_a",
+        expected: { priority: ["charger:entry_a", "charger:entry_b", "battery"] },
+        changes: { priority: ["charger:entry_b", "charger:entry_a", "battery"] },
+      },
+    ]);
+  });
+
+  it("shows no priority row to a reader, nor where the site states no list", async () => {
+    const reader = await mounted({ admin: false });
+    reader.hass.siteHandler = async () => ({});
+    openSettings(reader.element);
+    await settle();
+    expect(reader.hass.siteMessages).toEqual([]);
+    document.body.innerHTML = "";
+    const older = await mounted();
+    const view = JSON.parse(readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "site_view", "villa.json"), "utf8")) as Record<string, unknown>;
+    delete view["priority"];
+    older.hass.siteHandler = async () => view;
+    openSettings(older.element);
+    await settle();
+    await settle();
+    expect(openDialog(older.element)?.querySelector("[data-row='priority']") ?? null).toBeNull();
   });
 
   it("shows only the charger's card and no site rows when the charger has no site", async () => {

@@ -32,7 +32,7 @@ Rows marked **site-wide** apply to every charger and card on the same site.
 | **Car** | The car's charge level sensor, battery size, consumption, onboard charger phases, charge limit. | [Target state of charge](target-soc.md) |
 | **Which car is plugged in?** | Identification: automatic, always ask, or off. Optional camera. | [Which car is plugged in?](vehicle-identification.md) |
 | **Charger** | Its entities, how SpotNav controls it, phase switching for solar, who may change the plan. | [The charging card](card.md#charger-entities) |
-| **Site** (site-wide) | Main fuse and margin, load balancing, car or battery first, the import target, the meters. | [Site and load balancing](site-and-load-balancing.md) |
+| **Site** (site-wide) | Main fuse and margin, load balancing, the priority list (which load gets energy first and gives way last), the import target, the meters. | [Site and load balancing](site-and-load-balancing.md) |
 | **Solar** (site-wide) | The solar forecast sources. | [Solar](solar.md) |
 | **Home battery** (site-wide) | The mode (its dialog explains the three and holds the wear cost), **Battery control**, its checklist and its check. Shown when SpotNav finds a battery. | [Home batteries](home-battery.md), [The battery plan](battery-plan.md) |
 | **Heating** (site-wide) | Sensors and their offsets, the control path, **Control the heat**, **Hot water boost**, zones (each with its own switch), the water heater and **Control the water heater**, cooler night, setback when away. | [Heat pumps](heat-pumps.md) |

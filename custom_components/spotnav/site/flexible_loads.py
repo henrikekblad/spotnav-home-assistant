@@ -7,8 +7,8 @@ diagnostics (`flexible_loads`) only; no plan reads it yet.
 
 Each load's `state` (`with_states`): `running` where SpotNav steers it, `watched` where it only watches; `paused` with
 the reason `ceiling` while the shed order holds it (`site/shed_order.py`: the water heater paused, the heat lowered
-one step, a car the import target's hold pauses), `blocked` with the hard rule's code where a step was due and the
-load's own rule kept it.
+one step, a car the import target's hold pauses; the pool, the spa, the sauna and cooling as `would` steps only),
+`blocked` with the hard rule's code where a step was due and the load's own rule kept it.
 """
 
 from __future__ import annotations
@@ -23,6 +23,10 @@ from ..planning.flexible_load import (
     KIND_CAR,
     KIND_HEAT,
     KIND_HEAT_ZONE,
+    KIND_POOL_CIRCULATION,
+    KIND_POOL_HEAT,
+    KIND_SAUNA,
+    KIND_SPA,
     KIND_WATER_HEATER,
     STATE_BLOCKED,
     STATE_PAUSED,
@@ -82,7 +86,17 @@ def flexible_loads(site: Any) -> list[FlexibleLoad]:
 
 def with_states(site: Any, loads: list[FlexibleLoad]) -> list[FlexibleLoad]:
     """The loads with what each is doing now (see the module)."""
-    from ..site.shed_order import LOAD_HEAT, LOAD_WATER_HEATER, REASON_CEILING  # noqa: PLC0415
+    from ..site.shed_order import (  # noqa: PLC0415
+        LOAD_COOLING,
+        LOAD_HEAT,
+        LOAD_POOL_CIRCULATION,
+        LOAD_POOL_HEAT,
+        LOAD_SAUNA,
+        LOAD_SPA,
+        LOAD_SPA_IDLE,
+        LOAD_WATER_HEATER,
+        REASON_CEILING,
+    )
 
     order = getattr(site, "shed_order", None)
     steps = {} if order is None else dict(order.steps)
@@ -91,8 +105,16 @@ def with_states(site: Any, loads: list[FlexibleLoad]) -> list[FlexibleLoad]:
     budget = getattr(site, "_target_budget", None)
     out: list[FlexibleLoad] = []
     for load in loads:
-        # The pool's and the spa's loads have no step yet (the site's priority list is to come): running or watched.
-        shed = {KIND_WATER_HEATER: LOAD_WATER_HEATER, KIND_HEAT: LOAD_HEAT, KIND_HEAT_ZONE: LOAD_HEAT}.get(load.kind)
+        # The pool's, the spa's, the sauna's and cooling's steps are `would` only (no control of theirs writes yet).
+        shed = {
+            KIND_WATER_HEATER: LOAD_WATER_HEATER,
+            KIND_HEAT: LOAD_HEAT,
+            KIND_HEAT_ZONE: LOAD_COOLING if _cooling(load) else LOAD_HEAT,
+            KIND_POOL_HEAT: LOAD_POOL_HEAT,
+            KIND_POOL_CIRCULATION: LOAD_POOL_CIRCULATION,
+            KIND_SAUNA: LOAD_SAUNA,
+            KIND_SPA: LOAD_SPA_IDLE if LOAD_SPA_IDLE in steps else LOAD_SPA,
+        }.get(load.kind)
         state, reason = (STATE_RUNNING if load.controlled else STATE_WATCHED), None
         step = None if shed is None else steps.get(shed)
         if step is not None and (not step.live or not load.controlled):
@@ -106,6 +128,14 @@ def with_states(site: Any, loads: list[FlexibleLoad]) -> list[FlexibleLoad]:
             state, reason = STATE_PAUSED, REASON_CEILING
         out.append(replace(load, state=state, state_reason=reason))
     return out
+
+
+def _cooling(load: FlexibleLoad) -> bool:
+    """Whether a zone's description is house cooling (`heat/flexible.cooling_zone_load`)."""
+    try:
+        return load.goal.as_dict().get("values", {}).get("mode") == "cool"
+    except Exception:  # noqa: BLE001 - read as heat
+        return False
 
 
 def _held(site: Any, load: FlexibleLoad) -> bool:

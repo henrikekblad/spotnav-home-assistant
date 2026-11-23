@@ -1,6 +1,6 @@
 ---
 title: Site and load balancing
-description: The main fuse, the grid meter, active load balancing, charger priority and the import target.
+description: The main fuse, the grid meter, active load balancing, the priority list and the import target.
 order: 63
 section: Settings
 ---
@@ -433,7 +433,7 @@ The current and where it came from are in the charger's diagnostics (`switched_c
 
 - **It never blocks the other chargers.** Its request is its switched current, never "unknown".
 - **An import overload pauses it whole.** While a phase is over the limit on a net import and such a
-  charger takes part, the overload is resolved in one pass, by charger priority, Last first, then Normal,
+  charger takes part, the overload is resolved in one pass, from the bottom of the [priority list](#the-priority-list) up (before the list is saved: Last first, then Normal,
   then First; within each priority: the chargers whose current can be set are lowered, at most to their
   minimum; if the site is still over, the switch-only chargers are paused whole, through the same
   balancing pause as any other charger; only then are the chargers whose current can be set paused. An
@@ -457,30 +457,50 @@ The current and where it came from are in the charger's diagnostics (`switched_c
 - The card never says it is limited to a current, and its capabilities say load balancing can only pause
   the charge.
 
-## Charger priority
+## The priority list
 
-When several chargers share a site, each phase's headroom is handed out to them one after the
-other. Every charger has a **Charger priority** in the card's charger entities editor (only a
-charger that belongs to a site has one): **First**, **Normal** (the default) or **Last**. A charger
-set to First is served before the others and keeps what it asks for; one set to Last gets what is
-left. Chargers with the same priority are served in the order they joined the site.
+One list per site, **Prioritet** in the house card's settings (gear → the site's section, administrators only): every
+load the site has, one row each, **the top gets energy first and gives way last**. Each charger is its own row; the
+other rows are house heat, a spa heating for a booked bath, a sauna, house cooling, the water heater, the home
+battery, a spa between baths, the pool's circulation beyond the day's filtering need and the pool's heat pump (a row
+shows only once the site has that load). Move a row with its up and down buttons and save. The apps show the list,
+read only.
 
-When the site is over its limit and load balancing has to cut, the cut is taken in the opposite
-order: from Last first, then Normal, then First, in the same pass. Within one priority the chargers
-are cut in the order they joined the site. A charger set to First keeps its current as long as the
-others can give way.
+The default, top to bottom: **house heat, the cars, the spa with a booked bath, the sauna, house cooling, the water
+heater, the home battery, the spa between baths, the pool's circulation, the pool's heat pump.** The list is read in
+both directions:
 
-Solar surplus follows the same order. Of the chargers on solar (or on hybrid outside a plan window
-and short of their target, or past it and below the car's own known limit), the first in the order is offered the whole surplus; the next is
-offered only what the first cannot use: surplus too small for the first one to start on, or more
-than it takes (its maximum current, or less when the car draws less). A charger that is paused, on
-another strategy, or known to be unplugged takes no part, and its draw counts as house load.
+- **The sun's surplus and the fuse's headroom, from the top down.** The battery's place against the cars is what
+  used to be *car or home battery first*: above every car is *battery first* (the battery takes the surplus first,
+  the car backs off for it at the main fuse, and the import target counts the battery's discharge as import), below
+  them *car first* (the default). Between chargers, the higher one is served first: each phase's headroom is handed
+  out to them one after the other, and the higher one keeps what it asks for while the lower one gets what is left.
+  Of the chargers on solar (or on hybrid outside a plan window and short of their target, or past it and below the
+  car's own known limit), the highest is offered the whole surplus; the next is offered only what the first cannot
+  use: surplus too small for the first one to start on, or more than it takes (its maximum current, or less when the
+  car draws less). A charger that is paused, on another strategy, or known to be unplugged takes no part, and its
+  draw counts as house load.
+- **Giving way, from the bottom up.** When the site is over its limit and load balancing has to cut, the lowest
+  charger is cut first, in the same pass; a charger high in the list keeps its current as long as the others can give
+  way. Under the import target's ceiling the loads give way in the [shed order](#the-shed-order-under-the-ceiling),
+  which is the list read from the bottom.
+
+Hard rules and deadlines always come before the list: a car's minimum level and a person's Start, the water heater's
+full heat and legionella rules, a spa's lowest temperature, the heat control's limits and the main fuse.
+
+**From an earlier version.** Until the list is first saved, the old settings count exactly as before: the site's
+*car or home battery first* and each charger's *Charger priority* (First, Normal, Last; chargers with the same
+priority in the order they joined the site). The list starts from them: the cars in that order, the battery above
+them under *battery first*. Saving the list stores it and drops the old settings; an app that still shows them reads
+them from the list (the top car *First*, the bottom one *Last*, a car alone *Normal*), and its change of them moves the
+row. A charger that joins later goes below the last car; one that leaves is dropped.
 
 ## Solar and forecast settings
 
-Set on the site, used by the [solar and hybrid strategies](strategies.md): **car or home battery first**
-(car first or battery first; it also decides who goes first at the main fuse and what the import target counts), an optional **home battery power** sensor (positive means
-charging), and the **solar forecast sources** for hybrid.
+Set on the site, used by the [solar and hybrid strategies](strategies.md): the battery's place in the
+[priority list](#the-priority-list) (above the cars is *battery first*, below them *car first*; it also decides who
+goes first at the main fuse and what the import target counts), an optional **home battery power** sensor (positive
+means charging), and the **solar forecast sources** for hybrid.
 
 The site's **Solar surplus** sensor shows, in watts, the power a car could take from the sun at the
 site now, from these settings and the site's grid readings, also on a site without chargers; see
@@ -630,7 +650,7 @@ charger draws on would turn from import to export (so the current the fuse carri
   A few minutes without a reading count at the hour's own mean. While a charger that was just started (or
   resumed) still reads below its minimum, its draw the meter or a battery already shows is not counted as the
   house's: the house counts at most its typical load then, so a start is not held for its own draw.
-- **Several chargers** share it in the site's order (priority First, Normal, Last, then the order they joined). Each
+- **Several chargers** share it in the site's order (down the [priority list](#the-priority-list)). Each
   is held to the whole amps that still fit. A switch-only charger runs only while its whole switched power fits.
 - **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
   the target with it at its minimum for the rest of the hour, it is paused until the next clock hour and given back
@@ -737,14 +757,20 @@ charger draws on would turn from import to export (so the current the fuse carri
 ### The shed order under the ceiling
 
 When the running hour (or quarter hour, where the tariff counts quarters) is heading over the ceiling the import
-target holds (the target or the power level, lifted to the month's peak, less its margin), the loads give way in
-one fixed order, and come back in the reverse one:
+target holds (the target or the power level, lifted to the month's peak, less its margin), the loads give way from
+the bottom of the site's [priority list](#the-priority-list) up, and come back from the top down. With the default
+list:
 
-**home battery → water heater → car → heat** (put back: heat, car, water heater, battery)
+**pool heat pump → pool circulation beyond the day's need → spa between baths → home battery → water heater → house
+cooling → sauna → spa with a booked bath → car → house heat**
 
-There is no setting for the order in this version. It is judged on the import target's own projection of the hour,
-never on a second one, and it acts only below that ceiling: the main fuse keeps its own, faster protection and is
-never this order's. The power tariff's soft ceiling is shadow only and sheds nothing.
+It is judged on the import target's own projection of the hour, never on a second one, and it acts only below that
+ceiling: the main fuse keeps its own, faster protection and is never this order's. The power tariff's soft ceiling is
+shadow only and sheds nothing. Where a load stands decides how far over it is judged: above every car, with every car
+the hold may pause paused (as house heat by default); below a car, with the cars at what they want (as the water
+heater); below the home battery, also without what the battery's discharge covers now (under *car first*). The pool,
+the spa, the sauna and house cooling take their steps as *would* only in this version: shown and logged, never
+written, and they hold no other step back. With the default list:
 
 1. **Home battery.** Nothing new: a battery covering the house already lowers what the grid reads, so its help always
    counts first. The steps below go on only while the hour stays over after it (its floor, its power limit, or no
@@ -766,7 +792,7 @@ never this order's. The power tariff's soft ceiling is shadow only and sheds not
    [heat control](heat-pumps.md#spotnavs-own-heat-control-relay-off-by-default) is on.
 
 A step is put back after five minutes with the hour under by half a kW counting what the load would take again, the
-heat before the water heater. A step that ended is not taken again in the same hour, nor within 15 minutes; nothing
+higher load in the list first (the heat before the water heater by default). A step that ended is not taken again in the same hour, nor within 15 minutes; nothing
 is shed for 15 minutes after a start. A load SpotNav only watches (control off) takes the same steps as *would* only:
 shown, never written. Without the import target's budget (no target or power level, outside the level's hours, load
 balancing off) every step is put back at once.

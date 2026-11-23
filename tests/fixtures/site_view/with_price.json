@@ -166,5 +166,9 @@
       "writable": true
     },
     "writable": true
+  },
+  "priority": {
+    "order": [],
+    "writable": true
   }
 }

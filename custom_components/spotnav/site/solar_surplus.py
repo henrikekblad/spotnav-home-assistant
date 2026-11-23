@@ -48,8 +48,9 @@ per phase the car uses (a battery discharging into the car counts as import), an
 `stop_delay_s` and `min_on_s` stops it as a normal solar stop. Solar never charges from the grid on the
 strength of a fault, and never asks for more than the minimum current without the car's own reading.
 
-Several chargers on one site share the surplus in the site's charger order (priority First, Normal,
-Last; ties by the order they joined, as capacity allocation serves them): `share_surplus` offers the
+Several chargers on one site share the surplus in the site's charger order (their rows in the site's
+priority list, `site/priority.py`; before one is stored, priority First, Normal, Last, ties by the order
+they joined; as capacity allocation serves them): `share_surplus` offers the
 whole surplus to the first charger, and a later one gets only what the earlier ones cannot use (too
 little for their minimum, or more than they take). Each charger's controller still runs on its own;
 the split reaches it as `SolarObservation.share_adjust_w`, added to its own reckoning.
@@ -413,8 +414,9 @@ class SolarShareMember:
     """
 
     charger_entry_id: str
-    # "first", "normal" or "last" (`const.CHARGER_PRIORITIES`) and the place in the site's charger list.
-    priority: str
+    # The row in the site's priority list (an `int`, 0 the top, `site/priority.py`), or, while the site stores
+    # none, "first", "normal" or "last" (`const.CHARGER_PRIORITIES`); and the place in the site's charger list.
+    priority: str | int
     order: int
     # What the charger draws now, and the watts one amp is to it (its phases x their mean voltage).
     car_w: float

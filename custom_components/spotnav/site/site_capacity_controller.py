@@ -57,13 +57,11 @@ from ..const import (
     CONF_PHASE_WIRING,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
-    CONF_SOLAR_PRIORITY,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_MIN_CURRENT_A,
     REGULATOR_DEADBAND_A,
     REGULATOR_DWELL_S,
-    DEFAULT_SOLAR_PRIORITY,
     yield_ceiling_a,
     DEFAULT_YIELD_STEPPING_ENABLED,
     MEASUREMENT_MODE_DERIVED,
@@ -82,6 +80,7 @@ from .house_forecast import SiteHouseForecast
 from .sun_review import SiteSunReview
 from ..pricing.period_prices import period_price_slots
 from .demand_ceiling import SiteDemandCeiling
+from .priority import charger_rank, solar_priority
 from .shed_order import ShedOrder
 from .import_target import (
     ACTION_HELD,
@@ -4254,7 +4253,7 @@ class SiteCapacityController:
         return bool(
             self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED)
         ) and (
-            self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST
+            solar_priority(self.config) == SOLAR_PRIORITY_CAR_FIRST
         )
 
     def _held_band_voltages_v(self, fresh: SiteCapacityResult) -> dict[PhaseName, float | None]:
@@ -4975,8 +4974,7 @@ class SiteCapacityController:
             limit_a=limit_a,
             voltage_v=self._held_band_voltages_v(fresh),
             credit_allowed=(
-                self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
-                == SOLAR_PRIORITY_CAR_FIRST
+                solar_priority(self.config) == SOLAR_PRIORITY_CAR_FIRST
             ),
         )
         return stepper.observe(decision.proposed_current_a, requested_a, assigned_a, observation)
@@ -5455,8 +5453,13 @@ class SiteCapacityController:
         tracker = self._auto_phases.get(charger_entry_id)
         return None if tracker is None else tracker.current
 
-    def charger_priority(self, charger_entry_id: str) -> str:
-        """The charger's own `CONF_CHARGER_PRIORITY`, "normal" when none is stored or its entry is gone."""
+    def charger_priority(self, charger_entry_id: str) -> str | int:
+        """The charger's place in the site's order: its row in the site's priority list (0 the top,
+        `site/priority.charger_rank`) once one is stored; until then its own `CONF_CHARGER_PRIORITY` as before,
+        "normal" when none is stored or its entry is gone."""
+        rank = charger_rank(self.config, charger_entry_id)
+        if rank is not None:
+            return rank
         entry = self.hass.config_entries.async_get_entry(charger_entry_id)
         if entry is None:
             return DEFAULT_CHARGER_PRIORITY
@@ -5795,7 +5798,7 @@ class SiteCapacityController:
     def _battery_first_discharge(self) -> tuple[bool, float | None]:
         """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
         and its discharge now (W, positive while it discharges), `None` when it cannot be read live."""
-        if self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) != SOLAR_PRIORITY_BATTERY_FIRST:
+        if solar_priority(self.config) != SOLAR_PRIORITY_BATTERY_FIRST:
             return False, None
         configured, battery_w = self._battery_live_w()
         if not configured:

@@ -1671,35 +1671,8 @@ export function entityEditorBody(
     body.append(sourceLine);
   }
 
-  // The charger's place in its site's allocation order: first, normal (the default) or last.
-  const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
-  if (priorityField !== undefined && priorityField.kind === "enum" && priorityField.writable) {
-    const priorityOptions = priorityField.choices.map((choice) => ({
-      value: choice,
-      label: (choice === "first"
-        ? "entity.priority.first"
-        : choice === "last"
-          ? "entity.priority.last"
-          : "entity.priority.normal") as TranslationKey,
-    }));
-    const priority = choiceGroup(
-      "priority",
-      "entity.field.chargerPriority",
-      priorityOptions,
-      () => values["charger_priority"] ?? priorityField.value ?? "normal",
-      (value) => {
-        values["charger_priority"] = value;
-      },
-      { intro: fieldHelp("charger_priority", "entity.help.chargerPriority") },
-    );
-    const priorityError = element(doc, "p", C.settingsError);
-    priorityError.hidden = true;
-    priorityError.dataset["fieldError"] = "charger_priority";
-    priorityError.setAttribute("role", "alert");
-    errorNodes.set("charger_priority", { node: priorityError, input: priority.fieldset });
-    priority.fieldset.append(priorityError);
-    body.append(priority.fieldset);
-  }
+  // The charger's place in its site's order is a row of the site's priority list (`priority-list.ts`), not a field
+  // here: `charger_priority` is only kept for older apps.
 
   // The charger's own notes, after its fields.
   if (scope === "charger") {

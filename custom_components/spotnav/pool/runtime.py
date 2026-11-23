@@ -702,6 +702,44 @@ class PoolSpaShadow:
                 out.append(lanes)
         return out
 
+    def shed_offers(self, now: datetime) -> dict[str, Any]:
+        """The pool's, the spa's and the sauna's offers to the site's shed order (`site/shed_order.Offer`), each
+        `would` only (nothing of theirs is written yet, spec stage 6): the pool's heat pump while it heats (its
+        entered kW); the circulation beyond the day's filtering need (with the heat pump it carries); the spa heating
+        towards a booked bath (`spa`) or holding its idle temperature (`spa_idle`, never below its floor); the sauna
+        heating for a session. A load not running now offers nothing to give."""
+        from ..site.shed_order import LOAD_POOL_CIRCULATION, LOAD_POOL_HEAT, LOAD_SAUNA, LOAD_SPA, LOAD_SPA_IDLE, Offer  # noqa: PLC0415
+        from ..spa.plan import STATE_HEATING, STATE_LATE  # noqa: PLC0415
+
+        out: dict[str, Any] = {}
+        config = self.config()
+        pool = config.pool
+        if pool is not None and pool.season_open:
+            on, heating, _reading = self._pump_state(pool)
+            pump_w = (pool.heat_pump_kw or 0.0) * 1000.0 if heating else 0.0
+            out[LOAD_POOL_HEAT] = Offer(live=False, ready=bool(heating), give_w=pump_w, drawing=bool(heating))
+            circulating = self._switch_on(pool.circulation_id)
+            if circulating:
+                day_start = self._local(now).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
+                done_h = self.history.on_seconds(day_start, now) / 3600.0
+                need_h = None if self.plan is None else self.plan.need_h
+                beyond = need_h is not None and done_h >= need_h
+                give = (pool.circulation_kw or 0.0) * 1000.0 + pump_w
+                out[LOAD_POOL_CIRCULATION] = Offer(live=False, ready=beyond, give_w=give, why=None if beyond else "need")
+        for part, block, booked_load in ((self.spa, config.spa, LOAD_SPA), (self.sauna, config.sauna, LOAD_SAUNA)):
+            if block is None or not part.reading.heating:
+                continue
+            give = (block.heater_kw or 0.0) * 1000.0
+            plan = part.plan
+            booked = plan is not None and plan.state in (STATE_HEATING, STATE_LATE)
+            if booked or isinstance(block, SaunaConfig):
+                out[booked_load] = Offer(live=False, ready=True, give_w=give)
+                continue
+            current = part.reading.current_c
+            warm = current is not None and current > block.floor_c + 1.0
+            out[LOAD_SPA_IDLE] = Offer(live=False, ready=warm, give_w=give, why=None if warm else "floor")
+        return out
+
     def pool_status(self, config: HeatConfig, now: datetime) -> dict[str, Any] | None:
         """`get_heat`'s `pool` (`heat/view.py`), `None` without a pool."""
         pool = config.pool

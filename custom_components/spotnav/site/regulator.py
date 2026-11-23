@@ -966,8 +966,8 @@ def _priority_rank(request: ChargerRequest) -> int:
 
 
 def overload_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]:
-    """The order an import overload is cut in: lowest priority first ("last", then "normal", then "first"), each
-    class in the site's own order (`allocation_order`). The charger decided first is given the negative headroom,
+    """The order an import overload is cut in: lowest priority first (the bottom of the site's priority list up; before
+    one is stored "last", then "normal", then "first", each class in the site's own order, `allocation_order`). The charger decided first is given the negative headroom,
     so it takes the cut: a charger set to First keeps what it asks for as long as the others can give way."""
     ordered = allocation_order(requests)
     return sorted(ordered, key=lambda request: -_priority_rank(request))

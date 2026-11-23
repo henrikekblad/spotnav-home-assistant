@@ -150,6 +150,8 @@ export interface SiteSettingsChange {
   solar_priority?: string;
   solar_forecast?: string[];
   active_control_enabled?: boolean;
+  /** The site's priority list, top first (`priority-list.ts`); answered with `priority` beside `site`. */
+  priority?: string[];
 }
 
 export interface SiteSettingsRequest {

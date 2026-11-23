@@ -356,7 +356,6 @@
           "active_control_enabled": "Lastmanagement",
           "max_age_s": "Maximales Alter der Messung (Sekunden)",
           "yield_stepping_enabled": "Auto darf den Anteil der Hausbatterie nehmen",
-          "solar_priority": "Auto oder Hausbatterie zuerst",
           "battery_aggregate_power_entity": "Leistung der Hausbatterie (optional)",
           "solar_forecast_entries": "Solarprognose (optional)",
           "change_switch_load": "Weiter: geschaltete Last (Warmwasserspeicher)",
@@ -372,7 +371,6 @@
           "active_control_enabled": "Senkt den Strom der Ladestationen, wenn das Haus viel verbraucht, damit die Hauptsicherung nicht auslöst. Aus: SpotNav zeigt nur, was es tun würde. Nach bestem Bemühen; ersetzt die Sicherung nicht.",
           "max_age_s": "Einem älteren Messwert vertraut SpotNav nicht. Nur erhöhen, wenn Ihr Zähler wirklich so selten meldet.",
           "yield_stepping_enabled": "Lässt das Auto mehr als den Anteil der Hauptsicherung nehmen, während eine Hausbatterie, die nachweislich nachgibt, das Laden einstellt, nie über das 1,15-Fache der Hauptsicherung. Einschalten, wenn eine Hausbatterie das Netz an der Sicherung hält.",
-          "solar_priority": "Wer zuerst darf, wenn Auto und Hausbatterie denselben Strom wollen.\n\n• Zuerst das Auto: Das Auto bekommt den Solarüberschuss vor der Batterie. Lädt die Batterie aus dem Netz, weicht sie an der Hauptsicherung dem Auto (bei eingeschaltetem „Auto darf den Anteil der Hausbatterie nehmen“). Das Leistungsziel zählt nur Strom aus dem Netz.\n• Zuerst die Batterie: Die Batterie bekommt den Solarüberschuss zuerst, das Auto lädt mit dem, was übrig bleibt. An der Hauptsicherung weicht das Auto der Batterie. Das Leistungsziel zählt auch die Entladung der Batterie als Bezug, damit die Batterie das Auto nicht bezahlt.",
           "battery_aggregate_power_entity": "Der Leistungssensor der Hausbatterie, positiv beim Laden. Solarladen und der Anteil der Hausbatterie oben lesen daraus, wann die Batterie lädt.",
           "solar_forecast_entries": "Woher die Hybrid-Strategie ihre Solarprognose nimmt. Leer: Hybrid lädt nur in den günstigsten Stunden.",
           "change_switch_load": "Ein Warmwasserspeicher oder eine andere Last an einem Schalter, die in den günstigsten Stunden läuft. In dieser Version zeigt SpotNav nur, wann es sie schalten würde; es schaltet sie nie.",
@@ -551,12 +549,6 @@
       "options": {
         "direct_phase_current": "Direkter Netzstrom pro Phase (bevorzugt)",
         "derived_phase_current": "Aus Leistung und Spannung abgeleitet (genauer mit Strom, Schein- oder Blindleistung des Zählers; sonst wird der Strom geschätzt)"
-      }
-    },
-    "solar_priority": {
-      "options": {
-        "car_first": "Zuerst das Auto",
-        "battery_first": "Zuerst die Batterie"
       }
     },
     "voltage_between_phases": {

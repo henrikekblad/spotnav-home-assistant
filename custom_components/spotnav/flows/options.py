@@ -41,11 +41,9 @@ from ..const import (
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SOLAR_FORECAST_ENTRIES,
-    CONF_SOLAR_PRIORITY,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
-    DEFAULT_SOLAR_PRIORITY,
     DEFAULT_YIELD_STEPPING_ENABLED,
     DOMAIN,
     LEGACY_SITE_KEYS,
@@ -55,7 +53,6 @@ from ..const import (
     MEASUREMENT_MODE_DIRECT,
     MODE_DETECTED,
     MODE_OCPP,
-    SOLAR_PRIORITY_CHOICES,
 )
 from ..core.electric import stored_safety_margin_a
 from ..execution.charger_profiles import profile_for
@@ -353,10 +350,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             CONF_YIELD_STEPPING_ENABLED: self._entry.data.get(
                 CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED
             ),
-            # Solar surplus: which claim on the sun wins, car or house battery; `car_first` unless stored.
-            CONF_SOLAR_PRIORITY: self._entry.data.get(
-                CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY
-            ),
             # Hybrid's forecast sources: empty unless named, and hybrid is then exactly cheapest.
             CONF_SOLAR_FORECAST_ENTRIES: self._entry.data.get(CONF_SOLAR_FORECAST_ENTRIES, []),
             **self._pending_basic,
@@ -407,10 +400,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                     CONF_YIELD_STEPPING_ENABLED,
                     default=defaults[CONF_YIELD_STEPPING_ENABLED],
                 ): bool,
-                # Solar priority: a plain choice, valid beside every fuse or mode choice.
-                vol.Required(
-                    CONF_SOLAR_PRIORITY, default=defaults[CONF_SOLAR_PRIORITY]
-                ): vol.In(SOLAR_PRIORITY_CHOICES),
                 battery_entity_field: battery_selector,
                 # Hybrid's forecast sources: a multi-select of entries able to answer the Energy
                 # dashboard's solar-forecast platform (`_async_ensure_forecast_entry_options`).
@@ -788,16 +777,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         # Former settings, now fixed: never carried forward (setup drops them too).
         for key in LEGACY_SITE_KEYS:
             updated_data.pop(key, None)
-        # Solar priority, persisted the same way: written when it differs from the default or a
-        # value was already stored.
-        submitted_solar_priority = self._pending_basic.get(
-            CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY
-        )
-        if (
-            submitted_solar_priority != DEFAULT_SOLAR_PRIORITY
-            or CONF_SOLAR_PRIORITY in self._entry.data
-        ):
-            updated_data[CONF_SOLAR_PRIORITY] = submitted_solar_priority
+        # The solar priority is the battery's place in the site's priority list (`site/priority.py`), set in the
+        # card: a stored old value is carried by `**self._entry.data` as it is, and never written here.
         # Hybrid's forecast sources, persisted the same way: written when at least one entry is
         # named or a value was already stored.
         submitted_forecast_entries = list(self._pending_basic.get(CONF_SOLAR_FORECAST_ENTRIES, []))

@@ -296,7 +296,8 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
   (a kettle, the oven), and a hold meant to leave the battery idle that charges it anyway is handed back within a
   minute.
 * **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
-  departure has room. With the solar priority "battery first" the car backs off before the battery.
+  departure has room. With the battery above the cars in the site's
+  [priority list](site-and-load-balancing.md#the-priority-list) ("battery first") the car backs off before the battery.
 * **Selling from the battery** (discharging to the grid) follows the mode: never in **Self-consumption**, only when it
   is highly profitable in **Balanced**, whenever it pays in **Max profit**. It needs the check's house step (above),
   and it is capped so that it and the sun's export keep every phase under the fuse.

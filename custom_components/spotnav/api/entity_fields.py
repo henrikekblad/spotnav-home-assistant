@@ -86,6 +86,7 @@ from ..const import (
     MODE_DETECTED,
 )
 from ..planning.first_run import charger_phases_from_entry, site_for_charger
+from ..site.priority_store import charger_priority_value
 from ..planning.phases import charger_wiring, dc_charger, DEFAULT_WIRING_PHASES
 from ..core.electric import stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
@@ -632,11 +633,16 @@ def phase_switching_offered(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE)).capable
 
 
-def current_charger_values(entry: ConfigEntry) -> dict[str, Any]:
+def current_charger_values(entry: ConfigEntry, hass: HomeAssistant | None = None) -> dict[str, Any]:
     """The writable charger fields' stored values, `""` for "not configured" (as `entry.data`), except
     `current_limit` and `energy_register_entity`, which are `CURRENT_LIMIT_NONE` once the person chose "None",
-    and `phase_switching`, a boolean.
+    and `phase_switching`, a boolean. With `hass`, `charger_priority` is derived from the site's priority list once
+    one is stored (`priority_store.charger_priority_value`).
     """
+    priority = entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY
+    site = None if hass is None else site_for_charger(hass, entry.entry_id)
+    if hass is not None and site is not None:
+        priority = charger_priority_value(hass, site, entry.entry_id)
     return {
         FIELD_CHARGE_CONTROL: entry.data.get(CONF_CHARGE_CONTROL) or "",
         FIELD_CURRENT_LIMIT: (
@@ -652,7 +658,7 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_CHARGER_PHASES: str(charger_phases_from_entry(entry.data) or 3),
-        FIELD_CHARGER_PRIORITY: entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY,
+        FIELD_CHARGER_PRIORITY: priority,
         FIELD_PHASE_SWITCHING: entry.data.get(CONF_PHASE_SWITCHING) is True,
     }
 
@@ -760,7 +766,7 @@ def charger_field_errors(
     if (FIELD_CHARGE_CONTROL in changes or FIELD_CURRENT_LIMIT in changes) and not (
         FIELD_CHARGE_CONTROL in failed_fields or FIELD_CURRENT_LIMIT in failed_fields
     ):
-        current = current_charger_values(entry)
+        current = current_charger_values(entry, hass)
         charge_control = resolved.get(FIELD_CHARGE_CONTROL, current[FIELD_CHARGE_CONTROL])
         current_limit = resolved.get(FIELD_CURRENT_LIMIT, current[FIELD_CURRENT_LIMIT])
         current_limit = None if current_limit in ("", CURRENT_LIMIT_NONE) else current_limit
@@ -778,7 +784,7 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
     """`get_entity_config`'s `fields` entries for one charger, all scoped `"charger"`: `charge_control`,
     `current_limit`, `energy_register_entity`, `vehicle_soc`, and `phase_switching` only where it is offered.
     """
-    values = current_charger_values(entry)
+    values = current_charger_values(entry, hass)
     effective = _charger_effective(hass, entry, values)
     return [
         _entity_field_descriptor(

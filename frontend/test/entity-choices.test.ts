@@ -943,32 +943,11 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
   });
 });
 
-describe("charger priority: first, normal or last in the site's order", () => {
-  it("is offered to a charger in a site, opens on what is stored and saves only a change", () => {
-    const { sent } = open(config("get_direct"), "charger");
-    expect(checked("priority")).toBe("normal");
-    expect(sent()).toEqual({ ok: true, changed: false });
-    pick("priority", "first");
-    const result = sent();
-    expect(result.ok && result.changed && result.request.changes).toEqual({ charger_priority: "first" });
-    expect(result.ok && result.changed && result.request.expected).toEqual({ charger_priority: "normal" });
-  });
-
-  it("is not offered to a charger in no site", () => {
+describe("charger priority", () => {
+  it("is no longer offered in the charger's editor: the site's priority list holds the order", () => {
+    open(config("get_direct"), "charger");
+    expect(choice("priority", "first")).toBeNull();
     open(config("get_no_site"), "charger");
     expect(choice("priority", "first")).toBeNull();
-  });
-
-  it("is worded in every language", () => {
-    for (const language of LANGUAGES) {
-      open(config("get_direct"), "charger", { language });
-      const text = document.body.textContent ?? "";
-      for (const key of ["entity.field.chargerPriority", "entity.help.chargerPriority", "entity.priority.first", "entity.priority.last"] as const) {
-        expect(text, `${language} ${key}`).toContain(translate(language, key));
-      }
-      if (language !== "en") {
-        expect(translate(language, "entity.help.chargerPriority")).not.toBe(translate("en", "entity.help.chargerPriority"));
-      }
-    }
   });
 });

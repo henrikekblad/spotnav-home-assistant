@@ -56,6 +56,7 @@ import {
   type EntityField,
 } from "./entity-config";
 import { entityEditorBody, modeLabel } from "./entity-editor";
+import { decodePriorityAnswer, priorityChange, priorityEditor, prioritySummary } from "./priority-list";
 import { formatFixed, formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
@@ -91,6 +92,7 @@ import {
   reportOutcomes,
   type BatteryPreheat,
   type BatteryStatus,
+  type SitePriority,
   type ImportLimit,
   type PlanCosts,
   type SitePriceSettings,
@@ -585,6 +587,8 @@ export interface SiteSectionsInput {
  * from what was read. A failed read leaves the section out (battery) or says so (heat).
  */
 export class SiteSections {
+  /** The site's priority list from the same view read (`loadSite`), `null` before it or where none is stated. */
+  priority: SitePriority | null = null;
   battery: BatteryStatus | null = null;
   batteryFound = false;
   heat: HeatAnswer | null = null;
@@ -612,6 +616,7 @@ export class SiteSections {
     try {
       const decoded = decodeSiteView(await getSiteSettingsView(hass, target));
       battery = decoded.ok && decoded.value.battery.found;
+      this.priority = decoded.ok ? decoded.value.priority : null;
     } catch {
       // No site view: the battery section stays as it was.
     }
@@ -2191,6 +2196,7 @@ export class SettingsPopover {
     const config = this.entity;
     if (config === null || config.site === null) {
       section.append(element(doc, "p", C.muted, translate(language, view.writable ? "entity.loading" : "popover.site.readOnly")));
+      section.append(...this.priorityRows(view));
       return section;
     }
     section.append(...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null));
@@ -2201,6 +2207,7 @@ export class SettingsPopover {
         ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
       );
     }
+    section.append(...this.priorityRows(view));
     // The same label as the charging card's site row: it is how the site is measured, not a device.
     const label = translate(language, "entity.field.measurementMode");
     const value = modeLabel(language, config.site.measurement.mode);
@@ -2214,6 +2221,69 @@ export class SettingsPopover {
       }),
     );
     return section;
+  }
+
+  /**
+   * The site's one priority list (`priority-list.ts`): the top row as the value, the whole list in its editor (an
+   * administrator's: up and down buttons). Absent from a Home Assistant before it, or with no row at all.
+   */
+  private priorityRows(view: SiteView): HTMLElement[] {
+    const block = view.priority;
+    if (block === null || block.order.length === 0) {
+      return [];
+    }
+    const doc = this.input.doc;
+    const language = this.language;
+    const label = translate(language, "site.priority.title");
+    const value = prioritySummary(language, block);
+    const writable = block.writable && view.writable && block.order.length > 1;
+    return settingRow(doc, {
+      key: "priority",
+      label,
+      value,
+      help: translate(language, "site.priority.intro"),
+      ...(writable
+        ? {
+            onTap: () =>
+              this.openEditor(label, (handlers) =>
+                priorityEditor(doc, language, block, this.input.idPrefix, (order) => this.writePriority(view, order), handlers),
+              ),
+            changeableText: translate(language, "settings.row.changeable", { label, value }),
+          }
+        : {}),
+    });
+  }
+
+  private async writePriority(view: SiteView, order: string[]): Promise<string | null> {
+    const hass = this.input.hass();
+    const block = view.priority;
+    if (hass === null || block === null) {
+      return translate(this.language, "settings.error.generic");
+    }
+    const request = priorityChange(
+      block.order.map((row) => row.id),
+      order,
+    );
+    if (request === null) {
+      return null;
+    }
+    try {
+      const answer = decodePriorityAnswer(await updateSiteSettingsBySite(hass, view.site_id, request));
+      if (!answer.ok) {
+        return translate(this.language, answer.code === null ? "settings.error.generic" : siteSettingsErrorKey(answer.code));
+      }
+      // Shown at once; the card reads the view again.
+      const rows = new Map(block.order.map((row) => [row.id, row]));
+      const reordered = order.map((id) => rows.get(id) ?? { id, name: null });
+      if (this.state.kind === "ready" && this.state.view === view) {
+        this.state = { kind: "ready", view: { ...view, priority: { ...block, order: reordered } } };
+        this.paint();
+      }
+      this.input.onChanged?.("site");
+      return null;
+    } catch {
+      return translate(this.language, "settings.error.generic");
+    }
   }
 
   /**

@@ -171,5 +171,22 @@
       "writable": true
     },
     "writable": true
+  },
+  "priority": {
+    "order": [
+      {
+        "id": "heat",
+        "name": null
+      },
+      {
+        "id": "water_heater",
+        "name": null
+      },
+      {
+        "id": "battery",
+        "name": null
+      }
+    ],
+    "writable": true
   }
 }

@@ -150,6 +150,7 @@ interface OverviewSection {
 
 export interface CardViewInput {
   model: CardModel;
+
   mount: ShadowRoot | HTMLElement;
   idPrefix: string;
   /** The clock the keyboard's "current interval" fallback uses; injectable for tests. */
@@ -1820,6 +1821,8 @@ export function createCardView(input: CardViewInput): CardView {
     void siteSections.loadSite().then(() => {
       if (!destroyed && settingsOverviewDialog.isOpen()) {
         paintSiteSections();
+        // The site's priority list came with the same read: the site rows show it.
+        paintEntities();
       }
     });
   }
@@ -2106,6 +2109,7 @@ export function createCardView(input: CardViewInput): CardView {
     editMulti,
     siteFollowsSolar,
     importTargetShown,
+    sitePriority: () => siteSections?.priority ?? null,
   });
   const supportSection = createSupportSection(viewContext, {
     overviewRow,

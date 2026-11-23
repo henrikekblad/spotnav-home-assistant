@@ -55,12 +55,16 @@ import {
 } from "./settings";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
+import { priorityEditor, prioritySummary } from "./priority-list";
+import type { SitePriority } from "./site-model";
 import type { EntityViewState } from "./card-view";
 import type { PageHelpers, SettingsPageState, ViewContext } from "./card-view-context";
 
 export interface EntityRowsDeps extends PageHelpers {
   siteFollowsSolar: (rows: ReadonlyArray<{ id: string; available: boolean }>) => boolean;
   importTargetShown: (demand: { available: boolean; reason: string | null } | null, value: number | null) => boolean;
+  /** The site's priority list as the site sections last read it (`SiteSections.priority`). */
+  sitePriority: () => SitePriority | null;
 }
 
 export function createEntityRowsSection(ctx: ViewContext, settingsPage: SettingsPageState, deps: EntityRowsDeps) {
@@ -74,8 +78,8 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
     editNumber,
     editSingle,
     editMulti,
-    siteFollowsSolar,
     importTargetShown,
+    sitePriority,
   } = deps;
 
   /** The vehicle's charge as the header line spells it: `~36 %` for an estimate, `No reading` for none. */
@@ -108,12 +112,6 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
   }
 
   /** The friendly name an entity field states, or `null` when it names none. */
-  /** Whether the site has a home battery: its power entity chosen, or found by itself. */
-  function siteHasBattery(config: EntityConfig): boolean {
-    const field = fieldsOf(config, "site").find((entry) => entry.field === "battery_aggregate_power_entity");
-    return field !== undefined && field.kind === "entity" && (field.current !== null || field.effective !== null);
-  }
-
   function fieldEntityName(config: EntityConfig, scope: EntityScope, name: string): string | null {
     const field = fieldsOf(config, scope).find((entry) => entry.field === name);
     if (field === undefined || field.kind !== "entity" || field.current === null) {
@@ -176,7 +174,6 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
       );
     }
     nodes.push(...wiringRows(config));
-    nodes.push(...priorityRows());
     nodes.push(...phaseSwitchingRows(config));
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
@@ -262,28 +259,6 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
       "400",
     );
     return nodes;
-  }
-
-  /** The charger's place in its site's order: a choice of three, with what it means above them. */
-  function priorityRows(): HTMLElement[] {
-    const priority = model.chargerPriority;
-    if (priority === null) {
-      return [];
-    }
-    const label = translate(model.language, "entity.field.chargerPriority");
-    const options: ChoiceOption[] = [
-      { value: "first", label: translate(model.language, "entity.priority.first") },
-      { value: "normal", label: translate(model.language, "entity.priority.normal") },
-      { value: "last", label: translate(model.language, "entity.priority.last") },
-    ];
-    const value = options.find((option) => option.value === priority)?.label ?? priority;
-    const help = translate(model.language, "entity.help.chargerPriority");
-    return [
-      overviewRow("charger_priority", label, value, () =>
-        editSingle(label, options, priority, (chosen) =>
-          writeValue({ kind: "entity", scope: "charger", draft: { charger_priority: chosen } }), help),
-      ),
-    ];
   }
 
   /**
@@ -777,36 +752,41 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
    * The site's setup: the main fuse in its own number editor; the measurement and the battery in short words,
    * opening the site's entity dialog.
    */
-  /** Car or home battery first: a site setting, shown among the site's rows beside the home battery. */
-  function priorityRow(site: SiteFacts): HTMLElement {
-    const priorityLabel = translate(model.language, "site.solarPriority.title");
-    const priorities: ChoiceOption[] = [
-      {
-        value: "car_first",
-        label: translate(model.language, "site.solarPriority.carFirst"),
-        help: translate(model.language, "site.solarPriority.carFirstHelp"),
-      },
-      {
-        value: "battery_first",
-        label: translate(model.language, "site.solarPriority.batteryFirst"),
-        help: translate(model.language, "site.solarPriority.batteryFirstHelp"),
-      },
+  /**
+   * The site's priority list (`priority-list.ts`), an administrator's: read with the site's settings view when
+   * Settings opens (`SiteSections.loadSite`), then the top row as the value and the whole list in its editor (up and
+   * down buttons). Nothing before that read, or where the site states none.
+   */
+  function sitePriorityRows(): HTMLElement[] {
+    const block = input.isAdmin && model.site !== null ? sitePriority() : null;
+    if (block === null || block.order.length === 0) {
+      return [];
+    }
+    const label = translate(model.language, "site.priority.title");
+    const value = prioritySummary(model.language, block);
+    const confirmed = block.order.map((row) => row.id);
+    const writable = block.writable && block.order.length > 1;
+    return [
+      overviewRow(
+        "priority",
+        label,
+        value,
+        writable
+          ? () =>
+              openValueEditor(label, (handlers) =>
+                priorityEditor(
+                  doc,
+                  model.language,
+                  block,
+                  idPrefix,
+                  async (order) => await writeValue({ kind: "priority", confirmed, order }),
+                  handlers,
+                ),
+              )
+          : undefined,
+      ),
+      rowHelp("priority", translate(model.language, "site.priority.intro")),
     ];
-    return overviewRow(
-      "solar_priority",
-      priorityLabel,
-      priorities.find((option) => option.value === site.solarPriority)?.label ?? site.solarPriority,
-      site.writable
-        ? () =>
-            editSingle(
-              priorityLabel,
-              priorities,
-              site.solarPriority,
-              (chosen) => writeValue({ kind: "solar", priority: chosen }),
-              translate(model.language, "site.solarPriority.intro"),
-            )
-        : undefined,
-    );
   }
 
   function siteRows(config: EntityConfig): HTMLElement[] {
@@ -897,14 +877,7 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
         ),
       );
     }
-    // Car or battery first chooses between two solar sinks: only with a home battery and a site that can follow solar.
-    if (
-      model.site !== null &&
-      siteHasBattery(config) &&
-      siteFollowsSolar(model.strategy.rows)
-    ) {
-      nodes.push(priorityRow(model.site));
-    }
+    nodes.push(...sitePriorityRows());
     if (config.site !== null) {
       nodes.push(...siteWarningRows(doc, model.language, config.site));
     }
@@ -1002,8 +975,6 @@ export function createEntityRowsSection(ctx: ViewContext, settingsPage: Settings
     }
     if (state.kind === "ready") {
       slot.append(...chargerRows(state.config));
-    } else if (model.chargerPriority !== null) {
-      slot.append(...priorityRows());
     }
     slot.append(...chargePeriodsRows());
     slot.append(...usersChangePlanRows());

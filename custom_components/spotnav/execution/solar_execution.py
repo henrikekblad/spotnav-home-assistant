@@ -108,12 +108,11 @@ from ..const import (
     CONF_ENTRY_TYPE,
     CONF_GRID_POWER_SOURCE,
     CONF_PHASE_WIRING,
-    CONF_SOLAR_PRIORITY,
-    DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..site.priority import solar_priority
 from ..core.electric import PHASE_V, TN_VOLTS_BETWEEN_PHASES, stored_safety_margin_a
 from ..core.ownership import SOC_DROP_PCT as CORE_SOC_DROP_PCT
 from ..planning.phases import effective_phases
@@ -716,7 +715,7 @@ def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> Sit
         car_w=car_w,
         battery_w=battery_w,
         battery_configured=battery_configured,
-        priority=site.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY),
+        priority=solar_priority(site.config),
     )
 
 
@@ -1528,7 +1527,7 @@ class SolarExecutionCoordinator:
         return priority_adjust_w(self._charger_entry_id, breakdown.available_w, members)
 
     def _solar_config(self, site: SiteCapacityController) -> SolarConfig:
-        priority = site.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
+        priority = solar_priority(site.config)
         if self._controller.is_switch_only:
             # A charger whose current cannot be set draws its whole switched current or nothing: it starts only on a
             # surplus that covers all of it, and stops once the surplus (its own draw added back) stays below that for

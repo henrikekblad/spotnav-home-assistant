@@ -27,9 +27,7 @@ from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_SOLAR_FORECAST_ENTRIES,
-    CONF_SOLAR_PRIORITY,
     DEFAULT_MAX_AGE_S,
-    DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
@@ -41,6 +39,7 @@ from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
 from .site.forecast_shape import standard_forecast
 from .site.import_target import stored_import_target_kw
+from .site.priority import solar_priority
 from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
@@ -402,10 +401,8 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             # not (a direct site needs the meter's total grid power).
             "solar_capable": snapshot.solar.capable,
             "solar_reason": snapshot.solar.reason,
-            # Solar surplus priority: `car_first` or `battery_first`, present even when never stored.
-            "solar_priority": self.controller.config.get(
-                CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY
-            ),
+            # Solar surplus priority: `car_first` or `battery_first`, derived from the site's priority list.
+            "solar_priority": solar_priority(self.controller.config),
             # The house's expected load (kW) for the next 24 hours, `[{start, kw}]` (`site/house_forecast.py`), for
             # blueprints; built once an hour, kept out of the recorder.
             "forecast": self.controller.house_forecast.attribute,

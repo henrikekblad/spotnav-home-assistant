@@ -7,7 +7,7 @@
       "normal",
       "last"
     ],
-    "value": "first",
+    "value": "normal",
     "writable": true
   },
   "error": "spotnav_invalid_value",
