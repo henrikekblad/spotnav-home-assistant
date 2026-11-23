@@ -307,7 +307,9 @@ describe("the popover from the house card", () => {
     const row = readOnly.querySelector<HTMLElement>("[data-section='site'] [data-row='priority']")!;
     expect(row.querySelector("[data-edit='priority']")).toBeNull();
     document.body.innerHTML = "";
-    const before = await open((await mount()).root);
+    const older = { ...read("site_view", "villa.json") };
+    delete older["priority"];
+    const before = await open((await mount({ view: older })).root);
     expect(before.querySelector("[data-row='priority']")).toBeNull();
   });
 
