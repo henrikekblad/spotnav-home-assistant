@@ -1670,6 +1670,14 @@ export const STATUS_CODE_TABLE = {
   stop_unplug_unseen: ["normal", {}],
   charging_now: ["normal", { until: "instantOrNull" }],
   topping_off: ["normal", { until: "instant" }],
+  charging_after_departure: [
+    "normal",
+    { target: "numberOrNull", level: "numberOrNull", until: "instant", kwh: "numberOrNull", requested_kwh: "numberOrNull" },
+  ],
+  not_reached_after_departure: [
+    "normal",
+    { target: "numberOrNull", level: "numberOrNull", kwh: "numberOrNull", requested_kwh: "numberOrNull" },
+  ],
   charging_without_prices: ["notice", {}],
   waiting_for_publication: ["normal", { publication_at: "instantOrNull" }],
   waiting_for_history: ["normal", { weekday: "int", percent: "int", weeks: "int" }],

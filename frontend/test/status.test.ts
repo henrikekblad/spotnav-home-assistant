@@ -227,6 +227,44 @@ describe("the status line renders the block and nothing else", () => {
     expect(issuesOf(topOff, "en")).toEqual([]);
   });
 
+  it("says the car charges on after a missed departure, and where that charge ended short", () => {
+    const target = block(
+      statusLine("charging_after_departure", {
+        target: 100, level: 68.4, until: "2026-09-22T07:00:00+00:00", kwh: null, requested_kwh: null,
+      }),
+    );
+    expect(statusText(target, format("sv"), NOW)).toBe(
+      "Laddar efter avresan: målet nåddes inte (68 % av 100 %, som längst till 09:00).",
+    );
+    expect(statusText(target, format("en"), NOW)).toBe(
+      "Charging after the departure: the target was not reached (68 % of 100 %, at most until 09:00).",
+    );
+    const energy = block(
+      statusLine("charging_after_departure", {
+        target: null, level: null, until: "2026-09-22T07:00:00+00:00", kwh: 12, requested_kwh: 20,
+      }),
+    );
+    expect(statusText(energy, format("en"), NOW)).toBe(
+      "Charging after the departure: the target was not reached (12 of 20 kWh, at most until 09:00).",
+    );
+    const ended = block(
+      statusLine("nothing_to_charge"),
+      statusLine("not_reached_after_departure", { target: 100, level: 85, kwh: null, requested_kwh: null }),
+    );
+    expect(statusText(ended, format("sv"), NOW)).toContain(
+      "Målet nåddes inte: laddningen efter avresan slutade vid 85 % av 100 %.",
+    );
+    for (const language of ["da", "de", "es", "fi", "fr", "nb", "nl"] as const) {
+      for (const shown of [target, energy, ended]) {
+        const text = statusText(shown, format(language), NOW);
+        expect(text).not.toMatch(/\{\w+\}/);
+        expect(text).not.toContain("status.");
+      }
+    }
+    expect(issuesOf(target, "en")).toEqual([]);
+    expect(issuesOf(ended, "en")).toEqual([]);
+  });
+
   it("names the phases that make the site measurement unusable, and where they are read from", () => {
     const empty = block(
       statusLine("waiting_for_tomorrow"),
