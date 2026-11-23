@@ -5,6 +5,7 @@
 //
 // * A bar is an hour of a day, a day of a month or a month of a year, in kWh or in money (a switch, remembered per
 //   card in this browser; without a priced hour there is no switch and the bars are kWh).
+// * The pool, the spa and the sauna are parts of their own where SpotNav counts them (when they ran, at their power).
 // * The parts are legend toggles (pressed: drawn), each with its period sum in the unit shown. Which are hidden is
 //   remembered per card in this browser.
 // * The headline is what SpotNav saved on heat over the period, the figure the house card's earnings count as "Heat"
@@ -36,6 +37,9 @@ const KIND_WORDS: Record<Exclude<HeatPart["kind"], "zone">, TranslationKey> = {
   pump: "heat.use.part.pump",
   hot_water: "heat.use.part.hotWater",
   other: "heat.use.part.other",
+  pool: "heat.use.part.pool",
+  spa: "heat.use.part.spa",
+  sauna: "heat.use.part.sauna",
 };
 
 /** A part's name: a zone's own, else the card's words for its kind. */
@@ -235,6 +239,9 @@ export function useNotes(language: Language, answer: HeatHistory, unit: UseUnit)
   if (shownUnit(answer, unit) === "money") {
     notes.push(translate(language, "hist.heat.footnote"));
   }
+  if (answer.parts.some((part) => part.kind === "pool" || part.kind === "spa" || part.kind === "sauna")) {
+    notes.push(translate(language, "heat.use.loadsNote"));
+  }
   return notes;
 }
 
@@ -319,6 +326,9 @@ export const USE_STYLES = `
   [data-series="use-zone-1"] { --spotnav-tile-colour: #8e6bbf; }
   [data-series="use-zone-2"] { --spotnav-tile-colour: #4c9f70; }
   [data-series="use-zone-3"] { --spotnav-tile-colour: #c06c9a; }
+  [data-series="use-pool"] { --spotnav-tile-colour: var(--spotnav-heat-use-pool-colour, #2fa39a); }
+  [data-series="use-spa"] { --spotnav-tile-colour: var(--spotnav-heat-use-spa-colour, #c4703f); }
+  [data-series="use-sauna"] { --spotnav-tile-colour: var(--spotnav-heat-use-sauna-colour, #8c5a3a); }
   [data-series="use-other"] { --spotnav-tile-colour: color-mix(in srgb, var(--secondary-text-color, #727272) 70%, transparent); }
   .${U.head} {
     display: flex;

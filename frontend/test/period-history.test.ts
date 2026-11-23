@@ -355,7 +355,7 @@ describe("the heat history", () => {
     expect(old.ok && old.value.parts).toEqual([]);
     expect(old.ok && old.value.saving).toBeNull();
     expect(old.ok && old.value.buckets[0]!.parts).toEqual([]);
-    expect(decodeHeatHistory({ ...raw, parts: [{ key: "x", kind: "sauna", name: null, kwh: 1, cost: null }] }).ok).toBe(false);
+    expect(decodeHeatHistory({ ...raw, parts: [{ key: "x", kind: "boat", name: null, kwh: 1, cost: null }] }).ok).toBe(false);
     expect(decodeHeatHistory({ ...raw, saving: { value: "1", days: 1 } }).ok).toBe(false);
   });
 
