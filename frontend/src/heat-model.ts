@@ -68,10 +68,61 @@ const CONFIG = O({
   indoor_offsets: A(O({ entity_id: "string", offset_c: "number" })),
   control_enabled: "boolean",
   water_heater: N(O({ entity_id: "string", control: "boolean", tank_sensor: N("string") })),
+  pool: N(
+    O({
+      heat_pump: N(O({ entity_id: "string", shape: "string", switch_id: N("string"), number_id: N("string") })),
+      circulation_id: N("string"),
+      water_sensor: N("string"),
+      target_c: "number",
+      season_open: "boolean",
+      filter_hours: N("number"),
+      heat_pump_kw: N("number"),
+      circulation_kw: N("number"),
+      control_heat_pump: "boolean",
+      control_circulation: "boolean",
+    }),
+  ),
+  spa: N(
+    O({
+      entity_id: "string",
+      family: "string",
+      bath_c: "number",
+      idle_c: "number",
+      floor_c: "number",
+      baths: A(O({ weekdays: A("number"), time: "string" })),
+      bath_once: N("string"),
+      heater_kw: N("number"),
+      control: "boolean",
+    }),
+  ),
+  heat_notifications: O({ targets: A("string"), events: A("string") }),
   heat_meter_entity: N("string"),
 });
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
 const ZONE_CHOICE = O({ entity_id: "string", name: "string", value: N("string"), kind: "string" });
+/** A detected candidate: how sure the detection is (`ask`: the settings ask the person once). */
+const RANKED_CHOICE = O({ entity_id: "string", name: "string", value: N("string"), score: "number", ask: "boolean" });
+const POOL_PUMP_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  shape: "string",
+  switch_id: N("string"),
+  number_id: N("string"),
+  cloud: "boolean",
+});
+const SPA_CHOICE = O({
+  entity_id: "string",
+  name: "string",
+  value: N("string"),
+  score: "number",
+  ask: "boolean",
+  family: "string",
+  controllable: "boolean",
+  cloud: "boolean",
+});
 const RUN = O({ start: "string", end: "string", kwh: "number" });
 const EFFECT = O({ lower_share: "number", rebound: "number", blocks: "number" });
 const COMFORT = { coldest_min_c: N("number"), minutes_below: "number" } as const;
@@ -341,6 +392,23 @@ const ANSWER = O({
       meter: N(A(CHOICE)),
       water_heater: A(CHOICE),
       tank_sensor: A(CHOICE),
+      pool: N(
+        O({
+          heat_pump: A(POOL_PUMP_CHOICE),
+          circulation: A(RANKED_CHOICE),
+          water_sensor: A(RANKED_CHOICE),
+          suggested: N(
+            O({
+              heat_pump: O({ entity_id: "string", shape: "string", switch_id: N("string"), number_id: N("string") }),
+              circulation_id: N("string"),
+              water_sensor: N("string"),
+              ask: "boolean",
+            }),
+          ),
+        }),
+      ),
+      spa: A(SPA_CHOICE),
+      phones: A(O({ service: "string", name: "string" })),
     }),
   ),
   relay: N(
@@ -415,7 +483,62 @@ export interface HeatConfig {
   control_enabled: boolean;
   /** A plain water heater's switch, the opt-in to let SpotNav switch it, and an optional tank sensor. */
   water_heater: HeatWaterHeaterConfig | null;
+  /** The pool: its heat pump, circulation pump and water sensor, the wanted temperature and the opt-ins. */
+  pool: HeatPoolConfig | null;
+  /** The spa: its bath and idle temperatures, the bath times and the opt-in. */
+  spa: HeatSpaConfig | null;
+  /** The heat card's phones and the events they hear (`plan_at_risk`, `pool_season`). */
+  heat_notifications: { targets: string[]; events: string[] };
   heat_meter_entity: string | null;
+}
+
+export interface HeatPoolHeatPump {
+  entity_id: string;
+  /** "climate" or "switch_number" (core Tuya's pool heat pump: a switch and a temperature number). */
+  shape: string;
+  switch_id: string | null;
+  number_id: string | null;
+}
+
+export interface HeatPoolConfig {
+  heat_pump: HeatPoolHeatPump | null;
+  circulation_id: string | null;
+  water_sensor: string | null;
+  target_c: number;
+  season_open: boolean;
+  /** `null`: the filtering hours follow the water temperature. */
+  filter_hours: number | null;
+  heat_pump_kw: number | null;
+  circulation_kw: number | null;
+  control_heat_pump: boolean;
+  control_circulation: boolean;
+}
+
+export interface HeatSpaConfig {
+  entity_id: string;
+  family: string;
+  bath_c: number;
+  idle_c: number;
+  floor_c: number;
+  /** Weekly bath times: weekdays (Monday 0) and the local time. */
+  baths: { weekdays: number[]; time: string }[];
+  bath_once: string | null;
+  heater_kw: number | null;
+  control: boolean;
+}
+
+/** A detected candidate in the settings (`ask`: below 0.9, the person confirms it once). */
+export interface HeatRankedChoice extends HeatChoice {
+  score: number;
+  ask: boolean;
+}
+
+export interface HeatPoolChoices {
+  heat_pump: (HeatRankedChoice & { shape: string; switch_id: string | null; number_id: string | null; cloud: boolean })[];
+  circulation: HeatRankedChoice[];
+  water_sensor: HeatRankedChoice[];
+  /** The one-time grouping the pool block is filled from; `null` once a pool is saved. */
+  suggested: { heat_pump: HeatPoolHeatPump; circulation_id: string | null; water_sensor: string | null; ask: boolean } | null;
 }
 
 export interface HeatWaterHeaterConfig {
@@ -684,6 +807,9 @@ export interface HeatAnswer {
     meter: HeatChoice[] | null;
     water_heater: HeatChoice[];
     tank_sensor: HeatChoice[];
+    pool: HeatPoolChoices | null;
+    spa: (HeatRankedChoice & { family: string; controllable: boolean; cloud: boolean })[];
+    phones: { service: string; name: string }[];
   } | null;
   relay: HeatRelay | null;
   review: HeatReview | null;

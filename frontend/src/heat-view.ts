@@ -217,9 +217,20 @@ export function whenLabel(language: Language, answer: HeatAnswer, instantMs: num
 /** The entity names the answer knows (choices, sensors, zones, meter), for the settings rows. */
 export function namesOf(answer: HeatAnswer): Map<string, string> {
   const names = new Map<string, string>();
-  for (const group of Object.values(answer.choices ?? {})) {
-    for (const choice of (group as HeatChoice[] | null) ?? []) {
-      names.set(choice.entity_id, choice.name);
+  const choices = answer.choices;
+  const groups: unknown[] = Object.values(choices ?? {});
+  if (choices?.pool) {
+    groups.push(choices.pool.heat_pump, choices.pool.circulation, choices.pool.water_sensor);
+  }
+  for (const group of groups) {
+    // Only the lists of entities: the pool's block and the phones are not one.
+    if (!Array.isArray(group)) {
+      continue;
+    }
+    for (const choice of group as Partial<HeatChoice>[]) {
+      if (typeof choice.entity_id === "string" && typeof choice.name === "string") {
+        names.set(choice.entity_id, choice.name);
+      }
     }
   }
   for (const sensor of answer.indoor.sensors) {
