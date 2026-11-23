@@ -148,8 +148,12 @@ GATE_PERSON_RESUME: Final = "person_resume"
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
-#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the regulator no
-#: sooner than this many seconds after the last such stop, so a fuse that keeps needing the stop never cycles it.
+#: A charge load balancing stopped for safety (not its below-floor pause) is held back for the regulator's resume when
+#: it was a person's, the plan's or a top-off's (2.5.7: before, only a person's, and a plan's charge stopped for the
+#: fuse waited for the next window however much room came back). Another owner's is not held, as before.
+SAFETY_STOP_HELD: Final = frozenset({OWNER_PERSON, OWNER_PLAN, OWNER_TOP_OFF})
+#: Such a charge is resumed by the regulator no sooner than this many seconds after the last such stop (and then only
+#: with its margin and dwell, within its resume limit), so a fuse that keeps needing the stop never cycles it.
 SAFETY_RESUME_GAP_S: Final = 300.0
 #: How far the car's level must have dropped since it ended a charge for its need to have grown: the hysteresis the
 #: sun's rules use (`execution/solar_execution.SOC_DROP_PCT`, which is this one).
@@ -1209,10 +1213,11 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         elif (
             pending.was_on
             and pending.owner_before != OWNER_NONE
-            and (pending.code == "pause" or pending.owner_before == OWNER_PERSON)
+            and (pending.code == "pause" or pending.owner_before in SAFETY_STOP_HELD)
         ):
-            # Load balancing holds the charge back (a safety stop of a person's charge too, P3): its regulator
-            # gives it back what it was. Never a charge whose owner was cleared (the window's end, a new plan,
+            # Load balancing holds the charge back (a safety stop of a person's, the plan's or a top-off's charge
+            # too, P3 and 2.5.7): its regulator gives it back what it was, a safety stop no sooner than its gap and
+            # with its margin and dwell. Never a charge whose owner was cleared (the window's end, a new plan,
             # while the charger had not answered a stop of ours): a repeat pause of it holds back nothing wanted.
             origin = pending.owner_before if pending.owner_before in SPOTNAV_OWNERS else None
             safety = pending.code != "pause"

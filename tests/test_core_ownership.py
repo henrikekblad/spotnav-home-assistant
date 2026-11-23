@@ -1154,14 +1154,23 @@ def test_i4_a_self_started_charge_without_surplus_is_stopped_at_the_first_readin
         ("solar", "pause", True, "solar", False),
         ("charger_self", "pause", True, None, False),
         ("person", "safety_stop", True, "person", True),
-        ("plan", "safety_stop", True, False, False),
+        # 2.5.7: the plan's and a top-off's charge stopped for safety are held back as a person's is.
+        ("plan", "safety_stop", True, "plan", True),
+        ("top_off", "safety_stop", True, "top_off", True),
+        # Any other owner's safety stop holds nothing back, as before.
+        ("solar", "safety_stop", True, False, False),
+        ("charge_now", "safety_stop", True, False, False),
+        ("min_soc", "safety_stop", True, False, False),
+        ("charger_self", "safety_stop", True, False, False),
+        ("plan", "safety_stop", False, False, False),
         ("plan", "pause", False, False, False),
         # The owner already cleared (the window's end while a stop of ours was unanswered): nothing is held back.
         ("none", "pause", True, False, False),
     ],
 )
 def test_a_balancing_stop_remembers_the_charge_it_holds_back(owner, code, was_on, remembered, safety) -> None:
-    """P3: a safety stop of a person's charge is remembered like the pause; nothing else's is."""
+    """P3: a safety stop of a person's charge is remembered like the pause, and (2.5.7) of the plan's and a top-off's;
+    nothing else's is."""
     session, commands = run(
         ChargeSession(owner=owner),
         ev.BalancingPause(code=code, was_on=was_on),
@@ -1206,6 +1215,20 @@ def test_a_balancing_stop_remembers_the_charge_it_holds_back(owner, code, was_on
                 safety_stopped_at=T0 - timedelta(seconds=SAFETY_RESUME_GAP_S),
             ),
             True,
+        ),
+        # 2.5.7: the plan's and a top-off's charge stopped for safety keep the same gap.
+        *(
+            (
+                ChargeSession(
+                    balancing_paused=True,
+                    paused_origin=origin,
+                    held_for_safety=True,
+                    safety_stopped_at=T0 - timedelta(seconds=gap),
+                ),
+                resumes,
+            )
+            for origin in ("plan", "top_off")
+            for gap, resumes in ((SAFETY_RESUME_GAP_S - 1, False), (SAFETY_RESUME_GAP_S, True))
         ),
     ],
 )
