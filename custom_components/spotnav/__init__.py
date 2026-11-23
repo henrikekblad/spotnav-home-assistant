@@ -42,6 +42,7 @@ from .api.manual_action import async_setup_manual_action_api
 from .api.import_target import async_setup_import_target_api
 from .api.detected import async_setup_detected_api
 from .api.heat import async_setup_heat_api, forget_cached_heat
+from .api.pool_spa import async_setup_pool_spa_api
 from .api.heat_history import async_setup_heat_history_api, forget_cached_heat_history
 from .api.house import async_setup_house_api, forget_cached_flow
 from .api.plan import async_setup_plan_api
@@ -157,6 +158,7 @@ from .battery.runtime import BatteryShadow
 from .loads.runtime import SwitchLoadShadow
 from .site.solar_correction_shadow import SiteSolarCorrection
 from .site.solar_shadow import SiteSolarShadow
+from .pool.runtime import PoolSpaShadow
 from .heat.control import HeatControl
 from .heat.runtime import HeatShadow
 from .site.site_capacity_controller import (
@@ -261,6 +263,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_plan_api(hass)
     async_setup_house_now_api(hass)
     async_setup_heat_api(hass)
+    async_setup_pool_spa_api(hass)
     async_setup_house_history_api(hass)
     async_setup_house_loads_api(hass)
     async_setup_heat_history_api(hass)
@@ -1041,6 +1044,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteSolarShadow.async_remove_stored(hass, entry.entry_id)
         await HeatShadow.async_remove_stored(hass, entry.entry_id)
         await HeatControl.async_remove_stored(hass, entry.entry_id)
+        await PoolSpaShadow.async_remove_stored(hass, entry.entry_id)
         await HardwareTest.async_remove_stored(hass, entry.entry_id)
         await ChargerTestHold.async_remove_stored(hass, entry.entry_id)
         return
