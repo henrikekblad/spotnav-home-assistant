@@ -262,8 +262,9 @@ START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 #: (`_async_unheld_check_callback`): off by that pause, with no pause on record for the regulator to resume and nothing
 #: else holding it, the window's start is decided again (its retries, `START_RETRY_AFTER_S`), at most once per window.
 #: While a command of ours is still on its way it is looked at again, at most `UNHELD_CHECK_TRIES` times; a charger
-#: still reading on is looked at once more. Never after a safety stop: a plan's charge it stopped is held back on
-#: purpose, so a fuse that keeps needing the stop never cycles the charger.
+#: still reading on is looked at once more. Never after a safety stop: the core holds a plan's charge it stopped back
+#: for the regulator's resume (its gap, margin, dwell and resume limit), so a fuse that keeps needing the stop never
+#: cycles the charger.
 UNHELD_CHECK_S: Final = 90.0
 UNHELD_CHECK_TRIES: Final = 3
 #: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
@@ -4365,8 +4366,9 @@ class ChargingController:
                 # Saved soon once decided: the core's session, and today's `balancing_pause` key derived from it.
                 self._save_memory_soon()
                 # Looked at again later: a charge this paused in an open window is either held back for the
-                # regulator's resume or started again by its window. Never after a safety stop, which the core
-                # holds nothing back for on purpose: starting it again would cycle the charger against the fuse.
+                # regulator's resume or started again by its window. Never after a safety stop: the core holds a
+                # person's, the plan's or a top-off's charge back for the regulator's resume, no sooner than its
+                # gap, and starting any other again would cycle the charger against the fuse.
                 if code == "pause":
                     self._arm_unheld_check()
                 else:
