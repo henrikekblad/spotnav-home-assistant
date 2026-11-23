@@ -163,6 +163,7 @@ NAMES: dict[str, str] = {
     "cozify_han": "Cozify HAN",
     "zha": "frient EMIZB-132 (ZHA)",
     "zendure_ha": "Zendure",
+    "omnibattery": "Omnibattery",
     "anker_solix": "Anker Solix",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
@@ -936,6 +937,14 @@ OVERVIEW: tuple[Overview, ...] = (
         "the device has no timeout and its own HEMS or the integration's Zendure Manager overrides local writes",
         note="With several devices on one account only one is read. The charge rating is learnt. The mode is read "
         "from the Zendure Manager, the HEMS state and the level calibration.",
+    ),
+    Overview(
+        "Omnibattery (Marstek, Zendure, Anker, Sessy, Hoymiles, Indevolt)",
+        "`omnibattery`, HACS (ffunes/Omnibattery)",
+        keys=("omnibattery",),
+        adapter="omnibattery",
+        control="Not mapped: read only. Omnibattery is itself a battery controller, so SpotNav only watches it",
+        note="The whole system is read as one battery, from its system entities. The size and ratings are learnt.",
     ),
     Overview(
         "Anker Solix (Solarbank)",

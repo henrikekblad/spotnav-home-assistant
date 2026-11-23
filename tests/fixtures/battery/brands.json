@@ -2549,5 +2549,98 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "omnibattery": {
+  "_source": "ffunes/Omnibattery e60eb4f (1.6.1): system aggregates `marstek_venus_system_<key>` (infra/entity_naming.py, sensors/aggregate_sensors.py). Not a real registry; built from the source.",
+  "platform": "omnibattery",
+  "manufacturer": null,
+  "battery": "sensor.omnibattery_system_battery_cell_power",
+  "entities": [
+   {
+    "entity_id": "sensor.omnibattery_system_battery_cell_power",
+    "unique_id": "marstek_venus_system_system_battery_cell_power",
+    "device": "sys",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_soc",
+    "unique_id": "marstek_venus_system_system_soc",
+    "device": "sys",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_total_energy",
+    "unique_id": "marstek_venus_system_system_total_energy",
+    "device": "sys",
+    "state": "10.24",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_charge_power",
+    "unique_id": "marstek_venus_system_system_charge_power",
+    "device": "sys",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_discharge_power",
+    "unique_id": "marstek_venus_system_system_discharge_power",
+    "device": "sys",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_daily_charging_energy",
+    "unique_id": "marstek_venus_system_system_daily_charging_energy",
+    "device": "sys",
+    "state": "3.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.omnibattery_system_daily_discharging_energy",
+    "unique_id": "marstek_venus_system_system_daily_discharging_energy",
+    "device": "sys",
+    "state": "1.1",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.marstek_a_battery_soc",
+    "unique_id": "marstek_a_battery_soc",
+    "device": "a",
+    "state": "60",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "omnibattery",
+   "soc_pct": 64.0,
+   "capacity_kwh": 10.24,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

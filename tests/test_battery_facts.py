@@ -465,6 +465,8 @@ PLAN_REASON = {
     "zendure": "no_rated_power",
     # Sungrow's package states the size and the converter's rating: the plan has all it needs.
     "sungrow": None,
+    # Omnibattery states the system's level and size and no rating: learnt.
+    "omnibattery": "no_rated_power",
 }
 
 
