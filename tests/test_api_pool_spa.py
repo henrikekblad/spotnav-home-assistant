@@ -112,6 +112,29 @@ async def test_the_shadow_keeps_its_days_and_extra_over_a_restart(hass: HomeAssi
     assert again.water_days == shadow.water_days and list(again.water_days.values())[0] == [24.6, 24.6]
 
 
+async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant) -> None:
+    """The circulation and the heat pump as they really run, at their entered powers, into their UTC hours; a gap over
+    two minutes is not counted; the hours are kept over a restart."""
+    _charger, _site_entry, controller = await _site(hass)
+    shadow = controller.pool_spa
+    start = dt_util.utcnow().replace(minute=59, second=0, microsecond=0)
+    shadow.tick(start)
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "heating", "current_temperature": 24.0})
+    shadow.tick(start + timedelta(minutes=2))
+    hours = shadow.energy_hours("pool")
+    first = start.replace(minute=0)
+    # One minute in each hour at 0.4 + 1.6 kW.
+    assert hours == {first: 2.0 / 60, first + timedelta(hours=1): 2.0 / 60}
+    shadow.tick(start + timedelta(minutes=10))
+    assert shadow.energy_hours("pool") == hours
+    from custom_components.spotnav.pool.runtime import PoolSpaShadow
+
+    again = PoolSpaShadow(hass, controller)
+    again._restore(shadow._book_data(), dt_util.now())  # noqa: SLF001
+    assert again.energy_hours("pool") == {moment: round(kwh, 4) for moment, kwh in hours.items()}
+
+
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [0, 1, 2, 3, 4, 5, 6], "time": "19:00"}]}
 SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
 

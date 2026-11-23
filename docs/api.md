@@ -928,7 +928,8 @@ The dial and home or away are everyone's, whatever `writable` says.
 **`get_heat_history`** answers one day, month or year of the heating (`heat/history.py` has the shape): `energy`,
 `buckets` (an hour, a day or a month each, with its `parts` and `saving`), `parts`, `saving`, `degree_days`,
 `comfort`, `shadow`, `runs`, `review`, `indoor_day`, `model` and `money`. `period` and `date` as
-`get_house_history`'s.
+`get_house_history`'s. A part's `kind` is `pump`, `hot_water`, `zone`, `other`, or `pool`, `spa` and `sauna`: those
+loads' energy as SpotNav counted it from when they ran and their entered (or a typical) power, kept 14 days.
 
 **`update_heat`** writes the everyday choices of the heat card, judged as `spotnav/update_heat` judges them:
 
