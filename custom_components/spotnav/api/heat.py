@@ -349,7 +349,7 @@ def write_heat(
     if controller is not None and (control := getattr(controller, "heat_control", None)) is not None:
         # The heat control looks at once: turned off or the relay changed, it opens what it holds right away.
         control.request_look()
-    for name in ("zones_control", "water_heater_control", "pool_spa"):
+    for name in ("zones_control", "water_heater_control", "pool_spa", "pool_spa_control"):
         # The zones and the water heater too: an opt-in turned off gives back at once (the pool and spa plan again).
         if controller is not None and (part := getattr(controller, name, None)) is not None:
             part.request_look()
