@@ -2749,7 +2749,8 @@ def _catch_up_facts(snapshot: AutoSnapshot | None, soc: CapturedSoc | None) -> C
     else:
         live = None if soc is None else finite_number(soc.value)
         level = record.level_percent if live is None else live
-        delivered = finite_number(snapshot.delivered_kwh) if snapshot is not None else None
+        # The count since the departure (the next departure's), which the catch-up's energy is part of.
+        delivered = finite_number(snapshot.delivered_kwh) if snapshot.energy_basis == "register" else None
         kwh = record.requested_kwh - record.short_kwh + (delivered or 0.0)
     return CatchUpFacts(
         until=_utc(record.end) or record.end,

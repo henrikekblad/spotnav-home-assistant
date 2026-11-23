@@ -1840,9 +1840,14 @@ class AutoPlannerController:
         # The plan's deadline is the catch-up's own end: a top-off after its period never runs past it.
         energy["departure_at"] = record.until
         energy["catch_up"] = record
-        if record.energy_need and isinstance(resolved, _EnergyResolution) and resolved.basis == "register":
-            # The energy counted since the departure, toward the catch-up and the next departure alike.
-            energy["delivered_kwh"] = resolved.delivered_kwh
+        if isinstance(resolved, _EnergyResolution) and resolved.basis is not None:
+            # The next departure's count, as ever: what it delivers counts toward the catch-up and the next departure
+            # alike. The battery's room stays out: it is not what the catch-up's plan is for.
+            energy.update(
+                energy_basis=resolved.basis,
+                remaining_kwh=resolved.kwh if resolved.uncapped_kwh is None else resolved.uncapped_kwh,
+                delivered_kwh=resolved.delivered_kwh,
+            )
         # Its end, planned again: the plan for the next departure takes over then.
         self._arm_wake(record.end)
         if not await self._persist_proposal(settings, snapshot):
