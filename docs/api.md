@@ -1293,6 +1293,17 @@ to; a fact line after `charging_to_vehicle_limit` under a solar or hybrid headli
 stays, and the execution state is `active`. A charge the car ended this way is notified as *Charging
 complete: the car is full*; one that reached the hour ends as the window's end would have.
 
+**Charging after a missed departure.** When the departure passes with the plan's need not met, the car plugged in
+and Auto not paused, the plan charges on at once (`execution/catch_up.py`): one period from the departure to at most
+three hours after it, installed as any plan (`planning.departure_at` is then that end). Meanwhile the status headline
+is `charging_after_departure` (`target` and `level`, percent, for a target; `kwh` delivered toward the missed need
+and `requested_kwh` for an amount, the others null; `until`, the latest instant it may run to), in place of
+`charging_now` and, under hybrid, of the hybrid line. One that reaches its end still short adds the fact line
+`not_reached_after_departure` (`target`, `level`, `kwh`, `requested_kwh`, as above) until the car is unplugged, the
+need reads met or another departure passes; there is no notification. The webhook gives an app `charging_now`
+(`until`) in place of the headline and leaves the fact line out unless the request asks for them
+(`"reads": ["charging_after_departure"]`). An older client that does not know the codes refuses the document.
+
 The additive `charger_priority` block is this charger's place in its site's order, which capacity
 allocation and solar surplus both follow: `null` for a charger on no site, else `{"value": "first" |
 "normal" | "last", "choices": ["first", "normal", "last"], "writable": bool}`. `writable` is true over
