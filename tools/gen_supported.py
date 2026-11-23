@@ -164,7 +164,13 @@ NAMES: dict[str, str] = {
     "zha": "frient EMIZB-132 (ZHA)",
     "zendure_ha": "Zendure",
     "anker_solix": "Anker Solix",
+    "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
+    "homevolt": "Homevolt",
+    "kostal_plenticore": "Kostal Plenticore",
+    "kostal_modbus_control": "Kostal Plenticore (Modbus)",
+    "ef_powerocean_tcpmodbus": "EcoFlow PowerOcean (Modbus)",
+    "ecoflow_energy": "EcoFlow (ecoflow_energy)",
     "marstek_local_api": "Marstek (local API)",
     "marstek_modbus": "Marstek (Modbus)",
     # vehicles
@@ -791,8 +797,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "Fronius (GEN24 with BYD)",
         "`fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
         keys=("fronius",),
+        adapter="fronius",
         control="Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve)",
-        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute.",
+        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute. "
+        "The ratings, the floor and the counters are read only where the inverter accepts control over Modbus; the "
+        "size is the battery's designed capacity.",
     ),
     Overview(
         "Victron (GX with ESS)",
@@ -828,11 +837,14 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Deye, Sunsynk, Sol-Ark",
-        "`solarman`, HACS (davidrapan/ha-solarman). Not read: the sunsynk add-on (kellerza/sunsynk) and the cloud "
-        "integrations",
-        keys=("solarman",),
-        control="Not mapped. Work mode and programme slots are written in community setups, not confirmed",
-        note="No battery level or size is read yet.",
+        "`solarman`, HACS (davidrapan/ha-solarman); the Sunsynk add-on (kellerza/sunsynk) over MQTT. Not read: the "
+        "cloud integrations",
+        keys=("solarman", "mqtt/sunsynk"),
+        adapter="deye",
+        control="Not mapped: read only. Work mode and programme slots are written in community setups, not confirmed",
+        note="Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
+        "`solarman` has learnt it, and the ratings and the floor are learnt. The mode is read from the time-of-use "
+        "setting: with it on, the inverter runs its own programmes.",
     ),
     Overview(
         "Solis",
@@ -904,22 +916,35 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Homevolt (Tibber)",
-        "`homevolt`, Home Assistant core: not read",
-        control="Not mapped. Battery mode, a power setpoint and grid limits exist locally",
-        note="The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards.",
+        "`homevolt`, Home Assistant core",
+        keys=("homevolt",),
+        adapter="homevolt",
+        control="Not mapped: read only. Battery mode, a power setpoint and grid limits exist locally",
+        note="The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards. The battery is the "
+        "person's only while Local mode is on. The size and ratings are learnt.",
     ),
     Overview("HomeWizard (its battery)", "`homewizard`, Home Assistant core", keys=("homewizard",)),
     Overview(
         "Zendure (SolarFlow, Hyper, AIO)",
         "`zendure_ha`, HACS (Zendure/Zendure-HA)",
         keys=("zendure_ha",),
-        note="With several devices on one account only one is read.",
+        adapter="zendure",
+        control="Not mapped: read only. Charge and discharge limits with an AC mode exist on the newer SolarFlow; "
+        "the device has no timeout and its own HEMS or the integration's Zendure Manager overrides local writes",
+        note="With several devices on one account only one is read. The charge rating is learnt. The mode is read "
+        "from the Zendure Manager, the HEMS state and the level calibration.",
     ),
     Overview(
         "Anker Solix (Solarbank)",
-        "`anker_solix`, HACS (thomluther/ha-anker-solix)",
-        keys=("anker_solix",),
-        note="Read from Anker's cloud, a minute or more between values.",
+        "`anker_solix`, HACS (thomluther/ha-anker-solix); `anker_solix_official`, HACS "
+        "(anker-charging/ha-anker-solix-official, Solarbank Max AC, Max, XE and 4 E5000 Pro)",
+        keys=("anker_solix", "anker_solix_official"),
+        adapter="anker",
+        control="Not mapped: read only. The official integration has a power setpoint in third-party control with no "
+        "timeout, and below its backup reserve the unit grid-charges by itself",
+        note="The cloud integration is read from Anker's cloud, a minute or more between values, and only its power "
+        "is read. The official one is read for level, size and mode; its energy counters under-count, so the ratings "
+        "and the round trip are learnt.",
     ),
     Overview(
         "EcoFlow (PowerStream, Ocean Pro)",
@@ -928,9 +953,31 @@ OVERVIEW: tuple[Overview, ...] = (
         note="PowerOcean and Stream batteries are not read.",
     ),
     Overview(
+        "EcoFlow (PowerOcean)",
+        "`ef_powerocean_tcpmodbus`, HACS (MaxGrmm/EF-PowerOcean-TcpModbus); `ecoflow_energy`, HACS "
+        "(shuette42/ecoflow-energy-ha)",
+        keys=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
+        adapter="ecoflow",
+        control="Not mapped: read only. Local Modbus has a battery power setpoint under a heartbeat the inverter drops "
+        "after a minute, and it locks the EcoFlow app meanwhile; Modbus is first enabled by EcoFlow's support or the "
+        "installer",
+        note="The ratings are learnt. The size is read over Modbus only.",
+    ),
+    Overview(
+        "Kostal (Plenticore plus)",
+        "`kostal_plenticore`, Home Assistant core; `kostal_modbus_control`, HACS (mbuhansen/kostal_plenticore_battery_control)",
+        keys=("kostal_plenticore", "kostal_modbus_control"),
+        adapter="kostal",
+        control="Not mapped: read only. Control is Modbus (port 1502) and needs the installer's setting \"External via "
+        "protocol\" and its timeout; the inverter hands back by itself when the writes stop",
+        note="The size is read through the Modbus integration only, and the ratings are learnt. The mode is read "
+        "only when the Modbus integration's Battery Management Mode is enabled.",
+    ),
+    Overview(
         "Marstek (Venus E, C, D, A)",
         "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api); `marstek_modbus`, HACS "
-        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek)",
+        "(ViperRNMC/marstek_venus_modbus). Not read: the official `marstek` (MarstekEnergy/ha_marstek), whose battery "
+        "power has no direction",
         keys=("marstek_local_api", "marstek_modbus"),
         adapter="marstek",
         control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "

@@ -821,6 +821,16 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         reject=_re(r"(?:solarbank|pps)_battery_power_signed$"),
         label="Anker Solix, one device",
     ),
+    # Anker's own local integration (`anker_solix_official`, `a9930d7`): one register (10008, positive = discharging)
+    # split into two non-negative sensors, `<entry id>_battery_charging_power` (its negative values, shown positive) and
+    # `<entry id>_battery_discharging_power` (its positive values), per the YAML profile's `power_split_mode`. One
+    # entry per device: a site with several Solarbanks reads the first.
+    BatteryRow(
+        ("anker_solix_official",),
+        _re(r"_battery_charging_power$"),
+        discharge_regex=_re(r"_battery_discharging_power$"),
+        label="Anker Solix (local, official)",
+    ),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery
@@ -830,6 +840,37 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # Ocean Pro's "Battery Power" (`ocean_batt_pwr`) is the inverter's own figure, "+ charge / - discharge"
     # (`devices/internal/ocean_pro.py` L469, L692).
     BatteryRow(("ecoflow_cloud",), _re(r"-ocean-batt-pwr$"), label="EcoFlow Ocean Pro"),
+    # PowerOcean over local Modbus (`ef_powerocean_tcpmodbus`, MaxGrmm `56331de`): `<entry id>_battery_power`
+    # (40525), charge-positive: the integration's own "charge battery" control has sign +1 on it
+    # (`powerocean/const.py` L170-L176), and evcc negates it into its discharge-positive power.
+    BatteryRow(("ef_powerocean_tcpmodbus",), _re(r"(?:^|_)battery_power$"), label="EcoFlow PowerOcean (Modbus)"),
+    # The same inverter through `ecoflow_energy` (shuette42 `771b646`): `<device sn>_batt_w`, the system battery power
+    # "the app shows (positive = charging)" (`stream_proto.py` L28; the Modbus register 0x020C is read as it is). The
+    # `unit_batt_w` of a STREAM unit and the per-inverter `inverter_<n>_batt_w` are not the system's: the serial has
+    # no underscore, so only the unique id with one is read.
+    BatteryRow(("ecoflow_energy",), _re(r"^[^_]+_batt_w$"), label="EcoFlow PowerOcean and STREAM (ecoflow_energy)"),
+    # Kostal Plenticore. Core `kostal_plenticore`: `<entry id>_devices:local:battery_P` (the REST process value
+    # `devices:local:battery`.`P`), read as discharge-positive: Predbat's Kostal template feeds `scb_battery_power` to
+    # its discharge-positive battery power without inverting it (`templates/kostal.yaml` L127). The Modbus integration
+    # (`kostal_modbus_control`, mbuhansen 4.3.0) reads register 582, "negative=charge" (`const.py` L124). Sign
+    # unverified on hardware: the research found no owner's reading.
+    BatteryRow(("kostal_plenticore",), _re(r"_devices:local:battery_p$"), inverted=True, label="Kostal Plenticore"),
+    BatteryRow(("kostal_modbus_control",), _re(r"_battery_power$"), inverted=True, label="Kostal Plenticore (Modbus)"),
+    # Homevolt (core `homevolt`, pyHomevolt 0.7.0): the EMS's `Power` (`<ecu id>_Power`, disabled by default), the
+    # battery's power, positive = discharge per the vendor's API document ("battery positive = discharge, grid
+    # positive = import", tibber/homevolt-local-api-doc `API_DOCUMENTATION.md`). The per-blade `<ecu id>_Homevolt battery
+    # <n> power` and the external CTs' `Power <type>` end otherwise. Sign unverified on hardware.
+    BatteryRow(("homevolt",), _re(r"^[0-9a-f]{12}_power$"), inverted=True, label="Homevolt"),
+    # kellerza's Sunsynk add-on over MQTT (`49efe3f`): `<inverter serial>_battery_power`, the signed register, "positive =
+    # discharging" (`micro_hybrid_ess.py` L31). The platform `mqtt` is every MQTT device's, so only a device that the
+    # add-on's option names Sunsynk (its default) or Deye is read.
+    BatteryRow(
+        ("mqtt",),
+        _re(r"^[^_]+_battery_power$"),
+        inverted=True,
+        device_manufacturer=("sunsynk", "deye"),
+        label="Sunsynk / Deye (kellerza add-on, MQTT)",
+    ),
     # Marstek over the local API (`marstek_local_api`, jaapp, `624881c`). The integration reads `bat_power`
     # as charging when positive and discharging when negative (`sensor.py` L146-L170), per device as
     # `<mac>_battery_power` and summed over the devices as `<macs>_system_total_power` ("Total battery

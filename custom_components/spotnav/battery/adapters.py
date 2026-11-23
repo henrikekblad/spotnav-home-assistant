@@ -132,6 +132,151 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     `max_charge_power` and `max_discharge_power` (44002/44003) are settings an outside controller writes (evcc writes
     0 there to hold), not the battery's rating, so the ratings are learnt. The battery's power `battery_power`
     (32102, or 30001) is charge-positive (`site_detection.BATTERY_ROWS`).
+  * Not read: the official `marstek` (MarstekEnergy/ha_marstek `6394e6a`, 0.3.0, `<stable id>_<key>`, `entity.py` line 32).
+    Its keys (`battery_soc`, `battery_rated_capacity`, the lower-case `device_mode`) would match, but its
+    `battery_power` is the library's `abs(bat_power)` (aiomarstek 0.2.2, `models.py` line 355), an unsigned magnitude with no
+    direction, which the site's power cannot be read from (the direction is in the separate `battery_status`, which no
+    site row reads), so no battery entity of it is found. Read 2026-11-23 (`plans/research_integrations/marstek_control_2026-11-23.md`).
+
+* EcoFlow PowerOcean, read 2026-11-23 (`plans/research_integrations/ecoflow_control_2026-11-23.md`), one adapter for two
+  integrations, read only (no control is mapped; both write a battery setpoint under a heartbeat that SpotNav does not
+  send). `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
+  `<config entry id>_<key>` (`entity.py` line 38), one entry per inverter, the keys from `definitions.py`: the level
+  `battery_soc` (line 200), the size `battery_capacity` (40552, Wh, line 241), the counters `bat_charged_total` and
+  `bat_discharged_total` (lines 585, 594), the app's reserve as the integration holds it `battery_reserve_effective`
+  (line 757, %). The mode is the enum sensor `operating_mode` (`standby`, `self_consumption`, `ai`, `telemetry.py` line
+  227), free only in `self_consumption`, and the binary sensor `modbus_control` (the heartbeat holds the control, line
+  718), free while off. `ecoflow_energy` (shuette42/ecoflow-energy-ha `771b646`, 1.28.0): `<device sn>_<key>` (`sensor.py`
+  line 337), with `soc_pct` (the system level, `stream_proto.py` line 88, `powerocean_modbus.py` line 163),
+  `batt_charge_energy_kwh` and `batt_discharge_energy_kwh`, and the cloud select `work_mode` (`self_use` free,
+  `ai_schedule` not; STREAM's `self_powered` free) and the switch `modbus_control`. The device's serial has no
+  underscore, so the sensors are matched `^<sn>_<key>$`: the entry also carries `unit_soc_pct`, `unit_batt_w` and the
+  per-inverter `inverter_<n>_...` of single units, which are not the system's. The integration states no size
+  (`batt_remaining_wh` is the energy left). Neither states a rating: `battery_charge_power_limit` and
+  `battery_discharge_power_limit` are the BMS's capability at the moment (or an app schedule's cap) and `limit_inv_power`
+  the converter's AC rating, so the ratings are learnt. The battery's power is charge-positive on both
+  (`battery_power`, 40525: the control's own sign is +1 for charge, `powerocean/const.py` line 170; `batt_w`, 0x020C:
+  "positive = charging", `stream_proto.py` line 28; `site_detection.BATTERY_ROWS`). The firmware is the device's
+  `sw_version`. The inverter has a heartbeat dead-man of its own (60 s) and the EcoFlow app locks while Modbus control
+  is on; none of it is written here.
+
+* Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
+  one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
+  integrations renew; none of it is written here). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
+  REST): sensors `<entry id>_<module id>_<data id>` (`sensor.py` line 867), the level `devices:local:battery_SoC`
+  (line 237) and the battery power `devices:local:battery_P` (line 229); the module part is why the match is on
+  `battery_soc` after `_` or `:`, and why `P` alone is never matched. The inverter's own floor is the number
+  `devices:local_Battery:MinSoc` (`number.py` line 50, 5-100 %, disabled by default). The firmware is the device's
+  `sw_version` ("IOC: .. MC: ..", `coordinator.py` line 107). Core states no size and no rating; its charge counters are
+  two (`EnergyChargeGrid` and `EnergyChargePv`, kWh, from the grid and from the panels) beside one discharge counter, so
+  no counter pair is read. The mode select `devices:local` (`select.py` line 104: "None", `SmartBatteryControl`,
+  `TimeControl`) reads "None" when the inverter's smart or timed control is off, which SpotNav takes for no reading
+  (`facts._NO_READING`), so core alone reads the mode as unknown. HACS `kostal_modbus_control` (mbuhansen
+  `3bd84ac`, 4.3.0, Modbus TCP): `<config entry id>_<key>` (`sensor.py` line 269), `battery_soc` (register 514),
+  `battery_work_capacity` (1068, Wh, `sensor.py` line 844, disabled by default; its own Predbat sensor says the
+  inverter's figure may be the gross size, so the size is the integration's own and not more), `software_version`
+  (the inverter's UI/SW, `sensor.py` line 1044, disabled by default) and `battery_mgmt_mode` (register 1080, "No external
+  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free only in the
+  first. Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
+  limits the integration itself writes (0 to block, `const.py` lines 37-38), not the battery's 1076/1078 rating: not read.
+  The battery's power is discharge-positive on both, negated by the site (core: Predbat's template uses
+  `scb_battery_power` as the discharge-positive power without inverting it, `templates/kostal.yaml` line 127; Modbus:
+  register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
+
+* Fronius (Gen24, Gen24 Plus, Tauro, Verto Plus; BYD or Reserva battery), core `fronius` (home-assistant/core `42f4a32`,
+  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`): read only (the Modbus limits and
+  their revert timer are not written here). Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
+  (`sensor.py` line 1266: `state_of_charge`, line 1069; `capacity_designed`, line 1033; only for a storage that reports
+  a serial) and `<inverter id>-modbus-<key>` for what the Modbus settings read (lines 1200-1202): the counters
+  `storage_energy_charged_total` and `storage_energy_discharged_total` (Wh, DC side, line 512), `battery_power_limit_reference`
+  (WChaMax, W, line 545, the base the integration's percent limits are of, one figure for charge and discharge), and the
+  number `battery_minimum_reserve` (`number.py` line 91, MinRsvPct, the discharge floor). They exist only where the
+  inverter accepts control over Modbus. The mode is the two switches `battery_charge_power_limit_enabled` and
+  `battery_discharge_power_limit_enabled` (`switch.py` lines 61-69, SunSpec `StorCtl_Mod`): both off is the inverter's own
+  self-consumption; a limit in force is someone's. Schedules and the Energy Cost Assistant in the inverter's web UI are
+  invisible to Home Assistant. The battery's power is discharge-positive (`power_battery`, disabled by default,
+  `sensor.py` line 926; its `power_battery_discharge` is the positive part, line 936), negated by the site. The firmware
+  is the device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's. The size is
+  the storage's *designed* capacity, not the usable or aged one; `capacity_maximum` (line 1026) is not read.
+
+* Homevolt (Tibber, Polarium), core `homevolt` (home-assistant/core `42f4a32`, pyHomevolt 0.7.0 `634bcbc`, read 2026-11-23,
+  `plans/research_integrations/homevolt_control_2026-11-23.md`): read only. Unique ids are `<ecu id>_<key>` (`sensor.py`
+  line 324; `number.py`, `select.py`, `switch.py` the same with the entity's own key), and a sensor's key is the
+  library's display key with spaces and capitals (`homevolt.py` lines 815-860: `State of Charge`, `Power`), so the match
+  is on the lower-cased `<12 hex>_state of charge`; the per-blade `Homevolt battery <n> ...` and the external CTs'
+  `Power <type>` end otherwise and are not the system's. The level is the system's `State of Charge` (the library divides
+  `soc_avg` by 100, which the one fixture reads as %, and the vendor's own example reads as whole percent: scale
+  unverified on a unit). The mode is the switch `local_mode` (`switch.py` line 305): Tibber's cloud schedules (Smart
+  Control, Grid Rewards) replace anything local while it is off, so the battery is the person's only while it is on. The
+  unit has no self-consumption mode of its own to compare a schedule type with. Nothing else is read: core exposes no
+  size (the vendor's `rated_capacity` is in `/ems.json`, which the library does not read; `Available Charging Energy` plus
+  `Available Discharge Energy` is a two-sensor sum that one example supports and nothing else), no rating
+  (`Available ... Power` is what is available now), no firmware, and no battery counters (`Energy imported` and
+  `exported` are the system aggregate through the inverter, solar pass-through and losses included). The battery's power
+  is the EMS `Power`, disabled by default, discharge-positive per the vendor's API document, negated by the site: sign
+  unverified on hardware (the library's fixture reads -17 at idle).
+
+* Deye and Sunsynk hybrids (the Deye profiles `deye_hybrid` 1p, `deye_p3` 3p LV and HV), read 2026-11-23
+  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`), read only (the control is the time-of-use
+  programmes and the grid-charge settings, which stay as registers with no timeout). `solarman` (davidrapan/ha-solarman
+  `84982c5`; the domain is shared with other makers' profiles that name their items alike, `solis_hybrid`, `sofar_hybrid`
+  and more, so only a device whose manufacturer is "Deye", which the profile's `info` gives the device registry,
+  `common.py` line 167, or "Sunsynk" is read): unique id `<entry id>_<slug of the item's name>_<platform>` (`entity.py`
+  line 74, `common.py` lines 217-220): the level `battery_sensor` (the item "Battery"), the counters
+  `total_battery_charge_sensor` and `total_battery_discharge_sensor` (kWh, at the battery's register; the high-voltage
+  scale follows the firmware) and the size `battery_capacity_sensor`, an estimate the integration learns from the level
+  and the counters while the battery charges and discharges (`sensor.py` line 134; unknown at first). The Ah number
+  `battery_capacity_number` is not read: a setting the person types (up to 2000 Ah) that nothing ties to the real bank,
+  as Solis's. The mode is the select `time_of_use_select`: "Disabled" is the inverter without its programmes, every
+  weekday choice runs them. Nothing says a rating: there is no battery power limit, only the settings
+  `battery_max_charging_current` and `battery_max_discharging_current` (A, which a hold would write) and the inverter's
+  `device_rated_power`; no floor is read either (`Battery Low SOC` and the shutdown and restart levels are the
+  inverter's alarms, not a discharge floor); the firmware is an attribute of the `Device` sensor, not an entity. The
+  battery's power `battery_power_sensor` is the raw signed register, discharge-positive (the integration's own capacity
+  learner takes `power < 0` as charging, `sensor.py` line 141), which the existing site row negates. kellerza/sunsynk
+  (`49efe3f`, MQTT add-on): unique id `<inverter serial>_<slug of the sensor's name>` (`a_sensor.py` line 133) on the
+  platform `mqtt`, which every MQTT device shares, so it is read only on a device whose manufacturer the add-on's option
+  gives as "Sunsynk" (its default) or "Deye": `battery_soc`, `total_battery_charge` and `total_battery_discharge` (the
+  three-phase definitions), the time-of-use switch `use_timer` (1p) or `prog_time_of_use_enabled` (3p) and
+  `battery_power`, a signed register with the same sign (`micro_hybrid_ess.py` line 31: "positive = discharging").
+
+* Anker SOLIX Solarbank Max AC, Max, XE and 4 E5000 Pro, `anker_solix_official` (anker-charging/ha-anker-solix-official
+  `a9930d7`, 1.5.1, local Modbus TCP, read 2026-11-23, `plans/research_integrations/anker_solix_control_2026-11-23.md`):
+  read only. One config entry per device; unique id `<config entry id>_<key>` (`base_entity.py` line 48), the keys from
+  the model's YAML profile in `config/` (the same four in all four battery profiles): the level `battery_soc` (10014),
+  the size `rated_energy` (10250, kWh), the firmware `device_sw_version`, the inverter's discharge floor
+  `discharge_limit_soc` (60001, 0-20 %) and the select `operating_mode` (10064), free only in `self_consumption`: every
+  other option is the Anker app's own (time-of-use, smart, custom, dynamic pricing) or someone's third-party control. The
+  battery's power is two unsigned sensors split from one signed register, `battery_charging_power` from its negative
+  values and `battery_discharging_power` from its positive (`power_split_mode`, the YAML's lines 112-135), the site's
+  pair. Not read: the lifetime counters `cumulative_charge_energy` and `cumulative_discharge_energy` (the discharge one
+  under-counts by about half on a Max AC on firmware 1.0.2.23, issue 181, open, so a round trip from them would be wrong);
+  the backup reserve `backup_reserve_soc` (60002), which the unit holds (and grid-charges up to, at its full input power,
+  also in self-consumption) only while the backup switch (60003) is on, a register that is no entity, so the value says
+  nothing on its own; and any rating (`max_charge_power` and `max_discharge_power` are internal to the integration, not
+  entities). The cloud integration `anker_solix` (thomluther) has no adapter: its sign and its totals are unstated.
+
+* Zendure SolarFlow, Hyper, AIO and Hub, `zendure_ha` (Zendure/Zendure-HA `e67b04e`, read 2026-11-23,
+  `plans/research_integrations/zendure_control_2026-11-23.md`): read only. The unique id is the device's name in the
+  Zendure app and the property, `snakecase("<name lower>_<property>")` (`entity.py` lines 24-35 and 59-65), with no
+  serial and no config entry id in it, and every device of the account is in one config entry. So an entity is found by
+  the property at the end of the id and on the battery entity's own device first (`facts.find_entity`), which is what
+  keeps two devices apart; a rename in the app renames the ids at the next load. A battery pack is a child device of
+  its own. Per device: the level `electric_level` (`device.py` line 181), the size `total_kwh` (line 193, worked out
+  from the packs' serial prefixes, 0 until they are seen and for an unknown prefix, which reads as no size), the rating
+  of the output `inverse_max_power` (the device's `inverseMaxPower`, W, `entity.py` line 105; the output the device allows
+  now, and one 2400 Pro firmware reported 800 W for a while), the floor `min_soc` (the number `minSoc`, shown 0-100 %, line
+  159) and the counters `aggr_charge` and `aggr_discharge` (kWh, lines 200-201), which the integration adds up itself
+  from the two pack power sensors, not counters of the device (they stand still while Home Assistant is down, both
+  alike, and the round trip learns from their change). Not read: the charge rating, `charge_max_limit` (the device's
+  `chargeMaxLimit`, W) is a plain raw sensor with no unit (`entity.py` line 380), which `facts.to_kw` would read as
+  kW; and the firmware, which is the device's `sw_version` in the registry (`updateVersion`, line 408). Who runs it: the
+  integration's own Zendure Manager, a device of its own (`select` `zendure_manager_operation`, `manager.py` line 106),
+  rewrites the limits every few seconds from the P1 meter while it is not `off`; the Zendure app's HEMS takes the
+  device over (`hems_state`, on for a minute after its last report, `device.py` line 190); and a state-of-charge
+  calibration (`soc_status` 1) ignores any setpoint. The battery's power is the pair `output_pack_power` (into the
+  battery) and `pack_input_power` (out of it), both non-negative (`device.py` lines 185-186 and 258-268), as the site
+  detection's Zendure row reads them.
 
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
@@ -829,9 +974,169 @@ MARSTEK: Final = Adapter(
     reserves=(ReserveSource(_key("discharging_cutoff_capacity", "number")),),
 )
 
+#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module): read only. The
+#: `ecoflow_energy` keys follow the device's serial, which has no underscore, so `unit_` and `inverter_<n>_` are not them.
+_ECOFLOW_SN: Final = r"^[^_]+_"
+ECOFLOW: Final = Adapter(
+    brand="ecoflow",
+    label="EcoFlow PowerOcean",
+    platforms=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
+    facts={
+        "soc": Match(
+            ("sensor",), re.compile(rf"(?:^|_)battery_soc$|{_ECOFLOW_SN}soc_pct$")
+        ),
+        "capacity": _key("battery_capacity"),
+        "charged_total": Match(
+            ("sensor",), re.compile(rf"(?:^|_)bat_charged_total$|{_ECOFLOW_SN}batt_charge_energy_kwh$")
+        ),
+        "discharged_total": Match(
+            ("sensor",), re.compile(rf"(?:^|_)bat_discharged_total$|{_ECOFLOW_SN}batt_discharge_energy_kwh$")
+        ),
+    },
+    modes=(
+        ModeRule(
+            _any_key("operating_mode", "work_mode", domains=("sensor", "select")),
+            frozenset({"self_consumption", "self_use", "self_powered"}),
+            "operating mode",
+        ),
+        ModeRule(
+            _key("modbus_control", "binary_sensor", "switch"), frozenset({"off"}), "Modbus control", required=False
+        ),
+    ),
+    reserves=(ReserveSource(_key("battery_reserve_effective")),),
+)
+
+#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module): read only.
+KOSTAL: Final = Adapter(
+    brand="kostal",
+    label="Kostal Plenticore",
+    platforms=("kostal_plenticore", "kostal_modbus_control"),
+    facts={
+        "soc": Match(("sensor",), re.compile(r"[_:]battery_soc$")),
+        "capacity": _key("battery_work_capacity"),
+        "firmware": _key("software_version"),
+    },
+    modes=(
+        # Core's select reads "None" when the inverter's own smart or timed control is off, which is no reading to
+        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default).
+        ModeRule(
+            Match(("sensor", "select"), re.compile(r"(?:^|_)(?:battery_mgmt_mode|devices:local)$")),
+            frozenset({"No external battery management"}),
+            "battery management",
+        ),
+    ),
+    reserves=(ReserveSource(Match(("number",), re.compile(r"_devices:local_battery:minsoc$"))),),
+)
+
+def _fronius(key: str, *domains: str) -> Match:
+    """`<id>-<key>` or `<id>-modbus-<key>`: the key after the last hyphen."""
+    return Match(domains or ("sensor",), re.compile(rf"-{re.escape(key)}$"))
+
+
+#: Fronius through core `fronius` (see the module): read only. Its unique ids join the parts with a hyphen.
+FRONIUS: Final = Adapter(
+    brand="fronius",
+    label="Fronius",
+    platforms=("fronius",),
+    facts={
+        "soc": _fronius("state_of_charge"),
+        "capacity": _fronius("capacity_designed"),
+        "rated_charge": _fronius("battery_power_limit_reference"),
+        "rated_discharge": _fronius("battery_power_limit_reference"),
+        "charged_total": _fronius("storage_energy_charged_total"),
+        "discharged_total": _fronius("storage_energy_discharged_total"),
+    },
+    modes=(
+        ModeRule(
+            _fronius("battery_charge_power_limit_enabled", "switch"), frozenset({"off"}), "charge limit", required=False
+        ),
+        ModeRule(
+            _fronius("battery_discharge_power_limit_enabled", "switch"),
+            frozenset({"off"}),
+            "discharge limit",
+            required=False,
+        ),
+    ),
+    reserves=(ReserveSource(_fronius("battery_minimum_reserve", "number")),),
+)
+
+#: Homevolt through core `homevolt` (see the module): read only. A sensor's key is a display key with spaces.
+HOMEVOLT: Final = Adapter(
+    brand="homevolt",
+    label="Homevolt",
+    platforms=("homevolt",),
+    facts={"soc": Match(("sensor",), re.compile(r"^[0-9a-f]{12}_state of charge$"))},
+    modes=(
+        # Off: Tibber's cloud schedules run the battery (and replace any local one).
+        ModeRule(Match(("switch",), re.compile(r"_local_mode$")), frozenset({"on"}), "local mode"),
+    ),
+)
+
+#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module): read
+#: only. Both platforms are shared with other devices, so only these makers' devices are read.
+DEYE: Final = Adapter(
+    brand="deye",
+    label="Deye / Sunsynk",
+    platforms=("solarman", "mqtt"),
+    manufacturer=("deye", "sunsynk"),
+    facts={
+        "soc": _any_key("battery_sensor", "battery_soc"),
+        "capacity": _key("battery_capacity_sensor"),
+        "charged_total": _any_key("total_battery_charge_sensor", "total_battery_charge"),
+        "discharged_total": _any_key("total_battery_discharge_sensor", "total_battery_discharge"),
+    },
+    modes=(
+        # The inverter's own programmes: "Disabled" (solarman's select) or off (kellerza's switch) is without them.
+        ModeRule(
+            _any_key(
+                "time_of_use_select", "use_timer", "prog_time_of_use_enabled", domains=("select", "switch")
+            ),
+            frozenset({"Disabled", "off"}),
+            "time of use",
+        ),
+    ),
+)
+
+#: Anker SOLIX through `anker_solix_official` (see the module): read only.
+ANKER: Final = Adapter(
+    brand="anker",
+    label="Anker SOLIX",
+    platforms=("anker_solix_official",),
+    facts={
+        "soc": _key("battery_soc"),
+        "capacity": _key("rated_energy"),
+        "firmware": _key("device_sw_version"),
+    },
+    modes=(ModeRule(_key("operating_mode", "select"), frozenset({"self_consumption"}), "operating mode"),),
+    reserves=(ReserveSource(_key("discharge_limit_soc", "number")),),
+)
+
+#: Zendure through `zendure_ha` (see the module): read only. The ids are built from the device's name in the app, so
+#: every match is a key at the end, found on the battery's own device first.
+ZENDURE: Final = Adapter(
+    brand="zendure",
+    label="Zendure",
+    platforms=("zendure_ha",),
+    facts={
+        "soc": _key("electric_level"),
+        "capacity": _key("total_kwh"),
+        "rated_discharge": _key("inverse_max_power"),
+        "charged_total": _key("aggr_charge"),
+        "discharged_total": _key("aggr_discharge"),
+    },
+    modes=(
+        # The integration's own manager, a device of its own, writes the limits while it is not off.
+        ModeRule(_key("zendure_manager_operation", "select"), frozenset({"off"}), "Zendure Manager"),
+        ModeRule(_key("hems_state", "binary_sensor"), frozenset({"off"}), "Zendure HEMS", required=False),
+        # 1 while the device calibrates its level and ignores every setpoint.
+        ModeRule(_key("soc_status"), frozenset({"0"}), "SoC calibration", required=False),
+    ),
+    reserves=(ReserveSource(_key("min_soc", "number")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE,
 )
 
 

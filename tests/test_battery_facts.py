@@ -449,6 +449,20 @@ PLAN_REASON = {
     "solis": "no_capacity",
     # Marstek states its size (rated capacity) but no rating on either integration: learnt.
     "marstek": "no_rated_power",
+    # EcoFlow states its size (Modbus) but no rating: the BMS's limits move with the moment, so they are learnt.
+    "ecoflow": "no_rated_power",
+    # Kostal's core integration states no size and no rating (the Modbus one states a size, no rating).
+    "kostal": "no_capacity",
+    # Fronius states all the plan needs where the inverter accepts control over Modbus (the rating is WChaMax).
+    "fronius": None,
+    # Homevolt reads the level only: no size, no rating, no counters (see the adapter).
+    "homevolt": "no_capacity",
+    # Deye states a size only where `solarman` has learnt one, and no rating (the current limits are settings): learnt.
+    "deye": "no_rated_power",
+    # Anker's local integration states the size and no rating (the limits are internal to it): learnt.
+    "anker": "no_rated_power",
+    # Zendure states the size and the output's rating but not the charge rating (a raw sensor with no unit): learnt.
+    "zendure": "no_rated_power",
 }
 
 
