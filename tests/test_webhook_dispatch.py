@@ -61,6 +61,10 @@ async def test_every_documented_action_has_a_handler() -> None:
         "battery_control",
         "update_heat",
         "heat_boost",
+        # The pool's, the spa's and the sauna's household controls (`api/pool_spa.py`).
+        "pool",
+        "spa",
+        "sauna",
         # SpotNav 3.0: the charger's home's webhook (`api/site_access.py`).
         "get_site_access",
     }
