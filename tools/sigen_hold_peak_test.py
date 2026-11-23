@@ -132,8 +132,9 @@ class Test:
                 raise Stop(f"{self.e[role]} reads nothing")
             self.snapshot[role] = value
         pv = number(states.get(self.e["pv"]))
-        if pv is not None and pv > 0.1:
-            raise Stop(f"the sun is up ({pv:.2f} kW): run it after dark")
+        dark = [v for v in self.args.variants.split(",") if v != "pv_first_surplus"]
+        if dark and pv is not None and pv > 0.1:
+            raise Stop(f"the sun is up ({pv:.2f} kW): run {dark} after dark (only pv_first_surplus wants sun)")
         print(f"snapshot: {self.snapshot}")
 
     def restore(self) -> None:
@@ -155,7 +156,7 @@ class Test:
                 print(f"  RESTORE FAILED {role}: {err}")
         print("restored. Set AI mode again in the Sigen app if it was on.")
 
-    def variant(self, name: str, mode: str, zero: str) -> dict:
+    def enter(self, name: str, mode: str, zero: str) -> None:
         self.step = f"{name}:enter"
         self.set(zero, 0)
         if text(self.read().get(self.e["remote_ems"])) != "on":
@@ -169,6 +170,13 @@ class Test:
                 self.set("charge_limit", self.snapshot["charge_limit"])
         else:
             self.set("control_mode", mode)
+
+    def variant(self, name: str, mode: str, zero: str, charge_kw: float | None = None) -> dict:
+        self.enter(name, mode, zero)
+        if charge_kw is not None:
+            # A charge limit left standing (Home Assistant died while SpotNav's surplus hold was storing the sun):
+            # in "Command Charging (PV First)" with no sun the plant charges it from the grid.
+            self.set("charge_limit", charge_kw)
         self.step = f"{name}:hold"
         hold = self.watch(self.args.hold_s)
         house = [v["plant_total"] + v["grid_total"] for v in hold if v["plant_total"] is not None
@@ -189,8 +197,41 @@ class Test:
         self.step = f"{name}:after"
         self.watch(20)
         passed = discharge >= self.args.min_discharge_kw and mean_grid <= self.args.limit_kw + self.args.tolerance_kw
+        charging = [v["battery"] for v in hold[len(hold) // 3:] if v["battery"] is not None]
         return {"variant": name, "result": "PASS" if passed else "FAIL", "house_kw": round(house_kw, 2),
+                "hold_battery_kw": round(sum(charging) / len(charging), 2) if charging else None,
                 "max_discharge_kw": round(discharge, 2), "mean_grid_kw": round(mean_grid, 2)}
+
+    def surplus(self, name: str) -> dict:
+        """SpotNav's surplus hold: "Command Charging (PV First)" with the charge limit following the sun's measured
+        surplus (PV less the house), so the sun is stored and nothing is taken from the grid. Needs sun."""
+        first = self.sample("surplus check")
+        house = (first["grid_total"] or 0.0) + (first["plant_total"] or 0.0)
+        if (first["pv"] or 0.0) - house < self.args.min_surplus_kw:
+            print(f"  surplus only {(first['pv'] or 0.0) - house:.2f} kW: run it in sunshine, skipping")
+            return {"variant": name, "result": "NOT JUDGED"}
+        self.enter(name, MODE_PV_FIRST, "charge_limit")
+        self.step = f"{name}:track"
+        seen, written, end = [], 0.0, time.time() + self.args.track_s
+        while time.time() < end:
+            v = self.sample()
+            seen.append(v)
+            if None not in (v["pv"], v["grid_total"], v["plant_total"]):
+                # House = grid import + the plant's AC output (which already nets the sun and the battery).
+                house = v["grid_total"] + v["plant_total"]  # type: ignore[operator]
+                want = max(0.0, round(v["pv"] - house, 1))  # type: ignore[operator]
+                if abs(want - written) >= self.args.deadband_kw:
+                    self.set("charge_limit", want)
+                    written = want
+            time.sleep(self.args.interval_s)
+        steady = seen[len(seen) // 3:]
+        grid = [v["grid_total"] for v in steady if v["grid_total"] is not None]
+        bat = [v["battery"] for v in steady if v["battery"] is not None]
+        mean_grid = sum(grid) / len(grid) if grid else float("nan")
+        mean_bat = sum(bat) / len(bat) if bat else 0.0
+        passed = abs(mean_grid) <= self.args.tolerance_kw and mean_bat >= self.args.min_surplus_kw / 2
+        return {"variant": name, "result": "PASS" if passed else "FAIL", "mean_grid_kw": round(mean_grid, 2),
+                "mean_charge_kw": round(mean_bat, 2)}
 
 
 def main() -> int:
@@ -205,7 +246,13 @@ def main() -> int:
     parser.add_argument("--min-discharge-kw", type=float, default=0.3)
     parser.add_argument("--tolerance-kw", type=float, default=0.3)
     parser.add_argument("--abort-kw", type=float, default=11.0, help="stop if the grid total goes over this")
-    parser.add_argument("--variants", default="msc_no_discharge,pv_first")
+    parser.add_argument("--variants", default="msc_no_discharge,pv_first",
+                        help="msc_no_discharge, pv_first, pv_first_stale_charge (after dark), pv_first_surplus (sun)")
+    parser.add_argument("--stale-charge-kw", type=float, default=1.0,
+                        help="pv_first_stale_charge: the charge limit left standing")
+    parser.add_argument("--track-s", type=float, default=300, help="pv_first_surplus: how long to follow the sun")
+    parser.add_argument("--min-surplus-kw", type=float, default=0.5)
+    parser.add_argument("--deadband-kw", type=float, default=0.3)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.limit_kw < 0.3:
@@ -228,10 +275,16 @@ def main() -> int:
             if args.dry_run:
                 print("dry run: checks passed, nothing written")
                 return 0
-            plan = {"msc_no_discharge": (MODE_MSC, "discharge_limit"), "pv_first": (MODE_PV_FIRST, "charge_limit")}
+            plan = {"msc_no_discharge": (MODE_MSC, "discharge_limit", None),
+                    "pv_first": (MODE_PV_FIRST, "charge_limit", None),
+                    "pv_first_stale_charge": (MODE_PV_FIRST, "charge_limit", args.stale_charge_kw)}
             for name in args.variants.split(","):
-                mode, zero = plan[name]
-                results.append(test.variant(name, mode, zero))
+                if name == "pv_first_surplus":
+                    results.append(test.surplus(name))
+                    test.set("charge_limit", test.snapshot["charge_limit"])
+                    continue
+                mode, zero, charge_kw = plan[name]
+                results.append(test.variant(name, mode, zero, charge_kw))
                 test.set(zero, test.snapshot[zero])
         except (Stop, KeyboardInterrupt, RuntimeError) as err:
             print(f"\nstopped: {err}")
