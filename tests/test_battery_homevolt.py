@@ -6,8 +6,6 @@ The registry is the fixture `homevolt` in `tests/fixtures/battery/brands.json`.
 
 from __future__ import annotations
 
-import pytest
-
 from custom_components.spotnav.battery import commands
 from custom_components.spotnav.battery.adapters import HOMEVOLT, adapter_for
 from custom_components.spotnav.battery.coexist import coexistence_for
