@@ -172,8 +172,53 @@ export function notReadyChoices(language: Language, answer: HeatAnswer, kind: De
   return out;
 }
 
-/** The control's note: watched only (and why) or slow through a cloud; `null` when there is nothing to say. */
-export function deadlineControlLine(language: Language, kind: DeadlineKind, load: Deadline): string | null {
+/** The states a load's control is in once its opt-in is on (`loads/hold_part.py`). */
+export const CONTROL_STATES: readonly string[] = ["controlled", "paused", "handed_back"];
+const CONTROL_WHY: readonly string[] = [
+  "no_read_back", "write_cap", "starts_cap", "fault", "automation", "unavailable", "foreign_mode", "own_scheduler",
+  "unsupported", "interlock", "run_on", "floor", "lock", "max_on",
+];
+
+/**
+ * A controlled load's line ("Styrs av SpotNav.", "Pausad till i morgon 00:00: dagens ändringar är använda.",
+ * "Återlämnad till dig till …"), with the writes that did not read back; `null` for a load SpotNav only watches.
+ */
+export function loadControlLine(
+  language: Language,
+  answer: HeatAnswer,
+  control: { state: string; reason: string | null; paused_until: string | null; failures: number },
+): string | null {
+  if (!CONTROL_STATES.includes(control.state)) {
+    return null;
+  }
+  const reason = control.reason ?? "";
+  const why = CONTROL_WHY.includes(reason) ? translate(language, `heat.loadControl.why.${reason}` as TranslationKey) : null;
+  const until = control.paused_until === null ? null : whenLabel(language, answer, Date.parse(control.paused_until));
+  let text: string;
+  if (control.state === "handed_back") {
+    text = translate(language, "heat.loadControl.handedBack", { until: until ?? "" });
+  } else if (control.state === "paused") {
+    const words = why ?? translate(language, "heat.loadControl.why.unavailable");
+    text = until === null ? translate(language, "heat.loadControl.pausedNow", { why: words }) : translate(language, "heat.loadControl.paused", { until, why: words });
+  } else if (reason === "cloud_slow") {
+    text = translate(language, "heat.loadControl.cloud");
+  } else {
+    text = why === null ? translate(language, "heat.loadControl.controlled") : translate(language, "heat.loadControl.controlledWhy", { why });
+  }
+  if (control.failures > 0) {
+    text = `${text} ${translate(language, "heat.loadControl.failures", { count: String(control.failures) })}`;
+  }
+  return text;
+}
+
+/** The control's note: SpotNav's control (`loadControlLine`), else watched only (and why) or slow through a cloud. */
+export function deadlineControlLine(language: Language, kind: DeadlineKind, load: Deadline, answer?: HeatAnswer): string | null {
+  if (answer !== undefined) {
+    const controlled = loadControlLine(language, answer, load.control);
+    if (controlled !== null) {
+      return controlled;
+    }
+  }
   const reason = load.control.reason;
   if (reason === "no_safety") {
     return translate(language, "heat.sauna.noSafety");
@@ -309,7 +354,7 @@ export function deadlinePanel(input: LoadPanelInput, kind: DeadlineKind, load: D
   if (boxed) {
     return;
   }
-  const note = deadlineControlLine(language, kind, load);
+  const note = deadlineControlLine(language, kind, load, answer);
   if (note !== null) {
     panel.append(line(doc, `${H.note} ${C.muted}`, note, `${kind}-control`));
   }

@@ -1761,6 +1761,11 @@ function loadSettingRows(
       }
       if (pool.circulation_id !== null) {
         row("poolCirculationKw", t("heat.settings.poolCirculationKw"), kwOrNone(language, pool.circulation_kw));
+        row("poolCirculationControl", t("heat.settings.poolCirculationControl"), t(pool.control_circulation ? "settings.value.on" : "settings.value.off"));
+      }
+      if (pool.heat_pump !== null && pool.circulation_id !== null) {
+        // The interlock: the heat pump is only ever SpotNav's with a circulation pump chosen.
+        row("poolHeatPumpControl", t("heat.settings.poolHeatPumpControl"), t(pool.control_heat_pump ? "settings.value.on" : "settings.value.off"));
       }
       helpLine("pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
     }
@@ -1771,6 +1776,9 @@ function loadSettingRows(
     if (spa !== null) {
       row("spaFloor", t("heat.settings.spaFloor"), degrees(language, spa.floor_c));
       row("spaKw", t("heat.settings.spaKw"), kwOrNone(language, spa.heater_kw));
+      if (SPA_CONTROLLABLE.includes(spa.family)) {
+        row("spaControl", t("heat.settings.spaControl"), t(spa.control ? "settings.value.on" : "settings.value.off"));
+      }
       helpLine("spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
     }
   }
@@ -1781,6 +1789,9 @@ function loadSettingRows(
       row("saunaKw", t("heat.settings.saunaKw"), kwOrNone(language, sauna.heater_kw));
       if (sauna.family === "relay") {
         row("saunaSafety", t("heat.settings.saunaSafety"), t(sauna.safety_declared ? "heat.settings.saunaSafetyYes" : "heat.settings.saunaSafetyNo"));
+      }
+      if (saunaControllable(sauna)) {
+        row("saunaControl", t("heat.settings.saunaControl"), t(sauna.control ? "settings.value.on" : "settings.value.off"));
       }
       helpLine("sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
     }
@@ -1799,6 +1810,15 @@ function loadSettingRows(
       HEAT_EVENTS.filter((event) => config.heat_notifications.events.includes(event)).map((event) => t(`heat.settings.event.${event}` as TranslationKey)).join(", ") || t("heat.settings.eventsNone"),
     );
   }
+}
+
+/** The spa families SpotNav can control (`spa/config.py` `CONTROLLABLE`). */
+export const SPA_CONTROLLABLE: readonly string[] = ["balboa", "smarttub", "mspa", "gecko", "bestway", "intex_spa", "tuya_intex"];
+/** The sauna integrations SpotNav can control (`sauna/config.py` `INTEGRATIONS`); a relay only with its safety declared. */
+export const SAUNA_INTEGRATIONS: readonly string[] = ["huum", "saunum", "harvia_sauna", "tylo_sauna", "sentio"];
+
+export function saunaControllable(sauna: { family: string; safety_declared: boolean }): boolean {
+  return SAUNA_INTEGRATIONS.includes(sauna.family) || (sauna.family === "relay" && sauna.safety_declared);
 }
 
 /** The events the heat card's phones can hear (`heat_notifications.events`). */
@@ -1829,12 +1849,16 @@ export type HeatSettingKey =
   | "poolFilterHours"
   | "poolHeatPumpKw"
   | "poolCirculationKw"
+  | "poolHeatPumpControl"
+  | "poolCirculationControl"
   | "spa"
   | "spaFloor"
   | "spaKw"
+  | "spaControl"
   | "sauna"
   | "saunaKw"
   | "saunaSafety"
+  | "saunaControl"
   | "heatPhones"
   | "heatEvents";
 

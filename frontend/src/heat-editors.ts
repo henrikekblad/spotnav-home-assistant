@@ -718,6 +718,56 @@ function loadEditor(input: HeatEditorInput, key: HeatSettingKey | "away", prefix
         ),
       };
     }
+    case "poolHeatPumpControl":
+    case "poolCirculationControl": {
+      if (pool === null) {
+        return null;
+      }
+      const field = key === "poolHeatPumpControl" ? "control_heat_pump" : "control_circulation";
+      const on = pool[field];
+      return {
+        title: t(`heat.settings.${key}` as TranslationKey),
+        body: onOffEditor(
+          doc,
+          language,
+          { intro: `${t(`heat.settings.${key}Help` as TranslationKey)} ${t("heat.settings.controlUntested")}`, on, idPrefix: prefix },
+          async (value) => (value === on ? null : await input.write({ pool: { [field]: value } })),
+          handlers,
+        ),
+      };
+    }
+    case "spaControl": {
+      const spa = config.spa;
+      if (spa === null) {
+        return null;
+      }
+      return {
+        title: t("heat.settings.spaControl"),
+        body: onOffEditor(
+          doc,
+          language,
+          { intro: `${t("heat.settings.spaControlHelp")} ${t("heat.settings.controlUntested")}`, on: spa.control, idPrefix: prefix },
+          async (value) => (value === spa.control ? null : await input.write({ spa: { control: value } })),
+          handlers,
+        ),
+      };
+    }
+    case "saunaControl": {
+      const sauna = config.sauna;
+      if (sauna === null) {
+        return null;
+      }
+      return {
+        title: t("heat.settings.saunaControl"),
+        body: onOffEditor(
+          doc,
+          language,
+          { intro: `${t("heat.settings.saunaControlHelp")} ${t("heat.settings.controlUntested")}`, on: sauna.control, idPrefix: prefix },
+          async (value) => (value === sauna.control ? null : await input.write({ sauna: { control: value } })),
+          handlers,
+        ),
+      };
+    }
     case "heatPhones": {
       const chosen = config.heat_notifications.targets;
       const options = [

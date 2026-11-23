@@ -295,7 +295,7 @@ export const WATER_HEATER = O({
   automation: N(O({ entity_id: "string", name: "string" })),
   paused_until: N("string"),
 });
-const POOL_PART = { live: "boolean", state: "string", reason: N("string") } as const;
+const POOL_PART = { live: "boolean", state: "string", reason: N("string"), paused_until: N("string"), failures: "number" } as const;
 /** The pool in shadow (`get_heat`'s `pool`, `pool/runtime.py`). */
 const POOL = O({
   season_open: "boolean",
@@ -337,7 +337,7 @@ const DEADLINE_COMMON = {
   state: N("string"),
   ready_at: N("string"),
   live: "boolean",
-  control: O({ state: "string", reason: N("string"), paused_until: N("string") }),
+  control: O({ state: "string", reason: N("string"), paused_until: N("string"), failures: "number" }),
   would: N(O({ action: "string", until: N("string"), reason: "string" })),
   not_ready: N(NOT_READY),
   planned: A(O({ start: "string", end: "string", what: "string", reason: "string" })),
@@ -974,7 +974,9 @@ interface HeatDeadlineCommon {
   state: string | null;
   ready_at: string | null;
   live: boolean;
-  control: { state: string; reason: string | null; paused_until: string | null };
+  /** "watched", "watch_only", "controlled", "paused" or "handed_back", with the reason, the pause's end and the writes
+   * that did not read back. */
+  control: { state: string; reason: string | null; paused_until: string | null; failures: number };
   would: { action: string; until: string | null; reason: string } | null;
   not_ready: HeatNotReady | null;
   /** The heat-up ("heat", by "sun", "cheap", "bath", "now" or "floor") and the hold at the target ("hold") from now on. */
@@ -1010,11 +1012,15 @@ export interface HeatSauna extends HeatDeadlineCommon {
 export interface HeatPoolPart {
   on: boolean | null;
   kw: number | null;
-  /** SpotNav steers it (never yet: watched). */
+  /** SpotNav steers it live (its opt-in on and a local route): its steps count in the shed order. */
   live: boolean;
-  /** "watched" or "season_closed". */
+  /** "watched" (the opt-in off), "season_closed", "controlled", "paused" or "handed_back" (`loads/hold_part.py`). */
   state: string;
   reason: string | null;
+  /** Until when a pause or a hand-back lasts (the next local day). */
+  paused_until: string | null;
+  /** Writes that did not read back (or were refused), ever. */
+  failures: number;
 }
 
 export interface HeatPool {

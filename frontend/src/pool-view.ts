@@ -5,6 +5,7 @@
 // presses go through `spotnav/pool`, for anyone who sees the card. Text is written with `textContent` only.
 
 import type { NotReady } from "./not-ready-sheet";
+import { loadControlLine } from "./spa-view";
 import { formatFixed, kwhText } from "./format";
 import type { HeatAnswer, HeatPool } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -245,6 +246,30 @@ export function poolPanel(input: LoadPanelInput, pool: HeatPool, panel: HTMLElem
     panel.append(line(doc, H.line, today.text, today.key));
   }
   if (pool.season_open) {
-    panel.append(line(doc, `${H.note} ${C.muted}`, translate(language, "heat.pool.watched"), "pool-watched"));
+    const controlled = poolControlLines(language, answer, pool);
+    if (controlled.length === 0) {
+      panel.append(line(doc, `${H.note} ${C.muted}`, translate(language, "heat.pool.watched"), "pool-watched"));
+    }
+    for (const item of controlled) {
+      panel.append(line(doc, `${H.note} ${C.muted}`, item.text, item.key));
+    }
   }
+}
+
+/** Each part SpotNav controls, in words ("Cirkulationen: Styrs av SpotNav."); none while it only watches both. */
+export function poolControlLines(language: Language, answer: HeatAnswer, pool: HeatPool): { key: string; text: string }[] {
+  const out: { key: string; text: string }[] = [];
+  for (const [key, part, name] of [
+    ["pool-control-heat-pump", pool.heat_pump, "heat.pool.partHeatPump"],
+    ["pool-control-circulation", pool.circulation, "heat.pool.partCirculation"],
+  ] as const) {
+    if (part === null) {
+      continue;
+    }
+    const text = loadControlLine(language, answer, part);
+    if (text !== null) {
+      out.push({ key, text: translate(language, "heat.loadControl.part", { name: translate(language, name), text }) });
+    }
+  }
+  return out;
 }
