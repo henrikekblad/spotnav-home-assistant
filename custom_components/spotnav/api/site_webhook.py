@@ -25,6 +25,9 @@ Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/ap
 * `pool` (`spotnav/pool`): the pool's dial, season and extra filtering, `pool_action` "target", "season",
   "extra_filtering" or "cancel_extra" (`action` routes the body) with `target_c`, `open` or `hours`; HTTP 200, 400 for
   a value refused, 409 without a pool.
+* `spa` and `sauna` (`spotnav/spa`, `spotnav/sauna`): their bath or session times and temperatures, the "now" press and
+  the answers to a session that will not be ready, `spa_action` / `sauna_action` with `value`; HTTP 200, 400 for a
+  value refused, 429 for `spotnav_rate_limited`, 409 for the other refusals.
 * `battery_control` with `changes`: `battery_mode` only (`self_consumption`, `balanced`, `max_profit`).
 * `heat_boost` (`spotnav/heat_boost`): the Boost button, `boost_action` "start" or "stop" (`action` routes the
   body); HTTP 200, 400 for an unknown `boost_action`, 429 for `spotnav_rate_limited`, 409 for the other refusals.
@@ -69,7 +72,7 @@ from .common import (
     ERROR_UNSUPPORTED_VERSION,
     site_of_charger,
 )
-from .pool_spa import pool_answer
+from .pool_spa import deadline_answer, pool_answer
 from .heat import (
     ERROR_CONFLICT,
     ERROR_INVALID_VALUE,
@@ -226,6 +229,21 @@ async def _pool(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str
     return web.json_response({**answer, "action": action}, status=status)
 
 
+def _deadline(kind: str) -> SiteHandler:
+    """`spa` and `sauna`: their controls, as `spotnav/spa` and `spotnav/sauna`; `<kind>_action` routes the body."""
+
+    async def handler(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
+        if not _speaks(payload, HEAT_API_VERSION):
+            return _refused(kind, ERROR_UNSUPPORTED_VERSION)
+        if site is None or site.state is not ConfigEntryState.LOADED:
+            return _refused(kind, ERROR_NO_SITE)
+        answer = deadline_answer(hass, site, kind, {**payload, "action": payload.get(f"{kind}_action")})
+        status = 200 if answer["ok"] else {ERROR_INVALID_VALUE: 400, "spotnav_rate_limited": 429}.get(answer["error"], 409)
+        return web.json_response({**answer, "action": kind}, status=status)
+
+    return handler
+
+
 async def _battery_control(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
     """`battery_control`: the status, after writing the battery mode when `changes` names it."""
     action = "battery_control"
@@ -252,6 +270,8 @@ def site_handlers(*, price_writable: bool) -> dict[str, SiteHandler]:
         "update_heat": _update_heat,
         "heat_boost": _heat_boost,
         "pool": _pool,
+        "spa": _deadline("spa"),
+        "sauna": _deadline("sauna"),
     }
 
 

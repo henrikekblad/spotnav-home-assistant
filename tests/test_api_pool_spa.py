@@ -110,3 +110,77 @@ async def test_the_shadow_keeps_its_days_and_extra_over_a_restart(hass: HomeAssi
     again._restore(data, dt_util.now())  # noqa: SLF001
     assert again.extra == shadow.extra
     assert again.water_days == shadow.water_days and list(again.water_days.values())[0] == [24.6, 24.6]
+
+
+SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [0, 1, 2, 3, 4, 5, 6], "time": "19:00"}]}
+SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
+
+
+async def _deadline_site(hass: HomeAssistant):
+    charger, site, controller = await _site(hass, heat={"spa": SPA, "sauna": SAUNA})
+    hass.states.async_set("climate.spa", "heat", {"current_temperature": 36.0, "temperature": 30.0, "hvac_action": "idle"})
+    hass.states.async_set("climate.harvia", "off", {"current_temperature": 21.0, "hvac_action": "off"})
+    hass.states.async_set("binary_sensor.harvia_door", "on")
+    controller.pool_spa.tick(dt_util.now())
+    return charger, site, controller
+
+
+async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant) -> None:
+    _charger, site, _controller = await _deadline_site(hass)
+    answer = await heat_answer(hass, site, writable=False)
+    spa, sauna = answer["spa"], answer["sauna"]
+    assert spa["family"] == "balboa" and spa["water_c"] == 36.0 and spa["bath_c"] == 38.0
+    assert spa["next_bath"]["source"] == "weekly" and spa["rate_learned"] is False and spa["rate_c_h"] == 1.5
+    assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None} and spa["live"] is False
+    assert set(spa) == {
+        "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "rate_c_h", "rate_learned", "state",
+        "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "notes",
+    }
+    assert sauna["family"] == "harvia_sauna" and sauna["temp_c"] == 21.0 and sauna["locked"] is True
+    assert sauna["next_session"] is None and sauna["would"]["action"] == "off" and sauna["would"]["reason"] == "no_session"
+    assert sauna["control"]["reason"] == "cloud_slow"
+
+
+async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.api.pool_spa import deadline_answer
+
+    _charger, site, controller = await _deadline_site(hass)
+    assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 39})["spa"]["bath_c"] == 39.0
+    assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 45})["error"] == "spotnav_invalid_value"
+    now = deadline_answer(hass, site, "spa", {"action": "bath_now"})
+    assert now["ok"] and now["spa"]["bath_now"] is not None and now["spa"]["next_bath"]["source"] == "now"
+    assert deadline_answer(hass, site, "spa", {"action": "bath_now"})["error"] == "spotnav_rate_limited"
+    assert deadline_answer(hass, site, "spa", {"action": "cancel_now"})["spa"]["bath_now"] is None
+    # Nothing that does not fit: the answers to it are refused.
+    assert deadline_answer(hass, site, "spa", {"action": "take_what_fits"})["error"] == "spotnav_invalid_value"
+    once = (dt_util.utcnow() + timedelta(hours=5)).replace(microsecond=0).isoformat()
+    booked = deadline_answer(hass, site, "sauna", {"action": "session_once", "value": once})
+    assert booked["ok"] and booked["sauna"]["session_once"] is not None and booked["sauna"]["next_session"]["source"] == "once"
+    # The door is open: a heat-up would be blocked, never started past the lock.
+    started = deadline_answer(hass, site, "sauna", {"action": "session_now"})
+    assert started["sauna"]["would"]["action"] == "blocked" and started["sauna"]["would"]["reason"] == "lock"
+    hass.states.async_set("binary_sensor.harvia_door", "off")
+    controller.pool_spa.tick(dt_util.now())
+    assert (await heat_answer(hass, site, writable=False))["sauna"]["would"]["action"] == "heat"
+    assert deadline_answer(hass, site, "sauna", {"action": "fly"})["error"] == "spotnav_invalid_value"
+    assert deadline_answer(hass, site, "sauna", {"action": "idle_c", "value": 30})["error"] == "spotnav_invalid_value"
+
+
+async def test_the_spa_and_sauna_webhook_twins(hass: HomeAssistant) -> None:
+    import json
+
+    charger, _site_entry, _controller = await _deadline_site(hass)
+    response = await SITE_ACTIONS["spa"](hass, charger, {"spa_action": "idle_c", "value": 32})
+    assert response.status == 200 and json.loads(response.body)["spa"]["idle_c"] == 32.0
+    response = await SITE_ACTIONS["sauna"](hass, charger, {"sauna_action": "target_c", "value": 85})
+    assert response.status == 200 and json.loads(response.body)["sauna"]["target_c"] == 85.0
+    refused = await SITE_ACTIONS["sauna"](hass, charger, {"sauna_action": "target_c", "value": 200})
+    assert refused.status == 400
+
+
+async def test_without_a_spa_or_sauna_the_controls_are_not_supported(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.api.pool_spa import deadline_answer
+
+    _charger, site, _controller = await _site(hass)
+    assert deadline_answer(hass, site, "spa", {"action": "bath_now"})["error"] == "spotnav_not_supported"
+    assert deadline_answer(hass, site, "sauna", {"action": "session_now"})["error"] == "spotnav_not_supported"

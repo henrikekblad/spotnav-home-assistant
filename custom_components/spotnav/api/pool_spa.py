@@ -14,6 +14,25 @@ SpotNav touches nothing, and an extra filtering ends), `extra_filtering` adds 2 
 cheapest or sunniest hours of the next 24 (a second press replaces the first), `cancel_extra` ends it. `pool` is
 `get_heat`'s `pool` after the change. Refusals (`error`): `spotnav_not_supported` (no pool), `spotnav_invalid_value`.
 The webhook's `pool` is the same body without `type` (`pool_action` routes it, as `boost_action` does).
+
+`spotnav/spa` and `spotnav/sauna` (API v1), the deadline heat loads (the sauna is the spa without an idle temperature):
+
+    {type: "spotnav/spa", api_version: 1, site_id | charger_id,
+     action: "bath_c" | "idle_c" | "baths" | "bath_once" | "bath_now" | "cancel_now" | "take_what_fits" | "later_bath"
+             | "accept_peak", value?}
+    -> {api_version, ok, error, spa}
+    {type: "spotnav/sauna", ..., action: "target_c" | "sessions" | "session_once" | "session_now" | "cancel_now"
+             | "take_what_fits" | "later_session" | "accept_peak", value?}
+    -> {api_version, ok, error, sauna}
+
+`value` is the setting's new value for the first four (the temperatures, the weekly sessions `[{weekdays, time}]`, the
+one-off as an ISO instant or `null`), judged as the settings are. `bath_now`/`session_now` heats at once, at any price
+(still under the fuse), until the temperature is reached and held two hours, or `cancel_now`; once per ten minutes
+(`spotnav_rate_limited`). The last three answer a session that will not be ready (`not_ready`): take what fits (it
+heats as far as it can), move it to the earliest later hour that fits (`spotnav_no_later_bath` when there is none),
+or allow the peak (the import target or the power level, never the fuse). Refusals: `spotnav_not_supported` (no spa or
+sauna), `spotnav_invalid_value`. Nothing is written to a device. The webhook's `spa` and `sauna` are the same bodies
+without `type`, routed by `spa_action` and `sauna_action`.
 """
 
 from __future__ import annotations
@@ -123,7 +142,110 @@ async def websocket_pool(hass: HomeAssistant, connection: websocket_api.ActiveCo
     connection.send_result(msg["id"], pool_answer(hass, site, msg))
 
 
+#: Per load: its settings field, the shadow's part, the status reader, and each action's setting key or press.
+DEADLINE_ACTIONS: Final[dict[str, dict[str, str]]] = {
+    "spa": {
+        "bath_c": "bath_c", "idle_c": "idle_c", "baths": "baths", "bath_once": "bath_once",
+        "bath_now": "!now", "cancel_now": "!cancel", "take_what_fits": "!fits", "later_bath": "!later",
+        "accept_peak": "!peak",
+    },
+    "sauna": {
+        "target_c": "target_c", "sessions": "sessions", "session_once": "session_once",
+        "session_now": "!now", "cancel_now": "!cancel", "take_what_fits": "!fits", "later_session": "!later",
+        "accept_peak": "!peak",
+    },
+}
+
+
+def deadline_answer(hass: HomeAssistant, site: ConfigEntry, kind: str, msg: dict[str, Any]) -> dict[str, Any]:
+    """One press of a spa or sauna control (see the module)."""
+    from ..sauna.config import apply_sauna  # noqa: PLC0415
+    from ..spa.config import apply_spa  # noqa: PLC0415
+
+    config = stored_config(site)
+    block = config.spa if kind == "spa" else config.sauna
+    shadow = _shadow(hass, site)
+    if block is None or shadow is None:
+        return _envelope(ERROR_NOT_SUPPORTED, kind, None)
+    part = shadow.spa if kind == "spa" else shadow.sauna
+    now = dt_util.utcnow()
+
+    def status() -> dict[str, Any] | None:
+        current = stored_config(site)
+        return shadow.spa_status(current, now) if kind == "spa" else shadow.sauna_status(current, now)
+
+    step = DEADLINE_ACTIONS[kind].get(msg.get("action"))  # type: ignore[arg-type]
+    if step is None:
+        return _envelope(ERROR_INVALID_VALUE, kind, status())
+    if not step.startswith("!"):
+        changes = {step: msg.get("value")}
+        if kind == "spa":
+            updated, errors = apply_spa(block, changes, entity_check(hass), now=now)  # type: ignore[arg-type]
+        else:
+            updated, errors = apply_sauna(block, changes, entity_check(hass), now=now)  # type: ignore[arg-type]
+        if errors or updated is None:
+            return _envelope(ERROR_INVALID_VALUE, kind, status())
+        write_heat_config(hass, site, replace(config, **{kind: updated}))
+    else:
+        plan = part.plan
+        target = block.bath_c if kind == "spa" else block.target_c  # type: ignore[union-attr]
+        error = None
+        if step == "!now":
+            error = part.press_now(now, target, part.reading.current_c)
+        elif step == "!cancel":
+            part.cancel_now()
+        elif plan is None or plan.not_ready is None:
+            error = ERROR_INVALID_VALUE
+        elif step == "!fits":
+            part.take_what_fits(plan.not_ready.at)
+        elif step == "!peak":
+            if plan.not_ready.cause not in ("import_target", "power_level"):
+                error = ERROR_INVALID_VALUE
+            else:
+                part.allow_peak(plan.not_ready.at)
+        else:
+            _later, error = part.move_later()
+        if error is not None:
+            return _envelope(error, kind, status())
+    shadow.request_look()
+    _LOGGER.info("SpotNav %s: %s", kind, msg.get("action"))
+    return _envelope(None, kind, status())
+
+
+def _deadline_command(kind: str) -> Any:
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"spotnav/{kind}",
+            vol.Optional("api_version"): object,
+            vol.Optional("charger_id"): object,
+            vol.Optional("site_id"): object,
+            vol.Optional("action"): object,
+            vol.Optional("value"): object,
+        }
+    )
+    @websocket_api.async_response
+    async def handler(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+        version = msg.get("api_version")
+        if type(version) is not int or version != HEAT_API_VERSION:
+            send_unsupported_version(connection, msg, HEAT_API_VERSION)
+            return
+        try:
+            site = _site_of_request(hass, msg)
+        except PowerMonthRefusal as refusal:
+            connection.send_error(msg["id"], refusal.code, refusal.message)
+            return
+        connection.send_result(msg["id"], deadline_answer(hass, site, kind, msg))
+
+    return handler
+
+
+websocket_spa = _deadline_command("spa")
+websocket_sauna = _deadline_command("sauna")
+
+
 @callback
 def async_setup_pool_spa_api(hass: HomeAssistant) -> None:
-    """Register the pool's and the spa's commands once for the domain."""
+    """Register the pool's, the spa's and the sauna's commands once for the domain."""
     websocket_api.async_register_command(hass, websocket_pool)
+    websocket_api.async_register_command(hass, websocket_spa)
+    websocket_api.async_register_command(hass, websocket_sauna)
