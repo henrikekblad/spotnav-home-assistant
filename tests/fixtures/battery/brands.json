@@ -3119,5 +3119,179 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "growatt_modbus": {
+  "_source": "0xAHA/Growatt_ModbusTCP 29d6b2b (v2.0.7): `<config entry id>_<key>` on every platform (entity.py line 55), the key the sensor's or the control's name in the register map; the battery's sensors sit on a sub-device of the inverter (coordinator.py line 2616), the inverter's manufacturer is \"Growatt\"; `battery_power` is signed, positive = charging (sensor.py line 736). Not a real registry; built from the source and const.py.",
+  "platform": "growatt_modbus",
+  "manufacturer": "Growatt",
+  "battery": "sensor.growatt_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.growatt_battery_power",
+    "unique_id": "01jgrowattmodbus0000000000_battery_power",
+    "device": "bat",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_charge_power",
+    "unique_id": "01jgrowattmodbus0000000000_battery_charge_power",
+    "device": "bat",
+    "state": "0",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_discharge_power",
+    "unique_id": "01jgrowattmodbus0000000000_battery_discharge_power",
+    "device": "bat",
+    "state": "800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_soc",
+    "unique_id": "01jgrowattmodbus0000000000_battery_soc",
+    "device": "bat",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_voltage",
+    "unique_id": "01jgrowattmodbus0000000000_battery_voltage",
+    "device": "bat",
+    "state": "51.2",
+    "unit": "V",
+    "device_class": "voltage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_full_charge_capacity",
+    "unique_id": "01jgrowattmodbus0000000000_bms_gauge_fcc",
+    "device": "bat",
+    "state": "200",
+    "unit": "Ah",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery2_full_charge_capacity",
+    "unique_id": "01jgrowattmodbus0000000000_battery2_full_charge_capacity",
+    "device": "bat",
+    "state": "200",
+    "unit": "Ah",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_charge_total",
+    "unique_id": "01jgrowattmodbus0000000000_battery_charge_total",
+    "device": "bat",
+    "state": "5200.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_discharge_total",
+    "unique_id": "01jgrowattmodbus0000000000_battery_discharge_total",
+    "device": "bat",
+    "state": "4800.2",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_charge_today",
+    "unique_id": "01jgrowattmodbus0000000000_battery_charge_today",
+    "device": "bat",
+    "state": "8.4",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_ac_charge_energy_total",
+    "unique_id": "01jgrowattmodbus0000000000_ac_charge_energy_total",
+    "device": "bat",
+    "state": "1200.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_priority_mode",
+    "unique_id": "01jgrowattmodbus0000000000_priority_mode",
+    "device": "bat",
+    "state": "Load First",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_vpp_control_state",
+    "unique_id": "01jgrowattmodbus0000000000_vpp_control_state",
+    "device": "inv",
+    "state": "released",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.growatt_load_first_battery_minimum_soc",
+    "unique_id": "01jgrowattmodbus0000000000_load_first_battery_minimum_soc",
+    "device": "bat",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.growatt_discharge_stopped_soc",
+    "unique_id": "01jgrowattmodbus0000000000_grid_first_discharge_stopped_soc",
+    "device": "bat",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.growatt_grid_first_discharge_stopped_soc_old",
+    "unique_id": "01jgrowattmodbus0000000000_discharge_stopped_soc",
+    "device": "bat",
+    "state": "90",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_grid_power",
+    "unique_id": "01jgrowattmodbus0000000000_power_to_user",
+    "device": "inv",
+    "state": "300",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "growatt_modbus",
+   "soc_pct": 64.0,
+   "capacity_kwh": 10.24,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

@@ -855,6 +855,10 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         discharge_regex=_re(r"_battery-discharge$"),
         label="E3/DC",
     ),
+    # Growatt through 0xAHA's `growatt_modbus` (`29d6b2b`): `<entry id>_battery_power`, the signed power, "positive = charging"
+    # (`sensor.py` L736), so as it is. The entry id is a ULID, which leaves out the other repository's
+    # `growatt_modbus_<serial>_<key>` of the same domain.
+    BatteryRow(("growatt_modbus",), _re(r"^[0-9a-z]{26,32}_battery_power$"), label="Growatt (Modbus)"),
     # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
     # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
     # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery

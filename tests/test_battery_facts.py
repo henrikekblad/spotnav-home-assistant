@@ -473,6 +473,8 @@ PLAN_REASON = {
     "alphaess": "no_capacity",
     # E3/DC states the size and both ratings (the device's specification): the plan has all it needs.
     "e3dc": None,
+    # 0xAHA's Growatt integration states a size (Ah times the voltage) and no rating: learnt.
+    "growatt_modbus": "no_rated_power",
 }
 
 

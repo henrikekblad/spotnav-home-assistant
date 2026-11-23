@@ -168,6 +168,7 @@ NAMES: dict[str, str] = {
     "sonnenbatterie": "sonnenBatterie",
     "alphaess_modbus": "Alpha ESS (Modbus)",
     "e3dc_rscp": "E3/DC",
+    "growatt_modbus": "Growatt (Modbus)",
     "anker_solix_official": "Anker Solix (official)",
     "ecoflow_cloud": "EcoFlow",
     "homevolt": "Homevolt",
@@ -759,12 +760,14 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Growatt (SPH, SPA, MIN TL-XH, MOD and MID TL3-XH, WIT)",
-        "`solax_modbus`, HACS, its Growatt plugin. Not read: core `growatt_server` (cloud, every 5 minutes) and a "
-        "HACS Modbus integration by 0xAHA",
-        keys=("solax_modbus/growatt",),
+        "`solax_modbus`, HACS, its Growatt plugin; `growatt_modbus`, HACS (0xAHA/Growatt_ModbusTCP). Not read: core "
+        "`growatt_server` (cloud, every 5 minutes) and the other HACS integration that uses the name `growatt_modbus`",
+        keys=("solax_modbus/growatt", "growatt_modbus"),
         adapter="growatt",
         control="Not mapped. What can be controlled locally depends on the model",
-        note="Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read.",
+        note="Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read. From 0xAHA's "
+        "integration the size is the BMS's full-charge capacity times the battery voltage, a second battery cluster is "
+        "not added, and the counters and the floor are read; the apps' schedules cannot be seen.",
     ),
     Overview(
         "Solinteg (MHT, M2HT; also M-TEC Energy Butler, Wattsonic)",

@@ -362,6 +362,23 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (idle, discharge, charge) and says nothing of who runs it. Not read: `e3dc_rscp_connect` (tobias-terhaar), whose
   size and rating are no entities.
 
+* Growatt hybrids through 0xAHA's `growatt_modbus` (0xAHA/Growatt_ModbusTCP `29d6b2b`, v2.0.7, local Modbus, read 2026-11-23,
+  `plans/research_integrations/growatt_control_2026-11-23.md`): read only, beside the `solax_modbus` Growatt plugin above, which
+  is unchanged. Unique id `<config entry id>_<key>` (`entity.py` line 55), the key the register map's name; the entry
+  id is the 26 lower-case letters and digits of a ULID (32 hex for an old entry). A second HACS repository (jacobbjerregaard)
+  shares the domain with ids `growatt_modbus_<serial>_<key>`, which the entry-id anchor leaves out. The level is
+  `battery_soc` and the size the BMS's full-charge capacity `bms_gauge_fcc` (Ah) times `battery_voltage`, an estimate
+  (`capacity_from_ah`): the second cluster of a MOD or MID (`battery2_full_charge_capacity`) is not added to it, so a
+  two-cluster plant reads small. The counters are `battery_charge_total` and `battery_discharge_total` (all energy into and
+  out of the battery; `ac_charge_energy_total` is grid-charged energy alone). There is no rating: the percent rates and
+  `max_charge_power_from_grid` are settings. The floor is the number `load_first_battery_minimum_soc` (SPH) and
+  `grid_first_discharge_stopped_soc` (register 3067, the working one on MOD and MIN-XH); `discharge_stopped_soc` (1071) is
+  silently ignored on a MOD and is not read. The firmware is the device's `sw_version`, not an entity. The modes are
+  `vpp_control_state` (`released` when no remote control is on, otherwise `charge`, `discharge`, `armed_idle`,
+  `authority_only` or `remote_without_authority`) and `priority_mode` (SPH, free in "Load First"); a schedule made in
+  ShinePhone or the portal is invisible over Modbus. The battery's power is `battery_power`, signed, positive = charging
+  (`sensor.py` line 736).
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1341,10 +1358,39 @@ E3DC: Final = Adapter(
     ),
 )
 
+def _entry_key(key: str, *domains: str) -> Match:
+    """`<config entry id>_<key>`: the id a ULID's 26 lower-case letters and digits (32 hex for an old entry), so that
+    another repository's `growatt_modbus_<serial>_<key>` is not it."""
+    return Match(domains or ("sensor",), re.compile(rf"^[0-9a-z]{{26,32}}_{re.escape(key)}$"))
+
+
+#: Growatt through 0xAHA's `growatt_modbus` (see the module): read only. The `solax_modbus` plugin's adapter is `GROWATT`.
+GROWATT_MODBUS: Final = Adapter(
+    brand="growatt_modbus",
+    label="Growatt (Modbus)",
+    platforms=("growatt_modbus",),
+    facts={
+        "soc": _entry_key("battery_soc"),
+        "capacity_ah": _entry_key("bms_gauge_fcc"),
+        "voltage": _entry_key("battery_voltage"),
+        "charged_total": _entry_key("battery_charge_total"),
+        "discharged_total": _entry_key("battery_discharge_total"),
+    },
+    modes=(
+        # Only the VPP remote control is readable; the apps' schedules are not.
+        ModeRule(_entry_key("vpp_control_state"), frozenset({"released"}), "VPP remote control", required=False),
+        ModeRule(_entry_key("priority_mode"), frozenset({"Load First"}), "priority", required=False),
+    ),
+    reserves=(
+        ReserveSource(_entry_key("load_first_battery_minimum_soc", "number")),
+        ReserveSource(_entry_key("grid_first_discharge_stopped_soc", "number")),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
     FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE, ANKER, ZENDURE, SUNGROW, OMNIBATTERY,
-    SONNEN, ALPHAESS, E3DC,
+    SONNEN, ALPHAESS, E3DC, GROWATT_MODBUS,
 )
 
 

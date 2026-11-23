@@ -73,6 +73,11 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   none of them is readable from Home Assistant. `e3dc_maestro` (TommiG1 `72c9754`) is a controller that calls
   `e3dc_rscp`'s services and exists only to drive the battery: an outside integration that runs it. No aggregator is
   named: no Nordic E3/DC owner was found (`plans/research_integrations/e3dc_control_2026-11-23.md`).
+* Growatt's own control through `growatt_modbus` (0xAHA `29d6b2b`) is the VPP remote power control, whose registers stay on after
+  its timed command ends, the time-of-use slots (newer firmware reverts a slot write) and ShinePhone's or the portal's
+  schedules, which "take effect regardless" and are invisible over Modbus (issues 373, 448, 460); the ARK and APX
+  batteries also pull a little from the grid by themselves (issue 492). No aggregator is named
+  (`plans/research_integrations/growatt_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -125,7 +130,7 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     # The other plugins of `solax_modbus` that have an adapter, after SolaX so that the integration alone still
     # names SolaX. Their own modes are the ones the plugin's mode select lists.
     Coexistence("sofar", "Sofar", ("solax_modbus",), "Sofar: time-of-use, timing and peak-cut modes"),
-    Coexistence("growatt", "Growatt", ("solax_modbus", "growatt_server"),
+    Coexistence("growatt", "Growatt", ("solax_modbus", "growatt_server", "growatt_modbus"),
                 "Growatt: battery-first and grid-first time slots"),
     Coexistence("solinteg", "Solinteg", ("solax_modbus",), "Solinteg app: economic and time-of-use modes",
                 ("CheckWatt [F]", "Samvolt [F]", "Enequi [F]")),

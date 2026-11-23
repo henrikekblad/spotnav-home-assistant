@@ -67,8 +67,9 @@ def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_do
     # Every battery row and every adapter is some maker's in the overview, so the overview cannot fall behind.
     missing = sorted(key for row in gen.sd.BATTERY_ROWS for key in gen.row_keys(row) if key not in keys)
     assert not missing, f"add the integration to OVERVIEW in tools/gen_supported.py: {missing}"
-    # `victron_modbus` is read with Victron's row; `solaredge_modbus` (core and binsentsu's integration, facts only) with SolarEdge's.
-    assert {adapter.brand for adapter in gen.ba.ADAPTERS} - {"victron_modbus", "solaredge_modbus"} <= adapters
+    # `victron_modbus` is read with Victron's row; `solaredge_modbus` (core and binsentsu's integration, facts only) with SolarEdge's;
+    # `growatt_modbus` (0xAHA's integration) with Growatt's, beside the `solax_modbus` plugin.
+    assert {adapter.brand for adapter in gen.ba.ADAPTERS} - {"victron_modbus", "solaredge_modbus", "growatt_modbus"} <= adapters
 
     rows = {entry.brand: gen._overview_row(entry) for entry in gen.OVERVIEW}
     assert rows["Sigenergy"][2].startswith("Yes: ") and rows["Sigenergy"][3] == gen.CONTROL_OPT_IN
