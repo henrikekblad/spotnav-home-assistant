@@ -31,8 +31,10 @@ and reloads their integration once. A failed reload is `spotnav_enable_failed`.
 `set_import_limit: true` (administrators only, never over the webhook) is the person's one tap on the per-phase
 import-limit line (`BatteryControl.async_set_import_limit`): SpotNav lowers the plant's own grid import limit to the most
 that keeps every phase under the fuse less the site's safety margin when it reads more or nothing (never raises it),
-reads it back, and then turns `battery_control_import_limit_acts` on. Any refusal is `spotnav_import_limit_not_set`
-(the reason is logged); nothing else is written. It runs before `changes`.
+reads it back, and then turns `battery_control_import_limit_acts` on. A limit that reads nothing is never written over,
+and while control only watches (`battery_control_shadow_only`) nothing is written to the plant (only saying the limit
+acts is allowed then). Any refusal is `spotnav_import_limit_not_set` (the reason is logged); nothing else is written.
+It runs before `changes`, which is validated first.
 
 `clear_outside_control: true` (administrators only, never over the webhook) is the person's "Det var jag – rensa":
 the outside-control verdict found by the battery's own settings or behaviour ends now, logged as cleared by a person
@@ -108,6 +110,13 @@ async def async_battery_control_answer(
     if controller is None:
         return _answer(error=ERROR_NO_SITE)
     control = controller.battery_control
+    if (
+        changes is not None
+        and (set_import_limit or enable_facts or enable_entities or clear_outside_control)
+        and not _valid_changes(changes, control.wear_default())
+    ):
+        # Refused before anything else is done: no plant write, no entity enabled, for a request it then refuses.
+        return _answer(error=ERROR_INVALID_VALUE)
     if clear_outside_control:
         # A person's "it was me": never over the webhook, never without an administrator.
         if over_webhook or not admin:
