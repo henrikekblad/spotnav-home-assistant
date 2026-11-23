@@ -51,7 +51,11 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      car still drawing on a charge to its own limit: it charges until the car is full, at most until
      `until`) > car_ended_waiting{soc_percent, estimated} (the car ended the plan's charge by itself short of
      the target, at `soc_percent` from delivered energy or an older reading, and takes nothing now: no window
-     starts it again until its level is read) > charging_now (+plan_energy +plan_cost) >
+     starts it again until its level is read) > charging_after_departure{target, level, until, kwh, requested_kwh}
+     (the departure passed short of the plan's need and the car charges on at once, at most until `until`
+     (`execution/catch_up.py`): a target's `target` and the car's `level`, or for an energy need `kwh` delivered
+     toward it and `requested_kwh`, the others null; under a hybrid headline it takes that headline's place) >
+     charging_now (+plan_energy +plan_cost) >
      balancing_paused{retry_at, cause} (+plan_energy +plan_cost; inside an installed period, load balancing
      paused the plan's charge because the house, or a home battery charging from the grid (`cause`), takes the
      whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null;
@@ -87,7 +91,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    battery size, so the stored `kwh` is planned instead; tone notice) says the fallback. battery_size_learned{kwh}
    (tone normal) follows whenever the need was worked out with the battery size learned from charging, since
    nobody states one (`kwh`, whole kWh). Under a solar or hybrid headline a
-   top-off is the fact line topping_off{until} after them.
+   top-off is the fact line topping_off{until} after them. A catch-up after a missed departure that reached its end
+   short of the need is the fact line not_reached_after_departure{target, level, kwh, requested_kwh} (params as
+   charging_after_departure's) until the car is unplugged, the need reads met or another departure passes.
    `settings_suggested{fields}` (tone normal) follows the notices while first-run defaults
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): departure_shortfall{kwh,
@@ -227,6 +233,13 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
     # departure).
     "topping_off": (TONE_NORMAL, ("until",)),
+    # The departure passed short of the plan's need and the car charges on at once, whatever the price, at most until
+    # `until` (`execution/catch_up.py`): a target's `target` and the car's `level` (percent), or for an energy need
+    # the energy delivered toward it (`kwh`) and the need (`requested_kwh`), the others null.
+    "charging_after_departure": (TONE_NORMAL, ("target", "level", "until", "kwh", "requested_kwh")),
+    # That charge reached its end with the need still not met, at `level` of `target` (or `kwh` of `requested_kwh`):
+    # said until the car is unplugged. No notification.
+    "not_reached_after_departure": (TONE_NORMAL, ("target", "level", "kwh", "requested_kwh")),
     "charging_without_prices": (TONE_NOTICE, ()),
     # `publication_at`: when the area's prices are due (its own time plus the margin); `None` once past.
     "waiting_for_publication": (TONE_NORMAL, ("publication_at",)),
@@ -587,6 +600,19 @@ class SiteMeasurementFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class CatchUpFacts:
+    """The catch-up after a missed departure (`execution/catch_up.py`): its end, a target's target and the car's
+    level (percent), or an energy need's delivered and requested energy (kWh), and whether it ended short."""
+
+    until: datetime
+    target: float | None = None
+    level: float | None = None
+    kwh: float | None = None
+    requested_kwh: float | None = None
+    ended_short: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class StatusFacts:
     now: datetime
     charger_available: bool = True
@@ -680,6 +706,8 @@ class StatusFacts:
     #: A charge session is open (the charger was seen charging in it): a plan's saving against charging now is
     #: then not said.
     charge_started: bool = False
+    #: The catch-up after a missed departure, while it runs or after it ended short of the need, else `None`.
+    catch_up: CatchUpFacts | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -1015,6 +1043,26 @@ def _import_target_paused_line(facts: StatusFacts) -> dict[str, Any] | None:
     )
 
 
+def _catch_up_params(catch_up: CatchUpFacts) -> dict[str, Any]:
+    energy = catch_up.target is None
+    return {
+        "target": None if energy else round(catch_up.target, 1),
+        "level": None if energy or catch_up.level is None else round(catch_up.level, 1),
+        "kwh": None if not energy or catch_up.kwh is None else round(catch_up.kwh, 2),
+        "requested_kwh": None if not energy or catch_up.requested_kwh is None else round(catch_up.requested_kwh, 2),
+    }
+
+
+def _catch_up_line(facts: StatusFacts) -> dict[str, Any] | None:
+    """`charging_after_departure` while the catch-up after a missed departure charges inside its period, else `None`."""
+    catch_up = facts.catch_up
+    if catch_up is None or catch_up.ended_short or not facts.charging or facts.paused:
+        return None
+    if not any(start <= facts.now < end for start, end in facts.installed_periods):
+        return None
+    return _line("charging_after_departure", until=aware_iso(catch_up.until), **_catch_up_params(catch_up))
+
+
 def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's `statusSentence` chain, with the compound facts as their own lines."""
     now = facts.now
@@ -1042,6 +1090,9 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
                 estimated=facts.car_ended_estimated,
             )
         ]
+    catch_up = _catch_up_line(facts)
+    if catch_up is not None:
+        return [catch_up]
     if facts.charging and active is not None:
         return [
             _line("charging_now", until=aware_iso(_charging_until(facts, active))),
@@ -1296,12 +1347,22 @@ def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.top_off_until is not None and not facts.paused and (facts.solar is not None or facts.hybrid is not None):
         # The plan chain says it in its headline; a strategy headline keeps its place, so it is said here.
         lines.append(_line("topping_off", until=aware_iso(facts.top_off_until)))
+    if facts.catch_up is not None and facts.catch_up.ended_short:
+        lines.append(_line("not_reached_after_departure", **_catch_up_params(facts.catch_up)))
     return lines
 
 
 #: Headlines that say the car charges now: a target's stop told after one would contradict it.
 CHARGING_HEADLINES: Final = frozenset(
-    {"solar_charging", "solar_charging_one_phase", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices"}
+    {
+        "solar_charging",
+        "solar_charging_one_phase",
+        "charging_now",
+        "min_soc_charging",
+        "topping_off",
+        "charging_after_departure",
+        "charging_without_prices",
+    }
 )
 
 
@@ -1424,7 +1485,11 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
             lines.append(_line("sun_past_target", percent=round(facts.sun_fill_limit_percent)))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
-        if facts.hybrid.reason == "satisfied_need_met" and facts.sun_fill_limit_percent is not None:
+        catch_up = _catch_up_line(facts)
+        if catch_up is not None:
+            # The catch-up is the plan's grid charge: it says what runs, in the hybrid line's place.
+            lines.append(catch_up)
+        elif facts.hybrid.reason == "satisfied_need_met" and facts.sun_fill_limit_percent is not None:
             lines.append(_line("sun_past_target", percent=round(facts.sun_fill_limit_percent)))
         else:
             lines.append(_hybrid_line(facts.hybrid, facts.proposal))

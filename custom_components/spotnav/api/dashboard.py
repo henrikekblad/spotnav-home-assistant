@@ -117,6 +117,7 @@ from ..planning.planner import chart_intervals, ChartInterval
 from .sun import capture_sun
 from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
+    CatchUpFacts,
     compose_status,
     HybridFacts,
     ImportTargetFacts,
@@ -2737,6 +2738,29 @@ def planning_facts(snapshot: AutoSnapshot) -> PlanningFacts:
     )
 
 
+def _catch_up_facts(snapshot: AutoSnapshot | None, soc: CapturedSoc | None) -> CatchUpFacts | None:
+    """The catch-up after a missed departure as the composer reads it: while it runs, the car's live level (a
+    target) or the energy delivered toward the missed departure's need; once it ended short, where it ended."""
+    record = None if snapshot is None else snapshot.catch_up
+    if record is None:
+        return None
+    if record.ended is not None:
+        level, kwh = record.level_percent, record.delivered_kwh
+    else:
+        live = None if soc is None else finite_number(soc.value)
+        level = record.level_percent if live is None else live
+        delivered = finite_number(snapshot.delivered_kwh) if snapshot is not None else None
+        kwh = record.requested_kwh - record.short_kwh + (delivered or 0.0)
+    return CatchUpFacts(
+        until=_utc(record.end) or record.end,
+        target=record.target_percent,
+        level=level,
+        kwh=kwh,
+        requested_kwh=record.requested_kwh,
+        ended_short=record.ended is not None,
+    )
+
+
 def status_facts(capture: CapturedDashboard) -> StatusFacts:
     """The captured moment as the typed facts `status_compose.compose_status` reads; nothing live, and
     every decision is the composer's.
@@ -2866,6 +2890,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
         balancing_cause=None if site is None else site.balancing_cause,
         charge_started=capture.session is not None,
+        catch_up=_catch_up_facts(snapshot, capture.soc),
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,
