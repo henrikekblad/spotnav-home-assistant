@@ -830,6 +830,15 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # Ocean Pro's "Battery Power" (`ocean_batt_pwr`) is the inverter's own figure, "+ charge / - discharge"
     # (`devices/internal/ocean_pro.py` L469, L692).
     BatteryRow(("ecoflow_cloud",), _re(r"-ocean-batt-pwr$"), label="EcoFlow Ocean Pro"),
+    # PowerOcean over local Modbus (`ef_powerocean_tcpmodbus`, MaxGrmm `56331de`): `<entry id>_battery_power`
+    # (40525), charge-positive: the integration's own "charge battery" control has sign +1 on it
+    # (`powerocean/const.py` L170-L176), and evcc negates it into its discharge-positive power.
+    BatteryRow(("ef_powerocean_tcpmodbus",), _re(r"(?:^|_)battery_power$"), label="EcoFlow PowerOcean (Modbus)"),
+    # The same inverter through `ecoflow_energy` (shuette42 `771b646`): `<device sn>_batt_w`, the system battery power
+    # "the app shows (positive = charging)" (`stream_proto.py` L28; the Modbus register 0x020C is read as it is). The
+    # `unit_batt_w` of a STREAM unit and the per-inverter `inverter_<n>_batt_w` are not the system's: the serial has
+    # no underscore, so only the unique id with one is read.
+    BatteryRow(("ecoflow_energy",), _re(r"^[^_]+_batt_w$"), label="EcoFlow PowerOcean and STREAM (ecoflow_energy)"),
     # Marstek over the local API (`marstek_local_api`, jaapp, `624881c`). The integration reads `bat_power`
     # as charging when positive and discharging when negative (`sensor.py` L146-L170), per device as
     # `<mac>_battery_power` and summed over the devices as `<macs>_system_total_power` ("Total battery

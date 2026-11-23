@@ -133,6 +133,28 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     0 there to hold), not the battery's rating, so the ratings are learnt. The battery's power `battery_power`
     (32102, or 30001) is charge-positive (`site_detection.BATTERY_ROWS`).
 
+* EcoFlow PowerOcean, read 2026-11-23 (`plans/research_integrations/ecoflow_control_2026-11-23.md`), one adapter for two
+  integrations, read only (no control is mapped; both write a battery setpoint under a heartbeat that SpotNav does not
+  send). `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
+  `<config entry id>_<key>` (`entity.py` line 38), one entry per inverter, the keys from `definitions.py`: the level
+  `battery_soc` (line 200), the size `battery_capacity` (40552, Wh, line 241), the counters `bat_charged_total` and
+  `bat_discharged_total` (lines 585, 594), the app's reserve as the integration holds it `battery_reserve_effective`
+  (line 757, %). The mode is the enum sensor `operating_mode` (`standby`, `self_consumption`, `ai`, `telemetry.py` line
+  227), free only in `self_consumption`, and the binary sensor `modbus_control` (the heartbeat holds the control, line
+  718), free while off. `ecoflow_energy` (shuette42/ecoflow-energy-ha `771b646`, 1.28.0): `<device sn>_<key>` (`sensor.py`
+  line 337), with `soc_pct` (the system level, `stream_proto.py` line 88, `powerocean_modbus.py` line 163),
+  `batt_charge_energy_kwh` and `batt_discharge_energy_kwh`, and the cloud select `work_mode` (`self_use` free,
+  `ai_schedule` not; STREAM's `self_powered` free) and the switch `modbus_control`. The device's serial has no
+  underscore, so the sensors are matched `^<sn>_<key>$`: the entry also carries `unit_soc_pct`, `unit_batt_w` and the
+  per-inverter `inverter_<n>_...` of single units, which are not the system's. The integration states no size
+  (`batt_remaining_wh` is the energy left). Neither states a rating: `battery_charge_power_limit` and
+  `battery_discharge_power_limit` are the BMS's capability at the moment (or an app schedule's cap) and `limit_inv_power`
+  the converter's AC rating, so the ratings are learnt. The battery's power is charge-positive on both
+  (`battery_power`, 40525: the control's own sign is +1 for charge, `powerocean/const.py` line 170; `batt_w`, 0x020C:
+  "positive = charging", `stream_proto.py` line 28; `site_detection.BATTERY_ROWS`). The firmware is the device's
+  `sw_version`. The inverter has a heartbeat dead-man of its own (60 s) and the EcoFlow app locks while Modbus control
+  is on; none of it is written here.
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -829,9 +851,41 @@ MARSTEK: Final = Adapter(
     reserves=(ReserveSource(_key("discharging_cutoff_capacity", "number")),),
 )
 
+#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module): read only. The
+#: `ecoflow_energy` keys follow the device's serial, which has no underscore, so `unit_` and `inverter_<n>_` are not them.
+_ECOFLOW_SN: Final = r"^[^_]+_"
+ECOFLOW: Final = Adapter(
+    brand="ecoflow",
+    label="EcoFlow PowerOcean",
+    platforms=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
+    facts={
+        "soc": Match(
+            ("sensor",), re.compile(rf"(?:^|_)battery_soc$|{_ECOFLOW_SN}soc_pct$")
+        ),
+        "capacity": _key("battery_capacity"),
+        "charged_total": Match(
+            ("sensor",), re.compile(rf"(?:^|_)bat_charged_total$|{_ECOFLOW_SN}batt_charge_energy_kwh$")
+        ),
+        "discharged_total": Match(
+            ("sensor",), re.compile(rf"(?:^|_)bat_discharged_total$|{_ECOFLOW_SN}batt_discharge_energy_kwh$")
+        ),
+    },
+    modes=(
+        ModeRule(
+            _any_key("operating_mode", "work_mode", domains=("sensor", "select")),
+            frozenset({"self_consumption", "self_use", "self_powered"}),
+            "operating mode",
+        ),
+        ModeRule(
+            _key("modbus_control", "binary_sensor", "switch"), frozenset({"off"}), "Modbus control", required=False
+        ),
+    ),
+    reserves=(ReserveSource(_key("battery_reserve_effective")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW,
 )
 
 

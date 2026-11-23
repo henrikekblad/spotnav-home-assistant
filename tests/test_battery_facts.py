@@ -449,6 +449,8 @@ PLAN_REASON = {
     "solis": "no_capacity",
     # Marstek states its size (rated capacity) but no rating on either integration: learnt.
     "marstek": "no_rated_power",
+    # EcoFlow states its size (Modbus) but no rating: the BMS's limits move with the moment, so they are learnt.
+    "ecoflow": "no_rated_power",
 }
 
 

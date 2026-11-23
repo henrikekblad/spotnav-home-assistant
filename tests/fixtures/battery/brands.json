@@ -1643,5 +1643,107 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "ecoflow": {
+  "_source": "EcoFlow PowerOcean through MaxGrmm/EF-PowerOcean-TcpModbus 56331de (2.10.1): `<config entry id>_<key>` (entity.py line 38), keys from definitions.py. Not a real registry; built from the source. The ecoflow_energy keys are built in tests/test_battery_ecoflow.py.",
+  "platform": "ef_powerocean_tcpmodbus",
+  "manufacturer": "EcoFlow",
+  "battery": "sensor.ecoflow_powerocean_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_power",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_battery_power",
+    "device": "inv",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_soc",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_battery_soc",
+    "device": "inv",
+    "state": "62",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_capacity",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_battery_capacity",
+    "device": "inv",
+    "state": "10240",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_charged_total",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_bat_charged_total",
+    "device": "inv",
+    "state": "812.4",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_discharged_total",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_bat_discharged_total",
+    "device": "inv",
+    "state": "760.1",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_reserve_effective",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_battery_reserve_effective",
+    "device": "inv",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_operating_mode",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_operating_mode",
+    "device": "inv",
+    "state": "self_consumption",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.ecoflow_powerocean_modbus_control",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_modbus_control",
+    "device": "inv",
+    "state": "off",
+    "unit": null,
+    "device_class": "running",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ecoflow_powerocean_battery_charge_power_limit",
+    "unique_id": "01JEFPOWEROCEANENTRY0000_battery_charge_power_limit",
+    "device": "inv",
+    "state": "3200",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "ecoflow",
+   "soc_pct": 62.0,
+   "capacity_kwh": 10.24,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

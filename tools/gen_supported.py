@@ -165,6 +165,8 @@ NAMES: dict[str, str] = {
     "zendure_ha": "Zendure",
     "anker_solix": "Anker Solix",
     "ecoflow_cloud": "EcoFlow",
+    "ef_powerocean_tcpmodbus": "EcoFlow PowerOcean (Modbus)",
+    "ecoflow_energy": "EcoFlow (ecoflow_energy)",
     "marstek_local_api": "Marstek (local API)",
     "marstek_modbus": "Marstek (Modbus)",
     # vehicles
@@ -926,6 +928,17 @@ OVERVIEW: tuple[Overview, ...] = (
         "`ecoflow_cloud`, HACS (tolwi/hassio-ecoflow-cloud)",
         keys=("ecoflow_cloud",),
         note="PowerOcean and Stream batteries are not read.",
+    ),
+    Overview(
+        "EcoFlow (PowerOcean)",
+        "`ef_powerocean_tcpmodbus`, HACS (MaxGrmm/EF-PowerOcean-TcpModbus); `ecoflow_energy`, HACS "
+        "(shuette42/ecoflow-energy-ha)",
+        keys=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
+        adapter="ecoflow",
+        control="Not mapped: read only. Local Modbus has a battery power setpoint under a heartbeat the inverter drops "
+        "after a minute, and it locks the EcoFlow app meanwhile; Modbus is first enabled by EcoFlow's support or the "
+        "installer",
+        note="The ratings are learnt. The size is read over Modbus only.",
     ),
     Overview(
         "Marstek (Venus E, C, D, A)",

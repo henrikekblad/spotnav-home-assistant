@@ -29,6 +29,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   from outside), and the Modbus integration's `user_work_mode` "trade_mode" ("AI Optimization") and `manual`
   (jaapp/ha-marstek-local-api `624881c`, ViperRNMC/marstek_venus_modbus 2026.10.1). evcc drives Venus batteries
   over Modbus (its `marstek-venus-e` template), a planner rather than an aggregator [V]; no aggregator is known.
+* EcoFlow's own modes are the options of `ef_powerocean_tcpmodbus`'s `operating_mode` (`self_consumption`, `ai`) and of
+  `ecoflow_energy`'s `work_mode` (`self_use`, `ai_schedule`; MaxGrmm `56331de`, shuette42 `771b646`). EcoFlow's planned
+  Tibber integration and CheckWatt readiness (Elmia Solar 2026) are announcements, not live [U], so no aggregator is
+  named (`plans/research_integrations/ecoflow_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -90,6 +94,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Enequi [F]", "Tibber [U]")),
     Coexistence("marstek", "Marstek", ("marstek_local_api", "marstek_modbus"),
                 "Marstek app: AI mode and Manual time slots"),
+    Coexistence("ecoflow", "EcoFlow", ("ef_powerocean_tcpmodbus", "ecoflow_energy"),
+                "EcoFlow app: Self-use, AI schedule and backup reserve"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),
