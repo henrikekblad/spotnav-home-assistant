@@ -447,6 +447,8 @@ PLAN_REASON = {
     "foxess": "no_capacity",
     # Solis states no size the BMS stands behind (its Ah number is a setting): learnt.
     "solis": "no_capacity",
+    # Marstek states its size (rated capacity) but no rating on either integration: learnt.
+    "marstek": "no_rated_power",
 }
 
 
