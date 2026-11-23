@@ -851,6 +851,16 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # positive = import", tibber/homevolt-local-api-doc `API_DOCUMENTATION.md`). The per-blade `<ecu id>_Homevolt battery
     # <n> power` and the external CTs' `Power <type>` end otherwise. Sign unverified on hardware.
     BatteryRow(("homevolt",), _re(r"^[0-9a-f]{12}_power$"), inverted=True, label="Homevolt"),
+    # kellerza's Sunsynk add-on over MQTT (`49efe3f`): `<inverter serial>_battery_power`, the signed register, "positive =
+    # discharging" (`micro_hybrid_ess.py` L31). The platform `mqtt` is every MQTT device's, so only a device that the
+    # add-on's option names Sunsynk (its default) or Deye is read.
+    BatteryRow(
+        ("mqtt",),
+        _re(r"^[^_]+_battery_power$"),
+        inverted=True,
+        device_manufacturer=("sunsynk", "deye"),
+        label="Sunsynk / Deye (kellerza add-on, MQTT)",
+    ),
     # Marstek over the local API (`marstek_local_api`, jaapp, `624881c`). The integration reads `bat_power`
     # as charging when positive and discharging when negative (`sensor.py` L146-L170), per device as
     # `<mac>_battery_power` and summed over the devices as `<macs>_system_total_power` ("Total battery

@@ -457,6 +457,8 @@ PLAN_REASON = {
     "fronius": None,
     # Homevolt reads the level only: no size, no rating, no counters (see the adapter).
     "homevolt": "no_capacity",
+    # Deye states a size only where `solarman` has learnt one, and no rating (the current limits are settings): learnt.
+    "deye": "no_rated_power",
 }
 
 

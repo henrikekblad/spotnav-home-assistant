@@ -45,6 +45,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
 * Homevolt's Smart Control and Grid Rewards are Tibber's cloud schedules, which the unit replaces its local ones with
   while its `local_mode` is off (tibber/homevolt-local-api-doc `58af3c4`, core `homevolt` `42f4a32`); the unit has no
   self-consumption mode of its own, so the battery is SpotNav's to read as free only while `local_mode` is on.
+* Deye's and Sunsynk's own control is the inverter's six time-of-use programmes, which the vendor's app and cloud
+  write and which `solarman`'s `Time of Use` select and kellerza's `Use Timer` switch show as on or off
+  (davidrapan `84982c5`, kellerza `49efe3f`); no aggregator is named: none was found in the Nordics
+  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `omnibattery` (ffunes/Omnibattery 1.6.1), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -113,6 +117,10 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("Tibber, over its bridge [U]",)),
     Coexistence("fronius", "Fronius", ("fronius",),
                 "Fronius web UI: time-of-use schedules, Energy Cost Assistant and dynamic power reduction"),
+    # Not "mqtt", the platform kellerza's add-on is read through: it is every MQTT device's, and the row is found by the
+    # brand of the facts there.
+    Coexistence("deye", "Deye / Sunsynk", ("solarman",),
+                "Deye Cloud or SunSynk Connect: time-of-use programmes and work modes"),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi", "solaredge_modbus"), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

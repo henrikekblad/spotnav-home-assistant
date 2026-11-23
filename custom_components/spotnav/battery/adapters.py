@@ -211,6 +211,30 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   is the EMS `Power`, disabled by default, discharge-positive per the vendor's API document, negated by the site: sign
   unverified on hardware (the library's fixture reads -17 at idle).
 
+* Deye and Sunsynk hybrids (the Deye profiles `deye_hybrid` 1p, `deye_p3` 3p LV and HV), read 2026-11-23
+  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`), read only (the control is the time-of-use
+  programmes and the grid-charge settings, which stay as registers with no timeout). `solarman` (davidrapan/ha-solarman
+  `84982c5`; the domain is shared with other makers' profiles that name their items alike, `solis_hybrid`, `sofar_hybrid`
+  and more, so only a device whose manufacturer is "Deye", which the profile's `info` gives the device registry,
+  `common.py` line 167, or "Sunsynk" is read): unique id `<entry id>_<slug of the item's name>_<platform>` (`entity.py`
+  line 74, `common.py` lines 217-220): the level `battery_sensor` (the item "Battery"), the counters
+  `total_battery_charge_sensor` and `total_battery_discharge_sensor` (kWh, at the battery's register; the high-voltage
+  scale follows the firmware) and the size `battery_capacity_sensor`, an estimate the integration learns from the level
+  and the counters while the battery charges and discharges (`sensor.py` line 134; unknown at first). The Ah number
+  `battery_capacity_number` is not read: a setting the person types (up to 2000 Ah) that nothing ties to the real bank,
+  as Solis's. The mode is the select `time_of_use_select`: "Disabled" is the inverter without its programmes, every
+  weekday choice runs them. Nothing says a rating: there is no battery power limit, only the settings
+  `battery_max_charging_current` and `battery_max_discharging_current` (A, which a hold would write) and the inverter's
+  `device_rated_power`; no floor is read either (`Battery Low SOC` and the shutdown and restart levels are the
+  inverter's alarms, not a discharge floor); the firmware is an attribute of the `Device` sensor, not an entity. The
+  battery's power `battery_power_sensor` is the raw signed register, discharge-positive (the integration's own capacity
+  learner takes `power < 0` as charging, `sensor.py` line 141), which the existing site row negates. kellerza/sunsynk
+  (`49efe3f`, MQTT add-on): unique id `<inverter serial>_<slug of the sensor's name>` (`a_sensor.py` line 133) on the
+  platform `mqtt`, which every MQTT device shares, so it is read only on a device whose manufacturer the add-on's option
+  gives as "Sunsynk" (its default) or "Deye": `battery_soc`, `total_battery_charge` and `total_battery_discharge` (the
+  three-phase definitions), the time-of-use switch `use_timer` (1p) or `prog_time_of_use_enabled` (3p) and
+  `battery_power`, a signed register with the same sign (`micro_hybrid_ess.py` line 31: "positive = discharging").
+
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
@@ -1005,9 +1029,34 @@ HOMEVOLT: Final = Adapter(
     ),
 )
 
+#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module): read
+#: only. Both platforms are shared with other devices, so only these makers' devices are read.
+DEYE: Final = Adapter(
+    brand="deye",
+    label="Deye / Sunsynk",
+    platforms=("solarman", "mqtt"),
+    manufacturer=("deye", "sunsynk"),
+    facts={
+        "soc": _any_key("battery_sensor", "battery_soc"),
+        "capacity": _key("battery_capacity_sensor"),
+        "charged_total": _any_key("total_battery_charge_sensor", "total_battery_charge"),
+        "discharged_total": _any_key("total_battery_discharge_sensor", "total_battery_discharge"),
+    },
+    modes=(
+        # The inverter's own programmes: "Disabled" (solarman's select) or off (kellerza's switch) is without them.
+        ModeRule(
+            _any_key(
+                "time_of_use_select", "use_timer", "prog_time_of_use_enabled", domains=("select", "switch")
+            ),
+            frozenset({"Disabled", "off"}),
+            "time of use",
+        ),
+    ),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAREDGE_MODBUS, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT,
+    FERROAMP, FOXESS, SOLIS, MARSTEK, ECOFLOW, KOSTAL, FRONIUS, HOMEVOLT, DEYE,
 )
 
 

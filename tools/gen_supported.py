@@ -836,11 +836,14 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Deye, Sunsynk, Sol-Ark",
-        "`solarman`, HACS (davidrapan/ha-solarman). Not read: the sunsynk add-on (kellerza/sunsynk) and the cloud "
-        "integrations",
-        keys=("solarman",),
-        control="Not mapped. Work mode and programme slots are written in community setups, not confirmed",
-        note="No battery level or size is read yet.",
+        "`solarman`, HACS (davidrapan/ha-solarman); the Sunsynk add-on (kellerza/sunsynk) over MQTT. Not read: the "
+        "cloud integrations",
+        keys=("solarman", "mqtt/sunsynk"),
+        adapter="deye",
+        control="Not mapped: read only. Work mode and programme slots are written in community setups, not confirmed",
+        note="Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
+        "`solarman` has learnt it, and the ratings and the floor are learnt. The mode is read from the time-of-use "
+        "setting: with it on, the inverter runs its own programmes.",
     ),
     Overview(
         "Solis",

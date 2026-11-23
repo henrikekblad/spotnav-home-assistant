@@ -2078,5 +2078,116 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "deye": {
+  "_source": "davidrapan/ha-solarman 84982c5 with the `deye_hybrid` profile: `<entry id>_<slug of the item's name>_<platform>` (entity.py line 74, common.py lines 217-220); the device's manufacturer is the profile's `info.manufacturer` (common.py line 167). Not a real registry; built from the source and the profile's item names.",
+  "platform": "solarman",
+  "manufacturer": "Deye",
+  "battery": "sensor.deye_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.deye_battery_power",
+    "unique_id": "01jdeyehybridentry0000000_battery_power_sensor",
+    "device": "inv",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.deye_battery",
+    "unique_id": "01jdeyehybridentry0000000_battery_sensor",
+    "device": "inv",
+    "state": "56",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.deye_battery_capacity",
+    "unique_id": "01jdeyehybridentry0000000_battery_capacity_sensor",
+    "device": "inv",
+    "state": "10.2",
+    "unit": "kWh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.deye_battery_capacity",
+    "unique_id": "01jdeyehybridentry0000000_battery_capacity_number",
+    "device": "inv",
+    "state": "200",
+    "unit": "Ah",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.deye_battery_voltage",
+    "unique_id": "01jdeyehybridentry0000000_battery_voltage_sensor",
+    "device": "inv",
+    "state": "51.2",
+    "unit": "V",
+    "device_class": "voltage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.deye_total_battery_charge",
+    "unique_id": "01jdeyehybridentry0000000_total_battery_charge_sensor",
+    "device": "inv",
+    "state": "3200.5",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.deye_total_battery_discharge",
+    "unique_id": "01jdeyehybridentry0000000_total_battery_discharge_sensor",
+    "device": "inv",
+    "state": "3000.1",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.deye_battery_max_charging_current",
+    "unique_id": "01jdeyehybridentry0000000_battery_max_charging_current_number",
+    "device": "inv",
+    "state": "37",
+    "unit": "A",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.deye_battery_max_discharging_current",
+    "unique_id": "01jdeyehybridentry0000000_battery_max_discharging_current_number",
+    "device": "inv",
+    "state": "37",
+    "unit": "A",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.deye_time_of_use",
+    "unique_id": "01jdeyehybridentry0000000_time_of_use_select",
+    "device": "inv",
+    "state": "Disabled",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "deye",
+   "soc_pct": 56.0,
+   "capacity_kwh": 10.2,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }
