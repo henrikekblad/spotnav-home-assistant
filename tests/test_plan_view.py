@@ -324,3 +324,33 @@ def test_a_grid_charge_that_ran_some_quarters_says_its_power_and_minutes() -> No
     inputs = PlanInputs("site", NOW, TZ, prices=prices(), battery=BatteryPlan("sensor.soc", None, tuple(full), live=False))
     run = _load(plan_view(inputs), "home_battery")["runs"][0]
     assert run["kw"] == 3.3 and run["active_min"] is None
+
+
+def test_the_pools_circulation_and_heat_pump_are_watched_lanes_inside_the_house() -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.site.plan_view import PoolPlanView
+
+    pool = PoolPlanView(
+        circulation={at(h): why for h, why in ((24, "cheap"), (25, "cheap"), (26, "cheap"), (35, "sun"), (36, "sun"), (40, "extra"))},
+        heat={at(35): "sun", at(36): "sun"},
+        circulation_kw=0.4,
+        heat_pump_kw=1.6,
+        need_h=5.0,
+        heat_h=2.0,
+        circulation_name="Pool cirkulation",
+        heat_pump_name="Poolpump",
+    )
+    base = villa_inputs()
+    answer = plan_view(replace(base, pool=pool))
+    _write_or_compare("pool.json", answer)
+    circulation, heat = _load(answer, "pool_circulation"), _load(answer, "pool_heat")
+    assert (circulation["id"], heat["id"]) == ("pool_circulation", "pool_heat")
+    assert circulation["state"] == heat["state"] == "would" and circulation["in_house"] and heat["in_house"]
+    assert [(run["what"], run["reason"], run["kwh"]) for run in circulation["runs"]] == [
+        ("filter", "cheap", 1.2), ("filter", "sun", 0.8), ("extra", "extra", 0.4)
+    ]
+    assert [(run["what"], run["reason"], run["kw"]) for run in heat["runs"]] == [("heat", "sun", 1.6)]
+    assert circulation["summary"] == {"need_h": 5.0, "planned_h": 6.0} and heat["summary"] == {"heat_h": 2.0, "planned_h": 2.0}
+    # In the house: the net is as without them.
+    assert [row["net_kw"] for row in answer["hours"]] == [row["net_kw"] for row in plan_view(base)["hours"]]
