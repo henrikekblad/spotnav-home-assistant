@@ -22,6 +22,10 @@
 //   anew only when a line changes its way or a part comes or goes, so the dots never jump back on a refresh. From a
 //   backend before it, or while it cannot be read, the schematic has the day's figures and the battery's own power
 //   from `spotnav/get_house`, and no other live kW.
+// * The battery's line carries the battery on the AC side (`battery_ac_kw`), where the grid's meter sees it, so the
+//   lines add up around the house: on a hybrid that reads the battery at the battery (DC) it is the reading with the
+//   inverter's loss (a little more while it charges, a little less while it gives), not the battery app's own figure.
+//   From a backend before it, the battery's power as read.
 // * The sentence: from the battery plan's hours (`HouseHour.battery_action`), what the battery does now and until
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
@@ -42,6 +46,9 @@ export interface HouseNow {
   sun_kw: number | null;
   sun_from: string | null;
   battery_kw: number | null;
+  /** The battery on the AC side (`site/house_now.py`): what the schematic's line carries; `battery_kw` from a backend
+   * before it. */
+  battery_ac_kw: number | null;
   soc_pct: number | null;
   car_kw: number | null;
   /** Whether a car is plugged in (`null` without chargers, unread, or from a backend before it), and its level. */
@@ -50,6 +57,8 @@ export interface HouseNow {
   heat_kw: number | null;
   heat_from: string | null;
   house_kw: number | null;
+  /** How the house is had: `plant` (the plant's own load) or `balance`; `null` unread or from a backend before it. */
+  house_from: string | null;
   has: { sun: boolean; battery: boolean; car: boolean; heat: boolean };
 }
 
@@ -72,6 +81,7 @@ export function decodeHouseNow(raw: unknown): HouseNowDecode {
         sun_kw: numberOrNull(source.sun_kw),
         sun_from: textOrNull(source.sun_from),
         battery_kw: numberOrNull(source.battery_kw),
+        battery_ac_kw: source.battery_ac_kw === undefined ? numberOrNull(source.battery_kw) : numberOrNull(source.battery_ac_kw),
         soc_pct: numberOrNull(source.soc_pct),
         car_kw: numberOrNull(source.car_kw),
         car_connected: source.car_connected === undefined || source.car_connected === null ? null : flag(source.car_connected),
@@ -79,6 +89,7 @@ export function decodeHouseNow(raw: unknown): HouseNowDecode {
         heat_kw: numberOrNull(source.heat_kw),
         heat_from: textOrNull(source.heat_from),
         house_kw: numberOrNull(source.house_kw),
+        house_from: source.house_from === undefined ? null : textOrNull(source.house_from),
         has: { sun: flag(has.sun), battery: flag(has.battery), car: flag(has.car), heat: flag(has.heat) },
       },
     };
@@ -202,7 +213,8 @@ export function schematicLines(live: HouseNow | null, answer: HouseAnswer): Sche
   lines.push(line("grid", live?.grid_kw ?? null, true));
   if (has.battery) {
     // + charging: away from the house.
-    lines.push(line("battery", live?.battery_kw ?? answer.battery?.now?.power_kw ?? null, false));
+    // On the AC side, so the lines add up (see the module).
+    lines.push(line("battery", live?.battery_ac_kw ?? answer.battery?.now?.power_kw ?? null, false));
   }
   if (has.car && carPlugged(live)) {
     lines.push(line("car", live?.car_kw ?? null, false));

@@ -3,20 +3,38 @@
 Pure: the shell (`api/house_now.py`) reads each figure and hands it over; nothing is read or written here.
 
     {api_version: 1, site_id, at, grid_kw, sun_kw, sun_from, battery_kw, soc_pct, car_kw, car_connected, car_soc_pct,
-     heat_kw, heat_from, house_kw, has: {sun, battery, car, heat}}
+     heat_kw, heat_from, house_kw, has: {sun, battery, car, heat}, battery_ac_kw, house_from}
 
 * `grid_kw`: the site's net grid power now (+ import, − export), as load balancing and solar read it; `null` unread.
 * `sun_kw`: the sun's production now: the Energy dashboard's solar power sensors summed (`sun_from: "power"`), else
   the mean of the last period the energy flow read from the recorder's 5-minute statistics (`"recent"`, at most
   `RECENT_MAX` old); `null` (and `sun_from` `null`) without either, or without the sun (`has.sun` false).
-* `battery_kw`: the home battery's power (+ charging, − discharging), `soc_pct` its level; `null` unread.
+* `battery_kw`: the home battery's power as read (+ charging, − discharging), what the battery's own app shows;
+  `soc_pct` its level; `null` unread.
+* `battery_ac_kw` (added 2026-11-24): the battery on the AC side, where the grid meter sees it; the line the card
+  draws, so the schematic adds up. For a battery read on the AC side it is `battery_kw`. For one read at the battery
+  (the DC side of a hybrid, `battery/conversion_loss.py`) it holds the inverter's loss: with the plant's own house
+  load (`house_from: "plant"`) it is what the meters leave for it, `grid + sun - house - cars`; otherwise
+  `battery_kw` turned with the learnt (else assumed) loss, `conversion_loss.ac_kw` with the grid's share of a charge.
+  `null` unread or without a battery.
 * `car_kw`: what the site's chargers draw now; `null` unread or without chargers. `car_connected`: whether a car is
   plugged into any of them (`null` without chargers or unread); `car_soc_pct` the plugged-in car's level where its
   plan's vehicle can be read (the first charger's with one).
 * `heat_kw`: the heat pump's meter where it is a power sensor (`heat_from: "power"`), else the last period read
   (`"recent"`); part of the house, never added to it.
-* `house_kw`: the whole house (the heat included): the grid, the sun and the battery's discharge less the battery's
-  charge and the cars, never below 0; `null` when a figure it needs is unread.
+* `house_kw`: the whole house (the heat included), never below 0; `null` when a figure it needs is unread.
+  `house_from` says how it is had:
+  * `"plant"`: the plant's own AC load (`adapters`: `plant_load_power`, Sigenergy's `plant_total_load_power`, which
+    holds the chargers on the plant's side) less the cars. Taken only while the battery's line the meters leave
+    (`battery_ac_kw`) lies within `PLANT_SLACK_KW` + `PLANT_SLACK_SHARE` of the battery's power read (else the
+    readings are from different moments, the sun's last period standing in for a live one, say): then
+    `"balance"`.
+  * `"balance"`: the grid and the sun less the battery on the AC side (`battery_ac_kw`) and the cars, so the
+    inverter's loss on a DC-side battery is not counted into the house (about 0.6 kW while the owner's plant
+    discharges 10 kW).
+  Either way the lines add up: `grid + sun = house + cars + battery_ac` (before the house's floor of 0). The sun is
+  as read: a hybrid's solar power read on its DC side keeps the solar side's own conversion in the house, as before
+  (no adapter marks its sun as DC).
 * `has`: which parts the site has, so the card draws only those (a part that is had but unread is drawn without a
   figure).
 """
@@ -26,6 +44,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
+
+from ..battery.conversion_loss import ac_kw
 
 HOUSE_NOW_API_VERSION: Final = 1
 NOW_KEYS: Final = (
@@ -44,11 +64,20 @@ NOW_KEYS: Final = (
     "heat_from",
     "house_kw",
     "has",
+    "battery_ac_kw",
+    "house_from",
 )
 #: The last period read stands in for a figure without a power sensor only while it ended this recently.
 RECENT_MAX: Final = timedelta(minutes=20)
 FROM_POWER: Final = "power"
 FROM_RECENT: Final = "recent"
+HOUSE_FROM_PLANT: Final = "plant"
+HOUSE_FROM_BALANCE: Final = "balance"
+#: How far the battery's line the plant's own load leaves may lie from the battery's power read (kW, plus a share of
+#: it) for the plant's load to count: wider than any inverter's loss (`conversion_loss.LOSS_RANGE`), narrower than a
+#: reading from another moment.
+PLANT_SLACK_KW: Final = 0.05
+PLANT_SLACK_SHARE: Final = 0.1
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +98,11 @@ class HouseNowInputs:
     has_heat: bool
     car_connected: bool | None = None
     car_soc_pct: float | None = None
+    #: The inverter's `(charge, discharge)` loss for a battery read at the battery (`conversion_loss.ConversionLoss
+    #: .loss`), `None` for one read on the AC side.
+    battery_loss: tuple[float, float] | None = None
+    #: The plant's own house load now (kW, the chargers on its side included), where the adapter reads it.
+    plant_load_kw: float | None = None
 
 
 def recent_kw(kwh: float | None, minutes: int, end: datetime, now: datetime) -> float | None:
@@ -82,30 +116,52 @@ def _r(value: float | None, digits: int = 2) -> float | None:
     return None if value is None else round(value, digits)
 
 
-def house_kw(inputs: HouseNowInputs) -> float | None:
-    """The whole house now (see the module), `None` when a figure it needs is unread."""
-    if inputs.grid_kw is None:
+def battery_ac_kw(inputs: HouseNowInputs) -> float | None:
+    """The battery's power on the AC side turned from the reading (see the module), `None` unread."""
+    if not inputs.has_battery or inputs.battery_kw is None:
         return None
+    if inputs.battery_loss is None:
+        return inputs.battery_kw
+    return ac_kw(inputs.battery_kw, inputs.battery_loss, inputs.grid_kw)
+
+
+def figures(inputs: HouseNowInputs) -> tuple[float | None, float | None, str | None]:
+    """The house, the battery on the AC side and where the house is had from (see the module)."""
+    battery = battery_ac_kw(inputs)
+    if inputs.grid_kw is None:
+        return None, battery, None
     parts = [inputs.grid_kw]
     if inputs.has_sun:
         if inputs.sun_kw is None:
-            return None
+            return None, battery, None
         parts.append(inputs.sun_kw)
-    if inputs.has_battery:
-        if inputs.battery_kw is None:
-            return None
-        parts.append(-inputs.battery_kw)
     if inputs.has_car:
         if inputs.car_kw is None:
-            return None
+            return None, battery, None
         parts.append(-inputs.car_kw)
-    return max(0.0, sum(parts))
+    if inputs.has_battery:
+        if battery is None or inputs.battery_kw is None:
+            return None, battery, None
+        if inputs.plant_load_kw is not None:
+            cars = inputs.car_kw if inputs.has_car and inputs.car_kw is not None else 0.0
+            house = max(0.0, inputs.plant_load_kw - cars)
+            left = sum(parts) - house
+            if abs(left - inputs.battery_kw) <= PLANT_SLACK_KW + PLANT_SLACK_SHARE * abs(inputs.battery_kw):
+                return house, left, HOUSE_FROM_PLANT
+        parts.append(-battery)
+    return max(0.0, sum(parts)), battery, HOUSE_FROM_BALANCE
+
+
+def house_kw(inputs: HouseNowInputs) -> float | None:
+    """The whole house now (see the module), `None` when a figure it needs is unread."""
+    return figures(inputs)[0]
 
 
 def house_now(inputs: HouseNowInputs) -> dict[str, Any]:
     """The answer (see the module)."""
     sun = inputs.sun_kw if inputs.has_sun else None
     heat = inputs.heat_kw if inputs.has_heat else None
+    house, battery_ac, house_from = figures(inputs)
     return {
         "api_version": HOUSE_NOW_API_VERSION,
         "site_id": inputs.site_id,
@@ -120,11 +176,13 @@ def house_now(inputs: HouseNowInputs) -> dict[str, Any]:
         "car_soc_pct": _r(inputs.car_soc_pct if inputs.has_car and inputs.car_connected else None, 1),
         "heat_kw": _r(None if heat is None else max(0.0, heat)),
         "heat_from": None if heat is None else inputs.heat_from,
-        "house_kw": _r(house_kw(inputs)),
+        "house_kw": _r(house),
         "has": {
             "sun": inputs.has_sun,
             "battery": inputs.has_battery,
             "car": inputs.has_car,
             "heat": inputs.has_heat,
         },
+        "battery_ac_kw": _r(battery_ac),
+        "house_from": house_from,
     }

@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "maintenant {pct}",
   "house.flow.socEnd": "fin {pct}",
   "house.flow.through": "Jusqu’à {time}.",
+  "house.flow.inverterLoss": "Pertes de l’onduleur aujourd’hui : {kwh} (retirées de la maison)",
+  "house.flow.inverterLossPeriod": "Pertes de l’onduleur : {kwh} (retirées de la maison)",
   "house.flow.rule": "Les compteurs ne disent pas quelle source a alimenté quoi : chaque heure, le soleil va d’abord à la maison, puis à la voiture, à la batterie et au réseau ; la batterie couvre la maison avant le réseau.",
   "house.flow.ruleQuarter": "Les compteurs ne disent pas quelle source a alimenté quoi : chaque quart d’heure, le soleil va d’abord à la maison, puis à la voiture, à la batterie et au réseau ; la batterie couvre la maison avant le réseau.",
   "house.flow.waiting": "Le flux d’énergie du jour apparaît dès que les cinq premières minutes sont là.",

@@ -242,6 +242,10 @@ export interface EnergyFlow {
   heat_sources: number;
   nodes: FlowNode[];
   links: FlowLink[];
+  /** What counting a battery read at the battery (a hybrid's DC side) on the AC side took out of the house: the
+   * inverter's loss over the period (kWh); `null` for a battery read on the AC side, without one, or from a backend
+   * before it. */
+  inverter_loss_kwh: number | null;
 }
 
 /** The day shown: today or a past day asked for by date, how far back one may go, and whether it has data. */
@@ -597,6 +601,7 @@ function energyFlow(value: unknown): EnergyFlow | null {
     nodes,
     // A link to a node the answer does not have is not drawn.
     links: links.filter((link) => ids.has(link.from) && ids.has(link.to)),
+    inverter_loss_kwh: additive(source, "inverter_loss_kwh", (raw) => (raw === null ? null : kwh(raw)), null),
   };
 }
 

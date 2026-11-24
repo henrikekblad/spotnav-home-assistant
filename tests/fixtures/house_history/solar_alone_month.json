@@ -830,6 +830,7 @@
     "heat_hours": 374,
     "heat_sources": 1,
     "hours": 374,
+    "inverter_loss_kwh": null,
     "links": [
       {
         "from": "source.solar",

@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "ahora {pct}",
   "house.flow.socEnd": "final {pct}",
   "house.flow.through": "Hasta las {time}.",
+  "house.flow.inverterLoss": "Pérdidas del inversor hoy: {kwh} (descontadas de la casa)",
+  "house.flow.inverterLossPeriod": "Pérdidas del inversor: {kwh} (descontadas de la casa)",
   "house.flow.rule": "Los contadores no dicen qué fuente alimentó qué: cada hora el sol va primero a la casa, luego al coche, a la batería y a la red; la batería cubre la casa antes que la red.",
   "house.flow.ruleQuarter": "Los contadores no dicen qué fuente alimentó qué: cada cuarto de hora el sol va primero a la casa, luego al coche, a la batería y a la red; la batería cubre la casa antes que la red.",
   "house.flow.waiting": "El flujo de energía de hoy aparece cuando estén los primeros cinco minutos.",

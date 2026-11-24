@@ -52,7 +52,15 @@ from ..site.energy_statistics import async_energy_prefs, energy_flow_ids
 from ..site.history_period import PERIOD_DAY, Period, local_date, requested_period, utc_bounds
 from ..site.house_period import HOUSE_HISTORY_API_VERSION, HouseHistoryInputs, house_history
 from .common import send_unsupported_version
-from .house import _car_register_ids, _hourly_periods, _with_parts, async_cached_day_flow, five_slot, heat_parts
+from .house import (
+    _car_register_ids,
+    _hourly_periods,
+    _with_parts,
+    async_cached_day_flow,
+    five_slot,
+    heat_parts,
+    with_ac_battery,
+)
 from .saving import async_day_savings_by_hour
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
@@ -141,7 +149,8 @@ async def _read_periods(
     heat = controller.house_forecast.heat
     zones = await heat.async_current_zones()
     periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, heat.meter, zones)
-    return _with_parts(hass, controller, periods, heat.meter, zones)[0], 60, ids
+    periods = _with_parts(hass, controller, periods, heat.meter, zones)[0]
+    return with_ac_battery(hass, controller, ids, periods), 60, ids
 
 
 async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any) -> dict[str, Any]:

@@ -24,7 +24,9 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   period by the energy flow's one rule and summed over the day, month or year, so a month's flow is the sum of its
   hours' flows, never a month's totals allocated at once (that would let the midday sun charge the night's battery).
   A bucket is an hour of a day, a day of a month or a month of a year (`site/history_period.py`): the meters as read
-  (`grid_in`, `grid_out`, `solar`, `battery_in`, `battery_out`) and the uses as the flow allocates them (`house` the
+  (`grid_in`, `grid_out`, `solar`, `battery_in`, `battery_out`; a battery read at the battery on the AC side, as the
+  energy flow counts it, `site/energy_flow.on_ac_side`, so the inverter's loss is not in the house and the period's
+  flow says it in `inverter_loss_kwh`, as today's does) and the uses as the flow allocates them (`house` the
   balance, `heat`, `car`; where the meters disagree the flow takes the shortfall off them), `use` their sum. `null` without the dashboard's grid meter.
   A bucket's `battery_saving` is the battery's money over the reviewed days in it (the review's `battery_saving`,
   what the day cost against the same day with no battery; negative: the battery made it dearer), over

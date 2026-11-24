@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "nå {pct}",
   "house.flow.socEnd": "slutt {pct}",
   "house.flow.through": "Fram til {time}.",
+  "house.flow.inverterLoss": "Vekselretterens tap i dag: {kwh} (trukket fra huset)",
+  "house.flow.inverterLossPeriod": "Vekselretterens tap: {kwh} (trukket fra huset)",
   "house.flow.rule": "Målerne sier ikke hvilken kilde som gikk til hva: hver time går solen først til huset, så bilen, batteriet og nettet; batteriet dekker huset før nettet.",
   "house.flow.ruleQuarter": "Målerne sier ikke hvilken kilde som gikk til hva: hvert kvarter går solen først til huset, så bilen, batteriet og nettet; batteriet dekker huset før nettet.",
   "house.flow.waiting": "Dagens energiflyt vises når de første fem minuttene er inne.",

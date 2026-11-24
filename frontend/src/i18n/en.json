@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "now {pct}",
   "house.flow.socEnd": "end {pct}",
   "house.flow.through": "Until {time}.",
+  "house.flow.inverterLoss": "The inverter's losses today: {kwh} (taken out of the house)",
+  "house.flow.inverterLossPeriod": "The inverter's losses: {kwh} (taken out of the house)",
   "house.flow.rule": "The meters do not say which source fed which use: each hour the sun goes to the house first, then the car, the battery and the grid; the battery covers the house before the grid does.",
   "house.flow.ruleQuarter": "The meters do not say which source fed which use: each quarter hour the sun goes to the house first, then the car, the battery and the grid; the battery covers the house before the grid does.",
   "house.flow.waiting": "Today's energy flow appears once the first five minutes are in.",
