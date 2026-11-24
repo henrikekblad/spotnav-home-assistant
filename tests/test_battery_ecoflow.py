@@ -429,8 +429,8 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     status = control.status()
     assert status["options"]["battery_control_shadow_only"] is False, "the switch shows what the person chose"
     assert NEED_HARDWARE_TEST in status["needs"]
-    # The test itself is what it waits for: never refused for it.
-    assert control.hardware_test_refusal() is None
+    # The test itself is what it waits for: never refused for it. Sigenergy's has no dead-man step.
+    assert control.hardware_test_refusal() is None and not control.hardware_test_deadman()
 
     # A passed test on the firmware key now: control runs.
     controller.hardware_test.record = _record(control.firmware_key())
@@ -445,3 +445,94 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     )
     assert control.state() == "on"
     await control.async_shutdown()
+
+
+# ---- the hardware test times the inverter's own dead-man ---------------------------------------------------------------
+
+
+def _test_run(ocean: PowerOcean, executor: Executor, *, looks: int = 150, house_kw: float = 2.0,
+              headroom_a: float = 20.0) -> tuple[Any, list[StepResult], datetime]:
+    """The hardware test's battery part (`Timing.quick`, `stop_on_fail`) with the dead-man step, as
+    `BatteryControl.async_hardware_test_start` builds it, on the fake's own clock."""
+    from custom_components.spotnav.battery.monitor import Capability  # noqa: PLC0415
+    from custom_components.spotnav.battery.verify import (  # noqa: PLC0415
+        TEST_CHARGE_SOC_MAX_PCT, Sample, Timing, Verification,
+    )
+
+    assert gate.deadman_testable(ECOFLOW_CONTROL.expiry, slow=False, fixed_charge=False)
+    verification = Verification(
+        executor, T0, firmware="V5.1.37.13", modes=(*gate.BATTERY_MODES, gate.MODE_EXPIRY), timing=Timing.quick(),
+        stop_on_fail=True, charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=ECOFLOW_CONTROL.expiry,
+    )
+    capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
+    now = T0
+    results: list[StepResult] = []
+    for _ in range(looks):
+        power = ocean.at(now).power_kw()
+        grid = house_kw + power
+        sample = Sample(power, 5.0, ocean.soc_pct, house_kw, grid_kw=grid, headroom_a=headroom_a)
+        action, rate = verification.command(now, sample, 10.0)
+        result = executor.step(inputs(
+            ocean, now, action, rate, power_kw=power, house_deficit_kw=house_kw, headroom_a=headroom_a,
+            grid_import_kw=max(grid, 0.0), expiry_probe=verification.expiry_probe(),
+        ))
+        results.append(result)
+        for op in result.ops:
+            ocean.apply(op)
+        verification.after(now, result, sample, capability)
+        now += TICK
+        if verification.done and executor.state.phase in ("idle", "blocked") and not result.ops:
+            break
+    return verification, results, now
+
+
+def test_the_dead_man_step_turns_modbus_control_off_alone_and_times_the_inverters_fallback() -> None:
+    executor, ocean = _ocean()
+    verification, results, end = _test_run(ocean, executor)
+
+    report = verification.report()
+    outcomes = {mode: row["outcome"] for mode, row in report["modes"].items()}
+    assert outcomes == {
+        "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "expiry": "obeyed", "normal": "restored"
+    }
+    row = report["modes"]["expiry"]
+    # The fake inverter obeys 60 s after its last heartbeat, seen at the next look.
+    assert row["scope"] == "hold" and row["window_s"] == 60.0 and 60.0 <= row["fallback_s"] <= 70.0
+    # The silence is the switch off alone, in the hold; then the plant is taken back (the switch on, the inverter's
+    # own self-consumption) and handed back as ever.
+    silenced = events(results, "silenced")
+    assert len(silenced) == 1 and silenced[0]["reason"] == "modbus_control"
+    # The dead-man step's writes: the hold (the switch on, Hold Battery), the silence (the switch off alone: the mode
+    # is never written while it is unavailable), the plant taken back (the switch on: the integration sends
+    # Automatic) and the hand-back (the switch off).
+    assert written(results)[-5:] == [
+        ("modbus_control", True), ("battery_mode", "hold_battery"), ("modbus_control", False),
+        ("modbus_control", True), ("modbus_control", False),
+    ]
+    assert any(reading.get("retake") == "done" for reading in row["readings"])
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    assert ocean.states["modbus_control"] == "off" and ocean.command[0] == "automatic"
+    assert end - T0 <= timedelta(minutes=15)
+
+
+def test_a_firmware_without_the_dead_man_fails_the_step_and_is_still_taken_back() -> None:
+    executor, ocean = _ocean(no_deadman=True)
+    verification, _results, _end = _test_run(ocean, executor)
+
+    outcomes = {mode: row["outcome"] for mode, row in verification.report()["modes"].items()}
+    assert outcomes["expiry"] == "ignored" and outcomes["normal"] == "restored"
+    assert gate.mode_verdict(outcomes["expiry"]) == "fail"
+    # The hold the inverter kept was ended by taking the plant back: Automatic sent with the heartbeat running.
+    assert ocean.command[0] == "automatic" and ocean.states["modbus_control"] == "off"
+
+
+def test_the_card_shows_the_dead_man_step_before_the_hand_back_only_where_it_runs() -> None:
+    from custom_components.spotnav.hardware_test import DEADMAN_STEP, battery_steps  # noqa: PLC0415
+
+    plain = {"modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}}
+    assert [row["step"] for row in battery_steps(plain, None, False)] == ["hold", "charge", "discharge", "hand_back"]
+    timed = {"modes": {**plain["modes"], "expiry": {"outcome": "obeyed"}}}
+    rows = battery_steps(timed, "expiry", True)
+    assert [row["step"] for row in rows] == ["hold", "charge", "discharge", DEADMAN_STEP[0], "hand_back"]
+    assert rows[3]["status"] == "passed"
+    assert battery_steps({"modes": {"expiry": {"outcome": None}}}, "expiry", True)[3]["status"] == "running"

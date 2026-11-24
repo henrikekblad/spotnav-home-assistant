@@ -827,6 +827,19 @@ def expiry_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
     return expiry_lifts(expiry, measured=True, slow=slow, fixed_charge=fixed_charge)
 
 
+def deadman_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
+    """Whether a person's hardware test times this expiry (the verification's mode `expiry`, after its hold): a
+    dead-man an integration renews that SpotNav can silence with a write of its own (`Expiry.silence`, EcoFlow's
+    Modbus Control off), within `SILENCE_FALLBACK_MAX_S`. Its result is the tester's evidence for the recipe
+    (`Expiry.measured_on`); like every hardware test row it never counts for the routine, and an integration's
+    renewal never lifts a cap (`expiry_lifts`)."""
+    window = expiry.window_s
+    return (
+        expiry.kind == "device_deadman" and expiry.renewer == "integration" and bool(expiry.silence)
+        and not slow and not fixed_charge and window is not None and 0 < window <= SILENCE_FALLBACK_MAX_S
+    )
+
+
 def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bool) -> bool:
     """Whether a command's own expiry (`commands.Expiry`) stands in for the HA-down cap: a dead-man or a lease that
     **SpotNav** renews (an integration's own loop keeps running while SpotNav stalls, so it never counts), whose

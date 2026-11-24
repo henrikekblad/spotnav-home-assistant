@@ -1184,6 +1184,9 @@ class Executor:
         #: a restart ends the test.
         self.expired: tuple[str, ...] = ()
         self.diverged: tuple[str, ...] = ()
+        #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
+        #: integration renews, stopped by a write); not stored: a restart ends the test.
+        self.silenced = False
         self._absent: frozenset[str] = frozenset()
 
     def _sense(self, inputs: ExecInputs) -> None:
@@ -1280,6 +1283,8 @@ class Executor:
         probing = self._probing(inputs)
         if not probing:
             self.expired = self.diverged = ()
+            if self.silenced:
+                self._unsilence()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -2375,8 +2380,8 @@ class Executor:
         if self._probing(inputs):
             # The expiry test: the command stands as written, nothing renews it and nothing changes it.
             if state.renew:
-                self.state = replace(state, renew=())
-            return []
+                self.state = state = replace(state, renew=())
+            return self._silence(now)
         events: list[dict[str, Any]] = []
         if state.priming and state.pending is None and self._next_role(state, inputs) is None:
             # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
@@ -2789,6 +2794,42 @@ class Executor:
         if state.action == ACTION_HOLD and state.phase_kw is None:
             return True
         return state.action == ACTION_GRID_CHARGE and state.phase_kw is not None and max(state.phase_kw) <= 0.0
+
+    def _silence(self, now: datetime) -> list[dict[str, Any]]:
+        """In the expiry test, for a dead-man an integration renews (`Expiry.silence`): once, the writes that stop
+        that renewal go into the target (EcoFlow: Modbus Control off), every other role left as written. A role that
+        goes idle with them (`Role.idle_when`) leaves the target and is given back to the ledger: it reads nothing
+        until the silence ends, and then whatever the integration shows, which is no one else's change."""
+        silence = self.control.expiry.silence
+        if self.silenced or not silence:
+            return []
+        state = self.state
+        target = dict(state.target)
+        for name, value in silence:
+            target[name] = value
+        for role in self.control.roles:
+            if not role.idle_when or role.name in target and any(name == role.name for name, _value in silence):
+                continue
+            # Idle with the silence: neither written nor judged until it ends.
+            target.pop(role.name, None)
+            entity_id = state.entities.get(role.name)
+            if entity_id is not None:
+                self.ledger.release(entity_id)
+        self.silenced = True
+        self.state = replace(state, target=target, sent=())
+        return [_event(now, "silenced", ",".join(name for name, _value in silence))]
+
+    def _unsilence(self) -> None:
+        """The expiry test's silence is over: a running action wants its own state again (the next looks write it
+        back, the silenced roles first in the brand's order), whatever the test found."""
+        self.silenced = False
+        state = self.state
+        if state.phase != "active" or state.action is None:
+            return
+        self.state = replace(state, sent=(), target=self._wanted(
+            state.action, state.rate_kw, state.restore_values, state.phase_kw, house_kw=state.house_kw,
+            behind=state.phase_behind_kw,
+        ))
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval

@@ -8,7 +8,9 @@ through the engine that already writes to it, with every rule of that engine, in
   minutes (`verify.Timing.quick`): hold, a small grid charge under the HA-down fuse cap (the learned per-phase house
   peak, or its conservative default; where that leaves the balanced charge no room and the plant takes targets per
   phase, a charge of at most 1 kW on the phase with the most room, its sign and phase mapping judged), a discharge
-  for the house, and the hand-back judged. Needs the battery opt-in
+  for the house, where the plant's dead-man is the integration's and SpotNav can silence it (EcoFlow: Modbus Control
+  off, `gate.deadman_testable`) a hold left to that dead-man and timed (`DEADMAN_STEP`, `DEADMAN_EXTRA` more), and
+  the hand-back judged. Needs the battery opt-in
   and everything the card's checklist asks first (acknowledgements, controls to enable); runs under shadow only too,
   as a forced test action does.
 * **The heat path** (`heat/control.py`, `async_test_start`): engaged, held a minute, released, each write read back.
@@ -68,6 +70,10 @@ POLL_S: Final = 2.0
 #: The battery's steps (its verification modes) and the heat path's.
 BATTERY_STEPS: Final = (("hold", "hold"), ("charge", "charge"), ("discharge", "discharge_house"),
                         ("hand_back", "normal"))
+#: The step that times the plant's own dead-man (the verification's mode `expiry`), shown only where the battery part
+#: runs it (`BatteryControl.hardware_test_deadman`: EcoFlow), before the hand-back; and the time it adds.
+DEADMAN_STEP: Final = ("deadman", "expiry")
+DEADMAN_EXTRA: Final = timedelta(minutes=5)
 #: Refusals that mean the part is not there to test (no step shown), rather than not testable now.
 ABSENT: Final = frozenset({"no_battery_control", "not_enabled", "no_relay"})
 #: Abort reasons that are the plant or its integration not doing as told (read back missing, write refused).
@@ -137,7 +143,8 @@ def _reason(outcome: Any) -> str | None:
 def battery_steps(report: Mapping[str, Any] | None, current: str | None, running: bool) -> list[dict[str, Any]]:
     modes = (report or {}).get("modes") or {}
     steps = []
-    for step, mode in BATTERY_STEPS:
+    order = BATTERY_STEPS if DEADMAN_STEP[1] not in modes else (*BATTERY_STEPS[:-1], DEADMAN_STEP, BATTERY_STEPS[-1])
+    for step, mode in order:
         outcome = (modes.get(mode) or {}).get("outcome")
         steps.append({
             "part": "battery", "step": step,
@@ -319,7 +326,7 @@ class HardwareTest:
         _LOGGER.info("SpotNav hardware test: started (%s)", ", ".join(f"{k}: {v or 'runs'}" for k, v in parts.items()))
         if parts.get("battery", "absent") is None:
             # Held from now until the run's end, by any path (`_async_run`'s `finally`), and never past the deadline.
-            self._hold().begin(now + MAX_TEST + HOLD_SLACK)
+            self._hold().begin(now + self._max_test() + HOLD_SLACK)
         try:
             self._task = self.hass.async_create_background_task(self._async_run(now), f"{DOMAIN} hardware test")
         except BaseException:
@@ -362,8 +369,18 @@ class HardwareTest:
         self._release_hold()
         self._finish_stopped(why)
 
+    def _max_test(self) -> timedelta:
+        """The test's deadline from its start: `MAX_TEST`, and `DEADMAN_EXTRA` more where the battery part also times
+        the plant's own dead-man."""
+        try:
+            deadman = bool(self.site.battery_control.hardware_test_deadman())
+        except Exception:  # noqa: BLE001 - no battery control: no dead-man step
+            _LOGGER.debug("max_test: ignored failure (no battery control: no dead-man step)", exc_info=True)
+            deadman = False
+        return MAX_TEST + DEADMAN_EXTRA if deadman else MAX_TEST
+
     async def _async_run(self, started: datetime) -> None:
-        deadline = started + MAX_TEST
+        deadline = started + self._max_test()
         running = self._running
         assert running is not None
         parts: dict[str, str | None] = running["parts"]

@@ -1547,8 +1547,9 @@ class BatteryControl:
 
     async def async_hardware_test_start(self) -> str | None:
         """Start the battery part of a person's hardware test (`verify.Timing.quick`, `stop_on_fail`): hold, a small
-        grid charge under the HA-down cap, a discharge for the house and the hand-back, through the executor with
-        every rule. Answers the refusal code, `None` once it started."""
+        grid charge under the HA-down cap, a discharge for the house, the plant's own dead-man timed where SpotNav can
+        silence it (`_hardware_test_deadman`), and the hand-back, through the executor with every rule. Answers the
+        refusal code, `None` once it started."""
         why = self.hardware_test_refusal()
         if why is not None:
             return why
@@ -1557,10 +1558,12 @@ class BatteryControl:
             executor = self._executor()
             if executor is None:
                 return "no_battery_control"
+            deadman = self._hardware_test_deadman(executor.control)
             self.verification = Verification(
-                executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
+                executor, now, firmware=self.facts.firmware,
+                modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if deadman is not None else ())),
                 tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
-                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
+                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
             )
             self._hw_run = True
             self._verify_key = None
@@ -1569,6 +1572,19 @@ class BatteryControl:
             _LOGGER.info("SpotNav battery control: a hardware test started (%s)", self.firmware_key())
             await self._async_look(now)
         return None
+
+    def _hardware_test_deadman(self, control: BrandControl) -> Expiry | None:
+        """The dead-man a hardware test times after its hold (`gate.deadman_testable`: one the integration renews and
+        SpotNav can silence, EcoFlow's), `None` for every other recipe."""
+        base = control.with_phases(False)
+        expiry = base.expiry
+        return expiry if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge) else None
+
+    def hardware_test_deadman(self) -> bool:
+        """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
+        more: `hardware_test.DEADMAN_EXTRA`)."""
+        control = control_for(self.facts.brand)
+        return control is not None and self._hardware_test_deadman(control) is not None
 
     async def async_hardware_test_stop(self, reason: str) -> None:
         """End a running hardware test at once and hand the plant back (its deadline, an anomaly elsewhere, an
