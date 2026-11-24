@@ -10,7 +10,9 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
   for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
-  runs only once that passed, under every fuse rule.
+  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (EcoFlow) counts as
+  shadow only, whatever is stored, until the site's own hardware test passed on the plant's firmware key
+  (`hardware_test_passed`); the checklist says so (`hardware_test_first`) and the test itself runs.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
@@ -285,6 +287,28 @@ class Options:
 def shadow_default(*, field_tested: bool, beta: bool) -> bool:
     """Shadow only's default for a site that never stored it: off for a field-tested recipe or a beta tester."""
     return not (field_tested or beta)
+
+
+#: The hardware test's battery steps that must pass for a recipe that waits for it (`hardware_test_passed`); the
+#: discharge to the house may be `not_judgeable` (a battery near empty, a sunny moment), never failed.
+HARDWARE_TEST_MUST_PASS: Final = frozenset({"hold", "charge", "hand_back"})
+
+
+def hardware_test_passed(record: Mapping[str, Any] | None, key: str | None) -> bool:
+    """Whether a site's last finished hardware test (`hardware_test.HardwareTest.record`) shows its battery doing as
+    told on the plant's firmware key now (`firmware_key`): what a recipe with `BrandControl.hardware_test_first` waits
+    for before control writes outside a test. Every battery step passed or could not be judged, the hold, the charge
+    (its sign) and the hand-back passed, and the test ran on this key: an update of the firmware or the integration
+    asks for the test again."""
+    if not isinstance(record, Mapping) or key is None or record.get("firmware_key") != key:
+        return False
+    steps = [step for step in record.get("steps") or () if isinstance(step, Mapping) and step.get("part") == "battery"]
+    status = {str(step.get("step")): step.get("status") for step in steps}
+    if not HARDWARE_TEST_MUST_PASS <= set(status):
+        return False
+    return all(status[name] == "passed" for name in HARDWARE_TEST_MUST_PASS) and all(
+        value in ("passed", "not_judgeable") for value in status.values()
+    )
 
 
 def _mode(config: Mapping[str, Any]) -> str:

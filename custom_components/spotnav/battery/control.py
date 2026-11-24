@@ -153,6 +153,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION: Final = 1
+#: The checklist's line for a recipe that waits for the site's own hardware test (`_hardware_test_owed`).
+NEED_HARDWARE_TEST: Final = "hardware_test_first"
 #: How long a stop or unload keeps stepping the hand-back before it leaves the rest to the next start (s).
 HAND_BACK_DEADLINE_S: Final = 30.0
 #: How long the shell waits for an entity to change after a write, between looks during a hand-back (s).
@@ -706,13 +708,32 @@ class BatteryControl:
 
     def options(self) -> gate.Options:
         """The site's options, from its entry as stored now (a settings write needs no reload). The acceptance of
-        the HA-down risk counts only for the setup it was given for (`gate.ha_down_setup_state`)."""
+        the HA-down risk counts only for the setup it was given for (`gate.ha_down_setup_state`). A recipe that
+        waits for the site's own hardware test (`BrandControl.hardware_test_first`) runs as shadow only until it
+        passed on this firmware (`_hardware_test_owed`), whatever is stored; the test itself still runs."""
+        options = self._stored_options()
+        if not options.shadow_only and self._hardware_test_owed():
+            options = replace(options, shadow_only=True)
+        return options
+
+    def _stored_options(self) -> gate.Options:
+        """The options as the site stored them (what the card's switches show)."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
         data = entry.data if entry is not None else self.site.config
         options = gate.Options.from_config(data, shadow_default=self.shadow_default())
         if options.accept_ha_down and self._ha_down_setup_state(data) != "same":
             options = replace(options, accept_ha_down=False)
         return options
+
+    def _hardware_test_owed(self) -> bool:
+        """Whether the plant's recipe waits for the site's own hardware test (`BrandControl.hardware_test_first`, not
+        yet `field_tested`) and the site's last one did not pass on the firmware key now (`gate.hardware_test_passed`).
+        """
+        control = control_for(self.facts.brand)
+        if control is None or not control.hardware_test_first or control.field_tested:
+            return False
+        test = getattr(self.site, "hardware_test", None)
+        return not gate.hardware_test_passed(getattr(test, "record", None), self.firmware_key())
 
     def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
         return gate.ha_down_setup_state(data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP), self._main_fuse_a(), self.facts.brand)
@@ -1514,7 +1535,8 @@ class BatteryControl:
             return "no_battery_control"
         if not self.options().enabled:
             return "not_enabled"
-        needs = self._needs()
+        # The test is what the checklist's `hardware_test_first` asks for: never a reason not to run it.
+        needs = [need for need in self._needs() if need != NEED_HARDWARE_TEST]
         if needs:
             return f"needs:{needs[0]}"
         if self.trial is not None:
@@ -3097,6 +3119,8 @@ class BatteryControl:
             needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
+        if self._hardware_test_owed():
+            needs.append(NEED_HARDWARE_TEST)
         return needs
 
     def _settings_device(self) -> str | None:
@@ -3177,7 +3201,9 @@ class BatteryControl:
         return {
             # Whether the site's battery facts name a battery: without one a client hides its battery card (additive).
             "battery_found": bool(self.facts.battery_entity_id),
-            "options": options.as_dict(),
+            # As stored: a recipe still waiting for its hardware test runs as shadow only whatever the switch says,
+            # and the checklist says why (`hardware_test_first`).
+            "options": self._stored_options().as_dict(),
             "state": self.state(options),
             "line": self._line(options),
             "key": self.firmware_key(),

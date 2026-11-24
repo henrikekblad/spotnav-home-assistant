@@ -1847,6 +1847,7 @@
   "battery.outsideClear.help": "Heb je de standen van de batterij zelf gewijzigd, bijvoorbeeld tijdens een test? Wis dan de markering, zodat SpotNav weer stuurt.",
   "battery.need.aiTakeoverAck": "Accepteer dat SpotNav het overneemt van de AI-modus van de batterij.",
   "battery.need.strategyAck": "Accepteer dat de opdrachten van SpotNav voorgaan op de strategie die de batterij in haar eigen cloud draait.",
+  "battery.need.hardwareTestFirst": "Voer eerst de hardwaretest uit (Ondersteuning → Hardwaretest uitvoeren): tot die met de huidige firmware van de batterij geslaagd is, toont SpotNav alleen wat het zou doen.",
   "battery.need.selfManaged": "De batterij draait op zijn eigen optimalisatie. Zet hem in de app van de batterij op eigen verbruik als SpotNav hem moet aansturen.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" staat op 0 in de Victron GX, dus de batterij ontlaadt nooit en SpotNav kan geen ontlading uitvoeren. Zet hem in de ESS-instellingen van de GX op -1 (geen limiet) of een vermogen als de batterij het huis moet voeden.",
   "battery.need.gridSetpointSelling": "Het netsetpoint (grid setpoint) van de Victron GX staat ver onder 0, dus de batterij blijft aan het net verkopen, wat SpotNav ook plant. Zet het in de ESS-instellingen terug op een kleine waarde (de standaard van de GX is 50 W) als je dat niet wilt; SpotNav wijzigt het niet.",

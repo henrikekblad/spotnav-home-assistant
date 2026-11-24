@@ -376,3 +376,72 @@ def _op(role: str, value: Any) -> Any:
     from custom_components.spotnav.battery.executor import Op  # noqa: PLC0415
 
     return Op(role, "switch", f"switch.ecoflow_{role}", value)
+
+
+# ---- live writes only after the site's own hardware test --------------------------------------------------------------
+
+KEY = "V5.1.37.13 | ef_powerocean_tcpmodbus 2.10.1"
+
+
+def _record(key: str = KEY, **statuses: str) -> dict[str, Any]:
+    steps = {"hold": "passed", "charge": "passed", "discharge": "passed", "hand_back": "passed"} | statuses
+    return {"firmware_key": key, "result": "passed", "steps": [
+        *({"part": "battery", "step": step, "status": status, "reason": None} for step, status in steps.items()),
+        {"part": "heat", "step": "engage", "status": "failed", "reason": "aborted:no_read_back"},
+    ]}
+
+
+def test_a_hardware_test_passes_for_control_on_its_own_firmware_key_only() -> None:
+    assert gate.hardware_test_passed(_record(), KEY)
+    # Another firmware or integration version asks for the test again; no test, or none read, never passes.
+    assert not gate.hardware_test_passed(_record(), "V5.1.38.2 | ef_powerocean_tcpmodbus 2.10.1")
+    assert not gate.hardware_test_passed(None, KEY) and not gate.hardware_test_passed(_record(), None)
+    # A discharge that could not be judged (a battery near empty) is no failure; the hold, the charge (its sign) and
+    # the hand-back must pass, and nothing may fail or stop.
+    assert gate.hardware_test_passed(_record(discharge="not_judgeable"), KEY)
+    assert not gate.hardware_test_passed(_record(charge="not_judgeable"), KEY)
+    assert not gate.hardware_test_passed(_record(discharge="failed"), KEY)
+    assert not gate.hardware_test_passed(_record(hand_back="aborted"), KEY)
+    assert not gate.hardware_test_passed(_record(deadman="failed"), KEY)
+    assert gate.hardware_test_passed(_record(deadman="not_judgeable"), KEY)
+    # The battery part skipped altogether is no pass.
+    skipped = {"firmware_key": KEY, "steps": [{"part": "battery", "step": "battery", "status": "skipped"}]}
+    assert not gate.hardware_test_passed(skipped, KEY)
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed(
+    hass: Any, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.battery import control as control_module  # noqa: PLC0415
+    from custom_components.spotnav.battery.control import NEED_HARDWARE_TEST, BatteryControl  # noqa: PLC0415
+    from tests.test_battery_control import _on, _site  # noqa: PLC0415
+
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    waiting = replace(commands.SIGENERGY_CONTROL, hardware_test_first=True)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: waiting.with_hold(variant))
+    control = BatteryControl(hass, controller, plan_source=lambda _now: ("hold", 0.0, None))
+    await control.async_start()
+    _on(hass, site, control)
+
+    # Opted in, shadow only stored off, the routine passed: still only watching, and the checklist says why.
+    assert control.options().shadow_only and control.state() == "shadow_only"
+    status = control.status()
+    assert status["options"]["battery_control_shadow_only"] is False, "the switch shows what the person chose"
+    assert NEED_HARDWARE_TEST in status["needs"]
+    # The test itself is what it waits for: never refused for it.
+    assert control.hardware_test_refusal() is None
+
+    # A passed test on the firmware key now: control runs.
+    controller.hardware_test.record = _record(control.firmware_key())
+    assert not control.options().shadow_only and control.state() == "on"
+    assert NEED_HARDWARE_TEST not in control.status()["needs"]
+    # One on another key (an update since) does not count.
+    controller.hardware_test.record = _record("other | sigen 1.0")
+    assert control.state() == "shadow_only"
+    # A field-tested recipe never waits.
+    monkeypatch.setattr(
+        control_module, "control_for", lambda brand, variant=None: replace(waiting, field_tested=True).with_hold(variant)
+    )
+    assert control.state() == "on"
+    await control.async_shutdown()
