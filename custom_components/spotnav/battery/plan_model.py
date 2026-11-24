@@ -187,6 +187,13 @@ class BatteryParams:
 
     `usable_kwh` is what 0-100 % spans. `min_soc_pct` is the floor the plan never goes below (the inverter's own
     reserve or cut-off), `max_soc_pct` the ceiling it never charges above.
+
+    `round_trip_efficiency` is the round trip on the AC side: a kWh bought, stored and given back. On a hybrid whose
+    battery sits on the inverter's DC bus, the sun's surplus reaches the battery without crossing the inverter, so a
+    kWh of surplus stored and given back loses only about the battery's own round trip (`conversion_loss.py`):
+    `sun_round_trip_efficiency` is that round trip, for the part of a charge the sun's surplus gives; `None` (an
+    AC-coupled battery, or one whose side is not known) is the AC one. The discharge is the same either way; the sun's
+    charge is the share that differs (`sun_charge_efficiency`).
     """
 
     usable_kwh: float
@@ -195,6 +202,7 @@ class BatteryParams:
     min_soc_pct: float = 10.0
     max_soc_pct: float = 100.0
     round_trip_efficiency: float = DEFAULT_ROUND_TRIP_EFFICIENCY
+    sun_round_trip_efficiency: float | None = None
 
     def validate(self) -> None:
         if not _finite(self.usable_kwh) or self.usable_kwh <= 0:
@@ -209,6 +217,9 @@ class BatteryParams:
             raise PlanInputError("invalid_battery", "need 0 <= min_soc_pct < max_soc_pct <= 100")
         if not _finite(self.round_trip_efficiency) or not 0 < self.round_trip_efficiency <= 1:
             raise PlanInputError("invalid_battery", "round_trip_efficiency must be in (0, 1]")
+        sun = self.sun_round_trip_efficiency
+        if sun is not None and (not _finite(sun) or not 0 < sun <= 1):
+            raise PlanInputError("invalid_battery", "sun_round_trip_efficiency must be in (0, 1]")
 
     @property
     def min_kwh(self) -> float:
@@ -222,6 +233,35 @@ class BatteryParams:
     def one_way_efficiency(self) -> float:
         """Charge and discharge share the round trip's loss equally."""
         return math.sqrt(self.round_trip_efficiency)
+
+    @property
+    def sun_charge_efficiency(self) -> float:
+        """What a kWh of the sun's surplus (AC side: what it would have fetched on the grid) puts in the battery: the
+        sun's round trip over the discharge's share (`one_way_efficiency`), so a kWh stored from the sun and given
+        back makes the sun's round trip. The AC charge's share where the sun has no round trip of its own. Above 1 on
+        a DC bus: the sun's kWh never paid the inverter's way out, which its AC value already took off."""
+        sun = self.sun_round_trip_efficiency
+        if sun is None:
+            return self.one_way_efficiency
+        return sun / self.one_way_efficiency
+
+    def stored_kwh(self, power_kw: float, sun_kw: float, hours: float) -> float:
+        """The energy [power_kw] (AC side, + charging) adds to the battery over [hours] (- for a discharge), when up to
+        [sun_kw] of a charge is the sun's surplus and the rest the grid's."""
+        if power_kw <= 0:
+            return power_kw / self.one_way_efficiency * hours
+        sun = min(power_kw, max(0.0, sun_kw))
+        return (sun * self.sun_charge_efficiency + (power_kw - sun) * self.one_way_efficiency) * hours
+
+    def charge_for_room(self, room_kwh: float, sun_kw: float, hours: float) -> float:
+        """The most AC charge (kW) that fits [room_kwh] over [hours], the sun's surplus ([sun_kw]) charged first."""
+        if room_kwh <= 0 or hours <= 0:
+            return 0.0
+        sun = max(0.0, sun_kw)
+        sun_room = sun * self.sun_charge_efficiency * hours
+        if room_kwh <= sun_room:
+            return room_kwh / (self.sun_charge_efficiency * hours)
+        return sun + (room_kwh - sun_room) / (self.one_way_efficiency * hours)
 
 
 @dataclass(frozen=True, slots=True)

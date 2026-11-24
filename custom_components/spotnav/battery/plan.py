@@ -105,10 +105,12 @@ def default_end_value(slots: Sequence[PlanSlot], battery: BatteryParams) -> floa
 
 
 def _limits(slot: PlanSlot, battery: BatteryParams, soc_kwh: float) -> tuple[float, float]:
-    """The AC charge and discharge power open in [slot] at [soc_kwh]: rated power, bounded by the energy left."""
+    """The AC charge and discharge power open in [slot] at [soc_kwh]: rated power, bounded by the energy left (the
+    room counted with the sun's surplus charged first, at its own share, `BatteryParams.sun_charge_efficiency`)."""
     hours = slot.hours
     eff = battery.one_way_efficiency
-    charge_lim = max(0.0, min(battery.max_charge_kw, (battery.max_kwh - soc_kwh) / (eff * hours)))
+    room = battery.charge_for_room(battery.max_kwh - soc_kwh, max(0.0, -slot.net_kw), hours)
+    charge_lim = max(0.0, min(battery.max_charge_kw, room))
     discharge_lim = max(0.0, min(battery.max_discharge_kw, (soc_kwh - battery.min_kwh) * eff / hours))
     return charge_lim, discharge_lim
 
@@ -221,7 +223,6 @@ def _apply(
 ) -> _Outcome:
     """Run [action] at [power] for one slot, with the grid's caps enforced, and price it."""
     hours = slot.hours
-    eff = battery.one_way_efficiency
     _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
     net = slot.net_kw
     over_cap = False
@@ -242,8 +243,9 @@ def _apply(
             curtailed = (-cap - grid) * hours
             grid = -cap
 
-    stored = power * eff if power > 0 else power / eff
-    soc_end = min(battery.max_kwh, max(min(soc_kwh, battery.min_kwh), soc_kwh + stored * hours))
+    # A charge takes the sun's surplus first (the sun's round trip on a DC bus), the grid's for the rest.
+    stored = battery.stored_kwh(power, -net, hours)
+    soc_end = min(battery.max_kwh, max(min(soc_kwh, battery.min_kwh), soc_kwh + stored))
     if grid >= 0:
         cost = grid * hours * slot.buy
     else:
