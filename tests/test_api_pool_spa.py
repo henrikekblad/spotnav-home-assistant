@@ -172,11 +172,27 @@ async def _deadline_site(hass: HomeAssistant, freezer: Any):
     return charger, site, controller
 
 
+async def test_the_spa_s_plan_holds_the_fixed_floor_whatever_was_stored(hass: HomeAssistant, freezer: Any) -> None:
+    freezer.move_to(DEADLINE_MORNING)
+    _charger, site, controller = await _site(hass, heat={"spa": {**SPA, "idle_c": 12.0, "floor_c": 25.0}})
+    # 20 °C is under the stored (ignored) 25 but over the fixed 10: the plan rests, it does not heat for the floor.
+    hass.states.async_set("climate.spa", "heat", {"current_temperature": 20.0, "temperature": 30.0, "hvac_action": "idle"})
+    controller.pool_spa.tick(dt_util.now())
+    spa = (await heat_answer(hass, site, writable=False))["spa"]
+    assert spa["floor_c"] == 10.0 and spa["idle_c"] == 12.0
+    assert spa["would"] is None or spa["would"]["action"] != "floor"
+    hass.states.async_set("climate.spa", "heat", {"current_temperature": 9.5, "temperature": 30.0, "hvac_action": "idle"})
+    controller.pool_spa.tick(dt_util.now())
+    assert (await heat_answer(hass, site, writable=False))["spa"]["would"]["action"] == "floor"
+
+
 async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant, freezer: Any) -> None:
     _charger, site, _controller = await _deadline_site(hass, freezer)
     answer = await heat_answer(hass, site, writable=False)
     spa, sauna = answer["spa"], answer["sauna"]
     assert spa["family"] == "balboa" and spa["water_c"] == 36.0 and spa["bath_c"] == 38.0
+    # The fixed frost floor is still sent for the clients that decode it.
+    assert spa["floor_c"] == 10.0
     assert spa["next_bath"]["source"] == "weekly" and spa["rate_learned"] is False and spa["rate_c_h"] == 1.5
     assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None, "failures": 0} and spa["live"] is False
     assert set(spa) == {
@@ -216,14 +232,19 @@ async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant, freezer: An
     assert (await heat_answer(hass, site, writable=False))["sauna"]["would"]["action"] == "heat"
     assert deadline_answer(hass, site, "sauna", {"action": "fly"})["error"] == "spotnav_invalid_value"
     assert deadline_answer(hass, site, "sauna", {"action": "idle_c", "value": 30})["error"] == "spotnav_invalid_value"
+    # The spa's temperature between baths is set in the settings (an administrator's), not pressed from the tab.
+    assert deadline_answer(hass, site, "spa", {"action": "idle_c", "value": 32})["error"] == "spotnav_invalid_value"
 
 
 async def test_the_spa_and_sauna_webhook_twins(hass: HomeAssistant, freezer: Any) -> None:
     import json
 
     charger, _site_entry, _controller = await _deadline_site(hass, freezer)
-    response = await SITE_ACTIONS["spa"](hass, charger, {"spa_action": "idle_c", "value": 32})
-    assert response.status == 200 and json.loads(response.body)["spa"]["idle_c"] == 32.0
+    response = await SITE_ACTIONS["spa"](hass, charger, {"spa_action": "bath_c", "value": 37.5})
+    assert response.status == 200 and json.loads(response.body)["spa"]["bath_c"] == 37.5
+    # The temperature between baths is an administrator's setting, not a household press.
+    refused = await SITE_ACTIONS["spa"](hass, charger, {"spa_action": "idle_c", "value": 32})
+    assert refused.status == 400
     response = await SITE_ACTIONS["sauna"](hass, charger, {"sauna_action": "target_c", "value": 85})
     assert response.status == 200 and json.loads(response.body)["sauna"]["target_c"] == 85.0
     refused = await SITE_ACTIONS["sauna"](hass, charger, {"sauna_action": "target_c", "value": 200})
