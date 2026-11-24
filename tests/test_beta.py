@@ -101,7 +101,10 @@ async def _beta(hass: HomeAssistant, sender: _Sender) -> Beta:
     return beta
 
 
-async def test_the_daily_report_goes_once_a_night_while_on_and_a_failure_is_skipped(hass: HomeAssistant) -> None:
+async def test_the_daily_report_goes_once_a_night_while_on_and_a_failure_is_skipped(hass: HomeAssistant, freezer) -> None:
+    # A fixed midday: from the real clock the steps of a day and half an hour can cross a local midnight or the
+    # night's timer, and the count of reports then depends on the hour the suite runs.
+    freezer.move_to("2026-07-01 12:00:00+00:00")
     sender = _Sender()
     beta = await _beta(hass, sender)
     assert not beta.state.on and not learning_gate_open(hass, None)
