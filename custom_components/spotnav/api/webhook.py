@@ -45,6 +45,7 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .notification_phones import WEBHOOK_ACTION as NOTIFICATION_PHONES_ACTION, webhook_phone_notifications
 from .import_target import webhook_later_departure, webhook_release_import_target, webhook_take_what_fits
 from .power_month import webhook_get_power_month
 from .target_suggestion import webhook_suggest_import_target
@@ -638,8 +639,8 @@ async def _plan_preview(hass: HomeAssistant, entry: ChargerConfigEntry, payload:
 
 
 async def _push_register(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
-    """The paired app's instant notifications: its relay `push_ref` and the events it wants woken for,
-    or `null` to stop. Stored per charger (`notifications/push.py`); the ref is never logged."""
+    """An app from before the per-phone settings: its relay `push_ref` and the events it wants woken for, or `null`
+    to stop, applied to its phone (`notifications/phones.apply_push_register`); the ref is never logged."""
     action = "push_register"
     try:
         registration = parse_push_register(payload)
@@ -697,6 +698,7 @@ ACTIONS: Final[dict[str, Handler]] = {
         async_webhook_update_grid_tariff, "update_grid_tariff", _grid_tariff_answer_for_app
     ),
     "push_register": _push_register,
+    NOTIFICATION_PHONES_ACTION: webhook_phone_notifications,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
     "update_guest": webhook_update_guest,

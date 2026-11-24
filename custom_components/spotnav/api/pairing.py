@@ -27,6 +27,7 @@ from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
 from homeassistant.core import HomeAssistant
 
 from ..const import DOMAIN
+from ..notifications.phones import PhoneError, app_key
 from ..runtime import domain_data
 from ..vehicles.charger_inventory import charger_pairing_payload, site_pairing_payload, webhook_base_url
 
@@ -66,6 +67,9 @@ class PendingPairing:
     code: str
     device: str
     created_at: float
+    #: The stored form of the app's secret `app_id` (SpotNav 3.0, `notifications/phones.app_key`), `None` from an
+    #: older app: on approval the app's phone entry is made and linked by name (`PhoneStore.async_paired`).
+    app_key: str | None = None
 
 
 class PairingRegister:
@@ -106,7 +110,9 @@ class PairingRegister:
             return 0.0
         return max(0.0, last + self._remote_interval_s - self._now())
 
-    def open(self, code: str, device: str, remote: str | None = None) -> PendingPairing | None:
+    def open(
+        self, code: str, device: str, remote: str | None = None, app_key: str | None = None
+    ) -> PendingPairing | None:
         """Record a request, or `None` when too many are already waiting."""
         self._prune()
         if len(self._open) >= self._limit:
@@ -118,6 +124,7 @@ class PairingRegister:
             code=code,
             device=device,
             created_at=self._now(),
+            app_key=app_key,
         )
         self._open[record.request_id] = record
         return record
@@ -267,7 +274,12 @@ def _async_request(hass: HomeAssistant, payload: dict[str, Any], remote: str | N
             status=429,
             headers={"Retry-After": str(retry_after_s)},
         )
-    record = register.open(code, device_label, remote)
+    try:
+        # Optional (an app from SpotNav 3.0 on): a secret id the phone keeps, never logged; kept hashed only.
+        key = None if payload.get("app_id") is None else app_key(payload["app_id"])
+    except PhoneError:
+        key = None
+    record = register.open(code, device_label, remote, key)
     if record is None:
         _log_refused("Refused a SpotNav pairing request: %s", "too many awaiting approval")
         raise ValueError("Too many pairing requests are awaiting approval")
@@ -301,12 +313,16 @@ def _async_poll(hass: HomeAssistant, payload: dict[str, Any]) -> web.Response:
     if not base_url:
         return web.json_response({"status": "pending"})
 
-    verdict, _record = domain_data(hass).pairing.take(request_id)
+    verdict, record = domain_data(hass).pairing.take(request_id)
     if verdict == "pending":
         return web.json_response({"status": "pending"})
     if verdict == "denied":
         return web.json_response({"status": "denied"})
     if verdict == "approved":
+        phones = domain_data(hass).phones
+        if record is not None and record.app_key is not None and phones is not None:
+            # The app's own phone entry, on with the defaults, linked to the Companion phone of the same name.
+            hass.async_create_task(phones.async_paired(record.app_key, record.device), eager_start=True)
         # Built now so a charger added in between is included; the pairing payload is the only
         # place a webhook id crosses to the app.
         return web.json_response(
