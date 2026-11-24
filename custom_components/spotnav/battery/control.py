@@ -105,6 +105,7 @@ from .commands import (
     control_for,
     export_control_for,
     field_tested as recipe_field_tested,
+    hardware_test_first,
     fixed_rate_kw,
     reading,
     service_call,
@@ -375,6 +376,9 @@ def _accept_applies(control: BrandControl | None) -> bool:
     itself charge from the grid there (`hold_charges_without`) stays under the HA-down cap with it."""
     return control is not None and not (control.slow or control.fixed_charge)
 
+#: The checklist's step where the plant's recipe writes only after a person's hardware test passed on its firmware
+#: (`commands.BrandControl.hardware_test_first`): shadow only until then.
+NEED_HARDWARE_TEST_FIRST: Final = "hardware_test_first"
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
 RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
 
@@ -423,6 +427,9 @@ class BatteryControl:
         #: one's report (never merged into `reports`).
         self._hw_run = False
         self.hardware_report: dict[str, Any] | None = None
+        #: The firmware keys a person's hardware test passed on (hold and the hand-back passed, nothing failed): a
+        #: recipe that writes only after one (`commands.BrandControl.hardware_test_first`) stays shadow only elsewhere.
+        self.hardware_passed: set[str] = set()
         #: The key and attempt the running verification counts for.
         self._verify_key: str | None = None
         self._verify_attempt = 0
@@ -576,6 +583,8 @@ class BatteryControl:
         self.took_from_ai = data.get("took_from_ai") is True
         notes = data.get("notes")
         self.notes = [dict(note) for note in notes if isinstance(note, dict)] if isinstance(notes, list) else []
+        passed = data.get("hardware_passed")
+        self.hardware_passed = {key for key in passed if isinstance(key, str)} if isinstance(passed, list) else set()
 
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
@@ -713,7 +722,16 @@ class BatteryControl:
         options = gate.Options.from_config(data, shadow_default=self.shadow_default())
         if options.accept_ha_down and self._ha_down_setup_state(data) != "same":
             options = replace(options, accept_ha_down=False)
+        if not options.shadow_only and self.hardware_test_due():
+            # Shadow only until a person's hardware test passed on this firmware (`hardware_test_first`); the test
+            # itself still runs (`_writes_allowed_now`), and so does every hand-back.
+            options = replace(options, shadow_only=True)
         return options
+
+    def hardware_test_due(self) -> bool:
+        """Whether the plant's recipe writes only after a person's hardware test and none passed on its firmware now
+        (`commands.BrandControl.hardware_test_first`; the card's checklist says `hardware_test_first`)."""
+        return hardware_test_first(self.facts.brand) and self.firmware_key() not in self.hardware_passed
 
     def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
         return gate.ha_down_setup_state(data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP), self._main_fuse_a(), self.facts.brand)
@@ -1389,6 +1407,12 @@ class BatteryControl:
             # The hardware test's report is its own; the routine's per firmware is untouched.
             self._hw_run = False
             self.hardware_report = {**verification.report(), "completed": verification.done}
+            key = self.firmware_key()
+            if (
+                verification.done and gate.firmware_known(key) and gate.report_status(self.hardware_report) == "passed"
+                and gate.failed_mode(self.hardware_report) is None
+            ):
+                self.hardware_passed.add(key)
             self._log([{"at": now.isoformat(), "kind": "hardware_test_done" if verification.done else
                         "hardware_test_stopped", "modes": {
                             result.mode: result.outcome for result in verification.results}}])
@@ -1528,7 +1552,8 @@ class BatteryControl:
             return "no_battery_control"
         if not self.options().enabled:
             return "not_enabled"
-        needs = self._needs()
+        # The hardware test is what a recipe that writes only after one waits for: never its own refusal.
+        needs = [need for need in self._needs() if need != NEED_HARDWARE_TEST_FIRST]
         if needs:
             return f"needs:{needs[0]}"
         if self.trial is not None:
@@ -3055,7 +3080,7 @@ class BatteryControl:
         data: dict[str, Any] = {
             "reports": dict(self.reports),
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
-                     "notes": [dict(note) for note in self.notes]},
+                     "notes": [dict(note) for note in self.notes], "hardware_passed": sorted(self.hardware_passed)},
         }
         if executor is not None:
             data |= {
@@ -3114,6 +3139,8 @@ class BatteryControl:
             needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
+        if self.options().enabled and self.hardware_test_due():
+            needs.append(NEED_HARDWARE_TEST_FIRST)
         return needs
 
     def _settings_device(self) -> str | None:

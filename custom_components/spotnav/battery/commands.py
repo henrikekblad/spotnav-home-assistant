@@ -872,6 +872,10 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+    #: Nothing is written by the routine or by control (shadow only, whatever the site's option says) until a
+    #: person's hardware test (`hardware_test.py`) passed on the firmware the plant runs (`gate.firmware_key`): a
+    #: recipe never run on a device, where the first writes should be supervised. A restore is never held back.
+    hardware_test_first: bool = False
 
     def __post_init__(self) -> None:
         if self.import_limit is not None and self.import_limit_trust is None:
@@ -1973,6 +1977,12 @@ def field_tested(brand: str | None) -> bool:
     """Whether the brand's recipe (its battery control, else its export control) was tested on a real plant."""
     control = next((control for control in CONTROLS if control.brand == brand), None) or export_control_for(brand)
     return control is not None and control.field_tested
+
+
+def hardware_test_first(brand: str | None) -> bool:
+    """Whether the brand's recipe writes only once a person's hardware test passed on the plant's firmware."""
+    control = next((control for control in CONTROLS if control.brand == brand), None)
+    return control is not None and control.hardware_test_first
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:
