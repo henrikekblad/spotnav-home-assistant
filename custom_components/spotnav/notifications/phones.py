@@ -250,6 +250,21 @@ def match_companion(
     return None
 
 
+def merge_choices(keep: Phone, other: Phone) -> Phone:
+    """`keep` (its id, name, routes) with the choices of both entries of one phone: on if either is on, the union of
+    the events and of the chargers (`None`, every charger, if either follows every one) of the entries that are on;
+    an entry that is off adds nothing, and with both off `keep` stays as it is."""
+    ons = [phone for phone in (keep, other) if phone.on]
+    if not ons:
+        return keep
+    events = ordered_events(event for phone in ons for event in phone.events)
+    if any(phone.chargers is None for phone in ons):
+        chargers: tuple[str, ...] | None = None
+    else:
+        chargers = tuple(dict.fromkeys(charger for phone in ons for charger in phone.chargers or ()))
+    return replace(keep, on=True, events=events, chargers=chargers)
+
+
 # ---------------------------------------------------------------------------------------------------------- routing
 
 

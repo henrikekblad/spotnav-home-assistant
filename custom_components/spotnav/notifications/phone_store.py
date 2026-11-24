@@ -24,6 +24,7 @@ from .phones import (
     APP_NAME,
     APP_SHOWS,
     AppLink,
+    DEFAULT_PHONE_EVENTS,
     LegacyCharger,
     LegacyHeat,
     MAX_PHONES,
@@ -40,6 +41,7 @@ from .phones import (
     heat_view,
     judge_changes,
     match_companion,
+    merge_choices,
     migrate,
     new_phone_id,
     read_phones,
@@ -364,13 +366,14 @@ class PhoneStore:
 
     def _link_found(self, phone: Phone, name: str | None, model: str | None) -> Phone:
         """`phone` (the app's, stored, without a Companion service) linked to its Companion phone where one matches
-        and no administrator split them: its own choices kept, the Companion phone's name and service taken."""
+        and no administrator split them: the Companion phone's name and service taken, and the choices of both
+        entries merged (`phones.merge_choices`: a Companion phone that was on keeps what it heard)."""
         if phone.notify is not None or phone.apart or phone.app is None:
             return phone
         match = self._match_companion(name, model)
         if match is None:
             return phone
-        linked = replace(phone, notify=match.notify, name=match.name)
+        linked = merge_choices(replace(phone, notify=match.notify, name=match.name), match)
         self._phones = tuple(item for item in self._phones if item.id != match.id)
         self._store_phone(linked)
         return linked
@@ -387,29 +390,54 @@ class PhoneStore:
             out[index] = phone
             self._phones = tuple(item for i, item in enumerate(out) if i == index or item.id not in (phone.id, replacing))
 
-    def _attach_app(self, key: str, name: str, ref: str | None, model: str | None = None) -> Phone:
-        """The app's own entry, made now if it has none: one from before this release with the same reference is
-        adopted; else the Companion phone it is (`_match_companion`) is linked (turned on, its choices kept); else a
-        new one, on, the defaults. An entry without a Companion service is linked whenever its phone is found, unless
-        an administrator split them. Not saved."""
+    def _attach_app(
+        self,
+        key: str,
+        name: str,
+        ref: str | None,
+        model: str | None = None,
+        *,
+        pairing: bool = False,
+        changes: Any = None,
+    ) -> Phone:
+        """The app's own entry, made now if it has none, with the app's own `changes` (`{on?, events?, chargers?}`)
+        applied to the app's side before any link: one from before this release with the same reference is adopted;
+        else the Companion phone it is (`_match_companion`) is linked, the choices of both merged
+        (`phones.merge_choices`); else a new one, on, the defaults. A Companion phone that was off is turned on only
+        by a pairing or by the app's own choice. An entry without a Companion service is linked whenever its phone
+        is found, unless an administrator split them. Not saved. Raises `PhoneError` for `changes` that cannot be
+        stored."""
+        every = every_charger(self._hass)
+
+        def own(phone: Phone) -> Phone:
+            return phone if changes is None else judge_changes(phone, changes, every)
+
         found = self.app_phone(key)
         if found is not None:
-            return self._link_found(found, name, model)
+            phone = own(found)
+            self._store_phone(phone)
+            return self._link_found(phone, name, model)
         if ref is not None:
             legacy = next(
                 (p for p in self._phones if p.app is not None and p.app.key is None and p.app.push_ref == ref), None
             )
             if legacy is not None:
-                phone = replace(legacy, app=replace(legacy.app or AppLink(), key=key, via=()), name=name)
+                phone = own(replace(legacy, app=replace(legacy.app or AppLink(), key=key, via=()), name=name))
                 self._store_phone(phone)
                 return self._link_found(phone, name, model)
         match = self._match_companion(name, model)
         if match is not None:
-            phone = replace(match, id=new_phone_id() if match.id.startswith(UNTOUCHED_PREFIX) else match.id,
-                            app=AppLink(key=key), on=True)
-            self._store_phone(phone, replacing=match.id)
-            return phone
-        phone = Phone(id=new_phone_id(), name=name, app=AppLink(key=key), on=True)
+            linked = replace(match, id=new_phone_id() if match.id.startswith(UNTOUCHED_PREFIX) else match.id,
+                             app=AppLink(key=key))
+            if pairing:
+                linked = replace(linked, on=True)
+            if changes is not None:
+                # The app's own choice beside the Companion phone's: merged, never one undoing the other.
+                app_side = own(replace(linked, on=False, events=DEFAULT_PHONE_EVENTS, chargers=None))
+                linked = merge_choices(linked, app_side)
+            self._store_phone(linked, replacing=match.id)
+            return linked
+        phone = own(Phone(id=new_phone_id(), name=name, app=AppLink(key=key), on=True))
         self._store_phone(phone)
         return phone
 
@@ -417,7 +445,7 @@ class PhoneStore:
         """A pairing of an app from this release was approved: its entry, linked where one Companion phone matches."""
         async with self._lock:
             try:
-                self._attach_app(key, clean_name(device, "SpotNav app"), None, _model(model))
+                self._attach_app(key, clean_name(device, "SpotNav app"), None, _model(model), pairing=True)
             except PhoneRefusal:
                 _LOGGER.warning("SpotNav: no room for another phone's notification settings")
                 return
@@ -438,7 +466,8 @@ class PhoneStore:
             before = self._phones
             try:
                 phone = self._attach_app(
-                    key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref, _model(model)
+                    key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref, _model(model),
+                    changes=changes,
                 )
                 app = phone.app or AppLink(key=key)
                 if push_ref is not ...:
@@ -446,8 +475,6 @@ class PhoneStore:
                 if shows is not ...:
                     app = replace(app, shows=tuple(item for item in APP_SHOWS if item in shows))
                 phone = replace(phone, app=app)
-                if changes is not None:
-                    phone = judge_changes(phone, changes, every_charger(self._hass))
                 self._store_phone(phone)
             except (PhoneError, PhoneRefusal):
                 self._phones = before

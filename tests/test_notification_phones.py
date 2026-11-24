@@ -353,12 +353,15 @@ async def test_the_app_reads_and_writes_only_its_own_phone(
     async_mock_service(hass, "notify", "mobile_app_pixel_8")
     client = await hass_client_no_auth()
 
-    # The first call makes its phone: on, the defaults, linked to the Companion phone of the same name.
-    status, answer = await _post(client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Pixel 8"})
+    # The first call makes its phone, linked to the Companion phone of the same name: the app's own choice (on)
+    # turns it on, the defaults.
+    status, answer = await _post(
+        client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Pixel 8", "set": {"on": True}}
+    )
     assert status == 200 and answer["ok"] is True and answer["action"] == "phone_notifications"
     phone = answer["phone"]
     assert phone["on"] is True and phone["events"] == list(DEFAULT_PHONE_EVENTS) and phone["chargers"] is None
-    assert phone["companion"] == {"name": "Pixel 8"} and phone["instant"] is False
+    assert phone["companion"] == {"name": "Pixel 8", "found": True} and phone["instant"] is False
     assert answer["chargers"] == [{"id": entry.entry_id, "name": "Garage"}]
     _pinned("phone_notifications_success.json", answer)
 
@@ -473,7 +476,7 @@ async def test_the_owners_phone_links_on_a_later_call_and_a_split_stays_split(
     status, answer = await _post(
         client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
     )
-    assert status == 200 and answer["phone"]["companion"] == {"name": "N6"}
+    assert status == 200 and answer["phone"]["companion"] == {"name": "N6", "found": True}
     (phone,) = domain_data(hass).phones.listing()
     assert phone.notify == "mobile_app_n6" and phone.name == "N6" and phone.on is True
     assert phone.app is not None and phone.app.key == app_key(APP_ID)
@@ -540,3 +543,101 @@ async def test_a_pairing_links_by_the_name_a_person_gave_the_companion_phone(
     await hass.async_block_till_done()
     (phone,) = domain_data(hass).phones.phones
     assert phone.notify == "mobile_app_n6" and phone.app is not None and phone.app.key == app_key(APP_ID)
+
+
+# ------------------------------------------------------------------ linking keeps both entries' choices (review B1, B2)
+
+
+async def test_linking_an_upgraded_app_keeps_what_its_companion_phone_heard(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    entry = await _charger(hass)
+    _companion_phone(hass, "N6", "CPH2765")
+    phones = domain_data(hass).phones
+    # As migrated from 2.x/b4: the Companion phone ticked on the charger and in the heat card, the old app registered.
+    phones._phones = tuple(  # noqa: SLF001
+        migrate(
+            [
+                LegacyCharger(
+                    entry.entry_id,
+                    NotificationSettings(
+                        targets=("mobile_app_n6",),
+                        events=("plan_stopped", "plan_at_risk", "charge_complete", "charge_started"),
+                    ),
+                    REF,
+                    ("plan_stopped", "charge_complete"),
+                )
+            ],
+            [LegacyHeat(("mobile_app_n6",), ("plan_at_risk", "pool_season"))],
+            {"mobile_app_n6": "N6"},
+            (entry.entry_id,),
+            _ids(),
+        )
+    )
+    assert phones.recipients("pool_season")[0] == ("mobile_app_n6",)
+    client = await hass_client_no_auth()
+    status, _answer = await _post(
+        client,
+        {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765", "push_ref": REF,
+         "shows": ["plan_stopped", "plan_at_risk", "charge_complete", "charge_started"]},
+    )
+    assert status == 200
+    (phone,) = phones.phones
+    assert phone.notify == "mobile_app_n6" and phone.app is not None and phone.on
+    # Still heard, by the one route each takes now: nothing lost in the link.
+    assert phone.wants("pool_season") and phone.wants("charge_started") and phone.wants("plan_stopped")
+    assert phones.recipients("pool_season") != ((), ())
+    assert phones.recipients("charge_started", charger=entry.entry_id) == ((), (REF,))
+
+
+async def test_an_app_turned_off_never_silences_a_companion_phone_turned_on(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
+) -> None:
+    entry = await _charger(hass)
+    client = await hass_client_no_auth()
+    phones = domain_data(hass).phones
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    await _post(client, {**body, "set": {"on": False}})
+    _companion_phone(hass, "N6", "CPH2765")
+    ws = await hass_ws_client(hass)
+    await ws_call(
+        ws,
+        {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": "notify:mobile_app_n6",
+         "changes": {"on": True}},
+    )
+    await _post(client, body)
+    (phone,) = phones.phones
+    assert phone.on and phone.notify == "mobile_app_n6"
+    assert phones.recipients("plan_stopped", charger=entry.entry_id) == (("mobile_app_n6",), ())
+
+
+async def test_a_first_contact_never_turns_on_a_companion_phone_nobody_ticked(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    entry = await _charger(hass)
+    _companion_phone(hass, "N6", "CPH2765")
+    client = await hass_client_no_auth()
+    phones = domain_data(hass).phones
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    status, answer = await _post(client, body)
+    assert status == 200 and answer["phone"]["on"] is False
+    assert answer["phone"]["companion"] == {"name": "N6", "found": True}
+    assert phones.recipients("plan_stopped", charger=entry.entry_id) == ((), ())
+    # The app's own choice in its first call is merged in: on, its events.
+    other = "YW5vdGhlci1waG9uZXMtc2VjcmV0LWlkLWZvci10ZXN1"
+    _companion_phone(hass, "Pixel 8", "Pixel 8")
+    status, answer = await _post(
+        client,
+        {"action": "phone_notifications", "app_id": other, "name": "Pixel 8", "model": "Pixel 8",
+         "set": {"on": True, "events": ["charge_complete"]}},
+    )
+    assert status == 200 and answer["phone"]["on"] is True and answer["phone"]["events"] == ["charge_complete"]
+
+
+async def test_a_pairing_turns_its_companion_phone_on(hass: HomeAssistant) -> None:
+    await _charger(hass)
+    _companion_phone(hass, "N6", "CPH2765")
+    phones = domain_data(hass).phones
+    await phones.async_paired(app_key(APP_ID), "Henrik N6", "CPH2765")
+    (phone,) = phones.phones
+    assert phone.on and phone.notify == "mobile_app_n6" and phone.events == DEFAULT_PHONE_EVENTS

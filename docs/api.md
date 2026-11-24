@@ -549,15 +549,18 @@ Companion notification for the same notice. Examples are in `tests/fixtures/webh
 
 `app_id` is a secret the app makes once and keeps (also sent with its pairing request); Home Assistant keeps it hashed
 and never answers or logs it. The first call makes the phone (on, the default events, every charger), adopting the
-phone of an older app whose `push_ref` is the same, and linking it to its Companion phone. While the phone has no
+phone of an older app whose `push_ref` is the same, and linking it to its Companion phone. A link keeps what both
+entries heard: on if either was on, the union of the events and of the chargers of the entries that are on. A Companion
+phone that was off is turned on by a pairing, or by the app's own `set` in that call, never by the call alone. While the phone has no
 Companion service and no administrator split the two, every call tries that link: the one Companion phone whose
 name or name in Home Assistant is `name` (or ends with it as a word, or `name` ends with it), else the one whose model
 is `model` (or `name`: an older app sends its model as its name); two that match link nothing. `push_ref`
 sets the wake-up reference (`null` clears it); `shows` says which notices the app shows itself (a notice it cannot show
 goes to the phone's Companion service instead); `set` changes `on`, `events` and `chargers` (`null` for every charger).
 Every field but `app_id` is optional. The answer: `{"ok": true, "action", "api_version": 1, "phone": {"id", "name",
-"on", "events", "chargers", "companion": {"name"} | null, "instant"}, "chargers": [{"id", "name"}], "loads":
-{"chargers", "pool", "spa", "sauna"}, "events"}`; a body that cannot be stored HTTP 400 `{"ok": false, "error":
+"on", "events", "chargers", "companion": {"name", "found"} | null, "instant"}, "chargers": [{"id", "name"}], "loads":
+{"chargers", "pool", "spa", "sauna"}, "events"}`; `companion.found` says whether the Companion service exists now:
+while it does and `instant` is false, Home Assistant tells the phone there, and the app shows nothing of its own; a body that cannot be stored HTTP 400 `{"ok": false, "error":
 "invalid_phone_notifications", "action"}`. Examples: `tests/fixtures/webhook/phone_notifications_*.json`.
 
 Turning **active load balancing** on or off is not available through the webhook, only through
