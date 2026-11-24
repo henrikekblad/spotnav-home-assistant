@@ -16,7 +16,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import Any, Final
 
-from homeassistant.core import HomeAssistant
+from homeassistant.const import ATTR_DOMAIN, ATTR_SERVICE, EVENT_SERVICE_REGISTERED
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from ..const import DOMAIN
@@ -48,8 +49,8 @@ from .phones import (
     route_of,
     valid_ref,
 )
-from .settings import _PATH, NOTIFY_DOMAIN, NotificationSettings
-from .targets import available_targets, companion_devices
+from .settings import _PATH, MOBILE_APP_PREFIX, NOTIFY_DOMAIN, NotificationSettings
+from .targets import available_targets, companion_devices, companion_names, slug_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -187,7 +188,8 @@ class PhoneStore:
         for site in site_entries(self._hass):
             heat = stored_config(site).heat_notifications
             heats.append(LegacyHeat(heat.targets, heat.events))
-        names = dict(available_targets(self._hass))
+        # The Companion app's own names, also for a phone whose service is not there yet at the start.
+        names = {**companion_names(self._hass), **dict(available_targets(self._hass))}
         async with self._lock:
             migrated = migrate(chargers, heats, names, every_charger(self._hass))
             self._phones = (*self._phones, *migrated)[:MAX_PHONES]
@@ -200,6 +202,22 @@ class PhoneStore:
                 raise
         if migrated:
             _LOGGER.info("SpotNav: %d phones' notification settings carried over from the chargers", len(migrated))
+
+    async def async_name_phones(self) -> None:
+        """A stored Companion phone still named after its service (migrated before its name was known) takes the
+        Companion app's name for it, once that is known."""
+        names = companion_names(self._hass)
+        async with self._lock:
+            renamed = tuple(
+                replace(phone, name=clean_name(names[phone.notify], phone.name))
+                if phone.notify is not None and phone.notify in names and phone.name == slug_name(phone.notify)
+                and names[phone.notify] != phone.name
+                else phone
+                for phone in self._phones
+            )
+            if renamed != self._phones:
+                self._phones = renamed
+                await self._async_save()
 
     async def _legacy_push(self, charger_id: str) -> tuple[str | None, tuple[str, ...]]:
         try:
@@ -601,6 +619,13 @@ def phone_store(hass: HomeAssistant) -> PhoneStore | None:
     return domain_data(hass).phones
 
 
+async def _async_name_phones(store: PhoneStore) -> None:
+    try:
+        await store.async_name_phones()
+    except Exception:  # noqa: BLE001 - the names stay as they were, tried again later
+        _LOGGER.warning("SpotNav: the phones' names could not be updated", exc_info=True)
+
+
 async def async_setup_phones(hass: HomeAssistant) -> PhoneStore:
     """Create, load and migrate the installation's phones, once (before any entry is set up)."""
     from ..runtime import domain_data  # noqa: PLC0415
@@ -614,5 +639,14 @@ async def async_setup_phones(hass: HomeAssistant) -> PhoneStore:
         await store.async_migrate()
     except Exception:  # noqa: BLE001 - a migration that fails leaves the phones as they were, tried at the next start
         _LOGGER.warning("SpotNav: the phones' notification settings could not be carried over", exc_info=True)
+    await _async_name_phones(store)
+
+    @callback
+    def _service_registered(event: Event) -> None:
+        # A Companion phone's service appearing (its app set up after SpotNav): named on first sight.
+        if event.data.get(ATTR_DOMAIN) == NOTIFY_DOMAIN and str(event.data.get(ATTR_SERVICE, "")).startswith(MOBILE_APP_PREFIX):
+            hass.async_create_background_task(_async_name_phones(store), "spotnav phone names")
+
+    hass.bus.async_listen(EVENT_SERVICE_REGISTERED, _service_registered)
     data.phones = store
     return store

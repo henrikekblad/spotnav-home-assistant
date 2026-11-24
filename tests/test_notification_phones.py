@@ -715,3 +715,30 @@ async def test_forgetting_a_split_apps_row_never_links_it_again(hass: HomeAssist
     companion = next(phone for phone in phones.listing() if phone.notify == "mobile_app_n6")
     assert app_row is not None and (await update(app_row.id, {"link": companion.id}))["ok"] is True
     assert len(phones.listing()) == 1
+
+
+async def test_migrated_phones_take_the_companion_apps_name_not_the_service_s(hass: HomeAssistant) -> None:
+    entry = await _charger(hass)
+    # Right after a start: the Companion app's entry is there, its notify service not yet.
+    MockConfigEntry(domain="mobile_app", data={"device_name": "Henrik N6"}).add_to_hass(hass)
+    store = domain_data(hass).auto_store
+    await store.async_update(
+        entry.entry_id,
+        mutate=lambda settings: replace(
+            settings, notifications=NotificationSettings(targets=("mobile_app_henrik_n6",), events=("plan_stopped",))
+        ),
+    )
+    phones = domain_data(hass).phones
+    phones._migrated = False  # noqa: SLF001
+    await phones.async_migrate()
+    assert [phone.name for phone in phones.phones] == ["Henrik N6"]
+
+
+async def test_a_phone_named_after_its_service_is_renamed_when_its_service_appears(hass: HomeAssistant) -> None:
+    await _charger(hass)
+    phones = domain_data(hass).phones
+    phones._phones = (Phone(id="ph_000000000001", name="pixel 8", notify="mobile_app_pixel_8", on=True),)  # noqa: SLF001
+    MockConfigEntry(domain="mobile_app", data={"device_name": "Pixel 8"}).add_to_hass(hass)
+    async_mock_service(hass, "notify", "mobile_app_pixel_8")
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert [phone.name for phone in phones.phones] == ["Pixel 8"]

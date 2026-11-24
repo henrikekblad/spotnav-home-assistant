@@ -27,11 +27,27 @@ def available_targets(hass: HomeAssistant) -> tuple[tuple[str, str], ...]:
             names[f"{MOBILE_APP_PREFIX}{slugify(device_name)}"] = device_name
     services = hass.services.async_services_for_domain(NOTIFY_DOMAIN)
     found = [
-        (service, names.get(service, service.removeprefix(MOBILE_APP_PREFIX).replace("_", " ")))
+        (service, names.get(service, slug_name(service)))
         for service in services
         if service.startswith(MOBILE_APP_PREFIX)
     ]
     return tuple(sorted(found, key=lambda item: (item[1].casefold(), item[0])))
+
+
+def slug_name(service: str) -> str:
+    """The name a Companion phone is given when Home Assistant knows none: its service without the prefix."""
+    return service.removeprefix(MOBILE_APP_PREFIX).replace("_", " ")
+
+
+def companion_names(hass: HomeAssistant) -> dict[str, str]:
+    """Each Companion phone's name by its `notify.mobile_app_*` service, from the Companion app's config entries,
+    whether or not the service exists yet (right after a start the services come later than the entries)."""
+    names: dict[str, str] = {}
+    for entry in hass.config_entries.async_entries(MOBILE_APP_DOMAIN):
+        device_name = entry.data.get("device_name")
+        if isinstance(device_name, str) and device_name:
+            names.setdefault(f"{MOBILE_APP_PREFIX}{slugify(device_name)}", device_name)
+    return names
 
 
 def encoded_available(available: tuple[tuple[str, str], ...]) -> list[dict[str, str]]:
