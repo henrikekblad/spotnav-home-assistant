@@ -221,3 +221,34 @@ def test_the_sauna_routes_and_their_door() -> None:
     # A sauna's climate (40-110 °C) is never a pool heat pump, nor a spa.
     assert heat_pump_score(Seen("climate.saunum", "saunum", hvac_modes=("off", "heat"), fan_modes=True, min_c=40, max_c=100)) == 0.0
     assert spas([Seen("climate.huum", "huum", min_c=40.0, max_c=110.0, name="Sauna")]) == []
+
+
+async def test_the_zone_and_setpoint_choices_leave_out_the_pool_pump_the_spa_and_the_sauna(hass) -> None:
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.spotnav.api.heat import heat_choices
+    from custom_components.spotnav.heat.config import HeatConfig, Zone
+
+    entry = MockConfigEntry(domain="tuya_local")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={("tuya_local", "pool")}, manufacturer="Madimack", model="Eco 9kW"
+    )
+    registry = er.async_get(hass)
+    registry.async_get_or_create("climate", "tuya_local", "p1", suggested_object_id="poolpump", device_id=device.id, translation_key="pool_heatpump", config_entry=entry)
+    registry.async_get_or_create("climate", "balboa", "b1", suggested_object_id="balboa_spa_fake")
+    registry.async_get_or_create("climate", "saunum", "s1", suggested_object_id="saunum_leil_fake")
+    registry.async_get_or_create("climate", "generic_thermostat", "t1", suggested_object_id="golvvarme")
+    modes = {"hvac_modes": ["off", "heat"], "min_temp": 18, "max_temp": 40}
+    for entity_id in ("poolpump", "balboa_spa_fake", "saunum_leil_fake", "golvvarme"):
+        hass.states.async_set(f"climate.{entity_id}", "heat", modes)
+
+    def ids(config: HeatConfig, group: str) -> list[str]:
+        return [row["entity_id"] for row in heat_choices(hass, config, None, None)[group]]
+
+    for group in ("zones", "setpoint"):
+        assert ids(HeatConfig(), group) == ["climate.golvvarme"]
+    # What the person already saved stays, and is listed first.
+    saved = HeatConfig(zones=(Zone("climate.balboa_spa_fake"),))
+    assert ids(saved, "zones") == ["climate.balboa_spa_fake", "climate.golvvarme"]
