@@ -128,6 +128,10 @@ describe("the battery's words", () => {
     expect(batteryNeed("en", "hardware_test_again")).toContain("Run the hardware test again");
     expect(batteryNeed("sv", "hardware_test_again")).toContain("Kör hårdvarutestet igen");
     expect(batteryNeed("de", "recipe_blocked")).toContain("pausiert");
+    const byHand = batteryNeed(
+      "en", "restore_by_hand:select.sigen_mode=Maximum Self Consumption|number.sigen_charge_limit=20.6",
+    );
+    expect(byHand).toContain("select.sigen_mode → Maximum Self Consumption, number.sigen_charge_limit → 20.6");
     expect(batteryNeed("sv", "hardware_test_first")).toContain("Kör hårdvarutestet");
     expect(batteryNeed("sv", "inverter_power_zero")).toContain("\"Max inverter power\" är 0 i Victrons GX");
     expect(batteryNeed("en", "inverter_power_zero")).toContain("SpotNav cannot run a discharge");

@@ -2960,3 +2960,24 @@ async def test_a_bumped_recipe_revision_keys_every_report_read_with_it(
     _passed(control, per_phase="obeyed")
     assert control.state() == "on" and control._phases_mapped()
     await control.async_stop()
+
+
+async def test_roles_a_hand_back_could_not_write_are_named_with_what_to_set_by_hand_until_they_read_so(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    executor = control._executor()
+    assert executor is not None
+    executor.state = replace(
+        executor.state, phase="blocked", blocked="restore_failed:control_mode,charge_limit", action="hold",
+        unrestored=("charge_limit", "control_mode"), entities={"control_mode": MODE, "charge_limit": CHARGE},
+        restore_values={"charge_limit": 20.6}, snapshot={"charge_limit": "20.6"},
+    )
+    needs = control.status()["needs"]
+    # In the hand-back's order: the mode (the brand's normal) before the limit (as found).
+    assert f"restore_by_hand:{MODE}=Maximum Self Consumption|{CHARGE}=20.6" in needs
+    # Gone once the executor no longer holds them (written again, or set by hand and read so).
+    executor.state = replace(executor.state, phase="idle", blocked=None, unrestored=())
+    assert not any(need.startswith("restore_by_hand") for need in control.status()["needs"])
+    await control.async_stop()

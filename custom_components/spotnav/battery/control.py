@@ -97,6 +97,7 @@ from . import gate, optin
 from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    NORMAL,
     OUTPUT_TYPE_PHASES,
     BrandControl,
     Expiry,
@@ -112,6 +113,7 @@ from .commands import (
 )
 from .executor import (
     BATTERY_MAX_AGE_S,
+    restore_order,
     HEADROOM_MARGIN_A,
     ExecInputs,
     ExecState,
@@ -392,6 +394,8 @@ NEED_HARDWARE_TEST_AGAIN: Final = "hardware_test_again"
 #: The checklist's step where this SpotNav release holds the brand's recipe back on the plant's firmware or the
 #: recipe's revision (`commands.blocked`): shadow only, whatever was passed.
 NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
+#: The checklist's step where a hand-back could not write roles back: what to set by hand (`_restore_by_hand`).
+NEED_RESTORE_BY_HAND: Final = "restore_by_hand"
 #: The needs a hardware test is what answers (never a reason to refuse one).
 _HARDWARE_TEST_NEEDS: Final = frozenset({NEED_HARDWARE_TEST_FIRST, NEED_HARDWARE_TEST_AGAIN})
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
@@ -3306,6 +3310,9 @@ class BatteryControl:
             needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
+        restore = self._restore_by_hand()
+        if restore is not None:
+            needs.append(restore)
         if self.recipe_blocked():
             needs.append(NEED_RECIPE_BLOCKED)
         else:
@@ -3313,6 +3320,28 @@ class BatteryControl:
             if due is not None:
                 needs.append(due)
         return needs
+
+    def _restore_by_hand(self) -> str | None:
+        """The checklist's line where a hand-back could not write some roles back (`restore_failed`): each entity and
+        the value to set by hand, in the hand-back's order (`restore_by_hand:<entity_id>=<value>|...`). It clears by
+        itself once they read so (the executor tries them again, `executor.BLOCKED_RESTORE_S`)."""
+        executor = self.executor
+        if executor is None or executor.state.phase != "blocked" or not executor.state.unrestored:
+            return None
+        state = executor.state
+        normal = NORMAL.get(executor.control.brand, {})
+        order = [name for name in restore_order(executor.control, state.action) if name in state.unrestored]
+        order += [name for name in state.unrestored if name not in order]
+        rows = []
+        for name in order:
+            entity_id = state.entities.get(name)
+            value = state.restore_values.get(name, normal.get(name))
+            if entity_id is not None and value is not None:
+                text = ("on" if value else "off") if isinstance(value, bool) else (
+                    f"{value:g}" if isinstance(value, float) else str(value)
+                )
+                rows.append(f"{entity_id}={text}")
+        return f"{NEED_RESTORE_BY_HAND}:{'|'.join(rows)}" if rows else None
 
     def _settings_device(self) -> str | None:
         """The device that holds the first control the person must enable (`control_disabled`), so the card can open

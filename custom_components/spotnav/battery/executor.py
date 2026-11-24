@@ -2926,6 +2926,10 @@ class Executor:
             if not self._satisfied(
                 self.control.role(before), state.target[before], inputs.reads.get(before), restoring=True
             ):
+                if (before in state.unrestored or before in state.given_up) and name not in state.unrestored:
+                    # The role it waits for will not be written again here: the limit is left where it is (low) and
+                    # counted as not handed back, so the hand-back ends and the person is told what to set by hand.
+                    self.state = replace(self.state, unrestored=(*self.state.unrestored, name))
                 return True
         return False
 

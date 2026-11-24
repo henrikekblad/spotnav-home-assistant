@@ -1854,6 +1854,7 @@
   "battery.need.hardwareTestFirst": "Run the hardware test (Support → Run hardware test) first: until it has passed once on this battery, SpotNav only shows what it would do. After an update SpotNav checks the battery by itself.",
   "battery.need.hardwareTestAgain": "Run the hardware test again (Support → Run hardware test): the battery's check after an update did not pass, so SpotNav only shows what it would do until the test passes.",
   "battery.need.recipeBlocked": "SpotNav has paused control of this battery on its present firmware because of a known problem, and only shows what it would do. A SpotNav update that fixes it resumes control.",
+  "battery.need.restoreByHand": "SpotNav could not hand the battery back. Set these by hand, in this order: {list}. This line goes away once they read so.",
   "battery.need.selfManaged": "The battery runs its own optimiser. Switch it to self-consumption in the battery's app if SpotNav is to run it.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" is 0 on the Victron GX, so the battery never discharges and SpotNav cannot run a discharge. Set it to -1 (no limit) or a power in the GX's ESS settings if the battery is to cover the house.",
   "battery.need.gridSetpointSelling": "The Victron GX's grid setpoint is far below 0, so the battery keeps selling to the grid whatever SpotNav plans. Set it back to a small value (the GX's default is 50 W) in its ESS settings if that is not what you want; SpotNav does not change it.",

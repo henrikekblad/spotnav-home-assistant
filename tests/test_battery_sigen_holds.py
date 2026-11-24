@@ -818,3 +818,16 @@ def test_a_following_hold_that_charges_from_the_grid_is_still_handed_back() -> N
     _now, results = run(executor, battery, now, _looks(HOLD_CHARGE_S) + 4, "hold", hold_charge_cap_kw=math.inf,
                         power_kw=2.0, grid_import_kw=2.0)
     assert events(results, "hand_back")[0]["reason"] == "not_obeyed:hold:charging"
+
+
+def test_a_hand_back_whose_mode_write_is_given_up_ends_with_the_limit_left_low_and_names_both() -> None:
+    executor, battery = _pv_first()
+    now = _held(executor, battery)
+    battery.raises |= {"control_mode", "remote_ems"}
+    # Every retry spent (`RESTORE_RETRY_S`, about 19 minutes).
+    _now, results = run(executor, battery, now, _looks(1300), "hold", headroom_a=0.5)
+    # Never written while the mode stays in Command Charging (PV First); the hand-back ends rather than waits for ever.
+    assert "charge_limit" not in [role for role, _value in written(results)] and battery.states["charge_limit"] == "0"
+    state = executor.state
+    assert state.phase == "blocked" and state.blocked is not None and state.blocked.startswith("restore_failed")
+    assert {"control_mode", "remote_ems", "charge_limit"} <= set(state.unrestored)

@@ -1045,7 +1045,7 @@ that brand (`spotnav/beta`'s `start_test`), and until then the control only watc
 while `status.options` shows the switches as stored). After that first pass a change of firmware, integration version
 or recipe revision is checked by the routine by itself; `hardware_test_again` says that check (or a later hardware
 test) failed on the key now, and the control only watches until a hardware test passes again. `recipe_blocked` says
-this release holds the brand's recipe back on the plant's firmware or the recipe's revision (only watching). With `changes` it writes first, and the only key the
+this release holds the brand's recipe back on the plant's firmware or the recipe's revision (only watching). `restore_by_hand:<entity_id>=<value>|...` names, in order, what a hand-back could not write back (the person sets it by hand; the line goes once the executor no longer holds them). With `changes` it writes first, and the only key the
 webhook takes is `battery_mode`: `self_consumption`, `balanced` or `max_profit`. HTTP 200 written (the plan is made
 again at once); 400 `spotnav_invalid_value` (another mode, an unknown key, no changes); 403
 `spotnav_not_permitted_over_webhook` for `battery_control_enabled` ("Styr batteriet") and the other

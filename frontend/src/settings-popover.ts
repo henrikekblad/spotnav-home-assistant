@@ -574,6 +574,15 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.hardwareTestAgain");
     case "recipe_blocked":
       return translate(language, "battery.need.recipeBlocked");
+    case "restore_by_hand": {
+      // `<entity_id>=<value>|...` after the first colon (a value may hold one).
+      const rows = need.slice(kind.length + 1).split("|").filter((row) => row.includes("="));
+      const list = rows.map((row) => {
+        const at = row.indexOf("=");
+        return `${row.slice(0, at)} → ${row.slice(at + 1)}`;
+      }).join(", ");
+      return translate(language, "battery.need.restoreByHand", { list });
+    }
     case "self_managed":
       return translate(language, "battery.need.selfManaged");
     case "inverter_power_zero":

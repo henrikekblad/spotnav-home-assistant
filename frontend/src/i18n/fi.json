@@ -1854,6 +1854,7 @@
   "battery.need.hardwareTestFirst": "Aja ensin laitteistotesti (Tuki → Aja laitteistotesti): kunnes se on mennyt kerran läpi tällä akulla, SpotNav vain näyttää, mitä se tekisi. Päivityksen jälkeen SpotNav tarkistaa akun itse.",
   "battery.need.hardwareTestAgain": "Aja laitteistotesti uudelleen (Tuki → Aja laitteistotesti): akun tarkistus päivityksen jälkeen ei mennyt läpi, joten SpotNav vain näyttää, mitä se tekisi, kunnes testi menee läpi.",
   "battery.need.recipeBlocked": "SpotNav on keskeyttänyt tämän akun ohjauksen sen nykyisellä laiteohjelmistolla tunnetun ongelman vuoksi ja vain näyttää, mitä se tekisi. Ongelman korjaava SpotNav-päivitys jatkaa ohjausta.",
+  "battery.need.restoreByHand": "SpotNav ei pystynyt palauttamaan akkua. Aseta nämä käsin tässä järjestyksessä: {list}. Rivi katoaa, kun ne näyttävät niin.",
   "battery.need.selfManaged": "Akkua ohjaa sen oma optimointi. Vaihda akun sovelluksessa omakäyttötilaan, jos SpotNavin halutaan ohjaavan sitä.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" on Victronin GX:ssä 0, joten akku ei koskaan pura eikä SpotNav voi ajaa purkua. Aseta se GX:n ESS-asetuksissa arvoon -1 (ei rajaa) tai johonkin tehoon, jos akun on katettava talon kulutus.",
   "battery.need.gridSetpointSelling": "Victron GX:n verkon asetusarvo (grid setpoint) on selvästi alle 0, joten akku myy edelleen verkkoon riippumatta siitä, mitä SpotNav suunnittelee. Palauta se ESS-asetuksissa pieneen arvoon (GX:n oletus on 50 W), jos et halua tätä; SpotNav ei muuta sitä.",
