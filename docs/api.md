@@ -1165,7 +1165,9 @@ and `charger_priority.writable` say whether it may change those (an administrato
 Rules that hold across them:
 
 - **Full replacement, not patches.** Settings are replaced in full and name the `revision` they
-  edited (`expected_revision`); a stale write returns `revision_conflict` with the current record.
+  edited (`expected_revision`); a stale write returns `revision_conflict` with the current record. A charger's
+  `revision` also moves when the phones that hear it change (its `notifications` as an older client reads them), so
+  an older client's body read before such a change is a conflict rather than an echo that undoes it.
   Other writes carry `expected` values and answer `conflict` with the current state.
 - **Stable codes, no prose.** Refusals are codes (`spotnav_unknown_charger`,
   `spotnav_charger_unloaded`, `spotnav_invalid_value` with per-field `field_errors`, and so on);

@@ -460,7 +460,8 @@ async def test_the_app_keeps_notifications_it_does_not_read_and_edits_them_when_
         {
             "action": "settings",
             "reads": ["notifications"],
-            "expected_revision": stored.revision,
+            # The wire revision answered (the phones' changes of this charger's view are part of it).
+            "expected_revision": answer["settings"]["revision"],
             "settings": {**older, "amps": 12, "notifications": {"targets": [], "events": ["plugged_in"]}},
         },
     )
@@ -575,7 +576,10 @@ async def test_a_websocket_write_quiets_the_plan_too(hass: HomeAssistant, freeze
         for key, value in encode_settings(current).items()
         if key not in ("revision", "fiscal_included")
     }
-    frame = await ws_call(client, update_settings_message(entry.entry_id, current.revision, {**body, "amps": 12}))
+    from custom_components.spotnav.pricing.price_source import wire_revision  # noqa: PLC0415
+
+    revision = wire_revision(hass, entry.entry_id, current.revision)
+    frame = await ws_call(client, update_settings_message(entry.entry_id, revision, {**body, "amps": 12}))
     assert frame["result"]["ok"] is True, frame
     await _install(hass, freezer, controller, _window_now(amps=12))
     assert _installs(calls) == []

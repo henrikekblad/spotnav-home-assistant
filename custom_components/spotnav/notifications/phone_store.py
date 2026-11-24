@@ -89,6 +89,12 @@ class PhoneStore:
         self._load_failed = False
         #: The skipped save is logged once.
         self._skip_logged = False
+        #: Per charger, how often what an older client reads as its `notifications` changed (kept): part of the
+        #: charger's settings revision on the wire (`pricing/price_source.wire_offset`), so an older client's body read
+        #: before a phone change is a conflict rather than an echo that undoes it (notifications review S1).
+        self._view_revisions: dict[str, int] = {}
+        #: The phones as last saved (or loaded): what each charger's view is compared with at a save.
+        self._saved_phones: tuple[Phone, ...] = ()
         #: Where a tap opens when a charger has no dashboard of its own: the page an administrator last saved a phone
         #: from (`url` of `spotnav/update_notification_phone`).
         self._url: str | None = None
@@ -111,7 +117,15 @@ class PhoneStore:
         self._load_failed = False
         if isinstance(raw, dict):
             self._phones = read_phones(raw.get("phones"))
+            self._saved_phones = self._phones
             self._migrated = raw.get("migrated") is True
+            revisions = raw.get("view_revisions")
+            if isinstance(revisions, dict):
+                self._view_revisions = {
+                    charger: count
+                    for charger, count in revisions.items()
+                    if isinstance(charger, str) and type(count) is int and count >= 0
+                }
             url = raw.get("url")
             self._url = url if isinstance(url, str) and _PATH.match(url) else None
 
@@ -119,7 +133,20 @@ class PhoneStore:
     def load_failed(self) -> bool:
         return self._load_failed
 
+    def view_revision(self, charger: str) -> int:
+        """How often the charger's `notifications` view changed (see `_view_revisions`)."""
+        return self._view_revisions.get(charger, 0)
+
+    def _count_view_changes(self) -> None:
+        for charger in every_charger(self._hass):
+            before = charger_view(self._saved_phones, charger, None)
+            after = charger_view(self._phones, charger, None)
+            if set(before.targets) != set(after.targets) or set(before.events) != set(after.events):
+                self._view_revisions[charger] = self._view_revisions.get(charger, 0) + 1
+        self._saved_phones = self._phones
+
     async def _async_save(self) -> None:
+        self._count_view_changes()
         if self._load_failed:
             if not self._skip_logged:
                 self._skip_logged = True
@@ -129,7 +156,12 @@ class PhoneStore:
                 )
         else:
             await self._store.async_save(
-                {"migrated": self._migrated, "url": self._url, "phones": [phone.as_dict() for phone in self._phones]}
+                {
+                    "migrated": self._migrated,
+                    "url": self._url,
+                    "phones": [phone.as_dict() for phone in self._phones],
+                    "view_revisions": dict(self._view_revisions),
+                }
             )
         for listener in list(self._listeners):
             listener()

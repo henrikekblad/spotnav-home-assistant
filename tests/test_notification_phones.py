@@ -641,3 +641,37 @@ async def test_a_pairing_turns_its_companion_phone_on(hass: HomeAssistant) -> No
     await phones.async_paired(app_key(APP_ID), "Henrik N6", "CPH2765")
     (phone,) = phones.phones
     assert phone.on and phone.notify == "mobile_app_n6" and phone.events == DEFAULT_PHONE_EVENTS
+
+
+async def test_an_older_clients_stale_echo_never_undoes_an_administrators_phone_change(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    from .messages import read_settings_message, update_settings_message  # noqa: PLC0415
+    from .world import admin  # noqa: PLC0415
+
+    entry = await _charger(hass)
+    _companion_phone(hass, "Pixel 8", "Pixel 8")
+    phones = domain_data(hass).phones
+    ws = await admin(hass, hass_ws_client)
+    # An older client reads the charger's settings, its `notifications` among them (no phone yet).
+    read = (await ws_call(ws, read_settings_message(entry.entry_id)))["result"]
+    stale = {key: value for key, value in read["settings"].items() if key not in ("revision", "fiscal_included")}
+    assert stale["notifications"]["targets"] == []
+    # An administrator turns the phone on in the card.
+    await ws_call(
+        ws,
+        {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": "notify:mobile_app_pixel_8",
+         "changes": {"on": True}},
+    )
+    assert phones.recipients("plan_stopped", charger=entry.entry_id) == (("mobile_app_pixel_8",), ())
+    # The older client saves what it read: a conflict, never an echo that takes the phone off the charger.
+    frame = await ws_call(ws, update_settings_message(entry.entry_id, read["settings"]["revision"], {**stale, "amps": 12}))
+    assert frame["result"]["ok"] is False and frame["result"]["error"] == "revision_conflict"
+    assert phones.recipients("plan_stopped", charger=entry.entry_id) == (("mobile_app_pixel_8",), ())
+    # Read again, its save goes through and keeps the phone.
+    again = (await ws_call(ws, read_settings_message(entry.entry_id)))["result"]
+    body = {key: value for key, value in again["settings"].items() if key not in ("revision", "fiscal_included")}
+    assert body["notifications"]["targets"] == ["mobile_app_pixel_8"]
+    frame = await ws_call(ws, update_settings_message(entry.entry_id, again["settings"]["revision"], {**body, "amps": 12}))
+    assert frame["result"]["ok"] is True
+    assert phones.recipients("plan_stopped", charger=entry.entry_id) == (("mobile_app_pixel_8",), ())
