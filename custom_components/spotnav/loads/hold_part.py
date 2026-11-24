@@ -185,12 +185,14 @@ class HoldPart:
         limit: int | None,
         home: bool = False,
     ) -> bool:
-        """Write one setting: within the day's budget (`limit`, `None`: exempt, a hard rule's or an exit's write),
-        noted as pending, then called. `False` when the budget refused it."""
+        """Write one setting: within the day's budget (`limit`, `None`: exempt, a hard rule's or an exit's write, which
+        is not counted either), noted as pending, then called. `False` when the budget refused it."""
         day = self.day(now)
-        if limit is not None and not self.budget.may_write(day, key, kind, limit):
-            return False
-        self.budget.note_write(day, key, kind)
+        if limit is not None:
+            if not self.budget.may_write(day, key, kind, limit):
+                return False
+            # Only a write the budget limits spends it: a hard rule's or an exit's write never uses up another's.
+            self.budget.note_write(day, key, kind)
         held = self.held(key)
         held.wrote(value, now, home=home)
         self._log(now, self.name, "write", key=key, value=value, home=home)
