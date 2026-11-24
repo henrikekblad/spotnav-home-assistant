@@ -1169,6 +1169,25 @@ class SocReader:
                 self._save()
         return resolution.reading
 
+    def last_known(self, vehicle_id: str | None) -> tuple[float, datetime] | None:
+        """The car's last real reading this reader holds (the anchor's level and when it was made), or `None`.
+
+        Only for the car the anchor is of: another car's level is never lent. What a plan starts from when the level
+        cannot be read now and no estimate can be made (`auto_controller._energy_for`).
+        """
+        anchor = self._anchor
+        if anchor is None or not vehicle_id or anchor.vehicle_id != vehicle_id:
+            return None
+        return anchor.soc_percent, anchor.read_at
+
+    def unreadable_entity(self, vehicle_id: str | None) -> str | None:
+        """The level entity that resolves for this car but reads no value now (`unavailable`, `unknown`, nonsense),
+        else `None`: a car with no level source, or one that reads, is not unreadable. Only looks."""
+        reading = self._raw_reader(vehicle_id)
+        if reading is None or reading.soc_percent is not None or reading.entity_id is None:
+            return None
+        return reading.entity_id
+
     def peek(self, vehicle_id: str | None) -> SocReading | None:
         """`read` without touching the anchor: for a car only shown (another car at the charger in the card's
         list, a site's overview), never the one planned for. The anchor's car gets its estimate; any other car

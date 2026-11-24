@@ -597,14 +597,14 @@ async def test_target_mode_needs_a_vehicle_to_read(
     [
         None,
         lambda _vehicle_id: None,
-        lambda vehicle_id: LiveVehicleFacts(vehicle_id=vehicle_id),
+        lambda _vehicle_id: LiveVehicleFacts(vehicle_id=""),
     ],
-    ids=["no-reader", "no-vehicle", "no-reading"],
+    ids=["no-reader", "no-vehicle", "vehicle-not-resolved"],
 )
-async def test_target_mode_without_a_live_reading_is_incomplete(
+async def test_target_mode_without_a_car_to_read_asks_for_the_vehicle(
     harness: Harness, no_execution: dict[str, Any], reader: Any
 ) -> None:
-    """Live state of charge is never inferred from settings: absent means incomplete."""
+    """With no car resolving for the target, choosing it is what plans it: a settings word, never a raw key."""
     serve(harness.transport)
     harness.vehicle_reader = reader
     controller = await harness.auto(
@@ -614,9 +614,27 @@ async def test_target_mode_without_a_live_reading_is_incomplete(
 
     snapshot = controller.snapshot()
     assert snapshot.state == "incomplete_settings" and snapshot.reason == "target_soc_unknown"
-    assert snapshot.missing == ("live_soc",)
+    assert snapshot.missing == ("vehicle",)
     assert snapshot.proposal is None
     assert_nothing_executed(no_execution)
+
+
+async def test_target_mode_without_any_level_plans_a_full_charge(harness: Harness) -> None:
+    """A car whose level was never read plans from empty to the target, never an `incomplete_settings`."""
+    serve(harness.transport)
+    harness.vehicle_reader = lambda vehicle_id: LiveVehicleFacts(
+        vehicle_id=vehicle_id, reported_capacity_kwh=77.0, soc_unreadable=True
+    )
+    controller = await harness.auto(
+        driver=DRIVER_TARGET_SOC,
+        target=TargetSocIntent(vehicle_id="veh-1", target_percent=80),
+    )
+
+    snapshot = controller.snapshot()
+    assert snapshot.state != "incomplete_settings"
+    assert snapshot.soc_basis == "full_charge" and snapshot.soc_basis_percent is None
+    assert snapshot.proposal is not None
+    assert snapshot.proposal.requested_kwh == pytest.approx(77.0 * 0.8 / 0.9, abs=0.01)
 
 
 async def test_target_mode_without_any_capacity_is_incomplete(
