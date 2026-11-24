@@ -628,7 +628,9 @@ class Bucket:
     def fill_ac(self, loss: tuple[float, float]) -> None:
         """A quarter hour from before the AC side: its battery energy turned with [loss] (`conversion_loss.ac_kw`)."""
         if self.battery_ac_kwh is None:
-            self.battery_ac_kwh = ac_kw(self.battery_kwh, loss)
+            hours = self.covered_s / 3600.0
+            grid = self.import_kwh / hours if hours > 0 else None
+            self.battery_ac_kwh = ac_kw(self.battery_kwh / hours, loss, grid) * hours if hours > 0 else 0.0
 
     @property
     def covered(self) -> bool:

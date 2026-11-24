@@ -17,7 +17,8 @@ the battery's energy and the SoC at the start and end of each) show it.
 * **Round trip.** Learnt from the battery's own meters (`round_trip.py`), and used here in place of the assumed one
   once it is known. Where the battery's power is read at the battery (DC), the plan takes it on the AC side: times
   the inverter's loss on the way in and out (`conversion_loss.py`, learnt here too where the plant reads its own
-  load), at most `round_trip.PLAN_CAP`.
+  load), at most `round_trip.PLAN_CAP` and at least `AC_ROUND_TRIP_FLOOR`, or what the assumed loss makes of it where
+  that is lower: the floor guards against a loss fitted too high, never raises a battery that is lossy itself.
 
 Size and rating are estimates: SpotNav marks them (`capacity_learned`, `rated_learned`) and never lets one replace a value the
 integration reads. What this cannot tell: a battery that was never cycled 20 points, or never charged at its limit,
@@ -36,13 +37,16 @@ from typing import TYPE_CHECKING, Any, Final
 
 from .facts import BatteryFacts
 from .plan_model import DEFAULT_ROUND_TRIP_EFFICIENCY
-from .conversion_loss import ConversionLoss, ac_round_trip
+from .conversion_loss import DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS, ConversionLoss, ac_round_trip
 from .round_trip import PLAN_CAP, RoundTrip
 
 if TYPE_CHECKING:
     from .plan_shadow import Bucket
 
 EST_CAPACITY_LEARNED: Final = "capacity_learned"
+#: The lowest AC round trip a battery read at the battery is planned with (see the module): a loss fitted too high
+#: (`conversion_loss.py`) must not stop the plan cycling for weeks.
+AC_ROUND_TRIP_FLOOR: Final = 0.80
 EST_RATED_LEARNED: Final = "rated_learned"
 #: Where the round trip came from (`BatteryFacts.sources["round_trip"]`).
 SOURCE_LEARNED: Final = "learned"
@@ -283,7 +287,13 @@ def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
         efficiency = learned.round_trip.efficiency
         if facts.power_dc:
             # Counted at the battery: the plan's is the AC one (see the module).
-            efficiency = round(min(PLAN_CAP, ac_round_trip(efficiency, learned.conversion.loss(True))), 3)
+            efficiency = round(
+                max(
+                    min(AC_ROUND_TRIP_FLOOR, ac_round_trip(efficiency, (DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS))),
+                    min(PLAN_CAP, ac_round_trip(efficiency, learned.conversion.loss(True))),
+                ),
+                3,
+            )
         updates["round_trip_efficiency"] = efficiency
         sources["round_trip"] = SOURCE_LEARNED
     if not updates:

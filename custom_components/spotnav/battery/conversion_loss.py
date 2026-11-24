@@ -8,8 +8,14 @@ losses only the real battery's own running caused, which flatters the battery's 
 November 2026 by 7-13 kr a day; `plans/research_integrations/sigen_ai_above_perfect_2026-11-24.md`). So a DC reading is
 turned into an AC one (`ac_kw`) before the review, the perfect plan and the house figures count it:
 
-    AC = DC x (1 + charge loss)      while it charges,
-    AC = DC x (1 - discharge loss)   while it discharges.
+    AC = DC x (1 + charge loss)      for the part of a charge the grid gave (at most what was imported),
+    AC = DC x (1 - discharge loss)   for the rest of a charge, and while it discharges.
+
+The rest of a charge is the sun's over the DC bus of a hybrid: it never crossed the inverter, but without the battery it
+would have gone out through it and lost about the way-out share; so the AC side counts it at that, and the midday house
+is not lowered by a loss the sun's charge never had. The plan prices every stored kWh with the AC round trip, so it
+values storing the sun a few percent below what that costs (the sun's real penalty is about the DC round trip): with
+sell prices far under buy prices this rarely changes a decision.
 
 The SoC, the battery's size and its round trip learnt from its own counters stay on the DC side (they are the cells').
 The plan's round trip is the AC one (`ac_round_trip`): the DC round trip x (1 - discharge loss) / (1 + charge loss).
@@ -21,7 +27,9 @@ The plan's round trip is the AC one (`ac_round_trip`): the DC round trip x (1 - 
   two losses. Only dark quarter hours count (the sun below `DARK_KW`), so the solar side's own conversion is not taken
   for the battery's; only fully measured ones (`FULL_COVER_S`). The sums fade with a half-life of `HALF_LIFE_QUARTERS`,
   and the answer is used once `MIN_ACTIVE` quarter hours charged and as many discharged at `ACTIVE_KW` or more, and
-  only while both losses lie in `LOSS_RANGE`; else the assumed ones stand.
+  only while both losses lie in `LOSS_RANGE`; else the assumed ones stand (a fit outside it is logged, never shown:
+  a cell heater on a cold night's charge, or the plant's meter reading a little off SpotNav's, is fitted as loss too).
+  The half-life counts dark quarter hours, not days, so in summer the fit moves more slowly.
 * **Assumed** otherwise: `DEFAULT_CHARGE_LOSS` and `DEFAULT_DISCHARGE_LOSS`, a typical hybrid's 96-97 % each way
   (the owner's Sigenergy plant measured 3.5 % and 6.5 %).
 * **Read as they are** where the battery's power is not marked DC (an AC-coupled battery, or a brand whose side is not
@@ -33,6 +41,7 @@ have most of it too.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -41,19 +50,21 @@ from typing import Any, Final
 #: The assumed losses (shares of the DC power) where none is learnt.
 DEFAULT_CHARGE_LOSS: Final = 0.03
 DEFAULT_DISCHARGE_LOSS: Final = 0.05
-#: A believable loss (share), either way.
-LOSS_RANGE: Final = (0.0, 0.15)
+#: A believable loss (share), either way: a hybrid's inverter loses 2-7 % each way.
+LOSS_RANGE: Final = (0.0, 0.08)
 #: A quarter hour with the sun below this (kW) is dark.
 DARK_KW: Final = 0.1
 #: A quarter hour charging or discharging at this mean power (kW) or more counts towards `MIN_ACTIVE`.
 ACTIVE_KW: Final = 0.5
 MIN_ACTIVE: Final = 48.0
-#: The sums fade by half over this many quarter hours (60 days).
+#: The sums fade by half over this many dark quarter hours (60 nights' worth).
 HALF_LIFE_QUARTERS: Final = 60 * 96
 QUARTER: Final = timedelta(minutes=15)
 FULL_COVER_S: Final = 0.9 * QUARTER.total_seconds()
 #: A gap between readings longer than this (s) counts nothing.
 MAX_GAP_S: Final = 60.0
+
+_LOGGER = logging.getLogger(__name__)
 
 SOURCE_LEARNED: Final = "learned"
 SOURCE_ASSUMED: Final = "assumed"
@@ -66,10 +77,15 @@ def _finite(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
-def ac_kw(dc_kw: float, loss: tuple[float, float]) -> float:
-    """The battery's power on the AC side (+ charging) from its power at the battery, with `(charge, discharge)` loss."""
+def ac_kw(dc_kw: float, loss: tuple[float, float], grid_kw: float | None = None) -> float:
+    """The battery's power on the AC side (+ charging) from its power at the battery, with `(charge, discharge)` loss
+    (see the module): a charge up to what the grid gave ([grid_kw], + import; all of it where not known) at the way-in
+    loss, the rest of it (the sun's, over the DC bus) and a discharge at the way-out loss."""
     charge, discharge = loss
-    return dc_kw * (1.0 + charge) if dc_kw > 0 else dc_kw * (1.0 - discharge)
+    if dc_kw <= 0:
+        return dc_kw * (1.0 - discharge)
+    from_grid = dc_kw if grid_kw is None else min(dc_kw, max(0.0, grid_kw))
+    return from_grid * (1.0 + charge) + (dc_kw - from_grid) * (1.0 - discharge)
 
 
 def ac_round_trip(dc_round_trip: float, loss: tuple[float, float]) -> float:
@@ -187,6 +203,7 @@ class ConversionLoss:
         _constant, charge, discharge = solved
         low, high = LOSS_RANGE
         if not (low <= charge <= high and low <= discharge <= high):
+            _LOGGER.debug("SpotNav battery: a conversion loss of %.3f in, %.3f out is not believed", charge, discharge)
             return False
         charge, discharge = round(charge, 4), round(discharge, 4)
         if (charge, discharge) == (self.charge_loss, self.discharge_loss):

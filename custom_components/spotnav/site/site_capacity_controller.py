@@ -1639,7 +1639,7 @@ class SiteCapacityController:
             if battery_w is not None:
                 # On the AC side, the meter's: a battery read at the battery (DC) leaves the inverter's loss out of
                 # the house (`battery/conversion_loss.py`).
-                battery_w = self._battery_ac_w(battery_w)
+                battery_w = self._battery_ac_w(battery_w, grid_w)
             self.demand.observe(
                 grid_w,
                 car_w,
@@ -5812,7 +5812,7 @@ class SiteCapacityController:
             return True, None
         return True, float(battery.value)
 
-    def _battery_ac_w(self, battery_w: float) -> float:
+    def _battery_ac_w(self, battery_w: float, grid_w: float | None) -> float:
         """[battery_w] on the AC side (`battery/conversion_loss.py`): turned with the loss the battery plan knows where
         the battery's power is read at the battery, as read otherwise."""
         from ..battery.conversion_loss import ac_kw  # noqa: PLC0415 - the battery package imports the site
@@ -5822,7 +5822,8 @@ class SiteCapacityController:
         learned = getattr(getattr(shadow, "plan", None), "learned", None)
         if facts is None or learned is None or not getattr(facts, "power_dc", False):
             return battery_w
-        return ac_kw(battery_w / 1000.0, learned.conversion.loss(True)) * 1000.0
+        grid_kw = None if grid_w is None else grid_w / 1000.0
+        return ac_kw(battery_w / 1000.0, learned.conversion.loss(True), grid_kw) * 1000.0
 
     def battery_live_w(self) -> tuple[bool, float | None]:
         """`_battery_live_w`, for the house's per-phase peaks (`site/phase_peaks.py`)."""

@@ -24,6 +24,11 @@ def test_a_dc_reading_is_turned_to_the_ac_side() -> None:
     assert ac_kw(10.0, (0.03, 0.05)) == pytest.approx(10.3)
     assert ac_kw(-10.0, (0.03, 0.05)) == pytest.approx(-9.5)
     assert ac_kw(0.0, (0.03, 0.05)) == 0.0
+    # A charge from the grid at the way-in loss; the sun's over the DC bus at the way-out loss (it never crossed the
+    # inverter, but would have gone out through it without the battery).
+    assert ac_kw(5.0, (0.03, 0.05), grid_kw=6.0) == pytest.approx(5.15)
+    assert ac_kw(5.0, (0.03, 0.05), grid_kw=-2.0) == pytest.approx(4.75)
+    assert ac_kw(5.0, (0.03, 0.05), grid_kw=2.0) == pytest.approx(2 * 1.03 + 3 * 0.95)
     assert ac_round_trip(0.96, (0.03, 0.05)) == pytest.approx(0.96 * 0.95 / 1.03)
 
 
@@ -189,3 +194,42 @@ async def test_an_older_review_is_rebuilt_from_the_statistics_once() -> None:
     assert made.battery_saving < old.battery_saving
     assert made.saving == pytest.approx(old.saving)
     assert not shadow._rebuild_running
+
+
+def test_a_summer_midday_charged_by_the_sun_does_not_lower_the_house() -> None:
+    """The sun charges the battery 5 kW over the DC bus while 1 kW goes out: the house's 1 kW must not read lower for
+    a loss on the way in the sun's charge never had."""
+    actuals = PlanActuals()
+    bucket = actuals.open(T0, price=None, cap_kw=None, ran=None)
+    loss = (0.03, 0.05)
+    sun_ac = 7.0  # the sun's AC worth: 5 kW into the battery (x 0.95) and the rest to the house and the grid
+    for second in range(0, 901, 60):
+        grid = 1.0 + 5.0 * 0.95 - sun_ac
+        actuals.observe(T0 + timedelta(seconds=second), grid, 0.0, 5.0, 50.0, ac_kw(5.0, loss, grid))
+    assert bucket.export_kwh > 0
+    assert (bucket.net_house_kw or 0.0) + sun_ac == pytest.approx(1.0)
+
+
+def test_a_fit_outside_the_believable_loss_is_not_used_and_the_round_trip_has_a_floor() -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.battery.conversion_loss import LOSS_RANGE
+    from custom_components.spotnav.battery.facts import BatteryFacts
+    from custom_components.spotnav.battery.learned import AC_ROUND_TRIP_FLOOR, LearnedBattery, with_learned
+
+    assert LOSS_RANGE[1] <= 0.08
+    learner = ConversionLoss()
+    pattern = [(5.0, 0.0)] * 4 + [(-3.0, 0.0)] * 6 + [(0.0, 0.0)] * 2
+    _feed(learner, pattern * 16, 0.12, 0.12)  # a cell heater on a cold night's charge, say
+    assert learner.source(True) == "assumed"
+    # A loss at the edge still leaves the plan's round trip above the floor; one forced past it is held there.
+    learned = LearnedBattery()
+    learned.round_trip.efficiency = 0.96
+    learned.conversion.charge_loss, learned.conversion.discharge_loss = 0.08, 0.08
+    facts = BatteryFacts(battery_entity_id="sensor.battery", power_dc=True)
+    assert with_learned(facts, learned).round_trip_efficiency == round(0.96 * 0.92 / 1.08, 3)
+    learned.conversion.charge_loss, learned.conversion.discharge_loss = 0.15, 0.15
+    assert with_learned(facts, learned).round_trip_efficiency == AC_ROUND_TRIP_FLOOR
+    # A battery lossy in itself is not raised by it: at worst it is held where the assumed loss puts it.
+    learned.round_trip.efficiency = 0.75
+    assert with_learned(replace(facts), learned).round_trip_efficiency == round(0.75 * 0.95 / 1.03, 3)
