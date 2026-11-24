@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -310,8 +311,13 @@ def test_the_plan_assumes_ninety_percent_until_the_round_trip_is_learnt_then_use
     filled = with_learned(victron, learned)
     params, _reason, estimates = battery_params(filled)
 
-    assert params is not None and params.round_trip_efficiency == 0.84
+    # Victron's battery power is read on the DC bus: the plan's round trip is the AC one (the assumed loss).
+    assert filled.power_dc
+    assert params is not None and params.round_trip_efficiency == round(0.84 * 0.95 / 1.03, 3)
     assert EST_ROUND_TRIP not in estimates and filled.sources["round_trip"] == "learned"
+    # Read on the AC side (or not known): as learnt.
+    params, _reason, _estimates = battery_params(with_learned(replace(victron, power_dc=False), learned))
+    assert params is not None and params.round_trip_efficiency == 0.84
 
 
 def test_the_size_counts_the_round_trip_learnt() -> None:

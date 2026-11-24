@@ -27,6 +27,9 @@ meters show it.
   loss on the way in and again on the way out (about 2-3 % each) is not in them, so a DC round trip of 97 % is an AC
   one of 91-93 %. The plan buys and sells on the AC side, and no home battery does better than about 95 % there, so a
   higher value would make it cycle for spreads that do not pay. The raw median stays in the diagnostics (`view`).
+  Where the battery's power is marked as read at the battery (`adapters`: `dc_power`), the inverter's loss is known
+  (`conversion_loss.py`) and the plan takes the DC round trip times it instead (`learned.with_learned`): the value
+  here is then capped only at `DC_CAP` (`cap`, set by the shell), so the AC round trip is not cut twice.
 
 Every window taken is kept with its date (the last `KEEP` days), for the diagnostics and a chart later.
 """
@@ -57,6 +60,8 @@ MAX_STEP_GAP: Final = timedelta(minutes=20)
 PLAUSIBLE: Final = (0.60, 0.98)
 #: The highest round trip the plan uses (see the module: counters at the battery miss the inverter's loss).
 PLAN_CAP: Final = 0.95
+#: The cap where the battery's power is read at the battery and the plan turns the value into an AC one itself.
+DC_CAP: Final = PLAUSIBLE[1]
 #: Counters and measured power must agree within this share.
 AGREE_SHARE: Final = 0.15
 #: The windows looked at for the answer, and those within this many hundredths of their median agree.
@@ -209,6 +214,8 @@ class RoundTrip:
     counter_break: datetime | None = None
     #: The last counters read: `(when, in, out)`.
     counters_last: tuple[datetime, float, float] | None = None
+    #: The highest value the plan's round trip takes (`PLAN_CAP`, or `DC_CAP`: see the module).
+    cap: float = PLAN_CAP
 
     # ---- the answers
 
@@ -223,6 +230,17 @@ class RoundTrip:
         if len(agreeing) < MIN_WINDOWS:
             return None
         return statistics.median(agreeing)
+
+    def set_cap(self, cap: float) -> None:
+        """Take [cap] as the highest value (see the module); a value held at the old cap moves to the new one now."""
+        if cap == self.cap:
+            return
+        self.cap = cap
+        median = self.median
+        if median is not None:
+            self.efficiency = round(min(cap, max(PLAUSIBLE[0], median)), 3)
+        elif self.efficiency is not None:
+            self.efficiency = min(cap, self.efficiency)
 
     # ---- learning
 
@@ -355,7 +373,7 @@ class RoundTrip:
         median = self.median
         if median is None:
             return
-        target = min(PLAN_CAP, max(PLAUSIBLE[0], median))
+        target = min(self.cap, max(PLAUSIBLE[0], median))
         if self.efficiency is None:
             self.efficiency = round(target, 3)
         elif abs(target - self.efficiency) >= DEADBAND:
@@ -379,6 +397,7 @@ class RoundTrip:
             "counters_last": None
             if self.counters_last is None
             else [self.counters_last[0].isoformat(), self.counters_last[1], self.counters_last[2]],
+            "cap": self.cap,
         }
 
     def view(self) -> dict[str, Any]:
@@ -388,8 +407,8 @@ class RoundTrip:
             "efficiency": self.efficiency,
             # The raw median of what was measured, before the plan's cap (`PLAN_CAP`).
             "median": None if median is None else round(median, 4),
-            "capped": median is not None and median > PLAN_CAP,
-            "cap": PLAN_CAP,
+            "capped": median is not None and median > self.cap,
+            "cap": self.cap,
             "windows": [window.as_dict() for window in self.windows],
             "rejected": [window.as_dict() for window in self.rejected],
             "open_since": None if self.anchor is None else self.anchor.at.isoformat(),
@@ -419,11 +438,12 @@ class RoundTrip:
             moment = _moment(last[0])
             counters_last = None if moment is None else (moment, float(last[1]), float(last[2]))
         meter_in, meter_out = raw.get("meter_in"), raw.get("meter_out")
+        cap = DC_CAP if raw.get("cap") == DC_CAP else PLAN_CAP
         return cls(
             windows=[w for w in windows("windows") if w.rejected is None],
             rejected=windows("rejected")[-KEEP_REJECTED:],
             # A value stored before the cap (`PLAN_CAP`) is brought under it.
-            efficiency=min(PLAN_CAP, float(efficiency))
+            efficiency=min(cap, float(efficiency))
             if _finite(efficiency) and PLAUSIBLE[0] <= efficiency <= PLAUSIBLE[1]
             else None,
             anchor=Point.from_dict(raw.get("anchor")),
@@ -434,6 +454,7 @@ class RoundTrip:
             meter_break=_moment(raw.get("meter_break")),
             counter_break=_moment(raw.get("counter_break")),
             counters_last=counters_last,
+            cap=cap,
         )
 
 
