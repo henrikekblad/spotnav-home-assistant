@@ -443,18 +443,18 @@ async def test_a_pairing_with_an_app_id_makes_its_phone_linked_by_name(hass: Hom
 def test_the_app_finds_its_companion_phone_by_name_word_or_model_and_never_guesses() -> None:
     n6 = ("mobile_app_n6", ["N6"], "CPH2765")
     pixel = ("mobile_app_pixel_8", ["Pixel 8", "Anna's Pixel"], "Pixel 8")
-    # The owner's phone: Android calls it "Henrik N6", Home Assistant "N6", the model is CPH2765.
-    assert match_companion("Henrik N6", "CPH2765", [n6, pixel]) == "mobile_app_n6"
-    assert match_companion("Henrik N6", None, [n6, pixel]) == "mobile_app_n6", "ends with the other as a word"
+    # A phone that Android calls "Alex N6", Home Assistant "N6", the model is CPH2765.
+    assert match_companion("Alex N6", "CPH2765", [n6, pixel]) == "mobile_app_n6"
+    assert match_companion("Alex N6", None, [n6, pixel]) == "mobile_app_n6", "ends with the other as a word"
     assert match_companion("CPH2765", None, [n6, pixel]) == "mobile_app_n6", "an older app sends its model as its name"
     assert match_companion(" anna's  PIXEL ", None, [n6, pixel]) == "mobile_app_pixel_8", "a name a person gave it"
     assert match_companion("Kitchen tablet", "SM-X200", [n6, pixel]) is None
-    assert match_companion("Henrik N16", None, [n6]) is None, "a word, not any ending"
+    assert match_companion("Alex N16", None, [n6]) is None, "a word, not any ending"
     # Two phones of one model: no guess, unless one of them has the app's name.
     twins = [n6, ("mobile_app_anna_n6", ["Anna N6"], "CPH2765")]
     assert match_companion("Phone", "CPH2765", twins) is None
     assert match_companion("Anna N6", "CPH2765", twins) == "mobile_app_anna_n6"
-    assert match_companion("Henrik N6", "CPH2765", [n6, ("mobile_app_henrik_n6_2", ["Henrik N6 2"], None)]) == "mobile_app_n6"
+    assert match_companion("Alex N6", "CPH2765", [n6, ("mobile_app_alex_n6_2", ["Alex N6 2"], None)]) == "mobile_app_n6"
     assert match_companion(None, None, [n6]) is None
 
 
@@ -488,7 +488,7 @@ async def test_the_owners_phone_links_on_a_later_call_and_a_split_stays_split(
     assert [phone["name"] for phone in listing] == ["CPH2765", "N6"], "two rows for one phone: what the owner saw"
 
     status, answer = await _post(
-        client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+        client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765"}
     )
     assert status == 200 and answer["phone"]["companion"] == {"name": "N6", "found": True}
     (phone,) = domain_data(hass).phones.listing()
@@ -504,7 +504,7 @@ async def test_the_owners_phone_links_on_a_later_call_and_a_split_stays_split(
     assert result["ok"] is True and len(result["phones"]) == 2
     for _ in range(2):
         status, answer = await _post(
-            client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+            client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765"}
         )
         assert status == 200 and answer["phone"]["companion"] is None
     assert len(domain_data(hass).phones.listing()) == 2
@@ -540,12 +540,12 @@ async def test_a_pairing_links_by_the_name_a_person_gave_the_companion_phone(
     await _charger(hass)
     hass.config.external_url = "https://ha.example.com"
     domain_data(hass).pairing = PairingRegister(remote_interval_s=0.0)
-    _companion_phone(hass, "N6", "CPH2765", name_by_user="Henrik N6")
+    _companion_phone(hass, "N6", "CPH2765", name_by_user="Alex N6")
     _companion_phone(hass, "Kids", "CPH2765")
     client = await hass_client_no_auth()
     response = await client.post(
         f"/api/webhook/{PAIRING_WEBHOOK_ID}",
-        json={"version": 1, "action": "request", "code": "123456", "device": "Henrik N6", "model": "CPH2765",
+        json={"version": 1, "action": "request", "code": "123456", "device": "Alex N6", "model": "CPH2765",
               "app_id": APP_ID},
     )
     request_id = (await response.json())["request_id"]
@@ -592,7 +592,7 @@ async def test_linking_an_upgraded_app_keeps_what_its_companion_phone_heard(
     client = await hass_client_no_auth()
     status, _answer = await _post(
         client,
-        {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765", "push_ref": REF,
+        {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765", "push_ref": REF,
          "shows": ["plan_stopped", "plan_at_risk", "charge_complete", "charge_started"]},
     )
     assert status == 200
@@ -610,7 +610,7 @@ async def test_an_app_turned_off_never_silences_a_companion_phone_turned_on(
     entry = await _charger(hass)
     client = await hass_client_no_auth()
     phones = domain_data(hass).phones
-    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765"}
     await _post(client, {**body, "set": {"on": False}})
     _companion_phone(hass, "N6", "CPH2765")
     ws = await hass_ws_client(hass)
@@ -632,7 +632,7 @@ async def test_a_first_contact_never_turns_on_a_companion_phone_nobody_ticked(
     _companion_phone(hass, "N6", "CPH2765")
     client = await hass_client_no_auth()
     phones = domain_data(hass).phones
-    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765"}
     status, answer = await _post(client, body)
     assert status == 200 and answer["phone"]["on"] is False
     assert answer["phone"]["companion"] == {"name": "N6", "found": True}
@@ -652,7 +652,7 @@ async def test_a_pairing_turns_its_companion_phone_on(hass: HomeAssistant) -> No
     await _charger(hass)
     _companion_phone(hass, "N6", "CPH2765")
     phones = domain_data(hass).phones
-    await phones.async_paired(app_key(APP_ID), "Henrik N6", "CPH2765")
+    await phones.async_paired(app_key(APP_ID), "Alex N6", "CPH2765")
     (phone,) = phones.phones
     assert phone.on and phone.notify == "mobile_app_n6" and phone.events == DEFAULT_PHONE_EVENTS
 
@@ -696,7 +696,7 @@ async def test_forgetting_a_split_apps_row_never_links_it_again(hass: HomeAssist
     _companion_phone(hass, "N6", "CPH2765")
     client = await hass_client_no_auth()
     phones = domain_data(hass).phones
-    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Alex N6", "model": "CPH2765"}
     await _post(client, body)
     (one,) = phones.phones
     ws = await hass_ws_client(hass)
@@ -720,18 +720,18 @@ async def test_forgetting_a_split_apps_row_never_links_it_again(hass: HomeAssist
 async def test_migrated_phones_take_the_companion_apps_name_not_the_service_s(hass: HomeAssistant) -> None:
     entry = await _charger(hass)
     # Right after a start: the Companion app's entry is there, its notify service not yet.
-    MockConfigEntry(domain="mobile_app", data={"device_name": "Henrik N6"}).add_to_hass(hass)
+    MockConfigEntry(domain="mobile_app", data={"device_name": "Alex N6"}).add_to_hass(hass)
     store = domain_data(hass).auto_store
     await store.async_update(
         entry.entry_id,
         mutate=lambda settings: replace(
-            settings, notifications=NotificationSettings(targets=("mobile_app_henrik_n6",), events=("plan_stopped",))
+            settings, notifications=NotificationSettings(targets=("mobile_app_alex_n6",), events=("plan_stopped",))
         ),
     )
     phones = domain_data(hass).phones
     phones._migrated = False  # noqa: SLF001
     await phones.async_migrate()
-    assert [phone.name for phone in phones.phones] == ["Henrik N6"]
+    assert [phone.name for phone in phones.phones] == ["Alex N6"]
 
 
 async def test_a_phone_named_after_its_service_is_renamed_when_its_service_appears(hass: HomeAssistant) -> None:

@@ -227,7 +227,7 @@ def match_companion(
     """The service of the one Companion phone the app's phone is, else `None`. `devices` are `(service, names, model)`
     (`targets.companion_devices`). Tried in order, the first rule that matches any phone decides, and only when it
     matches exactly one: a name the same (case, spaces and punctuation folded) or the service named after it; one name
-    ending with the other as a word ("Henrik N6", "N6"); the same model, from the app's `model` or its name (an older
+    ending with the other as a word ("Alex N6", "N6"); the same model, from the app's `model` or its name (an older
     app sends the model as its name). Two phones of one model link nothing."""
     devices = [(service, [name_key(item) for item in names], name_key(dev_model or "")) for service, names, dev_model in devices]
     sent = name_key(name or "")
