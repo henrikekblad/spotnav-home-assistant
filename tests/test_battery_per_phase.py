@@ -282,14 +282,18 @@ def test_a_restart_hands_a_charge_per_phase_back_with_its_own_roles() -> None:
 def test_a_change_of_action_stops_the_targets_before_anything_else_and_a_hold_keeps_them_at_zero() -> None:
     executor, site = _site()
     now, results = _run(executor, site, T0, 6, "hold")
-    assert written(results) == [("discharge_limit", 0.0), ("remote_ems", True)], "the targets read 0: not written"
-    assert site.battery.states["control_mode"] == "Maximum Self Consumption"
+    assert written(results) == [
+        ("charge_limit", 0.0), ("remote_ems", True), ("control_mode", "Command Charging (PV First)")
+    ], "the targets read 0: not written"
+    # Into the charge per phase: the hold's charge limit goes back to the rating only after the mode left Command
+    # Charging (PV First), where it would charge from the grid at full power.
     now, results = _run(executor, site, now, 8, "grid_charge", 12.0)
-    assert written(results) == [("discharge_limit", 23.04), ("phase_l1_target", -0.92),
-                                ("control_mode", "PCS Remote Control")]
+    assert written(results) == [("phase_l1_target", -0.92), ("control_mode", "PCS Remote Control"),
+                                ("charge_limit", 10.0)]
+    # Back into the hold: the charge limit at 0 before anything else, then the targets, then the mode.
     now, results = _run(executor, site, now, 8, "hold")
-    assert written(results) == [("phase_l1_target", 0.0), ("control_mode", "Maximum Self Consumption"),
-                                ("discharge_limit", 0.0)]
+    assert written(results) == [("charge_limit", 0.0), ("phase_l1_target", 0.0),
+                                ("control_mode", "Command Charging (PV First)")]
     assert executor.state.phase_kw is None and executor.state.action == "hold"
 
 
@@ -456,7 +460,6 @@ def test_the_control_changes_between_phased_and_plain_only_while_it_holds_nothin
     site.battery.control = executor.control
     now, _results = _run(executor, site, T0, 8, "grid_charge", 12.0)
     assert executor.use_phases(False) is False and executor.control.phased, "not while it charges"
-    assert executor.use_variant("pv_first") is False
     now, _results = _run(executor, site, now, 8, "self_consume")
     assert executor.use_phases(False) is True and executor.control is SIGENERGY_CONTROL
 

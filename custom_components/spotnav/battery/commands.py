@@ -29,23 +29,23 @@ The entity keys, options and services below were checked against each integratio
   never written here) "3, 4, 5 or 6". V2.9 (2026-05-13), Table 5-2-1 rows 1-3 (`sig29.txt` lines 1120-1138): all
   three "take effect globally regardless of the EMS operating mode". The grid import and export limits (40038/40040)
   act in every mode in both (`SIGENERGY_LIMIT_MODES`). A grid charge (mode 3, charge limit) and an export discharge
-  (mode 5, discharge limit) keep to both generations. A hold has two variants (`SIGENERGY_HOLDS`), tried in order
-  by the verification: `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0 (valid on
-  V2.9-era firmware and seen obeyed on SPC117 with Remote EMS on, TypQxQ discussion #424; the sun is still stored;
-  its peak cover lifts the limit), then `pv_first`, mode 4 with the charge limit at 0. Appendix 6 names mode 4
-  "Command charging (consume PV power first)" (`sig27.txt` lines 2180-2183, `sig29.txt` line 3346): a charge at the
-  charge limit, from the sun first and then the grid (haeo's Sigenergy walkthrough and Roving-Ronin's
-  EMS-Events-Card use it so). At a limit of 0 it charges nothing, and the discharge limit does not act in it under
-  V2.7 (it acts only in 5 and 6) while the plant discharges in no Command Charging mode: the battery stands idle and
-  a sun surplus is exported. That is within V2.7's scope and V2.9's, and it is also what a command left standing
-  after Home Assistant died does. Its peak cover writes the mode back to Maximum Self Consumption, where the plant
-  balances each phase itself. A `pv_first` hold whose battery charges anyway is handed back
-  (`executor.HOLD_CHARGE_S`) and fails its verification. A discharge to the house has no mode in V2.7 ("cover the
-  house, store nothing"): it stays Maximum Self Consumption with the charge limit at 0, valid under V2.9 and at
-  worst ignored under V2.7 (the battery then also stores a sun surplus, as in self-consumption). V2.8 removed 41500
-  (Remote EMS dispatch enable, never used here); V2.9 added
-  0x08 V2G to 40031. 40049, Active power regulation gradient (%/s of the rated power, V2.8+), bounds how fast the
-  plant changes its output and so its reaction to a mode or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
+  (mode 5, discharge limit) keep to both generations. The hold (`SIGENERGY_HOLDS`) is `pv_first`, mode 4 with the
+  charge limit at 0, the only one that keeps the plant's own peak cover under the import limit (40040) with Home
+  Assistant down (on site 2026-11-23; `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0,
+  failed it and is no longer used). Appendix 6 names mode 4 "Command charging (consume PV power first)" (`sig27.txt`
+  lines 2180-2183, `sig29.txt` line 3346): a charge at the charge limit, from the sun first and then the grid (haeo's
+  Sigenergy walkthrough and Roving-Ronin's EMS-Events-Card use it so). At a limit of 0 it charges nothing, and the
+  discharge limit does not act in it under V2.7 (it acts only in 5 and 6) while the plant discharges in no Command
+  Charging mode: the battery stands idle and a sun surplus is exported. That is within V2.7's scope and V2.9's, and it
+  is also what a command left standing after Home Assistant died does. Its peak cover writes the mode back to Maximum
+  Self Consumption, where the plant balances each phase itself. A `pv_first` hold whose battery charges anyway is
+  handed back (`executor.HOLD_CHARGE_S`) and fails its verification. A discharge to the house has no mode in V2.7
+  ("cover the house, store nothing"): it stays Maximum Self Consumption with the charge limit at 0, valid under V2.9
+  and at worst ignored under V2.7 (the battery then also stores a sun surplus, as in self-consumption). V2.8 removed
+  41500 (Remote EMS dispatch enable, never used here); V2.9 added 0x08 V2G to 40031. 40049, Active power regulation
+  gradient (%/s of the rated power, V2.8+), bounds how fast the plant changes its output and so its reaction to a mode
+  or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s
+  mode rule), or in AI mode once the
   person acknowledged the takeover (`BrandControl.takeover`); turning Remote EMS off lands in Maximum Self
   Consumption either way (research §2.2), so the hand-back is clean and a plant taken from AI mode is not put back
   in it (the person is reminded to set it again in the app). The discharge cut-off SoC is never
@@ -621,6 +621,22 @@ class Want:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldSurplus:
+    """A hold whose charge limit follows the sun's measured surplus (`executor`'s surplus follow), so the sun is
+    stored while the hold still takes nothing from the grid; the hold's own build writes the limit at 0. Data only.
+
+    The new limit is the surplus now (the house's net load, `executor.house_net_kw`, below zero), in `step_kw`, and
+    0 under `deadband_kw`. It is written when it differs from the limit standing by at least `deadband_kw` or is 0,
+    a raise no sooner than `raise_gap_s` after the last one; a fall at once, so the grid takes at most about the
+    deadband while the sun fades."""
+
+    role: str
+    deadband_kw: float = 0.4
+    step_kw: float = 0.1
+    raise_gap_s: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
 class HoldVariant:
     """One way a brand can hold (no discharge): its writes and the roles that let the battery cover a peak again.
     The verification tries a brand's variants in order and control uses the first that passed."""
@@ -632,6 +648,8 @@ class HoldVariant:
     #: The battery stands idle (it stores no sun either): a battery that charges under it did not take the hold
     #: (`monitor.judge`, `executor.HOLD_CHARGE_S`). `False`: the sun is still stored.
     idle: bool = False
+    #: The charge limit follows a sun surplus (`HoldSurplus`); the hold then stores the sun and is no longer idle.
+    surplus: HoldSurplus | None = None
 
 
 #: A power per phase in the order of the site's meter: L1, L2, L3 (kW).
@@ -898,6 +916,11 @@ class BrandControl:
     hold_variants: tuple[HoldVariant, ...] = ()
     #: The hold variant this control runs (`None`: the brand has one hold).
     variant: str | None = None
+    #: Limits that act in the plant's modes (`executor`'s change of action): on a change, one whose value falls is
+    #: written before every other role and one whose value rises after them all, so a new mode never runs on the old
+    #: action's looser limit, nor the old mode on the new one's (Sigenergy: Command Charging (PV First) at the charge
+    #: limit a grid charge left at the rating would charge from the grid at full power until the limit follows).
+    mode_limits: tuple[str, ...] = ()
     #: Values written first, before the switch, on an enter after a hand-back whose write to a role that goes idle
     #: with the switch (`Role.idle_when`) was never read back: the plant may still hold the command it had, and these
     #: keep that command from acting until the role is written again (`executor.ExecState.unsure`).
@@ -1032,8 +1055,16 @@ class BrandControl:
         return tuple(variant.name for variant in self.hold_variants)
 
     def hold_idle(self) -> bool:
-        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`)."""
-        return any(variant.idle for variant in self.hold_variants if variant.name == self.variant)
+        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`); a hold that follows a sun
+        surplus (`hold_surplus`) is not."""
+        return any(
+            variant.idle and variant.surplus is None for variant in self.hold_variants if variant.name == self.variant
+        )
+
+    @property
+    def hold_surplus(self) -> HoldSurplus | None:
+        """How this control's hold follows a sun surplus (`HoldVariant.surplus`); `None`: its hold writes are fixed."""
+        return next((variant.surplus for variant in self.hold_variants if variant.name == self.variant), None)
 
     def with_hold(self, name: str | None) -> BrandControl:
         """This control with the hold variant `name` (its writes and its peak cover); itself for `None`, for a name
@@ -1324,10 +1355,8 @@ SIGENERGY_LIMIT_MODES: Final[Mapping[str, Mapping[str, frozenset[str] | None]]] 
     "V2.9": {"charge_limit": None, "discharge_limit": None},
 }
 #: Writes outside V2.7's scope, each on purpose: (action or `hold:<variant>`, limit). Acted on where the firmware
-#: follows V2.9; ignored where it follows V2.7 (the hold's verification then fails and tries `pv_first`).
-SIGENERGY_OUT_OF_SCOPE_V27: Final = frozenset(
-    {("hold:msc_no_discharge", "discharge_limit"), (ACTION_DISCHARGE_HOUSE, "charge_limit")}
-)
+#: follows V2.9; ignored where it follows V2.7 (the battery then also stores a sun surplus, as in self-consumption).
+SIGENERGY_OUT_OF_SCOPE_V27: Final = frozenset({(ACTION_DISCHARGE_HOUSE, "charge_limit")})
 
 
 def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int], tuple[Want, ...]]:
@@ -1338,20 +1367,32 @@ def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int
     return build
 
 
-#: Sigenergy's holds, in the order the verification tries them.
+#: Whether Sigenergy's hold follows a sun surplus with its charge limit (`SIGENERGY_HOLD_SURPLUS`). Off until the
+#: owner's on-site `pv_first_surplus` step (`tools/sigen_hold_peak_test.py`) has passed in sunshine (at least
+#: 0.5 kW of surplus for 5 minutes); until then the hold keeps the charge limit at 0, the proven hold, and a sun
+#: surplus is exported. One line; the recipe and the executor need nothing else.
+SIGENERGY_SURPLUS_TRACKING: Final = False
+#: The surplus follow of Sigenergy's hold (owner decision 2026-11-23, variant B): mode 4 charges at its charge limit
+#: from the sun first, so a limit at the sun's surplus stores it and takes nothing from the grid. A limit left
+#: standing when Home Assistant stops and the sun goes grid-charges at that limit (on site 2026-11-23,
+#: `pv_first_stale_charge`: 1.0 kW, as written), and the import limit (40040) still takes the plant down to it (it
+#: discharged and held 0.20 kW a phase at 0.6 kW): that costs money, never the fuse.
+SIGENERGY_HOLD_SURPLUS: Final = HoldSurplus("charge_limit", deadband_kw=0.4, step_kw=0.1, raise_gap_s=60.0)
+
+#: Sigenergy's hold: mode 4, "Command Charging (PV First)", with the charge limit at 0 (owner decision 2026-11-23,
+#: variant B, the only hold). Nothing charges or discharges, a sun surplus is exported (stored once the surplus follow
+#: is on, `SIGENERGY_SURPLUS_TRACKING`). It keeps to both protocol generations: the charge limit acts in mode 4 under
+#: V2.7 and V2.9. It also keeps the plant's own peak cover with Home Assistant down: on site 2026-11-23 (SPC117, sigen
+#: 2.0.3, no sun, house ~2.1 kW) the import limit (40040) lowered to 0.6 kW made the plant discharge 1.5-3.2 kW within
+#: ~25-30 s and hold the grid at 0.60 kW, 0.20 kW on every phase, also through a 1.6 kW step on B. The hold it replaced,
+#: Maximum Self Consumption with the discharge limit at 0 (`msc_no_discharge`), failed that test: the discharge limit
+#: won over the import limit and the grid took the whole house. While Home Assistant runs, the peak cover writes the
+#: mode back to Maximum Self Consumption, where the plant balances each phase itself.
 SIGENERGY_HOLDS: Final = (
-    # The discharge limit at 0 in Maximum Self Consumption: acts on V2.9-era firmware (and on SPC117 with Remote EMS
-    # on, TypQxQ discussion #424). The peak cover lifts the limit; the plant balances each phase itself in MSC.
-    HoldVariant(
-        "msc_no_discharge", _sig(_SIG_MSC, discharge_limit=lambda _rate: 0.0), ("discharge_limit",),
-        "Maximum Self Consumption with the discharge limit at 0",
-    ),
-    # For firmware that follows V2.7 (no limit acts in mode 2): mode 4 with the charge limit at 0, where that limit
-    # acts; nothing charges or discharges, a sun surplus is exported. The peak cover writes the mode back to Maximum
-    # Self Consumption.
     HoldVariant(
         "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: 0.0), ("control_mode",),
         "Command Charging (PV First) with the charge limit at 0", idle=True,
+        surplus=SIGENERGY_HOLD_SURPLUS if SIGENERGY_SURPLUS_TRACKING else None,
     ),
 )
 
@@ -1468,6 +1509,8 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # written before the switch): both limits at 0 make a Command Charging or Discharging mode left there do nothing
     # (V2.7: 40032 acts in 3 and 4, 40034 in 5 and 6; V2.9: everywhere) until the mode is written.
     prime={"charge_limit": 0.0, "discharge_limit": 0.0},
+    # Both limits act in the Command modes (V2.7) or everywhere (V2.9): lowered before a mode changes, raised after.
+    mode_limits=("charge_limit", "discharge_limit"),
     phase_control=SIGENERGY_PHASES,
     # A target left standing would run in the seconds of PCS Remote Control a Remote EMS on passes through.
     watched=tuple((role, 0.0, "stale_target") for role in (_SIG_TOTAL_TARGET, *_SIG_PHASE_TARGETS)),

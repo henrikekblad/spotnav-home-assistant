@@ -111,7 +111,7 @@ async def test_a_battery_in_its_own_ai_mode_is_left_alone_and_nothing_is_written
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _grid_charge(monkeypatch)
-    _site_entry, controller = await _site(hass, **{"sensor.sigen_plant_battery_power": "-4.6"})
+    _site_entry, controller = await _site(hass, (), (CHARGE_LIMIT_ROW,), **{"sensor.sigen_plant_battery_power": "-4.6"})
     calls = _service_calls(hass)
     shadow = controller.battery_shadow
     now = dt_util.now()
@@ -123,7 +123,7 @@ async def test_a_battery_in_its_own_ai_mode_is_left_alone_and_nothing_is_written
 
     [entry] = shadow.book.entries
     assert entry.action == "left_alone" and entry.reason == "self_managed:EMS work mode:ai_mode"
-    assert entry.entity_id == "number.sigen_plant_ess_max_discharging_limit" and entry.read == "23.04"
+    assert entry.entity_id == "number.sigen_plant_ess_max_charging_limit" and entry.read == "unknown"
     assert entry.written is False
     assert shadow.snapshot()["hold_for_car"]["battery_gave_car_kwh"]
     assert [call for call in calls if call.data.get("domain") in ("number", "select", "switch", "sigen")] == []
@@ -177,8 +177,9 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _grid_charge(monkeypatch)
+    # The charge limit set, as on the owner's plant (20.6 kW): the hold writes it, so the ledger adopts it.
     site, controller = await _site(
-        hass, REMOTE_EMS, (CHARGE_LIMIT_ROW,),
+        hass, REMOTE_EMS, (CHARGE_LIMIT_ROW | {"state": "20.6"},),
         **{"sensor.sigen_plant_battery_power": "-4.6", "sensor.sigen_plant_ems_work_mode": "max_self_consumption"},
     )
     calls = _service_calls(hass)
@@ -190,14 +191,16 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
     for seconds in (0, ARM_S):
         shadow.tick(now + timedelta(seconds=seconds))
     write = next(entry for entry in shadow.book.entries if entry.action == "would_write")
-    # The executor's own hold: the limit, Remote EMS on, its mode; handed back with the never-set charge limit left.
-    assert write.value == {"discharge_limit": 0.0, "remote_ems": True, "control_mode": "Maximum Self Consumption"}
-    assert write.entity_id == "number.sigen_plant_ess_max_discharging_limit" and write.read == "23.04"
+    # The executor's own hold: the limit, Remote EMS on, its mode; handed back mode first, then the limit as found.
+    assert write.value == {"charge_limit": 0.0, "remote_ems": True, "control_mode": "Command Charging (PV First)"}
+    assert write.entity_id == "number.sigen_plant_ess_max_charging_limit" and write.read == "20.6"
     assert [(row["role"], row["value"]) for row in write.detail["restore"]] == [
-        ("discharge_limit", 23.04), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
+        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("charge_limit", 20.6)
     ]
     assert write.detail["read_back"] == "possible"
-    assert write.detail["read_back_roles"] == {"discharge_limit": "possible", "remote_ems": "possible", "control_mode": "idle"}
+    assert write.detail["read_back_roles"] == {
+        "charge_limit": "possible", "remote_ems": "possible", "control_mode": "idle"
+    }
 
     # The battery keeps discharging, as nothing was written: the monitor shows that baseline once.
     for index in range(4):
@@ -206,7 +209,7 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
     assert [entry.reason for entry in judged] == ["baseline_no_effect"]
 
     # Something else sets the limit while nothing writes it.
-    limit = "number.sigen_plant_ess_max_discharging_limit"
+    limit = "number.sigen_plant_ess_max_charging_limit"
     later = now + timedelta(seconds=ARM_S + GRACE_S + 400)
     _set(hass, limit, "5.0", "kW")
     shadow.tick(later)

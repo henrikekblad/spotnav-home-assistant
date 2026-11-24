@@ -9,7 +9,16 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from custom_components.spotnav.battery.commands import BrandControl, answered, service_call
+from custom_components.spotnav.battery.commands import (
+    ACTION_HOLD,
+    SIGENERGY_CONTROL,
+    SIGENERGY_HOLDS,
+    BrandControl,
+    HoldVariant,
+    Want,
+    answered,
+    service_call,
+)
 from custom_components.spotnav.battery.executor import ExecInputs, Executor, Op, RoleRead, StepResult
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 
@@ -35,6 +44,28 @@ FERROAMP_STATES = {"command": "unknown"}
 SOLAX_STATES = {"power_control": "Disabled", "active_power": "0", "autorepeat": "0", "trigger": "unknown"}
 
 STEPS = {"charge_limit": 0.001, "discharge_limit": 0.001}
+
+
+def _limit_hold(_rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    return (
+        Want("discharge_limit", 0.0), Want("remote_ems", True), Want("control_mode", "Maximum Self Consumption"),
+    )
+
+
+_LIMIT_HOLD = HoldVariant(
+    "limit_hold", _limit_hold, ("discharge_limit",), "Maximum Self Consumption with the discharge limit at 0"
+)
+#: The executor's mechanics for a hold whose writes and peak cover are a limit (the peak cover lifts the discharge
+#: limit, Remote EMS stays on): Sigenergy's roles with the hold it ran before 2026-11-23 (Maximum Self Consumption
+#: with the discharge limit at 0). A fixture for brand-blind mechanics only; Sigenergy's own hold, Command Charging
+#: (PV First) with the charge limit at 0, is pinned in `test_battery_sigen_holds.py`.
+LIMIT_HOLD_CONTROL = replace(
+    SIGENERGY_CONTROL, states={**SIGENERGY_CONTROL.states, ACTION_HOLD: _limit_hold},
+    peak_first={**SIGENERGY_CONTROL.peak_first, ACTION_HOLD: ("discharge_limit",)},
+    hold_variants=(_LIMIT_HOLD,), variant=_LIMIT_HOLD.name,
+)
+#: A brand with two holds, tried in order by the verification: the limit hold, then Sigenergy's own (`pv_first`).
+TWO_HOLD_CONTROL = replace(LIMIT_HOLD_CONTROL, hold_variants=(_LIMIT_HOLD, *SIGENERGY_HOLDS))
 
 
 @dataclass

@@ -18,7 +18,8 @@ taken, the fuse, a stale reading, a management change; the routine then stops, b
 circumstances normal still judges that hand-back) or, for normal, `restored` (only after this run wrote something;
 `not_judgeable:nothing_written` otherwise).
 
-**Hold variants** (`commands.HoldVariant`, Sigenergy's `msc_no_discharge` then `pv_first`): hold is tried with the
+**Hold variants** (`commands.HoldVariant`; no shipping brand has more than one since Sigenergy's hold became `pv_first`
+only, 2026-11-23): hold is tried with the
 brand's first variant; when the plant ignores it (`VARIANT_RETRY`: every reading as if nothing was written) the
 battery is handed back, the block that finding left is lifted, and hold is tried again with the next variant, never
 two at once, and only once the battery discharges again (`VARIANT_WAIT_S`; otherwise hold is left

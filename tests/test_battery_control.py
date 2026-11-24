@@ -121,11 +121,14 @@ class Plant:
 
     def power_kw(self) -> float:
         """The battery's power as the plant runs it now (kW, + charging): it covers the house in Maximum Self
-        Consumption, stops under a hold (discharge limit 0), charges at its limit in Command Charging."""
+        Consumption, stops under a hold (discharge limit 0), charges at its limit in Command Charging (no sun: the
+        hold, PV First at a charge limit of 0, charges nothing)."""
         if not self.obeys:
             return -HOUSE_KW
         state = self.hass.states.get
-        if state(SWITCH).state == "on" and state(MODE).state == "Command Charging (Grid First)":
+        if state(SWITCH).state == "on" and state(MODE).state in (
+            "Command Charging (Grid First)", "Command Charging (PV First)"
+        ):
             return float(state(CHARGE).state)
         if state(DISCHARGE).state == "0":
             return 0.0
@@ -237,7 +240,7 @@ async def test_shadow_only_is_the_default_and_refuses_every_write_while_it_logs_
     assert plant.calls == []
     would = [row for row in control.log if row["kind"] == "would_do"]
     assert len(would) == 1 and would[0]["reason"] == "hold" and would[0]["blocker"] is None
-    assert [write["role"] for write in would[0]["writes"]] == ["discharge_limit", "remote_ems", "control_mode"]
+    assert [write["role"] for write in would[0]["writes"]] == ["charge_limit", "remote_ems", "control_mode"]
     with pytest.raises(ControlNotReachable):
         await control.async_tick()
     with pytest.raises(ControlNotReachable):
@@ -297,8 +300,8 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     assert [(domain, service) for domain, service, _data in plant.calls] == [
         ("number", "set_value"), ("switch", "turn_on"), ("select", "select_option")
     ]
-    assert plant.calls[0][2] == {"entity_id": DISCHARGE, "value": 0.0}
-    assert plant.calls[2][2]["option"] == "Maximum Self Consumption"
+    assert plant.calls[0][2] == {"entity_id": CHARGE, "value": 0.0}
+    assert plant.calls[2][2]["option"] == "Command Charging (PV First)"
     # The snapshot was on disk before the first write.
     assert plant.stored_at_first_call["state"]["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
     assert control.executor.state.phase == "active"
@@ -315,13 +318,14 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     again = BatteryControl(hass, controller, plan_source=_hold)
     plant.calls.clear()
     await again.async_start()
-    # The discharge limit first: the battery covers a peak again before Remote EMS goes off.
+    # The mode first: the battery covers a peak again before Remote EMS goes off; the charge limit's "never set" is
+    # restored as the rating.
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("number", "set_value"), ("switch", "turn_off")
+        ("select", "select_option"), ("switch", "turn_off"), ("number", "set_value")
     ]
     assert hass.states.get(SWITCH).state == "off"
-    assert hass.states.get(DISCHARGE).state == "23.04"
-    assert hass.states.get(CHARGE).state == "unknown", "a limit it never wrote is left as found"
+    assert hass.states.get(CHARGE).state == "20.6"
+    assert hass.states.get(DISCHARGE).state == "23.04", "a limit it never wrote is left as found"
     assert again.executor.state.phase == "idle"
     assert again.log[0]["reason"] == "restart"
     assert site.entry_id
@@ -351,7 +355,7 @@ async def test_a_restart_waits_for_a_late_integration_before_it_restores(
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("number", "set_value"), ("switch", "turn_off")
+        ("select", "select_option"), ("switch", "turn_off"), ("number", "set_value")
     ]
     assert not any(row["kind"] in ("not_taken", "service_failed") for row in again.log)
     assert again.executor.state.phase == "idle" and hass.states.get(SWITCH).state == "off"
@@ -401,9 +405,11 @@ async def test_a_read_only_plant_drops_the_write_and_the_control_blocks_without_
     now = dt_util.now()
     for index in range(12):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert len(plant.calls) == 1
-    assert control.executor.state.phase == "blocked"
-    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit")
+    # The hold's write once, never again; its hand-back writes the limit's "never set" back as the rating (a write
+    # sent may have landed), and that restore is retried on its own backoff until it is given up and blocked.
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6]
+    assert control.executor.state.phase == "restoring"
+    assert control.executor.state.blocked.startswith("write_not_taken:charge_limit")
 
 
 async def test_a_write_that_raises_is_not_taken_and_handed_back(
@@ -415,9 +421,9 @@ async def test_a_write_that_raises_is_not_taken_and_handed_back(
     now = dt_util.now()
     for index in range(4):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
+    assert control.executor.state.blocked.startswith("write_not_taken:charge_limit:service_failed")
     assert any(row["kind"] == "service_failed" for row in control.log)
-    assert len(plant.calls) == 1
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6], "the hold, then its hand-back"
 
 
 async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_look_ends(
@@ -433,11 +439,11 @@ async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_lo
             await control.async_look(now + timedelta(seconds=10 * index))
     assert not control._lock.locked()
     # Its own reason: the block clears by itself (`executor.CALL_TIMEOUT_BLOCK_S`), no reset needed.
-    assert control.executor.state.blocked == "call_timeout:discharge_limit"
+    assert control.executor.state.blocked == "call_timeout:charge_limit"
     failed = [row for row in control.log if row["kind"] == "service_failed"]
     assert failed and "no answer" in failed[0]["error"]
     assert any(row["kind"] == "not_taken" and row["why"] == "call_timeout" for row in control.log)
-    assert len(plant.calls) == 1
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6], "the hold, then its hand-back"
     assert control._failed_looks == 0, "a write given up on is a write not taken, not a failed look"
 
 
@@ -660,11 +666,11 @@ async def test_a_stop_and_a_restart_hand_the_battery_back_before_the_export_limi
     now = dt_util.now()
     for index in range(6):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
 
     def order() -> tuple[int, int]:
         ids = [data.get("entity_id") for _domain, _service, data in plant.calls]
-        battery = max(index for index, entity_id in enumerate(ids) if entity_id in (SWITCH, MODE, DISCHARGE))
+        battery = max(index for index, entity_id in enumerate(ids) if entity_id in (SWITCH, MODE, CHARGE))
         return battery, ids.index(EXPORT)
 
     plant.calls.clear()
@@ -674,7 +680,7 @@ async def test_a_stop_and_a_restart_hand_the_battery_back_before_the_export_limi
     # Again, now as a restart finds both snapshots stored.
     for index in range(6):
         await control.async_tick(dt_util.now() + timedelta(hours=1, seconds=10 * index))
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
     plant.calls.clear()
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
@@ -819,7 +825,7 @@ async def test_normal_left_open_is_judged_on_a_hold_written_again(
     assert [result.mode for result in control.verification.results] == ["hold", "normal"]
     await _looks(control, now, 200)
     assert control.report()["modes"]["normal"]["outcome"] == "restored" and control.state() == "on"
-    assert any(call[2].get("entity_id") == DISCHARGE and call[2].get("value") == 0.0 for call in plant.calls)
+    assert any(call[2].get("entity_id") == CHARGE and call[2].get("value") == 0.0 for call in plant.calls)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
 
 
@@ -927,7 +933,7 @@ async def test_looks_that_keep_failing_hand_the_plant_back(
 
     monkeypatch.setattr(BatteryControl, "_control_slot", boom)
     now = await _looks(control, now, control_module.FAILED_LOOKS_HAND_BACK - 1)
-    assert hass.states.get(DISCHARGE).state == "0", "a failure or two is waited out"
+    assert hass.states.get(CHARGE).state == "0", "a failure or two is waited out"
     await _looks(control, now, 6)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert not control.executor.state.holds_snapshot
@@ -992,7 +998,7 @@ async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_le
     control = await _started(hass, site, controller, plan_source=_hold)
     _options(hass, site, ai_takeover_ack=True)
     now = await _looks(control, dt_util.now(), 6)
-    assert control.executor.state.phase == "active" and hass.states.get(DISCHARGE).state == "0"
+    assert control.executor.state.phase == "active" and hass.states.get(CHARGE).state == "0"
     assert control.took_from_ai
     status = await control.async_update_options({gate.CONF_ENABLED: False})
     # Handed back before the answer, to Maximum Self Consumption (Remote EMS off), with the reminder for the card.
@@ -1013,7 +1019,7 @@ async def test_withdrawing_the_acknowledgement_hands_an_ai_mode_takeover_back(
     control = await _started(hass, site, controller, plan_source=_hold)
     _options(hass, site, ai_takeover_ack=True)
     now = await _looks(control, dt_util.now(), 6)
-    assert control.took_from_ai and hass.states.get(DISCHARGE).state == "0"
+    assert control.took_from_ai and hass.states.get(CHARGE).state == "0"
     status = await control.async_update_options({gate.CONF_AI_TAKEOVER_ACK: False})
     now = await _looks(control, now, 6)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
@@ -1939,7 +1945,7 @@ async def test_removing_the_site_hands_a_stored_snapshot_back_before_the_store_g
     _export_limit(hass)
     control = await _started(hass, site, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
     key = store_key(site.entry_id)
     # The unload's hand-back did not finish (the plant did not answer): the snapshots are stored.
     plant.raises = True
@@ -1960,7 +1966,7 @@ async def test_removing_the_site_is_not_held_by_a_plant_that_never_answers(
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=_hold)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     key = store_key(site.entry_id)
     plant.hangs = True
     monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
@@ -2112,7 +2118,7 @@ async def test_the_test_action_waits_for_hold_and_normal_to_pass_unless_forced(
     # Forced: the owner's on-site test runs before the verification.
     await control.async_trial("hold", None, 5, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
 
 
 async def test_a_forced_test_action_ends_and_hands_back_when_the_opt_in_is_turned_off(
@@ -2124,7 +2130,7 @@ async def test_a_forced_test_action_ends_and_hands_back_when_the_opt_in_is_turne
     _options(hass, site, enabled=True)  # shadow only stays on
     await control.async_trial("hold", None, 60, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     await control.async_update_options({gate.CONF_ENABLED: False})
     assert control.trial is None
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
@@ -2154,7 +2160,7 @@ async def test_back_to_shadow_only_hands_the_plant_back_and_a_write_that_is_no_r
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=_hold)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     await control.async_update_options({gate.CONF_SHADOW_ONLY: True})
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert control.state() == "shadow_only" and control.executor.state.phase == "idle"
@@ -2286,16 +2292,20 @@ async def test_a_forced_test_hold_is_refused_when_every_variant_failed(
     assert control.trial is not None
 
 
-async def test_without_a_passed_variant_the_executor_runs_the_first(
+async def test_a_report_that_passed_a_hold_the_recipe_no_longer_has_runs_the_recipe_s_hold(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
-    control, _plant = await _forced_hold_site(hass, monkeypatch, hass_storage, None)
-    executor = control._executor()
-    assert executor.use_variant("pv_first")  # left from an earlier verification
+    # A report stored before Sigenergy's hold became PV First only (2026-11-23): its passed Maximum Self Consumption
+    # hold is never written again.
+    control, _plant = await _forced_hold_site(
+        hass, monkeypatch, hass_storage, [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
+    )
+    assert control.hold_variant() == "pv_first"
     await control.async_trial("hold", None, 5, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert control.executor.control.variant == "msc_no_discharge"
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(MODE).state == "Maximum Self Consumption"
+    assert control.executor.control.variant == "pv_first"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(MODE).state == "Command Charging (PV First)"
+    assert hass.states.get(DISCHARGE).state == "23.04"
 
 
 async def test_the_shadow_shows_the_hold_variant_the_verification_passed(
@@ -2422,9 +2432,11 @@ async def test_a_hardware_test_charges_no_harder_than_the_batterys_own_charge_po
     started = now = dt_util.now()
     while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
         now = await _looks(control, now, 1)
-    charged = [call[2]["value"] for call in plant.calls if call[2].get("entity_id") == CHARGE and call[2]["value"]]
-    # The first is the charge step's; the later ones are hand-backs to the limit as found.
-    assert charged[0] == 1.5 < TEST_CHARGE_KW
+    # The charge step's limit is the last one written before Command Charging (Grid First); the others are a hold's 0
+    # and the hand-backs to the limit as found.
+    grid_first = next(index for index, call in enumerate(plant.calls) if "Grid First" in str(call[2].get("option")))
+    charged = [call[2]["value"] for call in plant.calls[:grid_first] if call[2].get("entity_id") == CHARGE]
+    assert charged[-1] == 1.5 < TEST_CHARGE_KW
     assert control.hardware_test_progress()["report"]["modes"]["charge"]["outcome"] == "obeyed"
 
 
@@ -2712,3 +2724,21 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     control.hardware_passed = {"another | sigen 2.0.3"}
     assert control.state() == "shadow_only"
     await control.async_stop()
+
+
+async def test_a_hold_that_follows_the_sun_is_given_the_ha_down_cap_and_the_shipping_hold_none(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    now = dt_util.now()
+    shipping = commands_module.SIGENERGY_CONTROL
+    assert control.inputs(now, shipping, slot=("hold", 0.0, None)).hold_charge_cap_kw == 0.0
+    variant = replace(commands_module.SIGENERGY_HOLDS[0], surplus=commands_module.SIGENERGY_HOLD_SURPLUS)
+    following = replace(shipping, hold_variants=(variant,))
+    # The balanced grid charge's HA-down cap, or no bound where the plant's import limit guards the fuse.
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (2.5, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == 2.5
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (None, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == math.inf
+    assert control.inputs(now, following, slot=("grid_charge", 2.0, None)).hold_charge_cap_kw == 0.0
