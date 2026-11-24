@@ -150,6 +150,20 @@ def test_an_older_apps_null_registration_clears_only_the_chargers_it_came_from()
     assert app.app is not None and app.app.push_ref is None
 
 
+def test_an_older_apps_new_reference_replaces_its_own_and_never_adds_a_dead_entry() -> None:
+    phones = apply_push_register([], "a", REF, ("charge_complete",), ("a",), _ids())
+    # Its token renewed: the new reference replaces the old one on the same entry, only it is woken.
+    phones = apply_push_register(phones, "a", REF2, ("charge_complete",), ("a",), _ids())
+    (app,) = phones
+    assert app.app is not None and app.app.push_ref == REF2 and app.app.via == ("a",)
+    # Off and on again, three times: still the one entry.
+    for _ in range(3):
+        phones = apply_push_register(phones, "a", None, (), ("a",), _ids())
+        phones = apply_push_register(phones, "a", REF, ("charge_complete",), ("a",), _ids())
+    (app,) = phones
+    assert app.app is not None and app.app.push_ref == REF and app.app.via == ("a",) and app.on
+
+
 def test_a_change_is_judged_strictly() -> None:
     phone = Phone(id="ph_000000000001", name="Pixel", notify="mobile_app_pixel")
     assert judge_changes(phone, {"on": True, "chargers": ["a"]}, ("a", "b")).chargers == ("a",)
