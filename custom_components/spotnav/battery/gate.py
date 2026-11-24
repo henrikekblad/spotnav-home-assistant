@@ -409,19 +409,22 @@ def failed_mode(report: Mapping[str, Any] | None) -> str | None:
     return None
 
 
-def modes_to_run(report: Mapping[str, Any] | None) -> tuple[str, ...]:
+def modes_to_run(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> tuple[str, ...]:
     """The battery modes a next run tries: those still pending (normal ends every run by itself). When only normal is
-    left, hold runs again, so that the hand-back normal judges is one of something written."""
+    left, hold runs again, so that the hand-back normal judges is one of something written. `supported`: the modes the
+    plant's recipe has an action for (`verify.supported_modes`; a limits-only recipe has no grid charge), `None` all."""
     modes = _modes(report)
-    pending = tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    names = BATTERY_MODES if supported is None else tuple(name for name in BATTERY_MODES if name in set(supported))
+    pending = tuple(name for name in names if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
     if not pending and mode_verdict((modes.get(MODE_NORMAL) or {}).get("outcome")) == "pending":
         return ("hold",)
     return pending
 
 
-def needs_run(report: Mapping[str, Any] | None) -> bool:
+def needs_run(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
     """Whether the routine has anything left to try for this key: never after `MAX_ATTEMPTS` runs, also once hold
-    and normal passed (each run writes to the plant; a mode still pending then stays off)."""
+    and normal passed (each run writes to the plant; a mode still pending then stays off). `supported` as for
+    `modes_to_run`."""
     status = report_status(report)
     if status == "failed":
         return False
@@ -430,7 +433,9 @@ def needs_run(report: Mapping[str, Any] | None) -> bool:
     attempts = (report or {}).get("attempts")
     if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
         return False
-    return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
+    return bool(modes_to_run(report, supported)) or (
+        mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
+    )
 
 
 def allowed_actions(

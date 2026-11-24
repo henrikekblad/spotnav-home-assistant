@@ -300,6 +300,29 @@ The entity keys, options and services below were checked against each integratio
     written back; a negative number is written as 65535 plus the value (`number.py` `async_set_native_value`), one
     off from two's complement; and its ESS mode select names Hub4Mode's values 1 and 2 `SELF_CONSUMPTION` and
     `KEEP_CHARGED`. It has no entity for the maximum charge power.
+* **FoxESS**, `foxess_modbus`, nathanmarlor/foxess_modbus `94252f0` (read 2026-11-20 and 2026-11-24,
+  `plans/v3_foxess.md`). **Never run on a device; limits only.** Numbers `max_charge_current` and
+  `max_discharge_current` (A, 0-50, step 0.1; holding 41007/41008 on H1, KH and H3, 46607/46608 on H3-Pro,
+  H3-Smart, EVO and 1KOMMA5's `1K5-HI`, `entities/entity_descriptions.py` `_configuration_entities`; a sensor of the
+  same key exists beside each and is not a role). Each write goes to the inverter at once (`modbus_number.py`
+  `async_set_native_value`, which raises on a Modbus error); the entity shows the value written for a few seconds
+  (`written_value`) and then the register as polled, so a value the inverter refused shows at the next poll as a
+  change by someone else. A **hold** is the discharge current at 0 (the battery covers nothing; a sun surplus is still
+  stored), a **discharge for the house** the charge current at 0 (it covers the house and stores nothing). Both are
+  only lower limits in the work mode the owner runs ("Self Use", `adapters.FOXESS`'s mode rule: a plant found in any
+  other mode is someone else's), and a limit left standing never adds import, so if Home Assistant stops the battery
+  only covers less: no fuse cap is needed and nothing expires (`NO_EXPIRY`). The hand-back writes both back as found.
+  **No grid charge and no sale.** The integration's only way to charge from the grid on H3, H3-Pro and 1K5 is its
+  remote control (the work mode select's "Force Charge" / "Force Discharge" with the numbers `force_charge_power` /
+  `force_discharge_power`, `remote_control_manager.py`). It renews the inverter's remote control on every poll and
+  the inverter drops it 2 x poll rate after the last renewal, but before enabling it the integration writes a
+  fallback work mode, **Back-up for a charge** (it charges as hard as it can) and Feed-in First for a discharge, and
+  after a restart it never writes the mode back (`_disable_remote_control` with no mode, "let the watchdog catch it"):
+  a Home Assistant that stops mid-charge would leave a plant charging at its maximum with no fuse cap of SpotNav's.
+  So it is not mapped until a supervised test on a plant has shown what the inverter does after the watchdog and
+  after a restart (`tools/foxess_watchdog_test.py`, which bounds that charge by a low max charge current first).
+  Whether 41007/41008 and 46607/46608 are kept in flash is not stated anywhere: settings, 96 writes a day. Live writes
+  wait for a person's hardware test on the plant's firmware (`hardware_test_first`).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -315,7 +338,8 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    FERROAMP, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key, _tesla,
+    FERROAMP, FOXESS, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe,
+    _key, _tesla,
 )
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -872,6 +896,10 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+    #: Nothing is written by the routine or by control (shadow only, whatever the site's option says) until a
+    #: person's hardware test (`hardware_test.py`) passed on the firmware the plant runs (`gate.firmware_key`): a
+    #: recipe never run on a device, where the first writes should be supervised. A restore is never held back.
+    hardware_test_first: bool = False
 
     def __post_init__(self) -> None:
         if self.import_limit is not None and self.import_limit_trust is None:
@@ -1927,6 +1955,34 @@ FERROAMP_CONTROL: Final = BrandControl(
     note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
 )
 
+# --- FoxESS (limits only; see the module) --------------------------------------------------------------------------
+
+# The battery's own current limits (A, holding registers written at once; read back as polled). Restored as found.
+_FX_DISCHARGE = Role("discharge_current", "number", _key("max_discharge_current", "number"), step=0.1)
+_FX_CHARGE = Role("charge_current", "number", _key("max_charge_current", "number"), step=0.1)
+
+FOXESS_CONTROL: Final = BrandControl(
+    brand="foxess",
+    adapter=FOXESS,
+    roles=(_FX_DISCHARGE, _FX_CHARGE),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (not an idle hold).
+        ACTION_HOLD: lambda _rate, _w: (Want("discharge_current", 0.0),),
+        # It covers the house and stores nothing (a sun surplus is exported).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_current", 0.0),),
+        # No grid charge and no sale: the integration's remote control falls back to Back-up (see the module).
+    },
+    enter_order=("discharge_current", "charge_current"),
+    restore_order=("discharge_current", "charge_current"),
+    # A hold's peak cover gives the discharge current back.
+    peak_first={ACTION_HOLD: ("discharge_current",)},
+    # Lower limits never add import, so nothing needs to end by itself (`NO_EXPIRY`, the default).
+    hardware_test_first=True,
+    note="Limits only: the battery's max discharge current at 0 to hold, its max charge current at 0 to cover the"
+    " house without storing. No grid charge or sale yet. Never run on a device; writes only after a passed hardware"
+    " test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -1939,7 +1995,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
-    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL,
+    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL,
 )
 
 
@@ -1973,6 +2029,12 @@ def field_tested(brand: str | None) -> bool:
     """Whether the brand's recipe (its battery control, else its export control) was tested on a real plant."""
     control = next((control for control in CONTROLS if control.brand == brand), None) or export_control_for(brand)
     return control is not None and control.field_tested
+
+
+def hardware_test_first(brand: str | None) -> bool:
+    """Whether the brand's recipe writes only once a person's hardware test passed on the plant's firmware."""
+    control = next((control for control in CONTROLS if control.brand == brand), None)
+    return control is not None and control.hardware_test_first
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:

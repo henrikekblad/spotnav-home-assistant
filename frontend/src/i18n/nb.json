@@ -1847,6 +1847,7 @@
   "battery.outsideClear.help": "Endret du selv batteriets moduser, for eksempel under en test? Da kan du fjerne markeringen så SpotNav styrer igjen.",
   "battery.need.aiTakeoverAck": "Godta at SpotNav tar over fra batteriets AI-modus.",
   "battery.need.strategyAck": "Godta at SpotNavs kommandoer går foran strategien batteriet kjører i sin egen sky.",
+  "battery.need.hardwareTestFirst": "Kjør maskinvaretesten (Støtte, Maskinvaretest) først: for dette batteriet skriver SpotNav ingenting før testen er bestått på fastvaren det kjører.",
   "battery.need.selfManaged": "Batteriet styres av sin egen optimalisering. Bytt til egenforbruk i batteriets app hvis SpotNav skal styre det.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" er 0 i Victrons GX, så batteriet lades aldri ut, og SpotNav kan ikke kjøre en utlading. Sett den til -1 (ingen grense) eller en effekt i GX-ens ESS-innstillinger hvis batteriet skal dekke huset.",
   "battery.need.gridSetpointSelling": "Victron GX-ens nett-settpunkt (grid setpoint) ligger langt under 0, så batteriet fortsetter å selge til nettet uansett hva SpotNav planlegger. Sett det tilbake til en liten verdi (GX-ens standard er 50 W) i ESS-innstillingene hvis du ikke vil det; SpotNav endrer det ikke.",

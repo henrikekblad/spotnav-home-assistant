@@ -1,4 +1,4 @@
-"""FoxESS Modbus (`foxess_modbus`) in the site detection table and the battery adapter: read only.
+"""FoxESS Modbus (`foxess_modbus`) in the site detection table, the battery adapter and its limits-only control.
 
 Each fixture (`tests/fixtures/foxess/`) is one model family's entities as the integration names them, hand-picked from
 its source at the commit its `_source` names: the keys SpotNav reads and the ones that end like them (the per-input
@@ -15,7 +15,8 @@ from typing import Any
 import pytest
 
 from custom_components.spotnav.battery.adapters import adapter_for
-from custom_components.spotnav.battery.commands import CONTROLS
+from custom_components.spotnav.battery.commands import control_for
+from custom_components.spotnav.battery.plan_model import ACTION_DISCHARGE_HOUSE, ACTION_HOLD
 from custom_components.spotnav.battery.facts import EntityFact, battery_facts
 from custom_components.spotnav.battery.plan_shadow import battery_params
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
@@ -271,11 +272,24 @@ def test_a_family_without_a_work_mode_is_not_unknown() -> None:
 
 
 @pytest.mark.parametrize("name", FAMILIES)
-def test_foxess_is_read_only(name: str) -> None:
+def test_foxess_control_is_limits_only_and_finds_its_two_numbers_on_every_family(name: str) -> None:
     found = facts(name, {"battery_soc": "50", "battery_soc_1": "50"})
 
     assert found.hold is None and found.grid_charge is None
-    assert all(control.brand != "foxess" for control in CONTROLS)
+    control = control_for("foxess")
+    assert control is not None and control.hardware_test_first and not control.field_tested
+    # A hold and a discharge for the house; no grid charge and no sale (the remote control falls back to Back-up).
+    assert set(control.states) == {ACTION_HOLD, ACTION_DISCHARGE_HOUSE}
+    data = fixture(name)
+    for role in control.roles:
+        hits = [
+            entity for entity in data["entities"]
+            if role.match.matches(entity["domain"], _ids(data, entity["key"])[1])
+        ]
+        # The number only, never the sensor of the same key beside it.
+        assert [(entity["domain"], entity["key"]) for entity in hits] == [
+            ("number", f"max_{role.name}")
+        ], role.name
 
 
 @pytest.mark.parametrize("name", FAMILIES)

@@ -2633,3 +2633,48 @@ async def test_a_refused_change_writes_nothing_to_the_plant_first(
         hass, site, {"battery_mode": "nonsense"}, admin=True, set_import_limit=True
     )
     assert answer["error"] == "spotnav_invalid_value" and written == []
+
+
+async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only_until_one_passed_on_its_firmware(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    monkeypatch.setattr(control_module, "hardware_test_first", lambda brand: brand == "sigenergy")
+    control = await _started(hass, site, controller, plan_source=_hold)
+    # Opted in, shadow only stored off, the routine passed: still shadow only, and the checklist says why.
+    assert control.options().shadow_only and control.state() == "shadow_only"
+    assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
+    # The hardware test itself is what it waits for: never refused for it.
+    assert control.hardware_test_refusal() is None
+    now = dt_util.now()
+    for index in range(3):
+        await control.async_look(now + timedelta(seconds=10 * index))
+    assert plant.calls == []
+    assert any(row["kind"] == "would_do" for row in control.log)
+
+    class Run:
+        done = True
+        results: list[Any] = []
+
+        def __init__(self, **outcomes: str) -> None:
+            self.outcomes = outcomes
+
+        def report(self) -> dict[str, Any]:
+            return {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in self.outcomes.items()}}
+
+    # A test that did not pass records nothing.
+    control.verification, control._hw_run = Run(hold="ignored", normal="restored"), True  # type: ignore[assignment]
+    control._end_verification(now)
+    assert control.hardware_test_due()
+    # One that passed (the charge step skipped by a recipe without one) lets control write on this firmware.
+    control.verification, control._hw_run = Run(  # type: ignore[assignment]
+        hold="obeyed", charge="skipped", discharge_house="obeyed", normal="restored"
+    ), True
+    control._end_verification(now)
+    assert not control.hardware_test_due() and control.state() == "on"
+    assert control.firmware_key() in control._data()["gate"]["hardware_passed"]
+    assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
+    # Another firmware needs its own test.
+    control.hardware_passed = {"another | sigen 2.0.3"}
+    assert control.state() == "shadow_only"
+    await control.async_stop()

@@ -79,6 +79,11 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("select", "remotecontrol_power_control"),
         ("button", "remotecontrol_trigger"),
     ),
+    # FoxESS (`foxess_modbus`): the battery's current limits, enabled by default.
+    "foxess": (
+        ("number", "max_discharge_current"),
+        ("number", "max_charge_current"),
+    ),
     # The Solinteg plugin of `solax_modbus` (enabled by default but for the three phase numbers).
     "solinteg": (
         ("select", "working_mode"),

@@ -130,7 +130,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal
 
-from .commands import ACTION_CURTAIL_EXPORT, WATCHDOG_RENEW_S, Expiry, Phases
+from .commands import ACTION_CURTAIL_EXPORT, WATCHDOG_RENEW_S, BrandControl, Expiry, Phases
 from .executor import HEADROOM_MARGIN_A, RATE_UP_DWELL_S, Executor, StepResult
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES, phase_volts
 from .gate import (
@@ -396,10 +396,19 @@ class Verification:
         # `modes` runs only those (a later run retries the modes an earlier one could not judge); normal, the
         # hand-back's check, always ends a run.
         table = EXPORT_MODES if executor.control.kind == "export" else MODES
-        self.results: list[ModeResult] = [
-            ModeResult(name, action) for name, action in table
+        wanted = [
+            (name, action) for name, action in table
             if (modes is None and name not in _NAMED_ONLY) or (modes is not None and name in modes)
             or action == ACTION_SELF_CONSUME
+        ]
+        #: Modes whose action the recipe does not have (a limits-only recipe has no grid charge): never commanded,
+        #: reported `skipped` (`report`), and left out of the routine's next runs (`gate.modes_to_run`'s `supported`).
+        self.unsupported: tuple[tuple[str, str], ...] = tuple(
+            (name, action) for name, action in wanted
+            if action != ACTION_SELF_CONSUME and not executor.control.supports(action)
+        )
+        self.results: list[ModeResult] = [
+            ModeResult(name, action) for name, action in wanted if (name, action) not in self.unsupported
         ]
         for result in self.results:
             if result.mode == MODE_EXPIRY:
@@ -1181,8 +1190,17 @@ class Verification:
             "firmware": self.firmware,
             "started_at": self.started_at.isoformat(),
             "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
-            "modes": {result.report_name: result.as_dict() for result in self.results},
+            "modes": {
+                **{name: {"mode": name, "action": action, "outcome": "skipped"} for name, action in self.unsupported},
+                **{result.report_name: result.as_dict() for result in self.results},
+            },
         }
+
+
+def supported_modes(control: BrandControl) -> frozenset[str]:
+    """The battery modes whose action the recipe has (`gate.modes_to_run`'s `supported`): a limits-only recipe has
+    no grid charge, so its routine never waits for a charge step."""
+    return frozenset(name for name, action in MODES if action == ACTION_SELF_CONSUME or control.supports(action))
 
 
 def phase_charge_step(caps_kw: Phases, volts_between_phases: float) -> tuple[int, float] | None:
