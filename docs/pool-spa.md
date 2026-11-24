@@ -50,9 +50,9 @@ and the season hint only ever see these valid readings. **Without a circulation 
 come**, so a pipe that has stood still can read low; choose the circulation pump (even watched only) to avoid that. A
 sensor floating in the pool is read the same way: it only loses a little freshness.
 
-Which integrations are found, and which routes have been tried on real equipment, is in
-[Supported devices](supported.md#supported-pool-heat-pumps-spas-and-saunas). Tried so far: a Madimack pool heat pump
-through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Every other route is untested.
+Which integrations are found, and which routes are being tried on real equipment, is in
+[Supported devices](supported.md#supported-pool-heat-pumps-spas-and-saunas). Being tried now: a Madimack pool heat
+pump through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Every other route is untested.
 
 ## What each switch does
 
