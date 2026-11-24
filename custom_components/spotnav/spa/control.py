@@ -64,6 +64,8 @@ if TYPE_CHECKING:
 
 #: The spa's idle heat comes on this far under its idle temperature (on/off families: SpotNav is the thermostat).
 IDLE_BAND_C: Final = 1.0
+#: The writes a bath day keeps for the bath's heat-up (two blocks: on, off, on, and off after the bath).
+BATH_WRITES: Final = 4
 #: The floor's setpoint margin for the families steered by setpoint.
 FLOOR_MARGIN_C: Final = 2.0
 #: A sauna never runs longer than this where the device says nothing of its own (placeholder).
@@ -105,6 +107,8 @@ class DeadlinePart:
         self.readable = False
         #: The spa's idle heat is on (on/off families: SpotNav keeps the idle temperature within `IDLE_BAND_C`).
         self.idle_heating = False
+        #: The heater was last turned on for a bath (not an idle cycle).
+        self.on_for_bath = False
         # The sauna: since when SpotNav has it on, the run (its session, or the "now" press) and its on time so far,
         # and the run its longest run ended (kept).
         self.on_since: datetime | None = None
@@ -288,7 +292,18 @@ class DeadlinePart:
         # The floor's write and a shed step's are never held back by the day's budget (review, should-fix).
         exempt = floor_rule or shed_bath or shed_idle
         if route.heat is not None:
-            await self._async_set_heat(now, config, route, route.on if heat else route.off, exempt=exempt)
+            # An idle cycle is SpotNav's own thermostat between baths; waiting between two blocks of a bath's heat-up
+            # (the latched session) is the bath's. On a bath day the idle cycles leave the bath its writes.
+            latched = getattr(self.shadow, "latch", None) is not None
+            idle_cycle = action == ACTION_IDLE and not floor_rule and not latched
+            reserve = BATH_WRITES if idle_cycle and self._bath_today(now, plan) else 0
+            value = route.on if heat else route.off
+            # A heater a bath turned on is held there when the day's last write would turn it off (review S7); one
+            # an idle cycle turned on is always turned off (its Ready was only started where its Rest fits).
+            idle_write = idle_cycle and (value == route.on or not self.on_for_bath)
+            await self._async_set_heat(now, config, route, value, exempt=exempt, idle=idle_write, reserve=reserve)
+            if value == route.on and self.heat_read != route.on:
+                self.on_for_bath = not idle_cycle
         if route.setpoint == SETPOINT_HOLD:
             # The setpoint is the handle: the bath, or the idle temperature (never below the floor).
             value = config.bath_c if (bath and not shed_bath) else hold
@@ -364,7 +379,17 @@ class DeadlinePart:
         if route.setpoint == SETPOINT_DIAL and want:
             await self._async_dial(now, config, route, config.target_c)
 
-    async def _async_set_heat(self, now: datetime, config: SpaConfig | SaunaConfig, route: Route, value: str, *, exempt: bool) -> None:
+    async def _async_set_heat(
+        self,
+        now: datetime,
+        config: SpaConfig | SaunaConfig,
+        route: Route,
+        value: str,
+        *,
+        exempt: bool,
+        idle: bool = False,
+        reserve: int = 0,
+    ) -> None:
         part = self.part
         held = part.held(KEY_HEAT)
         if held.pending is not None or same(held.target(self.heat_read), value):
@@ -374,9 +399,16 @@ class DeadlinePart:
             return
         kind = KIND_SETTING if route.heat == HEAT_PRESET or route.cloud else KIND_SWITCH
         limit = None if exempt else (SETPOINT_WRITES_DAY if kind == KIND_SETTING else ON_OFF_WRITES_DAY)
-        if limit is not None and value == route.off and part.budget.written(part.day(now), KEY_HEAT, kind) + 2 > limit:
-            # The day's last write is never spent on holding the heat off: the heater is left heating (its own
-            # thermostat holds it), never parked off below the plan (review S7).
+        written = part.budget.written(part.day(now), KEY_HEAT, kind)
+        if limit is not None and idle and value == route.on and written + 2 + reserve > limit:
+            # An idle cycle is only started where its end fits the day's budget too: the heater's own thermostat
+            # stands at the bath temperature, so a Ready that could not be ended would heat to it with no bath
+            # booked (final check W1). The floor is exempt and still heats.
+            part.reason = REASON_WRITE_CAP
+            return
+        if limit is not None and not idle and value == route.off and written + 2 > limit:
+            # For a bath the day's last write is never spent on holding the heat off: the heater is left heating
+            # (its own thermostat holds the bath temperature), never parked off below the plan (review S7).
             part.reason = REASON_WRITE_CAP
             return
         if not await part.async_write(KEY_HEAT, call, value, now, kind=kind, limit=limit):
@@ -422,6 +454,13 @@ class DeadlinePart:
             self.dial_written = target_c
         else:
             part.reason = REASON_WRITE_CAP
+
+    def _bath_today(self, now: datetime, plan: Any) -> bool:
+        """A booked bath (not a "now" press) still ahead within this local day."""
+        nxt = None if plan is None else getattr(plan, "next_session", None)
+        if nxt is None or nxt[1] == SOURCE_NOW or nxt[0] <= now:
+            return False
+        return self.part.day(nxt[0]) == self.part.day(now)
 
     def _stale(self, now: datetime) -> bool:
         plan = getattr(self.shadow, "plan", None)
