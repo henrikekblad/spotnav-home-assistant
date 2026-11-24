@@ -47,6 +47,10 @@ CAR_START_READING_MAX_AGE_S: Final = 6 * 3600.0
 #: the car may rightly not start.
 CAR_START_MIN_OFFER_A: Final = 6.0
 
+#: A start in the car whose call has not answered after this long counts as timed out (the call's own timeout is two
+#: minutes; this bounds the store writes around it too).
+CAR_START_CALL_GIVE_UP_S: Final = 5 * 60.0
+
 #: What the status line says (`CarStartMemory.line`).
 LINE_STARTED: Final = "started"
 LINE_REFUSES: Final = "refuses"
@@ -147,8 +151,6 @@ class CarStartMemory:
     answered_at: datetime | None = None
     #: When the notice was told, kept across a restart (the status line's `since`, what an app tells once by).
     since: datetime | None = None
-    #: Whether a notice told before a restart was looked for in this plug-in (`vehicle_charge_start.stored_notice`).
-    restored: bool = False
 
     def begin(self, generation: int) -> None:
         """A new plug-in (or the first look after a start): nothing made or told in it yet."""
@@ -163,4 +165,3 @@ class CarStartMemory:
         self.plug_in = None
         self.answered_at = None
         self.since = None
-        self.restored = False

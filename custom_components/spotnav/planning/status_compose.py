@@ -111,8 +111,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    unread for less than half an hour, nor `rebased`, one that reads again),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), car_start_made (the car took no
    current the charger offered and SpotNav started the charge in the car, `execution/car_start.py`; tone normal),
-   car_refuses{soc_percent, target, since} (the car still takes none, or has no charge switch SpotNav knows: the person starts
-   the charge in the car's app; until the car draws or is unplugged), charger_circuit_limited{limit_a}
+   car_refuses{soc_percent, target, since} (the car still takes none, or its start could not be made: the person starts
+   the charge in the car's app; until the car draws or is unplugged; only for a car with a charge switch SpotNav knows), charger_circuit_limited{limit_a}
    (while it charges, a limit outside SpotNav's reach caps it below the current SpotNav set: Easee's circuit dynamic
    limit, read only), charger_disabled
    (its own enable switch is off, so it cannot start), charger_own_mode (one per own mode of the charger

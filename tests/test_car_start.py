@@ -399,6 +399,8 @@ async def _refusing(
     adapter._charging_values = ("charging",)  # noqa: SLF001 - the profile a status sensor brings
     adapter._idle_values = ("suspended_ev",)  # noqa: SLF001
     adapter._car_refuses_values = ("suspended_ev",)  # noqa: SLF001 - a verified refusal of an offer
+    adapter._disconnected_values = ("disconnected",)  # noqa: SLF001 - the status says when no car is there
+    controller._observe_connection()  # noqa: SLF001 - the car known connected from the start
     adapter.offered_current_a = lambda: offered  # type: ignore[method-assign]
     told: list[tuple[str | None, bool]] = []
     controller.set_car_ended_observer(lambda vehicle_id, full: told.append((vehicle_id, full)))
@@ -645,6 +647,7 @@ async def test_a_restart_brings_the_line_back_at_once_and_tells_nothing_again(
     # Home Assistant restarts within the plug-in: the controller's memory is gone, the stored notice is not.
     await _store(hass)
     controller._car_start = car_start.CarStartMemory()  # noqa: SLF001
+    controller._car_refuses_restore_pending = True  # noqa: SLF001
     controller._car_refusal.reset()  # noqa: SLF001
     assert controller.car_start_status == before, "the line is back at once, with when it was told"
     assert controller.car_refuses_notice is None, "told before the restart"
@@ -656,6 +659,7 @@ async def test_a_restart_brings_the_line_back_at_once_and_tells_nothing_again(
     assert controller.car_start_status is None
     await _store(hass)
     controller._car_start = car_start.CarStartMemory()  # noqa: SLF001
+    controller._car_refuses_restore_pending = True  # noqa: SLF001
     assert controller.car_start_status is None
 
 
@@ -810,3 +814,53 @@ def test_identification_confirms_a_car_only_once_settled() -> None:
     assert judged(session=session(ident.STATE_DECIDED, listening=True), method=ident.METHOD_PLUG_SENSOR) is True
     assert judged(session=session(ident.STATE_WAITING, single=True), method=ident.METHOD_ONLY_CANDIDATE) is True
     assert judged(session=session(ident.STATE_ASKING, single=True), method=ident.METHOD_ONLY_CANDIDATE) is False
+
+
+async def test_an_unplug_ends_the_line_and_a_restart_does_not_bring_it_back(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, car_id = await _refusing(hass, freezer)
+    hass.states.async_set(vehicle_charge_start.charge_switch(hass, car_id).entity_id, "unavailable")  # type: ignore[union-attr]
+    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+    assert controller.car_start_status is not None and controller.car_start_status["state"] == "refuses"
+    # The car is unplugged, seen by the charger (`_connection_changed`).
+    halo.status("disconnected")
+    controller._observe_connection()  # noqa: SLF001
+    await hass.async_block_till_done()
+    assert controller.car_start_status is None
+    await _later(hass, freezer, 60)
+    assert controller.car_start_status is None, "not brought back from the stored notice"
+    # Home Assistant restarts with no car plugged in: nothing comes back.
+    await _store(hass)
+    controller._car_start = car_start.CarStartMemory()  # noqa: SLF001
+    controller._car_refuses_restore_pending = True  # noqa: SLF001
+    assert controller.car_start_status is None
+    stored = vehicle_charge_start.stored_notice(hass, car_id, controller._car_start_plug_in())  # noqa: SLF001
+    assert stored is not None and stored["line"] is False
+
+
+async def test_a_start_whose_call_never_answers_is_taken_as_timed_out(
+    hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    controller, halo, _told, car_id = await _refusing(hass, freezer)
+    release = asyncio.Event()
+    real_note = vehicle_charge_start._note  # noqa: SLF001
+
+    async def hanging(hass_: HomeAssistant, vehicle_id: str, changes: dict[str, Any]) -> None:
+        if "result" in changes and changes.get("result") == vehicle_charge_start.RESULT_ASKED:
+            await release.wait()
+        await real_note(hass_, vehicle_id, changes)
+
+    monkeypatch.setattr(vehicle_charge_start, "_note", hanging)
+    try:
+        await _later(hass, freezer, CAR_START_AFTER_S + 30)
+        assert controller.car_start_status is not None and controller.car_start_status["state"] == "started"
+        await _later(hass, freezer, car_start.CAR_START_CALL_GIVE_UP_S - 60)
+        assert controller.car_refuses_notice is None, "still waiting for the call"
+        await _later(hass, freezer, 60 + CAR_START_AFTER_S + 30)
+        assert controller.car_refuses_notice is not None, "taken as timed out, then told"
+        assert halo.car_calls == [], "the hung call never reached the car"
+    finally:
+        release.set()
+        await hass.async_block_till_done()
+    assert controller.car_start_status is not None and controller.car_start_status["state"] == "refuses"

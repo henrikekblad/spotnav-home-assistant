@@ -122,6 +122,7 @@ from .phase_switching import (
 from .plan_car_ended import PlanChargeWatch, SUSPENDED_EV as SUSPENDED_EV_STATUS
 from .car_start import (
     CAR_START_AFTER_S,
+    CAR_START_CALL_GIVE_UP_S,
     CarRefusalWatch,
     CarStartMemory,
     counts_as_estimate,
@@ -884,6 +885,9 @@ class ChargingController:
         self._car_refusal = CarRefusalWatch()
         self._car_start = CarStartMemory()
         self._car_start_target: Callable[[], tuple[str | None, float | None]] | None = None
+        # A notice told before this start of Home Assistant is looked for once, while the car is still connected
+        # (`_restore_car_refuses`); never after an unplug seen here.
+        self._car_refuses_restore_pending = True
         # Asks the car's integration for a fresh reading of a car (`set_reading_asker`); answers whether it could.
         self._reading_asker: Callable[[str | None], bool] | None = None
         # The car asked for a fresh reading because an estimate reached the target (`_confirm_estimate`), and the
@@ -2381,9 +2385,20 @@ class ChargingController:
         before a restart in this plug-in brought back (`_restore_car_refuses`)."""
         memory = self._car_start
         if memory.generation != self._session_generation:
+            if memory.generation is not None:
+                # A plug-in ended (or began) here: a notice of the plug-in before is never brought back, and its line
+                # is noted as gone, so a restart does not bring it back either.
+                self._car_refuses_restore_pending = False
+                if memory.line == LINE_REFUSES:
+                    entry_task(
+                        self.hass,
+                        self.entry_id,
+                        _charge_start.async_note_notice(self.hass, memory.vehicle_id, memory.plug_in, line=False),
+                        "noting the car's notice",
+                    )
             memory.begin(self._session_generation)
             self._car_refusal.reset()
-        if not memory.restored:
+        if self._car_refuses_restore_pending:
             self._restore_car_refuses(memory)
         return memory
 
@@ -2395,15 +2410,19 @@ class ChargingController:
         """A notice told before a restart in this plug-in: told, never again, and its status line back at once until
         the car draws (so neither this notifier nor an app's own check tells it twice, and the plain "the car takes no
         current" stays held back)."""
+        connected = self.adapter.vehicle_connected()
+        if connected is None:
+            # Not known yet whether the car is still there: looked for again later.
+            return
         plug_in = self._car_start_plug_in()
-        if plug_in is None:
-            memory.restored = True
+        if connected is False or plug_in is None:
+            self._car_refuses_restore_pending = False
             return
         vehicle_id, _ = self._car_start_subject()
         if vehicle_id is None:
             # Nothing names the car yet (the settings are wired after the controller): looked for again later.
             return
-        memory.restored = True
+        self._car_refuses_restore_pending = False
         stored = _charge_start.stored_notice(self.hass, vehicle_id, plug_in)
         if stored is None:
             return
@@ -2536,7 +2555,14 @@ class ChargingController:
             phase_switch_settling=self.phase_switch_settling,
         )
         if memory.started_at is not None and memory.answered_at is None:
-            # The call in the car is on its way (it may wake the car first): nothing is decided until it answers.
+            if (now - memory.started_at).total_seconds() < CAR_START_CALL_GIVE_UP_S:
+                # The call in the car is on its way (it may wake the car first): nothing is decided until it answers.
+                return
+            # A call that never answered (a store write that hangs, say) counts as timed out: the car has had its
+            # time, and what follows is decided as after a timeout.
+            _LOGGER.info("SpotNav charger %s: the start in the car did not answer; taken as timed out", self.entry_id)
+            memory.answered_at = now
+            self._car_refusal.reset()
             return
         if refused_s is None and memory.line == LINE_STARTED:
             # The start's moment is over (the charge ended, or the charger holds it): no line for it.
@@ -2548,8 +2574,11 @@ class ChargingController:
         if not _charge_start.has_charge_switch(self.hass, vehicle_id) or not _charge_start.car_here(
             self.hass, self.entry_id, vehicle_id
         ):
-            # Not a car SpotNav can start, or not confirmed to be the car here: as before (the plain notice, the
-            # car's end).
+            # Not a car SpotNav can start, or not confirmed to be the car here (any more): as before (the plain
+            # notice, the car's end), with no line of a start.
+            if memory.line == LINE_STARTED:
+                memory.line = None
+                self._notify()
             return
         plug_in = self._car_start_plug_in()
         if plug_in is None:
@@ -2595,7 +2624,10 @@ class ChargingController:
             entry_task(
                 self.hass,
                 self.entry_id,
-                self._async_logged(self._async_car_start(memory, vehicle_id, plug_in), "the start of the charge in the car"),
+                self._async_logged(
+                    self._async_car_start(memory, vehicle_id, plug_in, self._session_generation, now),
+                    "the start of the charge in the car",
+                ),
                 "the start of the charge in the car",
             )
             self._notify()
@@ -2611,11 +2643,20 @@ class ChargingController:
         )
         self._car_refuses(memory, now)
 
-    async def _async_car_start(self, memory: CarStartMemory, vehicle_id: str, plug_in: str) -> None:
+    async def _async_car_start(
+        self, memory: CarStartMemory, vehicle_id: str, plug_in: str, generation: int, started_at: datetime
+    ) -> None:
         """Make the start in the car and take its answer: the second wait counts from it; a start that failed (or
-        could not be made after all) is told as the car refusing, its level read again first."""
+        could not be made after all) is told as the car refusing, its level read again first. An answer that comes
+        after the plug-in ended, or after the look gave up on it (`CAR_START_CALL_GIVE_UP_S`), changes nothing."""
         result = await _charge_start.async_start_charge_in_car(self.hass, vehicle_id, plug_in)
-        if self._shut_down or memory is not self._car_start or memory.generation != self._session_generation:
+        if (
+            self._shut_down
+            or generation != self._session_generation
+            or memory.generation != generation
+            or memory.started_at != started_at
+            or memory.answered_at is not None
+        ):
             return
         memory.answered_at = dt_util.utcnow()
         self._car_refusal.reset()
