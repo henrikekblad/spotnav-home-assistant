@@ -91,7 +91,11 @@ says:
   continuous run (a "now" press on top of a session is the same run; a new one starts after 10 minutes off), across a
   restart; never through a relay whose safety measure is not declared. SpotNav only
   turns off a session it started, and never turns a sauna on when it hands it back.
-* **Season closed: nothing is written at all.** What SpotNav held is left as it stands when you close the season.
+* **Season closed: your settings back, then nothing is written at all.** When you close the season (on the card or
+  with the phone's **Close the season** button) while SpotNav runs the heat pump or the circulation, your own settings
+  are written back first, as when you turn the switch off: the heat pump first, the circulation after the run-on, and
+  only where the device still shows SpotNav's value. A heat pump you had in heat is left off while the water stands.
+  After that SpotNav writes nothing until you open the season again.
 * **Your settings come back.** What the load showed before SpotNav acted is written back when you turn its switch off,
   when Home Assistant stops, and at the next start after a stop that could not (only where the device still shows
   SpotNav's last value). At a stop the circulation is kept running while the heat pump's run-on lasts, and handed back

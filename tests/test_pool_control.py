@@ -274,19 +274,59 @@ async def test_the_person_s_values_come_back_at_the_stop_and_after_a_crash(hass:
     assert devices.state(CIRC) == "on" and again.pool.circ.holds()
 
 
-async def test_closing_the_season_writes_nothing_at_all(hass: HomeAssistant) -> None:
+async def test_closing_the_season_hands_back_first_then_writes_nothing(hass: HomeAssistant) -> None:
+    devices = _devices(hass, setpoint=26.0)
+    control, shadow, _order = make_control(hass, _pool(target_c=29.0))
+    shadow.pool_action("heat")
+    await looks(control, NOW, NOW + 3 * MIN)
+    assert devices.state(PUMP) == "heat" and devices.attr(PUMP, "temperature") == 29.0 and devices.state(CIRC) == "on"
+    # Closed (the card or the phone's button): the person's values back, the heat pump first, the run-on respected.
+    shadow.raw = _pool(target_c=29.0, season_open=False)
+    await control.async_look(NOW + 4 * MIN)
+    assert devices.state(PUMP) == "off" and devices.attr(PUMP, "temperature") == 26.0
+    assert devices.state(CIRC) == "on" and control.pool.hp.state == STATE_SEASON_CLOSED
+    await looks(control, NOW + 4 * MIN + 30 * S, NOW + 8 * MIN)
+    assert devices.state(CIRC) == "on"
+    await looks(control, NOW + 9 * MIN + 30 * S, NOW + 12 * MIN)
+    assert devices.state(CIRC) == "off" and not control.holds_any()
+    assert control.pool.circ.state == STATE_SEASON_CLOSED
+    # After that nothing at all: not the person's changes, not the plan, not the stop.
+    count = len(devices.calls)
+    devices.set(CIRC, "on")
+    devices.set(PUMP, "heat")
+    shadow.pool_action("off")
+    await looks(control, NOW + 13 * MIN, NOW + 40 * MIN)
+    await control.async_shutdown()
+    assert len(devices.calls) == count
+
+
+async def test_closing_the_season_leaves_alone_what_the_person_changed(hass: HomeAssistant) -> None:
     devices = _devices(hass)
     control, shadow, _order = make_control(hass, _pool())
     shadow.pool_action("heat")
     await looks(control, NOW, NOW + 3 * MIN)
     count = len(devices.calls)
-    assert devices.state(PUMP) == "heat"
+    # Winterised by hand before closing: nothing of SpotNav's reads, so nothing is written.
+    devices.set(PUMP, "off")
+    devices.set(CIRC, "off")
     shadow.raw = _pool(season_open=False)
     await looks(control, NOW + 4 * MIN, NOW + 30 * MIN)
-    devices.set(CIRC, "off")
-    await looks(control, NOW + 31 * MIN, NOW + 40 * MIN)
     await control.async_shutdown()
     assert len(devices.calls) == count and not control.holds_any()
+    assert control.pool.hp.state == STATE_SEASON_CLOSED
+
+
+async def test_closing_the_season_never_heats_again_while_the_water_stands(hass: HomeAssistant) -> None:
+    devices = _devices(hass, mode="heat", circ="off")
+    # The person had the heat pump in heat; SpotNav turned it off and holds it there.
+    control, shadow, _order = make_control(hass, _pool(control_circulation=False))
+    shadow.pool_action("off")
+    await looks(control, NOW, NOW + 3 * MIN)
+    assert devices.state(PUMP) == "off" and control.pool.hp.holds()
+    count = len(devices.calls)
+    shadow.raw = _pool(control_circulation=False, season_open=False)
+    await looks(control, NOW + 4 * MIN, NOW + 30 * MIN)
+    assert devices.calls[count:] == [] and devices.state(PUMP) == "off" and not control.holds_any()
     assert control.pool.hp.state == STATE_SEASON_CLOSED
 
 
