@@ -199,7 +199,7 @@ describe("the house history", () => {
     const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     const part = body.querySelector("[data-part='perfect']")!;
     expect(part.querySelector("h4")?.textContent).toBe("Andel av perfekt");
-    expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning 77 % av perfekt · SpotNav Balanserad 74 %");
+    expect(part.querySelector("[data-line='perfect-headline']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("1 ofullständigt dygn räknas inte med.");
@@ -257,7 +257,7 @@ describe("the house history", () => {
     const loss = shown({ clamped: ["own"], shares: { ...perfect.shares, own: 0 }, savings: { ...perfect.savings, own: -4700 } });
     expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-value")?.textContent).toBe("förlust 47 kr");
     expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-fill")).toBeNull();
-    expect(loss.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning: förlust 47 kr mot inget batteri · SpotNav Balanserad 74 % av perfekt");
+    expect(loss.querySelector("[data-line='perfect-headline']")).toBeNull();
     expect(loss.querySelector("[data-line='perfect-clamped']")).toBeNull();
     // A way that did not run on these days has no bar and no block; the battery's own figure not held, no note on it.
     const none = shown({ savings: { ...perfect.savings, max_profit: null, own: null }, shares: { ...perfect.shares, max_profit: null, own: null } });

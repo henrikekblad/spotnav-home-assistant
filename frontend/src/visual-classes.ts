@@ -118,6 +118,7 @@ export const VISUAL_CLASSES = {
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
   settingsWide: "spotnav-settings-wide",
+  historyWide: "spotnav-history-wide",
   sponsorHeart: "spotnav-sponsor-heart",
   planDialog: "spotnav-plan-dialog",
   actionIcon: "spotnav-action-icon",

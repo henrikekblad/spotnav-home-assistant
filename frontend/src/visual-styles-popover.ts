@@ -493,6 +493,10 @@ export const POPOVER_STYLES = `\
   .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.dialog} {
     max-width: 680px;
   }
+  /* The house's and the heat's history: wide enough on a wide screen that a table's headings stay on one line. */
+  .${VISUAL_CLASSES.historyWide} .${VISUAL_CLASSES.dialog} {
+    max-width: 640px;
+  }
   .${VISUAL_CLASSES.capacityBlock} {
     margin-top: 16px;
   }
