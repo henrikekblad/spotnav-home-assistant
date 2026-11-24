@@ -336,7 +336,7 @@ describe("the popover from the house card", () => {
     const { root, messages } = await mount();
     const popover = await open(root);
     expect([...popover.children].map((node) => (node as HTMLElement).dataset["section"])).toEqual([
-      "setup", "price", "site", "solar", "battery", "heat", "pool", "spa", "sauna", "support",
+      "setup", "price", "site", "solar", "battery", "heat", "pool", "spa", "sauna", "notifications", "support",
     ]);
     const charger = popover.querySelector<HTMLElement>("[data-setup='charger']")!;
     expect(charger.textContent).toContain("Lägg till laddbox");

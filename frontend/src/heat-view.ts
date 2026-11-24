@@ -1757,8 +1757,7 @@ export function loadSectionsShown(answer: HeatAnswer): { pool: boolean; spa: boo
  * The "Pool", "Spa" and "Bastu" sections of the settings dialog, each only where that load is set up or detected: a
  * detected pool not set up yet is one row that asks once; a set-up one has its heat pump, circulation, water sensor,
  * filtering hours and powers. The spa's and the sauna's entity, the spa's lowest temperature, the heaters' power, a
- * relay sauna's safety declaration. The heat card's phones and their events (they hear about all three) close the last
- * of them while any of them is set up. Each section says what SpotNav would do under it where it has something to say.
+ * relay sauna's safety declaration (their notifications are the phones', `notification-phones.ts`). Each section says what SpotNav would do under it where it has something to say.
  */
 export function loadSettingsSections(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement[] {
   const config = answer.config;
@@ -1775,7 +1774,6 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       section.append(help);
     }
   };
-  let last: SettingRowAdd | null = null;
   const pool = config.pool;
   const poolChoices = choices?.pool ?? null;
   if (shown.pool) {
@@ -1808,7 +1806,6 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       helpLine(section, "pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
     }
     sections.push(section);
-    last = row;
   }
   const spa = config.spa;
   if (shown.spa) {
@@ -1823,7 +1820,6 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       helpLine(section, "spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
     }
     sections.push(section);
-    last = row;
   }
   const sauna = config.sauna;
   if (shown.sauna) {
@@ -1840,22 +1836,8 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       helpLine(section, "sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
     }
     sections.push(section);
-    last = row;
   }
-  if (last !== null && (pool !== null || spa !== null || sauna !== null)) {
-    const phones = config.heat_notifications.targets;
-    const phoneNames = new Map((choices?.phones ?? []).map((phone) => [phone.service, phone.name]));
-    last(
-      "heatPhones",
-      t("heat.settings.phones"),
-      phones.length === 0 ? t("heat.settings.phonesNone") : phones.map((service) => phoneNames.get(service) ?? service).join(", "),
-    );
-    last(
-      "heatEvents",
-      t("heat.settings.events"),
-      HEAT_EVENTS.filter((event) => config.heat_notifications.events.includes(event)).map((event) => t(`heat.settings.event.${event}` as TranslationKey)).join(", ") || t("heat.settings.eventsNone"),
-    );
-  }
+  // The pool's, the spa's and the sauna's notifications are the phones' (`notification-phones.ts`).
   return sections;
 }
 
@@ -1867,9 +1849,6 @@ export const SAUNA_INTEGRATIONS: readonly string[] = ["huum", "saunum", "harvia_
 export function saunaControllable(sauna: { family: string; safety_declared: boolean }): boolean {
   return SAUNA_INTEGRATIONS.includes(sauna.family) || (sauna.family === "relay" && sauna.safety_declared);
 }
-
-/** The events the heat card's phones can hear (`heat_notifications.events`). */
-export const HEAT_EVENTS = ["plan_at_risk", "pool_season"] as const;
 
 export type HeatSettingKey =
   | "indoor"
@@ -1905,9 +1884,7 @@ export type HeatSettingKey =
   | "sauna"
   | "saunaKw"
   | "saunaSafety"
-  | "saunaControl"
-  | "heatPhones"
-  | "heatEvents";
+  | "saunaControl";
 
 /** The "Heating" section of the settings dialog (the house's heat; the pool, the spa and the sauna have their own,
  * `loadSettingsSections`): one row per setting, each opening its editor (`onEdit`). */

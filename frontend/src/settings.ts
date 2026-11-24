@@ -539,32 +539,6 @@ export function usersChangePlanReplacement(record: SettingsRecord, allowed: bool
   };
 }
 
-/** What a notifications Save chooses: the services and events (where a tap opens is the card's own page). */
-export interface NotificationsChoice {
-  targets: string[];
-  events: string[];
-  url: string | null;
-}
-
-/**
- * What a notifications Save would send: the accepted record unchanged, plus `notifications`. Events keep the
- * backend's order; a record from a backend without notifications cannot take one.
- */
-export function notificationsReplacement(record: SettingsRecord, choice: NotificationsChoice): ReplacementCheck {
-  const current = record.notifications;
-  if (current === undefined) {
-    return { ok: false, errorKey: "settings.error.version" };
-  }
-  const events = NOTIFICATION_EVENTS.filter((event) => choice.events.includes(event));
-  const targets = [...new Set(choice.targets)];
-  const notifications = { targets, events, url: choice.url };
-  const changed =
-    targets.join(",") !== current.targets.join(",") ||
-    events.join(",") !== current.events.join(",") ||
-    choice.url !== current.url;
-  return { ok: true, body: { ...encodeBody(record), notifications }, changed };
-}
-
 /** What the identification Save chooses: the mode, and the cars ticked out of every car the card lists. */
 export interface IdentificationChoice {
   mode: IdentifyMode;

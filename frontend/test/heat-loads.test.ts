@@ -276,9 +276,9 @@ describe("the Use tab", () => {
 });
 
 describe("the settings rows and editors", () => {
-  it("lists the pool's, the spa's and the sauna's settings and the heat card's phones, with what SpotNav would do", () => {
-    // The house's heat keeps "Värme"; the pool, the spa and the sauna each have their own section, the phones last.
-    expect(heatSettingsSection(document, "sv", answer(), () => undefined).querySelector("[data-row^='pool'], [data-row='spa'], [data-row='heatPhones']")).toBeNull();
+  it("lists the pool's, the spa's and the sauna's settings, with what SpotNav would do (their phones are the Notifications section's)", () => {
+    // The house's heat keeps "Värme"; the pool, the spa and the sauna each have their own section.
+    expect(heatSettingsSection(document, "sv", answer(), () => undefined).querySelector("[data-row^='pool'], [data-row='spa']")).toBeNull();
     const sections = loadSettingsSections(document, "sv", answer(), () => undefined);
     const rowsOf = (node: HTMLElement): (string | undefined)[] => [...node.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]);
     expect(sections.map((node) => [node.dataset["section"], node.querySelector("h4")!.textContent, rowsOf(node)])).toEqual([
@@ -287,7 +287,7 @@ describe("the settings rows and editors", () => {
         ["poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw", "poolCirculationControl", "poolHeatPumpControl"],
       ],
       ["spa", "Spa", ["spa", "spaFloor", "spaKw", "spaControl"]],
-      ["sauna", "Bastu", ["sauna", "saunaKw", "saunaSafety", "heatPhones", "heatEvents"]],
+      ["sauna", "Bastu", ["sauna", "saunaKw", "saunaSafety"]],
     ]);
     const rows = sections.flatMap(rowsOf);
     const section = document.createElement("div");

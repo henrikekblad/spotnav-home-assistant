@@ -9,6 +9,7 @@ import {
   BETA_API_VERSION,
   BLUEPRINTS_API_VERSION,
   MAKE_HOME_API_VERSION,
+  NOTIFICATION_PHONES_API_VERSION,
   PHONES_API_VERSION,
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
@@ -406,6 +407,30 @@ export async function betaCommand(
  */
 export async function disconnectPhones(hass: HomeAssistantLike): Promise<unknown> {
   return await call<unknown>(hass, { type: "spotnav/disconnect_phones", api_version: PHONES_API_VERSION });
+}
+
+/** The phones and what each hears (administrators only): `unknown` until `decodePhonesAnswer()` decodes it. */
+export async function getNotificationPhones(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/notification_phones", api_version: NOTIFICATION_PHONES_API_VERSION });
+}
+
+/**
+ * One phone's change (`{on?, events?, chargers?}`, or `link`, `unlink`, `forget`) and the card's page, where a tap on a
+ * notification opens. Answers the listing again: `unknown` until decoded.
+ */
+export async function updateNotificationPhone(
+  hass: HomeAssistantLike,
+  phone: string,
+  changes: Record<string, unknown>,
+  url: string | null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_notification_phone",
+    api_version: NOTIFICATION_PHONES_API_VERSION,
+    phone,
+    changes,
+    ...(url === null ? {} : { url }),
+  });
 }
 
 /**

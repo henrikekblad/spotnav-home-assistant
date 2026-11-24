@@ -222,7 +222,8 @@ function open(input: SetupSectionInput, id: SetupRowId): void {
       input.openSetting("entities", "phase_switching");
       return;
     case "phone":
-      input.openSetting("notifications", "notification_targets");
+      // The section of phones: each is its own row.
+      input.openSetting("notifications", "notification_phones");
       return;
     case "app":
       input.openExternal(APP_STORE_URL);

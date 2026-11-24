@@ -219,14 +219,14 @@ describe("the dialog's Get started section", () => {
     expect(hass.messages.slice(before).some((message) => message["type"] === "spotnav/get_settings")).toBe(true);
   });
 
-  it("opens the phones' own editor in Settings for the phone row", async () => {
+  it("opens Settings at the Notifications section for the phone row", async () => {
     const { element } = await open(dashboard(ALL));
     line(element)!.click();
     await settle();
     button(row(element, "phone"), "open")!.click();
     await settle();
-    expect(shadow(element).querySelector("[data-section='notifications']")).not.toBeNull();
-    expect(openDialog(element).textContent).toContain(translate("en", "notifications.phones"));
+    expect(openDialog(element).querySelector("[data-section='notifications']")).not.toBeNull();
+    expect(openDialog(element).textContent).toContain(translate("en", "settings.section.notifications"));
   });
 
   it("sends the car, the forecast and phase switching rows where each is done", async () => {

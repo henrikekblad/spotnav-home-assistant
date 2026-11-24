@@ -2,7 +2,8 @@
 // cards open it with `SettingsPopover` (`{siteId | chargerId, focus}`); the charger card keeps its own Settings page
 // and mounts the same battery and heat sections in it (`SiteSections`). Sections are built from what exists, never
 // from who opened it: Get started (the site's own rows), price, site, solar, home battery (when one is found), heat
-// (always a row; one line "Heat · nothing found" until something is, which opens the section) and support. The price
+// (always a row; one line "Heat · nothing found" until something is, which opens the section), notifications (the
+// phones, `notification-phones.ts`) and support. The price
 // and solar sections are the charger card's own (`price-section.ts`), fed from the site's view.
 //
 // Writes go through the site-keyed commands: `spotnav/battery_control` (SpotNav's own options for the site; nothing is
@@ -40,6 +41,7 @@ import {
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
+import { NotificationPhones } from "./notification-phones";
 import { disconnectPhonesEditor, runDisconnectPhones } from "./phones";
 import { BetaRows, type BetaCall } from "./beta";
 import { automationsBody, decodeBlueprintUse } from "./automations";
@@ -123,7 +125,19 @@ const WEAR_MAX_FACTOR = 10;
 
 export const PLAN_DOCS_URL = "https://spotnav.sensnology.se/docs/home-assistant/battery-plan#the-wear-cost";
 
-export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "pool" | "spa" | "sauna" | "support";
+export type PopoverFocus =
+  | "house"
+  | "setup"
+  | "price"
+  | "site"
+  | "solar"
+  | "battery"
+  | "heat"
+  | "pool"
+  | "spa"
+  | "sauna"
+  | "notifications"
+  | "support";
 
 /**
  * What a house or heat card in the card picker shows first: the first charger's site, else the first site (a home
@@ -1413,9 +1427,18 @@ export class SettingsPopover {
   private scrollTop: number | null = null;
   private generation = 0;
   readonly sections: SiteSections;
+  /** One notification section for the whole site, per phone (`notification-phones.ts`). */
+  readonly phones: NotificationPhones;
 
   constructor(input: SettingsPopoverInput) {
     this.input = input;
+    this.phones = new NotificationPhones({
+      doc: input.doc,
+      idPrefix: input.idPrefix,
+      hass: input.hass,
+      language: input.language,
+      openEditor: (title, build) => this.openEditor(title, build),
+    });
     this.sections = new SiteSections({
       doc: input.doc,
       idPrefix: input.idPrefix,
@@ -1651,7 +1674,7 @@ export class SettingsPopover {
     if (battery !== null) {
       body.append(battery);
     }
-    body.append(...this.sections.heatNodes(), this.supportNode());
+    body.append(...this.sections.heatNodes(), this.phones.node(), this.supportNode());
     return body;
   }
 

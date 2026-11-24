@@ -9,6 +9,7 @@
 // max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
 // bar, and the header's History and Settings actions.
 
+import { NotificationPhones } from "./notification-phones";
 import { chartNowAt, nextIntervalBoundary, type ChartAxisMode, type ChartMark, type ChartNow } from "./chart";
 import {
   createChartInteraction,
@@ -1737,9 +1738,8 @@ export function createCardView(input: CardViewInput): CardView {
         key: "notifications",
         anyone: false,
         append: (body) => {
-          const notifications = notificationsSectionBody();
-          if (notifications !== null) {
-            body.append(notifications);
+          if (input.hass !== undefined) {
+            body.append(notificationPhones.node());
           }
         },
       },
@@ -2130,7 +2130,15 @@ export function createCardView(input: CardViewInput): CardView {
     entityRow,
     sectionHost,
   });
-  const { siteSectionBody, solarSectionBody, notificationsSectionBody } = siteSectionsBuilt;
+  const { siteSectionBody, solarSectionBody } = siteSectionsBuilt;
+  // One notification section for the whole site, per phone (`notification-phones.ts`): it reads the phones itself.
+  const notificationPhones = new NotificationPhones({
+    doc,
+    idPrefix,
+    hass: () => (input.hass?.() ?? null) as HomeAssistantLike | null,
+    language: () => model.language,
+    openEditor: (title, build) => openValueEditor(title, build),
+  });
 
 
   let overviewNotice: FailureSentence | null = null;
