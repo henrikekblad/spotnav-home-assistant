@@ -255,10 +255,14 @@ async def test_the_listing_shows_an_untouched_companion_phone_off_until_someone_
 
     answer = await ws_call(
         client,
-        {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": guest["id"], "changes": {"on": True}},
+        {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": guest["id"], "changes": {"on": True},
+         "url": "/lovelace/home"},
     )
     (stored,) = answer["result"]["phones"]
     assert stored["on"] is True and stored["id"].startswith("ph_"), "stored on its first write"
+    # The card's page is where a tap opens, for a charger that has no dashboard of its own.
+    assert domain_data(hass).phones.url == "/lovelace/home"
+    assert charger_data(hass, entry.entry_id).notifier.notifications_url == "/lovelace/home"
     assert domain_data(hass).phones.recipients("plan_stopped", charger=entry.entry_id)[0] == ("mobile_app_guest_pixel",)
 
     for phone, changes, code in (

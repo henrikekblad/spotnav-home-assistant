@@ -46,7 +46,7 @@ from .phones import (
     route_of,
     valid_ref,
 )
-from .settings import NOTIFY_DOMAIN, NotificationSettings
+from .settings import _PATH, NOTIFY_DOMAIN, NotificationSettings
 from .targets import available_targets
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +82,9 @@ class PhoneStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, STORE_KEY)
         self._phones: tuple[Phone, ...] = ()
         self._migrated = False
+        #: Where a tap opens when a charger has no dashboard of its own: the page an administrator last saved a phone
+        #: from (`url` of `spotnav/update_notification_phone`).
+        self._url: str | None = None
         self._lock = asyncio.Lock()
         #: Told when the phones change (the dashboards' setup rows, a card's read).
         self._listeners: list[Callable[[], None]] = []
@@ -97,9 +100,13 @@ class PhoneStore:
         if isinstance(raw, dict):
             self._phones = read_phones(raw.get("phones"))
             self._migrated = raw.get("migrated") is True
+            url = raw.get("url")
+            self._url = url if isinstance(url, str) and _PATH.match(url) else None
 
     async def _async_save(self) -> None:
-        await self._store.async_save({"migrated": self._migrated, "phones": [phone.as_dict() for phone in self._phones]})
+        await self._store.async_save(
+            {"migrated": self._migrated, "url": self._url, "phones": [phone.as_dict() for phone in self._phones]}
+        )
         for listener in list(self._listeners):
             listener()
 
@@ -148,6 +155,18 @@ class PhoneStore:
     @property
     def phones(self) -> tuple[Phone, ...]:
         return self._phones
+
+    @property
+    def url(self) -> str | None:
+        return self._url
+
+    async def async_set_url(self, url: Any) -> None:
+        """Where a tap opens (a Home Assistant path), set from the page a phone was saved from; anything else ignored."""
+        if not isinstance(url, str) or not _PATH.match(url) or url == self._url:
+            return
+        async with self._lock:
+            self._url = url
+            await self._async_save()
 
     def _has_service(self, service: str) -> bool:
         return self._hass.services.has_service(NOTIFY_DOMAIN, service)

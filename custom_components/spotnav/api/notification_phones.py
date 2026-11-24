@@ -8,10 +8,11 @@ commands (administrators only) and the app's `phone_notifications` webhook actio
                companion: {service, name, found} | null, app: {instant} | null, route: "app" | "companion" | "none"}],
      chargers: [{id, name}], loads: {chargers, pool, spa, sauna}, events: [every phone event, in order]}
 
-`{type: "spotnav/update_notification_phone", api_version: 1, phone, changes}` changes one phone (`{on?, events?,
+`{type: "spotnav/update_notification_phone", api_version: 1, phone, changes, url?}` changes one phone (`{on?, events?,
 chargers?}`, or one of `link: <id>`, `unlink: true`, `forget: true`) and answers the listing again, or `ok: false` with
 `spotnav_not_admin`, `spotnav_unknown_phone` or `spotnav_invalid_value` (nothing written). `route` is how a notice the
-app can show reaches the phone now; an untouched Companion phone has the id `notify:<service>`.
+app can show reaches the phone now; an untouched Companion phone has the id `notify:<service>`. `url`, the card's page,
+is where a tap on a notification opens for a charger that has no dashboard of its own.
 
 The webhook action, on a charger's webhook and on a site's:
 
@@ -145,6 +146,7 @@ async def websocket_notification_phones(
         vol.Optional("api_version"): object,
         vol.Required("phone"): object,
         vol.Required("changes"): object,
+        vol.Optional("url"): object,
     }
 )
 @websocket_api.async_response
@@ -161,6 +163,8 @@ async def websocket_update_notification_phone(
     if store is None:
         connection.send_result(msg["id"], _refusal(ERROR_UNAVAILABLE))
         return
+    # The page the card is on: where a tap on a notification opens, for a charger that has none of its own.
+    await store.async_set_url(msg.get("url"))
     try:
         await store.async_update(msg["phone"], msg["changes"])
     except PhoneRefusal as refusal:

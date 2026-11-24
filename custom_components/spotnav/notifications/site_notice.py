@@ -412,7 +412,8 @@ class SiteNotice:
             else:
                 names[item["load_id"]] = not_ready_load(language, item["kind"])
                 lines.append(not_ready_heat_line(language, item["kind"], time=_clock(moment), reach_c=float(item["reach_c"] or 0.0)))
-        url = url or DEFAULT_URL
+        store = phone_store(self._hass)
+        url = url or (None if store is None else store.url) or DEFAULT_URL
         if "#" not in url:
             url = f"{url}{SHEET_HASH}"
         actions = self._buttons(language, asking, ranked, names)
@@ -528,12 +529,13 @@ class SiteNotice:
             return bool(refs)
         self._sent.append(now)
         title, message, button = pool_season_text(language_of(self._hass.config.language))
+        url = (None if store is None else store.url) or DEFAULT_URL
         payload = {
             "title": title,
             "message": message,
             "data": {
-                "url": DEFAULT_URL,
-                "clickAction": DEFAULT_URL,
+                "url": url,
+                "clickAction": url,
                 "tag": self._season_tag,
                 "group": "spotnav",
                 "channel": "SpotNav",

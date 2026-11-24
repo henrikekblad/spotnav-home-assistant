@@ -925,8 +925,10 @@ class ChargerNotifier:
         return self._hass.services.has_service(NOTIFY_DOMAIN, service)
 
     def _url(self) -> str | None:
-        """What a tap opens: the dashboard the charger's settings were saved from."""
-        return self._store.settings(self._entry_id).notifications.url
+        """What a tap opens: the dashboard the charger's notifications were saved from, else the page the phones were
+        last saved from (`PhoneStore.url`)."""
+        phones = phone_store(self._hass)
+        return self._store.settings(self._entry_id).notifications.url or (None if phones is None else phones.url)
 
     def _payload(self, event: str, title: str, message: str, url: str | None) -> dict[str, Any]:
         url = url or DEFAULT_URL
