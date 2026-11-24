@@ -863,8 +863,16 @@ class BatteryControl:
     def report(self) -> dict[str, Any] | None:
         if not self.firmware_known():
             return None
-        report = self.reports.get(self.firmware_key())
-        return report if isinstance(report, dict) else None
+        key = self.firmware_key()
+        report = self.reports.get(key)
+        if not isinstance(report, dict):
+            return None
+        control = control_for(self.facts.brand)
+        current = report if control is None else gate.without_removed_hold(report, control.variant_names())
+        if current is not report:
+            # A hold passed in a variant the recipe no longer has: pending again, so the routine checks it.
+            report = self.reports[key] = dict(current)
+        return report
 
     def _phases_mapped(self) -> bool:
         """Whether the plant's phases A, B and C are shown to be the meter's L1, L2 and L3: only the verification's

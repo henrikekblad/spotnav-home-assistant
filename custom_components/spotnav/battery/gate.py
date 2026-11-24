@@ -539,6 +539,19 @@ def variants_tried(report: Mapping[str, Any] | None) -> tuple[Mapping[str, Any],
     return tuple(item for item in rows if isinstance(item, Mapping)) if isinstance(rows, list) else ()
 
 
+def without_removed_hold(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> Mapping[str, Any] | None:
+    """The report with a hold that passed in a variant the recipe no longer has (`names`; Sigenergy's Maximum Self
+    Consumption hold before 2026-11-23) taken back to pending, its variants tried kept: the routine checks the
+    recipe's hold on that plant again before control relies on it. The same report when nothing is stale."""
+    passed = hold_variant(report)
+    if report is None or passed is None or not names or passed in names:
+        return report
+    row = dict(_modes(report).get("hold") or {})
+    for name in ("outcome", "variant", "commanded_at", "decided_at"):
+        row.pop(name, None)
+    return {**report, "modes": {**_modes(report), "hold": row}}
+
+
 def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> str | None:
     """The hold variant control and a test action run (`names`: the brand's, in order): the one that passed, else the
     first not recorded as failed; `None` when every one failed or the brand has one hold."""

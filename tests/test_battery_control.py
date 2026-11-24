@@ -2368,15 +2368,24 @@ async def test_a_forced_test_hold_is_refused_when_every_variant_failed(
     assert control.trial is not None
 
 
-async def test_a_report_that_passed_a_hold_the_recipe_no_longer_has_runs_the_recipe_s_hold(
+async def test_a_report_that_passed_a_hold_the_recipe_no_longer_has_checks_the_recipe_s_hold_again(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     # A report stored before Sigenergy's hold became PV First only (2026-11-23): its passed Maximum Self Consumption
-    # hold is never written again.
+    # hold is never written again, and counts for nothing: the routine checks PV First before control holds.
     control, _plant = await _forced_hold_site(
         hass, monkeypatch, hass_storage, [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
     )
+    control.reports[control.firmware_key()]["modes"]["normal"] = {"mode": "normal", "outcome": "restored"}
     assert control.hold_variant() == "pv_first"
+    report = control.report()
+    assert report is not None and gate.report_status(report) == "pending" and control.state() == "waiting"
+    assert "hold" in gate.modes_to_run(report) and gate.needs_run(report)
+    assert report["modes"]["hold"]["variants"] == [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
+    # The routine's pass of PV First makes control run again.
+    report["modes"]["hold"] |= {"outcome": "obeyed", "variant": "pv_first"}
+    assert control.state() == "on"
+    # A forced test action holds as PV First meanwhile.
     await control.async_trial("hold", None, 5, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
     assert control.executor.control.variant == "pv_first"
