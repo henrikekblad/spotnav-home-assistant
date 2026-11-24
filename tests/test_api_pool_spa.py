@@ -233,3 +233,14 @@ async def test_the_pool_s_opt_ins_show_in_get_heat_and_the_shed_order_s_offers(h
     await controller.pool_spa_control.async_look(now)
     offers = controller.pool_spa.shed_offers(now)
     assert offers[LOAD_POOL_CIRCULATION].live is True
+
+
+async def test_without_prices_the_day_s_filtering_still_runs(hass: HomeAssistant, monkeypatch) -> None:
+    _charger, _site_entry, controller = await _site(hass)
+    shadow = controller.pool_spa
+    monkeypatch.setattr(shadow, "_prices", lambda _now: [])
+    now = dt_util.utcnow()
+    shadow.tick(now)
+    # Nothing filtered today yet: the need is run in any hour, never read as off (review S5).
+    assert shadow.would == {"action": "filter", "until": None, "reason": "need"}
+    assert shadow.would_at == now

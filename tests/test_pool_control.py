@@ -168,8 +168,8 @@ async def test_the_circulation_s_day_of_switchings_and_starts(hass: HomeAssistan
     shadow.pool_action("filter")
     await control.async_look(moment + MIN)
     ons = [call for call in devices.writes(CIRC) if call[2] == "on"]
-    # Twelve on/off writes a day (six cycles) come before the eight starts.
-    assert len(ons) == 6 and len(devices.writes(CIRC)) == 12 and control.pool.circ.reason == "write_cap"
+    # Eight starts a day; the offs are not counted against the on/off budget.
+    assert len(ons) == 8 and control.pool.circ.reason == "starts_cap"
     # Never more than two in an hour.
     times = control.pool.circ.budget.starts["circulation"]
     assert all(times[index + 2] - times[index] >= 60 * MIN for index in range(len(times) - 2))
@@ -346,7 +346,8 @@ async def test_a_cloud_heat_pump_follows_the_plan_slowly_and_never_steps_live(ha
     await looks(control, NOW, NOW + 40 * MIN, MIN)
     assert control.pool.hp.reason == "cloud_slow"
     offers = control.pool.offers(NOW + 40 * MIN, control.config().pool, beyond=True, until_max=None)  # type: ignore[arg-type]
-    assert LOAD_POOL_HEAT not in offers and LOAD_POOL_CIRCULATION in offers
+    # Not even through the local circulation's step while the cloud pump runs (it would be turned off with it).
+    assert LOAD_POOL_HEAT not in offers and LOAD_POOL_CIRCULATION not in offers
     status = control.pool.status(NOW, control.config().pool)  # type: ignore[arg-type]
     assert status["heat_pump"]["live"] is False and status["circulation"]["live"] is True
 
@@ -413,4 +414,10 @@ async def test_an_exit_never_leaves_the_heat_pump_on_without_circulation(hass: H
     shadow.raw = _pool(control_circulation=False, control_heat_pump=False)
     await looks(control, NOW + 2 * MIN, NOW + 4 * MIN)
     assert devices.state(PUMP) == "off" and devices.writes(PUMP) == [("climate.set_hvac_mode", PUMP, "off")]
-    assert not control.pool.hp.holds()
+    # The person's heat is kept and shown, and written back once the water moves (never dropped).
+    assert control.pool.hp.holds() and control.pool.hp.reason == "restore_waits"
+    status = control.pool.status(NOW + 4 * MIN, control.config().pool)["heat_pump"]  # type: ignore[arg-type]
+    assert status["state"] == "paused" and status["reason"] == "restore_waits"
+    devices.set(CIRC, "on")
+    await looks(control, NOW + 5 * MIN, NOW + 6 * MIN)
+    assert devices.state(PUMP) == "heat" and not control.pool.hp.holds()
