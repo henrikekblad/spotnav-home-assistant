@@ -187,6 +187,11 @@ describe("the house history", () => {
     // A day under 90 % measured, and one whose perfect plan saved under 5 kr, say why they have no share.
     expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-07'] td:last-child")?.textContent).toBe("ofullständigt dygn");
     expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-09'] td:last-child")?.textContent).toBe("för liten skillnad");
+    // A day the battery's own way lost money against no battery says so, not "0 %".
+    const villa = house("house_history/villa_month.json");
+    const byDay = villa.review!.by_day.map((day) => (day.date === "2026-11-06" ? { ...day, own_share: 0, share_note: "loss" as const } : day));
+    const lost = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: { ...villa, review: { ...villa.review!, by_day: byDay } } }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(lost.querySelector("[data-part='days'] tr[data-date='2026-11-06'] td:last-child")?.textContent).toBe("förlust");
   });
 
   it("opens a month with the shares of the perfect plan, summed so the day boundary washes out", () => {
@@ -252,7 +257,7 @@ describe("the house history", () => {
     const loss = shown({ clamped: ["own"], shares: { ...perfect.shares, own: 0 }, savings: { ...perfect.savings, own: -4700 } });
     expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-value")?.textContent).toBe("förlust 47 kr");
     expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-fill")).toBeNull();
-    expect(loss.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning förlust 47 kr av perfekt · SpotNav Balanserad 74 %");
+    expect(loss.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning: förlust 47 kr mot inget batteri · SpotNav Balanserad 74 % av perfekt");
     expect(loss.querySelector("[data-line='perfect-clamped']")).toBeNull();
     // A way that did not run on these days has no bar and no block; the battery's own figure not held, no note on it.
     const none = shown({ savings: { ...perfect.savings, max_profit: null, own: null }, shares: { ...perfect.shares, max_profit: null, own: null } });

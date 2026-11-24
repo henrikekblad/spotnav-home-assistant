@@ -61,17 +61,24 @@ function shareText(language: Language, perfect: PerfectFigures, way: PerfectWay,
   return lost(perfect, way) ? translate(language, "perfect.loss", { amount: wholeMoney(language, Math.abs(perfect.savings[way]!), money_) }) : percentWhole(language, value);
 }
 
-/** "Sigenergy AI 82 % of perfect · SpotNav Balanced 88 %" (a way that lost money: "loss 47 kr"); `null` when neither
- * has a share. */
+/** "Sigenergy AI 82 % of perfect · SpotNav Balanced 88 %"; a way that lost money against no battery says so with its
+ * amount ("Sigenergy AI: loss 47 kr against no battery"); `null` when neither has a share. */
 export function perfectHeadline(language: Language, perfect: PerfectFigures, ownName: string, money_: Money = null): string | null {
   const own = perfect.shares.own;
   const mode = PERFECT_WAYS.find((way) => way !== "own" && way === perfect.mode) ?? null;
   const plan = mode === null ? null : perfect.shares[mode];
+  const part = (way: PerfectWay, value: number): string =>
+    lost(perfect, way)
+      ? translate(language, "perfect.headlineLoss", { name: wayName(language, way, ownName), amount: wholeMoney(language, Math.abs(perfect.savings[way]!), money_) })
+      : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: percentWhole(language, value) });
   if (own !== null && mode !== null && plan !== null) {
-    return translate(language, "perfect.headline", { own: ownName, ownShare: shareText(language, perfect, "own", own, money_), plan: wayName(language, mode, ownName), planShare: shareText(language, perfect, mode, plan, money_) });
+    if (lost(perfect, "own") || lost(perfect, mode)) {
+      return `${part("own", own)} · ${part(mode, plan)}`;
+    }
+    return translate(language, "perfect.headline", { own: ownName, ownShare: percentWhole(language, own), plan: wayName(language, mode, ownName), planShare: percentWhole(language, plan) });
   }
   const [way, value] = own !== null ? (["own", own] as const) : mode !== null && plan !== null ? ([mode, plan] as const) : [null, null];
-  return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: shareText(language, perfect, way, value!, money_) });
+  return way === null ? null : part(way, value!);
 }
 
 /** The share rows (a bar each, 0-100 %; a way that lost money says so with its amount), the chosen mode marked; none

@@ -54,7 +54,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   `period_days` (the period's days up to yesterday) says how much of the period was reviewed; `by_day` has each
   reviewed day (the front's month calendar moved here) with its share of its perfect plan in hindsight (`own_share`,
   `plan_share`; `share_note` says why a day with a perfect plan has none: `partial`, under 90 % of it measured, or
-  `small`, the perfect plan saved under 5 kr); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
+  `small`, the perfect plan saved under 5 kr; or `loss` beside an `own_share` of 0: the battery's own way cost more
+  than no battery that day, which the card says instead of "0 %"); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
   over the period, where the day boundary washes out). `null` without a battery or with no reviewed day.
 * **What SpotNav saved** (`saving`): the battery, the car and the heat each against its own counterfactual
   (`site/spotnav_saving.py`), per day summed over the period: `{total, battery, car, heat, battery_days, car_days,
@@ -589,6 +590,8 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
 #: Why a day with a perfect plan has no share: under 90 % of it measured, or too small a difference to compare.
 SHARE_PARTIAL: Final = "partial"
 SHARE_SMALL: Final = "small"
+#: The battery's own way cost more than no battery that day: its share stands at 0 %, the card says "loss".
+SHARE_LOSS: Final = "loss"
 
 
 def _day_shares(review: DayReview) -> dict[str, Any]:
@@ -600,6 +603,8 @@ def _day_shares(review: DayReview) -> dict[str, Any]:
     note = None
     if facit is not None and facit.saving is not None:
         note = SHARE_PARTIAL if not facit.whole else SHARE_SMALL if own is not None and own.share is None else None
+        if note is None and own is not None and own.share is not None and own.saving < 0:
+            note = SHARE_LOSS
     return {
         "own_share": None if own is None or own.share is None else round(own.share, 1),
         "plan_share": None if plan is None or plan.share is None else round(plan.share, 1),
