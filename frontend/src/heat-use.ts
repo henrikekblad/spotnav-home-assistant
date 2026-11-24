@@ -22,6 +22,7 @@ import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
+import { LOAD_COLOUR_VALUE } from "./load-colours";
 
 export const USE_CLASSES = {
   head: "spotnav-heat-use-head",
@@ -326,9 +327,9 @@ export const USE_STYLES = `
   [data-series="use-zone-1"] { --spotnav-tile-colour: #8e6bbf; }
   [data-series="use-zone-2"] { --spotnav-tile-colour: #4c9f70; }
   [data-series="use-zone-3"] { --spotnav-tile-colour: #c06c9a; }
-  [data-series="use-pool"] { --spotnav-tile-colour: var(--spotnav-heat-use-pool-colour, #2fa39a); }
-  [data-series="use-spa"] { --spotnav-tile-colour: var(--spotnav-heat-use-spa-colour, #c4703f); }
-  [data-series="use-sauna"] { --spotnav-tile-colour: var(--spotnav-heat-use-sauna-colour, #8c5a3a); }
+  [data-series="use-pool"] { --spotnav-tile-colour: var(--spotnav-heat-use-pool-colour, ${LOAD_COLOUR_VALUE.pool_heat}); }
+  [data-series="use-spa"] { --spotnav-tile-colour: var(--spotnav-heat-use-spa-colour, ${LOAD_COLOUR_VALUE.spa}); }
+  [data-series="use-sauna"] { --spotnav-tile-colour: var(--spotnav-heat-use-sauna-colour, ${LOAD_COLOUR_VALUE.sauna}); }
   [data-series="use-other"] { --spotnav-tile-colour: color-mix(in srgb, var(--secondary-text-color, #727272) 70%, transparent); }
   .${U.head} {
     display: flex;

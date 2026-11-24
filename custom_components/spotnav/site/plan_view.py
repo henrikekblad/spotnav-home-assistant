@@ -25,9 +25,9 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   published), at most `MAX_HOURS`; `MIN_HOURS` from the running hour without prices. Never a calendar day.
 * **`hours`**: `price` and `sell` the hour's mean buy (every fee) and sell price (minor per kWh, `null` unpriced);
   `house_kw` the house forecast (the whole house without the cars and the battery: heat and the water heater are in
-  it), `sun_kw` the sun's forecast as the plans count on it (`null` without a solar forecast); `net_kw` from the grid
-  (export negative): the house, the cars and the battery's power (+ charging), less the sun unless the house figure
-  already has it taken off (`house.sun_in_house`). Every load counts in it as planned, also one only watched
+  it) less what it has learned of the pool, the spa and the sauna in the hours they are planned (below), `sun_kw` the sun's forecast as the plans count on it (`null` without a solar forecast); `net_kw` from the grid
+  (export negative): the house, the cars, the pool, the spa, the sauna and the battery's power (+ charging), less the
+  sun unless the house figure already has it taken off (`house.sun_in_house`). Every load counts in it as planned, also one only watched
   (`would`: the answer then says so). `ceiling_kw` and `ceiling` the lowest limit that applies to the hour:
   `import_target` or `power_level` (the hold the import target keeps), `power_tariff` (the soft ceiling under the
   demand charge), else `fuse` (the main fuse as total power); `null` where none is known.
@@ -37,11 +37,20 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   heat where the meter's split knows it), each floor-heating zone (`heat_zone`: `level` -1 in its lowered hours, `kw`
   null), the plain water heater (`water_heater`: on in its windows at its learnt power), the pool's circulation
   (`pool_circulation`: `filter` or `extra`, summary `need_h`, `planned_h`) and heat pump (`pool_heat`: `heat`, summary
-  `heat_h`, `planned_h`), watched, at their entered powers (`kw` null without), with the reasons `sun`, `cheap`, `need`
-  and `extra`; the spa (`spa`) and the sauna (`sauna`), watched: `heat` in their heat-up quarters (reason `sun`,
-  `cheap`, `bath` or `now`) and `hold` at the target after it, summary `target_c`, `ready_at`, `heat_h`; their `id` is
-  their stable load id. `in_house` loads are part of
-  `house_kw` (drawn inside it, never added). `state` is `live` where SpotNav steers it now, `would` where it only
+  `heat_h`, `planned_h`), at their powers as the shadow counts them (entered, else learned, else typical:
+  `loads/learned_kw.py`), with the reasons `sun`, `cheap`, `need` and `extra`; the spa (`spa`) and the sauna
+  (`sauna`): `heat` in their heat-up quarters (reason `sun`, `cheap`, `bath` or `now`, kW for the quarters' share of
+  the hour) and `hold` at the target after it (`kw` null: its thermostat's draw is not planned), summary `target_c`,
+  `ready_at`, `heat_h`; their `id` is their stable load id. `in_house` loads (heat, the zones, the water heater) are
+  part of `house_kw` (drawn inside it, never added); the cars, the battery, the pool, the spa and the sauna are not
+  (`in_house` false): they come on top of it, in `net_kw` and in the highest hour.
+* **No double count** (`learned_kw`, per `pool`, `spa`, `sauna`): the house forecast is learned from the import less
+  the chargers, so a load that ran in the same hours before (a sauna every evening) is partly in it already. Each
+  hour, what the forecast holds of it is taken off `house_kw`: the load's mean energy in the same local hour over the
+  days its energy is counted (`pool/runtime.energy_hours`), at most what is planned for it in the hour and at most
+  the house figure. An approximation: the forecast is not learned net of these loads (the cars' charging is kept out
+  of it by measurement; the loads' energy is only counted for `DAYS_KEPT` days, too short for the forecast's eight
+  weeks), so the mean of the recent days stands for what it learned. `state` is `live` where SpotNav steers it now, `would` where it only
   watches (what it would do, never claimed as done). `runs` are the hours in words: contiguous hours with one
   `what` (`charge`, `grid_charge`, `sun_charge`, `cover`, `sell`, `on`, `lower`, `preheat`, `night`, `away`)
   and the plan's `reason` where it has one; the shed order under the ceiling (`site/shed_order.py`) shows as the
@@ -60,6 +69,7 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -304,6 +314,14 @@ class PlanInputs:
     history_first: datetime | None = None
     #: What will not be ready in time across every deadline (`site/not_ready.py`), `None` when all fit.
     not_ready: dict[str, Any] | None = None
+    #: What the house forecast has learned of each own-layer load (`pool`, `spa`, `sauna`) per hour (kW): see the
+    #: module's "No double count".
+    learned_kw: Mapping[str, Mapping[datetime, float]] = field(default_factory=dict)
+
+
+#: The loads drawn as layers of their own on top of the house, by the group whose energy is counted
+#: (`pool/runtime.ENERGY_KINDS`).
+OWN_LAYER_GROUP: Final = {KIND_POOL_CIRCULATION: "pool", KIND_POOL_HEAT: "pool", KIND_SPA: "spa", KIND_SAUNA: "sauna"}
 
 
 def _r(value: float | None, digits: int = 3) -> float | None:
@@ -599,7 +617,7 @@ def _water_heater(heater: WaterHeaterPlan, hours: Sequence[datetime]) -> dict[st
 
 
 def _pool(pool: PoolPlanView, hours: Sequence[datetime]) -> list[dict[str, Any]]:
-    """The pool's circulation (`filter`, `extra`) and its heat pump (`heat`), watched: drawn in the house."""
+    """The pool's circulation (`filter`, `extra`) and its heat pump (`heat`): layers of their own."""
     loads: list[dict[str, Any]] = []
     if pool.circulation is not None:
         chosen = pool.circulation
@@ -608,7 +626,7 @@ def _pool(pool: PoolPlanView, hours: Sequence[datetime]) -> list[dict[str, Any]]
         kw = [None if pool.circulation_kw is None else (pool.circulation_kw if start in chosen else 0.0) for start in hours]
         loads.append(
             _load(
-                "pool_circulation", KIND_POOL_CIRCULATION, pool.circulation_name, False, True, kw, None,
+                "pool_circulation", KIND_POOL_CIRCULATION, pool.circulation_name, False, False, kw, None,
                 _runs(hours, what, kw, reason),
                 {"need_h": pool.need_h, "planned_h": float(sum(1 for item in what if item is not None))},
             )
@@ -620,7 +638,7 @@ def _pool(pool: PoolPlanView, hours: Sequence[datetime]) -> list[dict[str, Any]]
         kw = [None if pool.heat_pump_kw is None else (pool.heat_pump_kw if start in chosen else 0.0) for start in hours]
         loads.append(
             _load(
-                "pool_heat", KIND_POOL_HEAT, pool.heat_pump_name, False, True, kw, None,
+                "pool_heat", KIND_POOL_HEAT, pool.heat_pump_name, False, False, kw, None,
                 _runs(hours, what, kw, reason),
                 {"heat_h": pool.heat_h, "planned_h": float(sum(1 for item in what if item is not None))},
             )
@@ -630,7 +648,7 @@ def _pool(pool: PoolPlanView, hours: Sequence[datetime]) -> list[dict[str, Any]]
 
 def _deadline(load: DeadlinePlanView, hours: Sequence[datetime]) -> dict[str, Any]:
     """The spa or the sauna, watched: its heat-up (`heat`, with the reason of its first quarter in the hour) and its
-    hold at the target (`hold`), drawn in the house."""
+    hold at the target (`hold`): a layer of its own."""
     what: list[str | None] = []
     reason: list[str | None] = []
     kw: list[float | None] = []
@@ -650,13 +668,45 @@ def _deadline(load: DeadlinePlanView, hours: Sequence[datetime]) -> dict[str, An
             kw.append(None if load.kw is None else 0.0)
     kind = KIND_SPA if load.kind == KIND_SPA else KIND_SAUNA
     return _load(
-        kind, kind, load.name, False, True, kw, None, _runs(hours, what, kw, reason),
+        kind, kind, load.name, False, False, kw, None, _runs(hours, what, kw, reason),
         {
             "target_c": load.target_c,
             "ready_at": None if load.ready_at is None else load.ready_at.isoformat(),
             "heat_h": float(len(load.quarters)) / 4.0,
         },
     )
+
+
+def learned_share(energy: Mapping[datetime, float], hours: Sequence[datetime], tz: str, now: datetime, max_days: int) -> dict[datetime, float]:
+    """Per window hour, a load's mean energy (kWh = mean kW) in the same local hour of the day over the days its energy
+    has been counted (from its first counted hour, at most `max_days` back, at least one day): what the house
+    forecast has learned of it, as near as the recent days say (see the module's "No double count")."""
+    from .. import time_zones  # noqa: PLC0415
+
+    if not energy:
+        return {}
+    zone = time_zones.require_zone(tz)
+    first = min(energy)
+    days = max(1, min(max_days, math.ceil((now - first).total_seconds() / 86400.0)))
+    oldest = now - timedelta(days=days)
+    by_hour: dict[int, float] = {}
+    for start, kwh in energy.items():
+        if oldest <= start < now:
+            local = start.astimezone(zone).hour
+            by_hour[local] = by_hour.get(local, 0.0) + kwh
+    return {start: by_hour[local] / days for start in hours if (local := start.astimezone(zone).hour) in by_hour}
+
+
+def learned_in_house(inputs: PlanInputs, loads: Sequence[dict[str, Any]], index: int, start: datetime, house: float) -> float:
+    """What the house forecast holds of the own-layer loads planned in the hour (kW), taken off `house_kw` (see the
+    module's "No double count"): per group its learned share, at most what is planned of it; in all at most `house`."""
+    planned: dict[str, float] = {}
+    for load in loads:
+        group = OWN_LAYER_GROUP.get(load["kind"])
+        if group is not None and not load["in_house"]:
+            planned[group] = planned.get(group, 0.0) + max(0.0, load["kw"][index] or 0.0)
+    taken = sum(min(kw, max(0.0, (inputs.learned_kw.get(group) or {}).get(start, 0.0))) for group, kw in planned.items())
+    return min(house, taken)
 
 
 def ceiling_at(inputs: PlanInputs, start: datetime) -> tuple[float | None, str | None]:
@@ -697,8 +747,11 @@ def plan_view(inputs: PlanInputs) -> dict[str, Any]:
     peak: tuple[float, datetime, float | None, str | None] | None = None
     for index, start in enumerate(hours):
         house = inputs.house.get(start)
+        if house is not None:
+            house = max(0.0, house - learned_in_house(inputs, loads, index, start, house))
         sun_kw = None if sun is None else sun.get(start, 0.0)
-        # The cars and the battery come on top of the house; the in-house loads are inside its figure.
+        # The cars, the battery, the pool, the spa and the sauna come on top of the house; the in-house loads are
+        # inside its figure.
         moved = sum(load["kw"][index] or 0.0 for load in loads if not load["in_house"])
         taken = 0.0 if inputs.sun_in_house or sun_kw is None else sun_kw
         net = None if house is None else house + moved - taken

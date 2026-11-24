@@ -261,3 +261,17 @@ def test_a_day_the_clock_changes_has_its_own_hours() -> None:
     assert len(day_hours(date(2026, 10, 25), TZ)) == 25
     assert len(day_hours(date(2026, 3, 29), TZ)) == 23
     assert day_hours(DAY, TZ)[0] == datetime(2026, 11, 17, tzinfo=ZONE).astimezone(timezone.utc)
+
+
+def test_a_sauna_gone_by_is_its_own_layer_taken_out_of_the_house_measured() -> None:
+    """The house measured holds the sauna's draw: shown as a layer of its own, the house less it, the net as measured."""
+    from custom_components.spotnav.site.decision_ledger import HourRow, LoadRow
+
+    hour = hour_number(at(41))
+    row = HourRow(hour, 60, 0, 120.0, 40.0, 11.4, 11.0, None, None, 2.4)
+    sauna = LoadRow(hour, "sauna", "sauna", "Bastu", True, None, None, 9.0, None, None)
+    answer = past_view(site_id="s", tz=TZ, now=at(48 + 10), day=DAY, rows=[(row, [sauna])], history_first=at(20))
+    index = [item["start"] for item in answer["hours"]].index(at(41).isoformat())
+    lane = _load(answer, "sauna")
+    assert lane["in_house"] is False and lane["kw"][index] == 9.0
+    assert answer["hours"][index]["house_kw"] == 2.0 and answer["hours"][index]["net_kw"] == 11.4

@@ -13,6 +13,7 @@ import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwText,
 import { localDayKey } from "./chart";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
+import { LOAD_COLOURS, LOAD_COLOUR_VARS, type OwnLoadKind } from "./load-colours";
 import en from "./i18n/en.json";
 import { browserStore, readPlanSectionOpen, writePlanSectionOpen, type PlanSection, type PreferenceStore } from "./chart-preference";
 import { choiceLabel, decodeDoesNotFit, doesNotFitText, type DoesNotFit, type DoesNotFitChoiceCode } from "./does-not-fit";
@@ -351,12 +352,13 @@ export const PLAN_CLASSES = {
 const P = PLAN_CLASSES;
 
 /** A layer of the stacked chart: its colour (a custom property) and its words. */
-type Layer = "house" | "heat" | "water_heater" | "car" | "battery_in" | "sun" | "battery_out";
+type Layer = "house" | "heat" | "water_heater" | "car" | OwnLoadKind | "battery_in" | "sun" | "battery_out";
 const LAYER_COLOUR: Record<Layer, string> = {
   house: "var(--spotnav-house-colour)",
   heat: "var(--spotnav-heat-colour)",
   water_heater: "var(--spotnav-plan-water-colour)",
   car: "var(--spotnav-flow-car)",
+  ...LOAD_COLOURS,
   battery_in: "var(--spotnav-battery-colour)",
   sun: "var(--spotnav-sun-colour)",
   battery_out: "var(--spotnav-flow-battery)",
@@ -366,13 +368,17 @@ const LAYER_WORD: Record<Layer, TranslationKey> = {
   heat: "house.plan.layer.heat",
   water_heater: "house.plan.layer.waterHeater",
   car: "house.plan.layer.car",
+  pool_heat: "house.plan.load.pool_heat",
+  pool_circulation: "house.plan.load.pool_circulation",
+  spa: "house.plan.load.spa",
+  sauna: "house.plan.load.sauna",
   battery_in: "house.plan.layer.batteryIn",
   sun: "house.plan.layer.sun",
   battery_out: "house.plan.layer.batteryOut",
 };
 
 export const PLAN_STYLES = `
-  .${P.panel} {
+  .${P.panel} {${LOAD_COLOUR_VARS}
     --spotnav-plan-water-colour: var(--spotnav-water-heater, #c8607a);
     --spotnav-plan-ceiling: var(--error-color, #db4437);
     --spotnav-plan-cheap: color-mix(in srgb, var(--success-color, #43a047) 35%, transparent);
@@ -684,6 +690,12 @@ function layerOf(load: PlanLoad): Layer | null {
       return "heat";
     case "water_heater":
       return "water_heater";
+    case "pool_heat":
+    case "pool_circulation":
+    case "spa":
+    case "sauna":
+      // Layers of their own on top of the house (`in_house` false), in the net from the grid.
+      return load.kind;
     default:
       return null;
   }
@@ -949,6 +961,9 @@ function legend(doc: Document, language: Language, plan: PlanAnswer): HTMLElemen
   if (kinds.has("heat")) layers.push("heat");
   if (kinds.has("water_heater")) layers.push("water_heater");
   if (kinds.has("car")) layers.push("car");
+  for (const own of ["pool_heat", "pool_circulation", "spa", "sauna"] as const) {
+    if (kinds.has(own)) layers.push(own);
+  }
   if (kinds.has("home_battery")) layers.push("battery_in");
   if (plan.hours.some((hour) => hour.sun_kw !== null) && !plan.sun_in_house) layers.push("sun");
   if (kinds.has("home_battery")) layers.push("battery_out");

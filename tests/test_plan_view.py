@@ -326,7 +326,7 @@ def test_a_grid_charge_that_ran_some_quarters_says_its_power_and_minutes() -> No
     assert run["kw"] == 3.3 and run["active_min"] is None
 
 
-def test_the_pools_circulation_and_heat_pump_are_watched_lanes_inside_the_house() -> None:
+def test_the_pools_circulation_and_heat_pump_are_watched_layers_of_their_own() -> None:
     from dataclasses import replace
 
     from custom_components.spotnav.site.plan_view import PoolPlanView
@@ -346,17 +346,21 @@ def test_the_pools_circulation_and_heat_pump_are_watched_lanes_inside_the_house(
     _write_or_compare("pool.json", answer)
     circulation, heat = _load(answer, "pool_circulation"), _load(answer, "pool_heat")
     assert (circulation["id"], heat["id"]) == ("pool_circulation", "pool_heat")
-    assert circulation["state"] == heat["state"] == "would" and circulation["in_house"] and heat["in_house"]
+    assert circulation["state"] == heat["state"] == "would" and not circulation["in_house"] and not heat["in_house"]
     assert [(run["what"], run["reason"], run["kwh"]) for run in circulation["runs"]] == [
         ("filter", "cheap", 1.2), ("filter", "sun", 0.8), ("extra", "extra", 0.4)
     ]
     assert [(run["what"], run["reason"], run["kw"]) for run in heat["runs"]] == [("heat", "sun", 1.6)]
     assert circulation["summary"] == {"need_h": 5.0, "planned_h": 6.0} and heat["summary"] == {"heat_h": 2.0, "planned_h": 2.0}
-    # In the house: the net is as without them.
-    assert [row["net_kw"] for row in answer["hours"]] == [row["net_kw"] for row in plan_view(base)["hours"]]
+    # On top of the house: the net rises by their planned power, the house figure as without them (nothing learned).
+    without = plan_view(base)["hours"]
+    for index, row in enumerate(answer["hours"]):
+        added = (circulation["kw"][index] or 0.0) + (heat["kw"][index] or 0.0)
+        assert row["house_kw"] == without[index]["house_kw"]
+        assert row["net_kw"] == round(without[index]["net_kw"] + added, 2)
 
 
-def test_the_spa_and_the_sauna_are_watched_lanes_with_their_heat_up_and_hold() -> None:
+def test_the_spa_and_the_sauna_are_watched_layers_with_their_heat_up_and_hold() -> None:
     from dataclasses import replace
 
     from custom_components.spotnav.site.plan_view import DeadlinePlanView
@@ -374,13 +378,50 @@ def test_the_spa_and_the_sauna_are_watched_lanes_with_their_heat_up_and_hold() -
     answer = plan_view(replace(villa_inputs(), deadlines=(spa, sauna)))
     _write_or_compare("spa_sauna.json", answer)
     lane = _load(answer, "spa")
-    assert lane["id"] == "spa" and lane["state"] == "would" and lane["in_house"]
+    assert lane["id"] == "spa" and lane["state"] == "would" and not lane["in_house"]
     assert [(run["what"], run["reason"]) for run in lane["runs"]] == [("heat", "cheap"), ("hold", None)]
     assert lane["summary"] == {"target_c": 38.0, "ready_at": (at(31) + timedelta(minutes=30)).isoformat(), "heat_h": 1.5}
     hour = [row["start"] for row in answer["hours"]].index(at(31).isoformat())
     assert lane["kw"][hour] == 1.5
     sauna_lane = _load(answer, "sauna")
     assert [(run["what"], run["kwh"]) for run in sauna_lane["runs"]] == [("heat", 6.75)]
+    # The booked sauna (9 kW, 17:15-18:00) is in the net from the grid and the highest hour.
+    sauna_hour = [row["start"] for row in answer["hours"]].index(at(41).isoformat())
+    base_hours = plan_view(villa_inputs())["hours"]
+    assert answer["hours"][sauna_hour]["net_kw"] == round(base_hours[sauna_hour]["net_kw"] + 6.75, 2)
+    assert answer["summary"]["peak_kw"] == max(row["net_kw"] for row in answer["hours"])
+    assert answer["summary"]["peak_kw"] >= answer["hours"][sauna_hour]["net_kw"] > base_hours[sauna_hour]["net_kw"]
+
+
+def test_what_the_house_forecast_learned_of_a_regular_sauna_is_not_counted_twice() -> None:
+    """A sauna every evening is partly in the house forecast already: its learned share is taken off the house in
+    the hours it is planned, at most what is planned, never below 0; elsewhere the house is as forecast."""
+    from dataclasses import replace
+
+    from custom_components.spotnav.site.plan_view import DeadlinePlanView, learned_share
+
+    sauna = DeadlinePlanView("sauna", {at(41) + timedelta(minutes=15 * q): "bath" for q in range(4)}, kw=9.0, target_c=80.0)
+    base = replace(villa_inputs(), deadlines=(sauna,))
+    alone = plan_view(base)
+    hours = [datetime.fromisoformat(row["start"]) for row in alone["hours"]]
+    # Ten days counted, a sauna at 9 kWh in the same local hour on two of them: 1.8 kW learned for that hour.
+    local_hour = at(41)
+    energy = {local_hour - timedelta(days=day): 9.0 for day in range(1, 3)}
+    energy[NOW - timedelta(days=10)] = 0.5  # counted since ten days back
+    share = learned_share(energy, hours, TZ, NOW, 14)
+    assert share[at(41)] == 1.8
+    answer = plan_view(replace(base, learned_kw={"sauna": share}))
+    index = hours.index(at(41))
+    assert answer["hours"][index]["house_kw"] == round(alone["hours"][index]["house_kw"] - 1.8, 2)
+    assert answer["hours"][index]["net_kw"] == round(alone["hours"][index]["net_kw"] - 1.8, 2)
+    # An hour without a planned sauna keeps the house as forecast, whatever was learned for it.
+    other = hours.index(at(40))
+    big = {start: 50.0 for start in hours}
+    answer = plan_view(replace(base, learned_kw={"sauna": big}))
+    assert answer["hours"][other]["house_kw"] == alone["hours"][other]["house_kw"]
+    # At most the house figure: never below 0, the sauna's own 9 kW stay.
+    assert answer["hours"][index]["house_kw"] == 0.0
+    assert answer["hours"][index]["net_kw"] == round(alone["hours"][index]["net_kw"] - alone["hours"][index]["house_kw"], 2)
 
 
 def test_what_will_not_be_ready_across_every_deadline_is_one_block_for_the_site() -> None:
