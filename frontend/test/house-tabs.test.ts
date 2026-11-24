@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
-import { decodeHouse, type HouseAnswer } from "../src/house-model";
+import { decodeEnergyFlow, decodeHouse, type HouseAnswer } from "../src/house-model";
 import { decodeHouseNow, dotLap, fitName, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicHeight, schematicLines, type HouseNow } from "../src/house-now";
 import { energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
 import { choiceLabel, dayOnly, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
@@ -420,6 +420,26 @@ describe("the period tabs' content", () => {
     // A house alone has no sun, battery or heat tile, and none for what it neither sold nor charged.
     const alone = history("house_alone_year.json");
     expect(flowTiles(alone.energy_flow!).map((tile) => tile.key)).toEqual(["house", "bought"]);
+  });
+
+  it("Energy flow: one plain line with the inverter's loss for a battery read at the battery, from 0.1 kWh", () => {
+    const answer = house();
+    const flow = answer.energy_flow!;
+    expect(flow.inverter_loss_kwh).toBeNull();
+    const line = (shown: HouseAnswer, ui: Partial<HouseUi> = { tab: "flow" }, tabs: Partial<HouseTabsData> = {}) =>
+      render(shown, ui, tabs, "sv").querySelector("[data-line='inverter-loss']")?.textContent ?? null;
+    expect(line(answer)).toBeNull();
+    expect(line({ ...answer, energy_flow: { ...flow, inverter_loss_kwh: 1.8 } })).toBe("Växelriktarens förluster i dag: 1,8 kWh (räknade bort från huset)");
+    expect(line({ ...answer, energy_flow: { ...flow, inverter_loss_kwh: 0.09 } })).toBeNull();
+    // A month: the period's loss, without "today".
+    const month = history("villa_month.json");
+    const choice = { period: "month" as const, date: null };
+    expect(line(answer, { tab: "flow", choice }, { history: { kind: "ready", answer: { ...month, energy_flow: { ...month.energy_flow!, inverter_loss_kwh: 31.4 } } } })).toBe(
+      "Växelriktarens förluster: 31,4 kWh (räknade bort från huset)",
+    );
+    // From a backend before it: none.
+    const { inverter_loss_kwh: _loss, ...older } = read("house", "villa_battery_sun.json")["energy_flow"] as Record<string, unknown>;
+    expect(decodeEnergyFlow(older)?.inverter_loss_kwh).toBeNull();
   });
 
   it("Energy chart: today's hours with the forecast, a month by the day and a year by the month", () => {

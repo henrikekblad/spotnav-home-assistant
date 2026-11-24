@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "jetzt {pct}",
   "house.flow.socEnd": "Ende {pct}",
   "house.flow.through": "Bis {time}.",
+  "house.flow.inverterLoss": "Verluste des Wechselrichters heute: {kwh} (vom Haus abgezogen)",
+  "house.flow.inverterLossPeriod": "Verluste des Wechselrichters: {kwh} (vom Haus abgezogen)",
   "house.flow.rule": "Die Zähler sagen nicht, welche Quelle was versorgt hat: Jede Stunde geht die Sonne zuerst ins Haus, dann ins Auto, in die Batterie und ins Netz; die Batterie versorgt das Haus vor dem Netz.",
   "house.flow.ruleQuarter": "Die Zähler sagen nicht, welche Quelle was versorgt hat: Jede Viertelstunde geht die Sonne zuerst ins Haus, dann ins Auto, in die Batterie und ins Netz; die Batterie versorgt das Haus vor dem Netz.",
   "house.flow.waiting": "Der Energiefluss des Tages erscheint, sobald die ersten fünf Minuten erfasst sind.",

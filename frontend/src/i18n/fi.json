@@ -1378,6 +1378,8 @@
   "house.flow.socNow": "nyt {pct}",
   "house.flow.socEnd": "lopussa {pct}",
   "house.flow.through": "Klo {time} asti.",
+  "house.flow.inverterLoss": "Invertterin häviöt tänään: {kwh} (vähennetty talosta)",
+  "house.flow.inverterLossPeriod": "Invertterin häviöt: {kwh} (vähennetty talosta)",
   "house.flow.rule": "Mittarit eivät kerro, mikä lähde meni mihin: joka tunti aurinko menee ensin taloon, sitten autoon, akkuun ja verkkoon; akku kattaa talon ennen verkkoa.",
   "house.flow.ruleQuarter": "Mittarit eivät kerro, mikä lähde meni mihin: joka vartti aurinko menee ensin taloon, sitten autoon, akkuun ja verkkoon; akku kattaa talon ennen verkkoa.",
   "house.flow.waiting": "Päivän energiavirta näkyy, kun ensimmäiset viisi minuuttia on mitattu.",
