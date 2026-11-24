@@ -211,6 +211,42 @@ The setting is offered only for a car whose integration has a wake SpotNav knows
 | Teslemetry (`teslemetry`) | The car's **Wake** button. |
 | Tessie (`tessie`) | The car's **Wake** button. |
 
+## Starting the charge in the car
+
+A car can stop its own charge: a Tesla stopped from the Tesla app, or by a service linked to the car, stays stopped
+whatever the charger does. The charger offers current, the connector says the car asks for none (`SuspendedEV`;
+Easee's *Ready to charge* or *Completed* with no current), and only a start from the car's side clears it.
+
+So when, in a charge SpotNav runs (the plan's charge in an open window, a person's Start, a solar or hybrid charge
+with enough sun, the catch-up after a missed departure, the car's minimum level), the charger offers current (not
+held by load balancing or by the charger itself, no phase switch settling, the start answered) and the car has taken
+nothing for two minutes with the connector saying it refuses, and the car's level (a reading or the estimate) is at
+least 2 percentage points below both the target and the car's own limit, SpotNav turns the car's charge switch **on**
+once:
+
+| Integration | Switch |
+| --- | --- |
+| Tesla Fleet (`tesla_fleet`) | The car's **Charge** switch (`<vin>-charge_state_user_charge_enable_request`). |
+| Teslemetry (`teslemetry`) | The car's **Charge** switch (`<vin>-charge_state_user_charge_enable_request`). |
+| Tessie (`tessie`) | The car's **Charge** switch (`<vin>-charge_state_charge_enable_request`). |
+
+The card's status says *The car took no current; SpotNav started the charge in the car* until the car draws. SpotNav
+never turns the switch off and restores nothing: the switch reads on only while the car charges, so it cannot say what
+the car's own setting was, and a stop from the car's side is exactly what made the charger's current go unused. The
+charger keeps all control of starting and stopping, as before. There is no setting.
+
+It is done at most once per plug-in, and never within 30 minutes of the last start in the same car; the start is
+stored first, so a restart does not repeat it. The call may wake the car, and Teslemetry bills commands, so a few a
+month at most. A call that fails or times out is only logged.
+
+When the car still takes nothing two minutes after that start, or it has no such switch (another car, a switch that
+is unavailable or disabled), the person is told once per plug-in (*The car is not taking current at 65 % though the
+target is 80 %. Start the charge in the car's app.*, [notifications](notifications.md)), and the card's status says
+the same until the car draws or is unplugged. The car ending the charge is handled as before, its five minutes
+counted from the start in the car. A full car, or one at its own limit, is never started nor told about. The charger's
+diagnostics show each car's last start (`vehicle_charge_start`: when, which switch, for which plug-in, the result, and
+the plug-in whose notice was told).
+
 ## Vehicle charge limit
 
 If the vehicle's own integration exposes a charge-limit entity, SpotNav shows the limit in the

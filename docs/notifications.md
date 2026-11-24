@@ -169,6 +169,14 @@ phones hear "The charger keeps charging although it was stopped". The card's sta
 person presses Start, Stop or Resume, or the car is unplugged. This one is not held back by a "did not
 start" told shortly before it.
 
+The same event also tells when **the car takes no current** the charger offers in a charge SpotNav runs (the plan's,
+a person's Start, the sun's, a catch-up after a missed departure, the car's minimum level), below both its target and
+its own charge limit, and SpotNav could not get it to take the charge: "The car is not taking current at 65 % though
+the target is 80 %. Start the charge in the car's app." It is told once per plug-in, from any charge, and in place of
+"the car takes no current" above. For a Tesla SpotNav first starts the charge in the car itself
+([target state of charge](target-soc.md#starting-the-charge-in-the-car)); the notice comes only when the car still
+takes nothing two minutes after that, or the car has no switch SpotNav can use.
+
 ## Not ready in time across the site
 
 A car's departure is not the only deadline: a [spa's](heat-pumps.md) booked bath and a sauna's session are too, and
