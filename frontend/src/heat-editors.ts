@@ -600,6 +600,7 @@ function loadEditor(input: HeatEditorInput, key: HeatSettingKey | "away", prefix
             [{ value: "", label: t("heat.settings.poolSensorPump"), help: t("heat.settings.poolSensorPumpHelp") }, ...(poolChoices?.water_sensor ?? []).map(ranked)],
             pool.water_sensor,
             (value) => input.write({ pool: { water_sensor: value } }),
+            t("heat.settings.poolSensorHelp"),
           );
     case "poolFilterHours":
       return pool === null

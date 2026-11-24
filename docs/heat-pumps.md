@@ -116,8 +116,8 @@ out until there is a path SpotNav steers.
   pump, circulation and water sensor (a detected pool is confirmed once), the filtering hours (by default the water
   temperature divided by three, 2 to 12 hours), the spa's lowest temperature, the heaters' power, the sauna and a relay
   sauna's safety declaration, each load's own switch (**Control the circulation**, **Control the pool heat pump**,
-  **Control the spa**, **Control the sauna**) and the phones that hear about them are in the gear's **Heating**
-  section. Under each load the tab says whether SpotNav controls it, has paused it (and why, until when) or has handed
+  **Control the spa**, **Control the sauna**) and the phones that hear about them are in the gear's own **Pool**,
+  **Spa** and **Sauna** sections ([the settings](pool-spa.md#the-settings)). Under each load the tab says whether SpotNav controls it, has paused it (and why, until when) or has handed
   it back to you after a change it did not make. Plan shows the
   pool's, the spa's and the sauna's next hours under the day's chart, and Use stacks their energy as parts of their own
   (counted from when they ran and their power, kept 14 days).

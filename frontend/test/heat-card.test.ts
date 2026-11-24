@@ -9,7 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { HEAT_CARD_ELEMENT, instantToLocal, localToInstant, parseHeatConfig, SpotnavHeatCard, writeError } from "../src/heat-card";
 import { decodeHeat, decodeHeatWrite, type HeatAnswer } from "../src/heat-model";
 import { heatEditor } from "../src/heat-editors";
-import { controlLine, heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
+import { controlLine, heatBody, heatSettingsSection, loadSettingsSections, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
 import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard, HEAT_PICKER_ENTRY } from "../src/index";
@@ -382,12 +382,20 @@ describe("the settings section", () => {
       ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstugaBevakas"],
       ["zone:climate.ovanvaning", "Värmepump ovanvåningBevakas"],
       ["waterHeater", "VarmvattenberedareIngen"],
-      // A detected pool, spa and sauna, none set up yet: the pool asks once, the others are picked.
+      ["night", "Svalare natt−1,0 °C 23:00–06:00"],
+      ["awayDelta", "Sänkning när borta−3,0 °C"],
+    ]);
+    // A detected pool, spa and sauna, none set up yet, each in its own section: the pool asks once, the others are picked.
+    const loads = loadSettingsSections(document, "sv", answer(), (key) => edits.push(key));
+    expect(loads.map((node) => [node.dataset["section"], node.querySelector("h4")!.textContent])).toEqual([
+      ["pool", "Pool"],
+      ["spa", "Spa"],
+      ["sauna", "Bastu"],
+    ]);
+    expect(loads.flatMap((node) => [...node.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"], row.textContent]))).toEqual([
       ["poolSuggested", "PoolHittad: Poolpump"],
       ["spa", "SpaIngen"],
       ["sauna", "BastuIngen"],
-      ["night", "Svalare natt−1,0 °C 23:00–06:00"],
-      ["awayDelta", "Sänkning när borta−3,0 °C"],
     ]);
     section.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
     expect(edits).toEqual(["zone:climate.ovanvaning"]);

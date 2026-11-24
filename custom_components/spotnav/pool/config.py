@@ -5,7 +5,7 @@ a circulation pump reads as no pool):
 
     {heat_pump: {entity_id, shape: "climate" | "switch_number", switch_id: id | null, number_id: id | null} | null,
      circulation_id: switch / input_boolean id | null,
-     water_sensor: sensor id | null          (null: the heat pump's own current temperature),
+     water_sensor: sensor id | null          (the standalone sensor, second after the heat pump's own reading),
      target_c: 18..40 in 0.5 steps (27),     season_open: bool (true),
      filter_hours: 1..24 in 0.5 steps | null (null: from the water temperature, `pool/plan.py`),
      heat_pump_kw: 0.3..15 | null, circulation_kw: 0.05..3 | null (entered where no meter is found),

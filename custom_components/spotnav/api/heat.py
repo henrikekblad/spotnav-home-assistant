@@ -899,7 +899,7 @@ def pool_spa_choices(hass: HomeAssistant, config: HeatConfig) -> dict[str, Any]:
         pool_block = {
             "heat_pump": rows(list(pumps.values()), chosen_pump, full=True),
             "circulation": rows(circulations(seen, device), None if pool is None else pool.circulation_id, full=False),
-            "water_sensor": rows(water_sensors(seen), None if pool is None else pool.water_sensor, full=False),
+            "water_sensor": rows(water_sensors(seen, device), None if pool is None else pool.water_sensor, full=False),
             "suggested": suggest(seen) if pool is None else None,
         }
     found_spas = {c.entity_id: c for c in spas(seen)}

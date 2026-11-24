@@ -1810,7 +1810,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     batterySlot?.replaceChildren(...[siteSections.batteryNode()].filter((node): node is HTMLElement => node !== null));
     if (siteSections.heat !== null || siteSections.heatFailed) {
-      heatSlot?.replaceChildren(siteSections.heatNode());
+      heatSlot?.replaceChildren(...siteSections.heatNodes());
     }
   }
 

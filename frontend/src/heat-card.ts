@@ -877,13 +877,14 @@ export class SpotnavHeatCard extends HTMLElement {
     this.historyDialog.open(opener);
   }
 
-  /** The shared settings popover, opened at the heat section. */
+  /** The shared settings popover, opened at the shown tab's section: the pool's, the spa's or the sauna's, else heat. */
   showSettings(): void {
     const answer = this.answer();
     if (answer === null || !answer.writable) {
       return;
     }
-    void this.ensurePopover().open("heat");
+    const tab = this.shownTab();
+    void this.ensurePopover().open(tab === "pool" || tab === "spa" || tab === "sauna" ? tab : "heat");
   }
 
   /** The away editor on its own (the card's away button), in the popover's dialog. */

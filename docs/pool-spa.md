@@ -12,8 +12,31 @@ filtering and the pool's heat in the sunniest or cheapest hours, the spa and the
 heat card's **Pool**, **Spa** and **Sauna** tabs show the plan and what SpotNav would do ([the heat card](heat-pumps.md#the-heat-card)).
 
 **Watched by default.** Nothing is written until an administrator turns on the load's own switch in the gear's
-**Heating** section: **Control the circulation**, **Control the pool heat pump**, **Control the spa** or **Control the
-sauna**. Without it the tab says what SpotNav *would* do.
+**Pool**, **Spa** or **Sauna** section: **Control the circulation**, **Control the pool heat pump**, **Control the spa** or
+**Control the sauna**. Without it the tab says what SpotNav *would* do.
+
+## The settings
+
+Each load has its own section in the gear's settings, shown once it is set up or found: **Pool** (heat pump,
+circulation, water sensor, filtering per day, the powers and the two control switches), **Spa** (the spa, its lowest
+temperature, the heater's power, **Control the spa**) and **Sauna** (the sauna, the heater's power, a relay's safety
+declaration, **Control the sauna**). The heat card's phones and what they hear about (**Not ready in time**, **Pool
+season**) close the last of them; they cover all three. The gear on the heat card opens at the shown tab's section.
+**Heating** keeps the house's own heat. As everywhere, only an administrator can change them.
+
+## The pool's water temperature
+
+SpotNav reads the water from the pool heat pump first (its own reading of the water coming in: the climate entity's
+current temperature, or core Tuya's current temperature sensor) and from a chosen **pool water sensor** second. Found
+sensors named for the pool are offered; the heat pump's own ambient, coil and outlet sensors never are.
+
+Both usually sit on the pipe, where the water drifts towards the air once the circulation stops. So with a
+circulation pump chosen, a reading only counts as the pool's once the circulation has run five minutes; until then the
+last valid reading is kept, and the Pool tab says where and when it was read (**From the heat pump, 12:40**). The
+fresher of the two valid readings is used, the heat pump's on a tie. The filtering need, the heat need, the learning
+and the season hint only ever see these valid readings. **Without a circulation pump chosen the readings count as they
+come**, so a pipe that has stood still can read low; choose the circulation pump (even watched only) to avoid that. A
+sensor floating in the pool is read the same way: it only loses a little freshness.
 
 Which integrations are found, and which routes have been tried on real equipment, is in
 [Supported devices](supported.md#supported-pool-heat-pumps-spas-and-saunas). Tried so far: a Madimack pool heat pump

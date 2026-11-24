@@ -88,8 +88,31 @@ def test_the_one_time_grouping_proposes_the_circulation_and_the_sensor_in_the_po
         "ask": True,
     }
     assert suggest([AIR, LAMP]) is None
-    # Core tuya: the device's own water reading.
-    assert suggest(TUYA)["water_sensor"] == "sensor.pool_hp_temperature"  # type: ignore[index]
+    # Core tuya: the device's own water reading is the heat pump's (read first at run time), never the standalone one.
+    assert suggest(TUYA)["water_sensor"] is None  # type: ignore[index]
+
+
+#: The owner's own setup: the pump's ambient sensor (not diagnostic, so detection sees it) and a standalone sensor.
+MADIMACK_AMBIENT = Seen(
+    "sensor.poolpump_ambient_temperature", "tuya_local", "dev_madimack", "Poolpump Ambient temperature", "Pool",
+    "ambient_temperature", device_class="temperature", unit="°C",
+)
+POOL_TEMPERATUR = Seen("sensor.pool_temperatur", "zha", "dev_pooltemp", "Pool temperatur", "Pool", device_class="temperature", unit="°C")
+
+
+def test_the_standalone_sensor_is_the_second_choice_and_the_pumps_own_sensors_are_not_offered_as_it() -> None:
+    sensors = water_sensors([MADIMACK_AMBIENT, POOL_TEMPERATUR, INDOOR], "dev_madimack")
+    assert [(c.entity_id, c.score) for c in sensors] == [
+        ("sensor.pool_temperatur", 0.5), ("sensor.kok", 0.0), ("sensor.poolpump_ambient_temperature", 0.0)
+    ]
+    # Named for the air, even off the pump's device: never likely.
+    outdoor = Seen("sensor.pool_ute", "zha", "d", "Pool utetemperatur", "Pool", device_class="temperature")
+    assert water_sensors([outdoor])[0].score == 0.0
+    group = suggest([MADIMACK, MADIMACK_COMPRESSOR, MADIMACK_AMBIENT, POOL_TEMPERATUR, FIBARO])
+    # The heat pump's own reading comes first at run time; the standalone sensor is proposed beside it.
+    assert group is not None and group["water_sensor"] == "sensor.pool_temperatur"
+    alone = suggest([MADIMACK, MADIMACK_COMPRESSOR, MADIMACK_AMBIENT, FIBARO])
+    assert alone is not None and alone["water_sensor"] is None
 
 
 def test_the_spa_families() -> None:

@@ -17,8 +17,10 @@ detta poolens värmepump?"); nothing is stored until an administrator saves the 
 The panels that also heat a spa (`iaqualink`, `screenlogic`, `intellicenter`) score 0.8 and are always asked (pool or
 spa body). **Circulation**: no reliable signal; a `switch`/`input_boolean` on another device with "pool", "pump", "cirk",
 "circ" or "filter" in its name or in the area "Pool" scores 0.5 (always asked); every other switch is listed at
-0. **Water sensor**: a temperature sensor with "pool" or "vatten" in its name or area scores 0.5 (asked); default none
-(the heat pump's own reading).
+0. **Water sensor**: the heat pump's own reading always comes first (`pool/runtime.py`); the standalone sensor is the
+second choice. A temperature sensor with "pool", "vatten" or "water" in its name or area scores 0.5 (asked), unless its
+name says air (ambient, outdoor, coil, vent, outlet) or it sits on the heat pump's device (its own ambient and pipe
+readings); default none (the heat pump's reading alone).
 
 **Grouping** (`suggest`): the best heat pump, with the circulation and the water sensor proposed on the same device or
 area, as one row the person confirms.
@@ -57,6 +59,7 @@ TUYA_LOCAL_KEY: Final = "pool_heatpump"
 _DEVICE_SENSOR_WORDS: Final = re.compile(r"compressor|coil|outlet|effluent|flow|kompressor", re.IGNORECASE)
 _CIRCULATION_WORDS: Final = re.compile(r"pool|pump|cirk|circ|filter|pumpe", re.IGNORECASE)
 _WATER_WORDS: Final = re.compile(r"pool|vatten|water", re.IGNORECASE)
+_AIR_WORDS: Final = re.compile(r"(?<![a-z])(ambient|air|luft|outdoor|ute|utomhus|coil|vent|exhaust|outlet|utlopp)", re.IGNORECASE)
 POOL_AREA: Final = "pool"
 
 
@@ -100,7 +103,7 @@ class Candidate:
     switch_id: str | None = None
     number_id: str | None = None
     device_id: str | None = None
-    #: The device's own water reading (core `tuya`'s current temperature), else `None`.
+    #: The device's own water reading (core `tuya`'s current temperature, read as the heat pump's), else `None`.
     water_sensor: str | None = None
     cloud: bool = False
 
@@ -220,13 +223,18 @@ def circulations(seen: Iterable[Seen], heat_pump_device: str | None = None) -> l
     return sorted(found, key=lambda c: (-c.score, c.entity_id))
 
 
-def water_sensors(seen: Iterable[Seen]) -> list[Candidate]:
-    """Every temperature sensor that could read the pool's water, a likely one (0.5) first."""
+def water_sensors(seen: Iterable[Seen], heat_pump_device: str | None = None) -> list[Candidate]:
+    """Every temperature sensor that could be the pool's standalone water sensor, a likely one (0.5) first; one on the
+    heat pump's device or named for the air is never likely."""
     found = []
     for item in seen:
         if not item.is_temperature():
             continue
-        likely = bool(_WATER_WORDS.search(f"{item.name} {item.area or ''}"))
+        likely = (
+            bool(_WATER_WORDS.search(f"{item.name} {item.area or ''}"))
+            and not _AIR_WORDS.search(f"{item.name} {item.translation_key or ''} {item.entity_id}")
+            and (heat_pump_device is None or item.device_id != heat_pump_device)
+        )
         found.append(Candidate(item.entity_id, 0.5 if likely else 0.0, device_id=item.device_id))
     return sorted(found, key=lambda c: (-c.score, c.entity_id))
 
@@ -245,10 +253,9 @@ def suggest(seen: Sequence[Seen]) -> dict[str, Any] | None:
         if item.device_id != best.device_id and (area is not None and item.area == area)
     ]
     circulation = next((c for c in circulations(near or seen, best.device_id) if c.score > 0), None)
-    sensor = best.water_sensor
-    if sensor is None:
-        likely = [c for c in water_sensors(near or seen) if c.score > 0]
-        sensor = likely[0].entity_id if likely else None
+    # The heat pump's own reading comes first at run time; the standalone sensor is proposed as the second.
+    likely = [c for c in water_sensors(near or seen, best.device_id) if c.score > 0]
+    sensor = likely[0].entity_id if likely else None
     return {
         "heat_pump": {
             "entity_id": best.entity_id,

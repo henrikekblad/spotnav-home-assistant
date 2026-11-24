@@ -1517,8 +1517,9 @@
       "need_source": "water",
       "planned_h": 4.0
     },
+    "water_at": "2026-11-16T06:40:00+00:00",
     "water_c": 24.6,
-    "water_source": "sensor",
+    "water_source": "heat_pump",
     "would": {
       "action": "off",
       "reason": "waiting",
