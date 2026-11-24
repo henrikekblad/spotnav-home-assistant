@@ -515,7 +515,7 @@ def test_a_read_back_that_comes_a_stall_late_is_still_a_write_taken() -> None:
     assert written(results) == [("battery_target", -3.0)] and executor.state.phase == "active"
     # The same late read-back on a brand without the longer wait is a write not taken.
     other = Executor(SIGENERGY_CONTROL)
-    sigen = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), drops={"discharge_limit"})
+    sigen = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), drops={"charge_limit"})
     _now, results = run(other, sigen, T0, 9, "hold")
     assert events(results, "not_taken")[0]["why"] == "no_read_back"
 

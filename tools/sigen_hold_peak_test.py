@@ -8,7 +8,8 @@ over it during a hold. It needs no extra load: the import limit is lowered under
 
     python tools/sigen_hold_peak_test.py --url http://HA:8123 --token-file ~/tokens/ha-token [--dry-run]
 
-For each of SpotNav's two Sigenergy hold variants (`commands.SIGENERGY_HOLDS`):
+For each of the two Sigenergy holds it compares (on site 2026-11-23 only `pv_first` passed, and it has been SpotNav's
+only hold since, `commands.SIGENERGY_HOLDS`):
 
 * `msc_no_discharge`: Remote EMS on, "Maximum Self Consumption", ESS max discharging limit 0;
 * `pv_first`: Remote EMS on, "Command Charging (PV First)", ESS max charging limit 0;

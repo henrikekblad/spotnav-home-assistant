@@ -247,30 +247,27 @@ and 80 % and discharging (so a hold can be seen), no car charging, room under th
 typical. A step the battery cannot show at the moment (nothing to stop, nearly full) is tried again at a later
 suitable moment, not counted as a failure; after five runs without an answer the check gives up.
 
-**Two ways to hold a Sigenergy plant.** Which of the plant's limits act in which Remote EMS mode depends on the
-firmware: Sigenergy's Modbus Protocol V2.7 says the charge limit acts only in Command Charging (modes 3 and 4) and the
-discharge limit only in Command Discharging (5 and 6); V2.9 (May 2026) says both act in every mode. So the check
-tries the hold two ways, one at a time, and keeps the first that works:
+**How SpotNav holds a Sigenergy plant: Command Charging (PV First) with the charge limit at 0.** The protocol's
+Appendix 6 names this mode "Command charging (consume PV power first)": a charge at the charge limit, from the sun
+first and then from the grid. With the limit at 0 it charges nothing, and no Command Charging mode discharges, so the
+battery stands idle and a sun surplus is exported while the hold lasts. It works on both protocol generations
+(Sigenergy's Modbus Protocol V2.7 says the charge limit acts only in Command Charging, modes 3 and 4; V2.9, May 2026,
+says in every mode). It is also what the plant keeps doing if Home Assistant stops in the middle of a hold, and then
+the plant's own grid import limit still covers a peak: tested on site in November 2026 with Home Assistant writing
+nothing, the plant started to discharge about 25-30 seconds after the import limit was lowered under the house's
+load and held the grid there, the same on every phase. An earlier hold, Maximum Self Consumption with the discharge
+limit at 0, failed that test (the grid took the whole house) and is no longer used. Under a peak while Home Assistant
+runs, SpotNav switches the mode back to Maximum Self Consumption; a mode change can take the plant a little longer
+than a limit (the plant's *active power regulation gradient*, register 40049, sets how fast it ramps; SpotNav only
+reads about it, never writes it). If the headroom is not back within 30 seconds the battery is handed back. On every
+change between SpotNav's commands the charge and discharge limits are lowered before the mode changes and raised
+only after it, so the plant never runs a Command mode on the previous command's limit.
 
-1. **Maximum Self Consumption with the discharge limit at 0** (current firmware). Under a peak SpotNav lifts the
-   limit and the plant covers each phase itself.
-2. **Command Charging (PV First) with the charge limit at 0** (older firmware, where the discharge limit does
-   nothing in Maximum Self Consumption). The protocol's Appendix 6 names this mode "Command charging (consume PV
-   power first)": a charge at the charge limit, from the sun first and then from the grid. With the limit at 0 it
-   charges nothing, and no Command Charging mode discharges, so the battery stands idle and a sun surplus is
-   exported while the hold lasts. That is also what the plant keeps doing if Home Assistant stops in the middle of a
-   hold. Under a peak SpotNav switches the mode back to Maximum Self Consumption; a mode change can take the plant a
-   little longer than a limit (the plant's *active power regulation gradient*, register 40049, sets how fast it
-   ramps; SpotNav only reads about it, never writes it). If the headroom is not back within 30 seconds the battery is
-   handed back.
-
-The hold is judged on what the battery does while the house draws: it must not discharge, and with the first way it
-should still store sun. With the second way the battery must stand idle: if it charges more than 0.5 kW for a
-minute, the plant did not take the limit and the hold is handed back at once, in the check and in control alike
-(judged on the battery's own power, so it works without a grid reading). The check then fails; in control the block
-clears by itself after six hours. The check moves on to the second way only when the first was simply ignored, and
-only once the battery discharges again. The check's result says which way passed; control uses that one. A firmware
-update runs the check again, both ways if needed. A discharge to the house stays Maximum Self Consumption with the
+The hold is judged on what the battery does while the house draws: it must not discharge and must stand idle. If it
+charges more than 0.5 kW for a minute, the plant did not take the limit and the hold is handed back at once, in the
+check and in control alike (judged on the battery's own power, so it works without a grid reading). The check then
+fails; in control the block clears by itself after six hours. A firmware update runs the check again. A discharge to
+the house stays Maximum Self Consumption with the
 charge limit at 0 (V2.7 has no mode for "cover the house, store nothing"; where the limit is ignored the battery
 also stores a sun surplus, as it does normally). Other protocol changes worth knowing: V2.8 removed register 41500
 (Remote EMS dispatch enable, not used by SpotNav) and V2.9 added V2G (0x08) to the Remote EMS control modes.

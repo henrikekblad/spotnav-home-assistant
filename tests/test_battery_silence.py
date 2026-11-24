@@ -23,13 +23,22 @@ from custom_components.spotnav.battery.gate import FAILING_ABORTS
 from custom_components.spotnav.battery.hold import HoldInputs, HoldMemory, step as hold_step
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S
 from custom_components.spotnav.battery.plan_shadow import PlanActuals
-from tests.battery_control_fakes import SIGENERGY_STATES, T0, TICK, FakeBattery, events, inputs, run
+from tests.battery_control_fakes import (
+    LIMIT_HOLD_CONTROL,
+    SIGENERGY_STATES,
+    T0,
+    TICK,
+    FakeBattery,
+    events,
+    inputs,
+    run,
+)
 
 SILENT_MANAGEMENT = Management("unknown", "unreadable", {"EMS work mode": "unavailable"})
 
 
 def _sigenergy() -> tuple[Executor, FakeBattery]:
-    return Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    return Executor(LIMIT_HOLD_CONTROL), FakeBattery(LIMIT_HOLD_CONTROL, dict(SIGENERGY_STATES))
 
 
 def _running(action: str, rate_kw: float = 0.0) -> tuple[Executor, FakeBattery, datetime]:

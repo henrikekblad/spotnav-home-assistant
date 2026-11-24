@@ -71,7 +71,7 @@ def _balanced() -> dict[str, Any]:
     now, part3 = run(executor, battery, now, 8, "self_consume")
     out["discharge"] = _trace(part1 + part2 + part3, executor)
 
-    # A peak under a hold: the discharge limit lifted, then the hold again, then a hand-back.
+    # A peak under a hold: the mode back to Maximum Self Consumption, then the hold again, then a hand-back.
     executor = Executor(SIGENERGY_CONTROL)
     battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
     now, part1 = run(executor, battery, T0, 6, "hold")

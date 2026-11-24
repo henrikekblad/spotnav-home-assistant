@@ -63,15 +63,17 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
   phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
   hold: one write, the brand's `peak_first` roles back to the value found or to the brand's normal value
-  (Sigenergy: the discharge limit, lifted in Maximum Self Consumption, where the plant covers each phase itself;
-  with the mode-4 hold variant `pv_first` the control mode back to Maximum Self Consumption), Remote EMS left on. A
+  (Sigenergy's mode-4 hold, `pv_first`: the control mode back to Maximum Self Consumption, where the plant covers
+  each phase itself), Remote EMS left on. A
   mode change may take the plant longer than a limit (its Remote EMS entities blink around a mode change, TypQxQ
   issue #427; the plant's output ramps at its active power regulation gradient, register 40049); `PEAK_RECOVER_S`
   bounds either, then the full hand-back follows. If the headroom is not back at or above
   `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
   Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
   writes the `peak_first` roles first (a grid charge: the mode that stops it), as does a change of action away from a
-  grid charge (`ExecState.lead`): no limit is loosened while the plant still charges from the grid. A hand-back
+  grid charge (`ExecState.lead`): no limit is loosened while the plant still charges from the grid. Where the
+  recipe names limits that act in its modes (`BrandControl.mode_limits`, Sigenergy), every change of action lowers
+  those that fall first and raises those that rise last, around the mode (`_lead`). A hand-back
   for the fuse writes all its roles in one look, without waiting for each read-back (each is still read back, and
   one not confirmed is retried as any restore); other hand-backs keep one write at a time. The cover's write is never held back
   by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
@@ -2335,15 +2337,36 @@ class Executor:
                     in_flight=_without(state.in_flight, name),
                 )
 
-    def _lead(self, previous: str | None) -> tuple[str, ...]:
+    def _lead(
+        self, previous: str | None, before: Mapping[str, Native] | None = None,
+        after: Mapping[str, Native] | None = None,
+    ) -> tuple[str, ...]:
         """The roles a change of action away from `previous` writes first: a grid charge's stop (its `peak_first`
         roles; Sigenergy: the control mode), so a limit the next action loosens never acts in the grid charge's mode
         (the charge limit back at the rating in Command Charging would charge from the grid at full power). A button
-        is never moved ahead of the values it sends."""
-        if previous != ACTION_GRID_CHARGE:
-            return ()
-        first = self.control.peak_first.get(previous, ())
-        return tuple(name for name in first if self.control.role(name).method != "button")
+        is never moved ahead of the values it sends. Where the recipe names its mode limits (`mode_limits`), the
+        order is the whole of it: those that fall from `before` to `after` first, then the stop and the brand's
+        order, then those that rise."""
+        stop: tuple[str, ...] = ()
+        if previous == ACTION_GRID_CHARGE:
+            first = self.control.peak_first.get(previous, ())
+            stop = tuple(name for name in first if self.control.role(name).method != "button")
+        if not self.control.mode_limits or before is None or after is None:
+            return stop
+
+        def moved(name: str) -> float:
+            old, new = before.get(name), after.get(name)
+            if any(isinstance(value, bool) or not isinstance(value, int | float) for value in (old, new)):
+                return 0.0
+            return float(new) - float(old)  # type: ignore[arg-type]
+
+        limits = [name for name in self.control.mode_limits if name in after]
+        falling = tuple(name for name in limits if moved(name) < 0)
+        rising = tuple(name for name in limits if moved(name) > 0)
+        middle = tuple(dict.fromkeys(
+            name for name in (*stop, *self.control.enter_order) if name not in falling and name not in rising
+        ))
+        return (*falling, *middle, *rising)
 
     def _watch(self, inputs: ExecInputs, action: str, rate: float) -> None:
         """The monitor watches the new command; a discharge for the house only when the house's deficit is known."""
@@ -2431,8 +2454,8 @@ class Executor:
                 house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
                 sent=(), renew=renew, rate_changed_at=now, watchdog_at=watchdog_at, covered_at=None,
                 peak_low_since=None,
-                lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
-                phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
+                lead=self._lead(state.action, state.target, target), phase_kw=phases, phase_bad=(),
+                phase_judged_at=None, phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.
                 entered_at=now if phases is not None else state.entered_at,
             )
