@@ -90,6 +90,18 @@ charged, 0.9 kWh comes back out. SpotNav then learns your battery's own figure, 
   agree within 5 points, once three do. The plan follows it slowly: only when it is 2 points or more away, and by at
   most 3 points per window, so one odd window never moves the plan. The learnt size uses it too.
 
+**On the AC side.** The plan buys and sells where the meter is. A battery whose power and counters are read at the
+battery (DC: Sigenergy, SolarEdge, Victron, GoodWe) misses the inverter's own loss on the way in and out, so its
+learnt round trip is turned to the AC side: times (1 - the loss out) / (1 + the loss in), at most 95 %. The loss is
+learnt where the plant reports its own house load and sun (Sigenergy): each dark quarter hour's balance, grid plus sun
+less the battery less the plant's load, is fitted on the charge and the discharge power (about 3.5 % in and 6.5 % out
+on the owner's plant, so a DC round trip of 96.7 % is 87 % on the AC side). Elsewhere 3 % in and 5 % out is assumed.
+The same loss turns the battery's power to the AC side wherever SpotNav counts the house as the grid less the cars
+and the battery: the house load forecast, the night's review and the perfect plan (see the house card's *Share of
+perfect*). The diagnostics show it under `battery.plan.learned.conversion` (`power_dc`, `source`: `learned`,
+`assumed` or `ac`, the two losses and the quarter hours behind them). A battery read on the AC side (Enphase,
+sonnen) or whose side is not known is counted as read.
+
 The card's details show it: "Round-trip efficiency: 84 %, learnt" or "assumed 90 %". The diagnostics
 (`battery.plan.learned.round_trip`) list every window taken, with its dates, energies and source, kept for two years,
 and the last ones thrown away and why.
@@ -164,8 +176,11 @@ plan, and plain self-consumption, all from the same measured charge level. Each 
 at the day's end value, so a plan that empties the battery does not look cheap. The result is the saving of the plan against
 self-consumption, and what the battery's own way saved against the same baseline. The last 30 days are kept.
 
-What the review cannot tell: the simulated battery is ideal (no real losses or ramp limits), so a plan looks a few percent
-better than it would be, and a quarter hour where the meters were lost counts nowhere.
+The house each run plans around is the grid less the cars and the battery's power on the AC side (see *On the AC
+side* above), so the inverter's loss is the real battery's own cost and not a house load every simulated way pays.
+
+What the review cannot tell: the simulated battery has no ramp limits and an even loss, so a plan looks a little better
+than it would be, and a quarter hour where the meters were lost counts nowhere.
 
 If your battery runs its own optimiser (Sigen AI mode, for example), that is the point: the plan is a benchmark of what
 SpotNav would have done, and the review shows which way earned more.
@@ -182,8 +197,8 @@ made; the same day again overwrites its file) and answers with the path and what
   default). Today can be exported too: the file then says `"complete": false`.
 * **What is in it** (`schema` 1; instants in UTC, the day's time zone in `tz`, the units in `units`): each forecast of the
   day with when it was made and what came, and each kind's review; the day's prices (spot, and buy and sell with your fees
-  as they are now, the markup and the sell adjustment); the battery plan's quarter hours (the meters, the charge level and
-  each mode's planned action) and the day's review with its baselines; the house's hours (import, house, cars, heat where a
+  as they are now, the markup and the sell adjustment); the battery plan's quarter hours (the meters, the charge level,
+  each mode's planned action and the battery's energy on the AC side, `battery_ac_kwh`) and the day's review with its baselines; the house's hours (import, house, cars, heat where a
   meter is, outdoor temperature); the settings the plan read; the shadow logs of the switched load and the export limit;
   and the chargers' plug-ins that day. A typical day is 50-60 kB.
 * **A day no longer kept** exports what is left: `missing` names each part that has nothing and why (`not_kept`,
