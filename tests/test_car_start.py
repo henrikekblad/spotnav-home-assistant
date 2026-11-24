@@ -42,6 +42,9 @@ STATUS = "sensor.halo_status"
 CONFIG = {CONF_CHARGE_CONTROL: SWITCH, CONF_CHARGER_CURRENT_ENTITIES: [CURRENT]}
 T0 = datetime(2026, 11, 24, 3, 0, tzinfo=timezone.utc)
 
+#: The real `car_here`, before the tests' stand-in (`here`) replaces it.
+REAL_CAR_HERE = vehicle_charge_start.car_here
+
 SUFFIXES = {
     "tessie": "charge_state_charge_enable_request",
     "teslemetry": "charge_state_user_charge_enable_request",
@@ -71,13 +74,25 @@ def test_the_level_must_be_two_points_below_the_target_and_the_cars_own_limit(
     assert level_allows_start(level, target, limit) is allowed
 
 
+def test_an_estimate_or_an_old_reading_needs_five_points() -> None:
+    # 9 to 80 % at 11 kW: the estimate may lag a car that stopped at its own 80 % limit by a few points.
+    assert level_allows_start(77.5, 80.0, 80.0) is True
+    assert level_allows_start(77.5, 80.0, 80.0, estimated=True) is False
+    assert level_allows_start(75.0, 80.0, 80.0, estimated=True) is True
+    assert car_start.counts_as_estimate(False, 600.0) is False
+    assert car_start.counts_as_estimate(True, 600.0) is True
+    assert car_start.counts_as_estimate(False, car_start.CAR_START_READING_MAX_AGE_S + 1) is True
+    assert car_start.counts_as_estimate(False, None) is True
+
+
 def _refused(watch: CarRefusalWatch, at: datetime, **facts: object) -> float | None:
     values: dict[str, object] = {
         "now": at,
         "owned": True,
         "control_on": True,
         "drawing": False,
-        "connector_status": "SuspendedEV",
+        "refuses_offer": True,
+        "offered_a": 16.0,
         "held": False,
         "balancing_paused": False,
         "start_pending": False,
@@ -87,12 +102,11 @@ def _refused(watch: CarRefusalWatch, at: datetime, **facts: object) -> float | N
     return watch.observe(**values)  # type: ignore[arg-type]
 
 
-def test_the_car_refuses_while_the_charger_offers_and_the_connector_says_suspended_ev() -> None:
+def test_the_car_refuses_while_the_charger_offers_and_the_status_says_the_car_refuses() -> None:
     watch = CarRefusalWatch()
     assert _refused(watch, T0) == 0.0
     assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S)) == CAR_START_AFTER_S
-    # Any spelling of the car's refusal: a status other than OCPP's is lower-cased.
-    assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S + 30), connector_status="suspendedev") == 150.0
+    assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S + 30), offered_a=6.0) == 150.0
 
 
 @pytest.mark.parametrize(
@@ -104,9 +118,9 @@ def test_the_car_refuses_while_the_charger_offers_and_the_connector_says_suspend
         {"balancing_paused": True},
         {"start_pending": True},  # the Start not answered yet
         {"phase_switch_settling": True},
-        {"connector_status": "SuspendedEVSE"},  # the charger holds the car back
-        {"connector_status": "Charging", "drawing": None},
-        {"connector_status": None},
+        {"refuses_offer": False},  # a status that is not a verified refusal of an offer
+        {"offered_a": 5.0},  # below a charge's minimum
+        {"offered_a": None},  # the offer cannot be read
         {"drawing": True},
     ],
 )
@@ -163,6 +177,17 @@ async def test_the_charge_switch_of_each_tesla_integration_is_found(hass: HomeAs
     car, switch = _car(hass, platform)
     found = vehicle_charge_start.charge_switch(hass, car)
     assert found is not None and found.entity_id == switch and found.integration == platform
+
+
+def test_only_verified_statuses_are_the_car_refusing_an_offer() -> None:
+    from custom_components.spotnav.execution.charger_profiles import profile_for
+
+    easee = profile_for("easee")
+    assert easee is not None and easee.car_refuses_values == ("ready_to_charge", "completed")
+    # Idle values that are the charger not offering (Alfen's x1 states, Ohme waiting for approval) never count.
+    for platform in ("alfen", "ohme", "abb", "wallbox", "zaptec"):
+        profile = profile_for(platform)
+        assert profile is None or profile.car_refuses_values == (), platform
 
 
 async def test_another_integration_or_an_unavailable_switch_has_none(hass: HomeAssistant) -> None:
@@ -272,11 +297,12 @@ class Halo:
 
 
 class Car:
-    def __init__(self, percent: float | None) -> None:
+    def __init__(self, percent: float | None, *, estimated: bool = False) -> None:
         self.percent = percent
+        self.estimated = estimated
 
     def __call__(self, vehicle_id: str | None) -> SocReading:
-        return SocReading(self.percent, "vehicle", "sensor.car_battery", vehicle_id, 600.0)
+        return SocReading(self.percent, "vehicle", "sensor.car_battery", vehicle_id, 600.0, estimated=self.estimated)
 
 
 def _plan(vehicle_id: str, target: float = 80.0) -> ChargingPlan:
@@ -316,9 +342,17 @@ async def _shut_down() -> Any:
         await _CONTROLLERS.pop().async_shutdown()
 
 
+@pytest.fixture(autouse=True)
+def here(monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
+    """Whether the named car is confirmed to be the car at the charger (`vehicle_charge_start.car_here`)."""
+    answer = {"here": True}
+    monkeypatch.setattr(vehicle_charge_start, "car_here", lambda _hass, _entry, _car: answer["here"])
+    return answer
+
+
 async def _refusing(
     hass: HomeAssistant, freezer: Any, platform: str | None = "tessie", *, level: float = 65.0,
-    target: float = 80.0, limit: float = 80.0,
+    target: float = 80.0, limit: float = 80.0, estimated: bool = False, offered: float | None = 16.0,
 ) -> tuple[ChargingController, Halo, list[tuple[str | None, bool]], str]:
     """A plan's charge in an open window that the car refuses from the start (the connector at `SuspendedEV`)."""
     freezer.move_to(T0)
@@ -326,7 +360,8 @@ async def _refusing(
     car, switch = _car(hass, platform) if platform is not None else ("car", None)
     halo = Halo(hass, switch)
     controller = ChargingController(
-        hass, "halo", dict(CONFIG), soc_reader=Car(level), vehicle_limit_reader=lambda _vehicle_id: limit
+        hass, "halo", dict(CONFIG), soc_reader=Car(level, estimated=estimated),
+        vehicle_limit_reader=lambda _vehicle_id: limit,
     )
     await controller.async_initialize()
     _CONTROLLERS.append(controller)
@@ -337,6 +372,8 @@ async def _refusing(
     adapter.status_entity_id = STATUS
     adapter._charging_values = ("charging",)  # noqa: SLF001 - the profile a status sensor brings
     adapter._idle_values = ("suspended_ev",)  # noqa: SLF001
+    adapter._car_refuses_values = ("suspended_ev",)  # noqa: SLF001 - a verified refusal of an offer
+    adapter.offered_current_a = lambda: offered  # type: ignore[method-assign]
     told: list[tuple[str | None, bool]] = []
     controller.set_car_ended_observer(lambda vehicle_id, full: told.append((vehicle_id, full)))
     await controller.async_install(_plan(car, target))
@@ -354,7 +391,7 @@ async def test_a_refusing_car_has_its_charge_started_once_and_taking_it_tells_no
     assert halo.car_calls == [], "not before two minutes"
     await _later(hass, freezer, 60)
     assert halo.car_calls == ["turn_on"]
-    assert controller.car_start_status == {"state": "started", "soc_percent": 65.0, "target": 80.0}
+    assert controller.car_start_status == {"state": "started", "soc_percent": 65.0, "target": 80.0, "since": None}
     assert controller.car_refuses_notice is None
 
     # The car takes the charge.
@@ -382,7 +419,8 @@ async def test_a_car_that_still_refuses_is_told_once_and_its_end_comes_as_before
     assert controller.car_start_status is not None and controller.car_start_status["state"] == "started"
     await _later(hass, freezer, 60)
     status = controller.car_start_status
-    assert status == {"state": "refuses", "soc_percent": 65.0, "target": 80.0}
+    assert status is not None and status["since"] is not None
+    assert {**status, "since": None} == {"state": "refuses", "soc_percent": 65.0, "target": 80.0, "since": None}
     notice = controller.car_refuses_notice
     assert notice is not None and notice["soc_percent"] == 65.0 and notice["target"] == 80.0
     assert vehicle_charge_start.notice_told(hass, car_id, controller._car_start.plug_in)  # noqa: SLF001
@@ -427,12 +465,119 @@ async def test_load_balancing_holding_the_charge_back_is_not_the_car_refusing(
 
 
 @pytest.mark.parametrize("platform", ["kia_uvo", None])
-async def test_a_car_with_no_switch_is_told_at_once(hass: HomeAssistant, freezer: Any, platform: str | None) -> None:
-    controller, halo, _told, _car_id = await _refusing(hass, freezer, platform)
-    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+async def test_a_car_with_no_switch_keeps_what_it_had(hass: HomeAssistant, freezer: Any, platform: str | None) -> None:
+    """No start, no new notice and no status line: the plain "the car takes no current" and the car's end only."""
+    controller, halo, told, car_id = await _refusing(hass, freezer, platform)
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
     assert halo.car_calls == []
-    assert controller.car_start_status == {"state": "refuses", "soc_percent": 65.0, "target": 80.0}
+    assert controller.car_start_status is None and controller.car_refuses_notice is None
+    await _later(hass, freezer, PLAN_CAR_IDLE_S)
+    assert told == [(car_id, False)], "the car's end as before"
+
+
+async def test_a_car_not_confirmed_here_is_never_started_nor_told(
+    hass: HomeAssistant, freezer: Any, here: dict[str, bool]
+) -> None:
+    here["here"] = False
+    controller, halo, _told, _car_id = await _refusing(hass, freezer)
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
+    assert halo.car_calls == []
+    assert controller.car_start_status is None and controller.car_refuses_notice is None
+
+
+@pytest.mark.parametrize("offered", [None, 5.0])
+async def test_a_charger_whose_offer_is_unread_or_below_six_amperes_starts_nothing(
+    hass: HomeAssistant, freezer: Any, offered: float | None
+) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer, offered=offered)
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
+    assert halo.car_calls == [] and controller.car_start_status is None
+
+
+async def test_a_status_that_is_not_a_verified_refusal_starts_nothing(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer)
+    controller.adapter._car_refuses_values = ()  # noqa: SLF001 - a profile with no verified values
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
+    assert halo.car_calls == [] and controller.car_start_status is None
+
+
+async def test_without_a_known_plug_in_nothing_is_started(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer)
+    controller._plugged_in_at = None  # noqa: SLF001 - no plug-in ever seen
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
+    assert halo.car_calls == [] and controller.car_start_status is None and controller.car_refuses_notice is None
+
+
+async def test_an_estimate_close_to_the_limit_is_not_poked(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer, level=77.5, estimated=True)
+    await _later(hass, freezer, 3 * CAR_START_AFTER_S)
+    assert halo.car_calls == [] and controller.car_start_status is None
+
+
+async def test_the_level_is_read_again_before_the_notice(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer)
+    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+    assert halo.car_calls == ["turn_on"]
+    # The car's report comes in: it is at its own limit after all.
+    controller._soc_reader.percent = 80.0  # type: ignore[union-attr]  # noqa: SLF001
+    await _later(hass, freezer, 2 * CAR_START_AFTER_S)
+    assert controller.car_refuses_notice is None and controller.car_start_status is None
+
+
+async def test_the_second_wait_counts_from_the_calls_answer(hass: HomeAssistant, freezer: Any) -> None:
+    """A sleeping car: the integration wakes it first, and the call answers late."""
+    import asyncio
+
+    controller, halo, _told, car_id = await _refusing(hass, freezer)
+    switch = vehicle_charge_start.charge_switch(hass, car_id)
+    assert switch is not None
+    answer = asyncio.Event()
+
+    async def slow(call: ServiceCall) -> None:
+        halo.car_calls.append(call.service)
+        await answer.wait()
+
+    hass.services.async_register("switch", "turn_on", slow)
+    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+    assert halo.car_calls == ["turn_on"]
+    # The answer comes after 90 s (inside the call's timeout): two minutes of refusing pass meanwhile.
+    await _later(hass, freezer, 90)
+    assert controller.car_refuses_notice is None, "nothing told while the call is on its way"
+    answer.set()
+    await hass.async_block_till_done()
+    await _later(hass, freezer, CAR_START_AFTER_S - 30)
+    assert controller.car_refuses_notice is None, "the car has its two minutes after the answer"
+    await _later(hass, freezer, 60)
     assert controller.car_refuses_notice is not None
+
+
+async def test_at_most_three_starts_in_a_day(hass: HomeAssistant, freezer: Any) -> None:
+    freezer.move_to(T0)
+    await _store(hass)
+    car, _switch = _car(hass, "tessie")
+    hass.services.async_register("switch", "turn_on", lambda _call: None)
+    for n in range(vehicle_charge_start.CHARGE_START_DAILY_CAP):
+        freezer.move_to(T0 + timedelta(hours=n))
+        assert await vehicle_charge_start.async_start_charge_in_car(hass, car, f"p{n}") == vehicle_charge_start.RESULT_OK
+    freezer.move_to(T0 + timedelta(hours=4))
+    assert vehicle_charge_start.charge_start_skip_reason(hass, car, "p9") == vehicle_charge_start.SKIP_DAILY_CAP
+    assert len(vehicle_charge_start.charge_start_diagnostics(hass)[car]["last"]["calls"]) == 3
+    freezer.move_to(T0 + timedelta(hours=24, minutes=1))
+    assert vehicle_charge_start.charge_start_skip_reason(hass, car, "p9") is None
+
+
+async def test_no_plug_in_no_store_or_an_unreadable_instant_never_calls(hass: HomeAssistant, freezer: Any) -> None:
+    freezer.move_to(T0)
+    car, _switch = _car(hass, "tessie")
+    calls: list[ServiceCall] = []
+    hass.services.async_register("switch", "turn_on", calls.append)
+    assert vehicle_charge_start.charge_start_skip_reason(hass, car, None) == vehicle_charge_start.SKIP_NO_PLUG_IN
+    domain_data(hass).decision_store = None
+    assert await vehicle_charge_start.async_start_charge_in_car(hass, car, "p") == vehicle_charge_start.RESULT_FAILED
+    store = await _store(hass)
+    await store.async_confirm("vehicle_charge_start", car, {"at": "garbage", "plug_in": "old"})
+    assert vehicle_charge_start.charge_start_skip_reason(hass, car, "p") == vehicle_charge_start.SKIP_TOO_SOON
+    assert calls == []
 
 
 async def test_an_unavailable_switch_is_told_at_once(hass: HomeAssistant, freezer: Any) -> None:
@@ -442,6 +587,7 @@ async def test_an_unavailable_switch_is_told_at_once(hass: HomeAssistant, freeze
     hass.states.async_set(switch.entity_id, "unavailable")
     await _later(hass, freezer, CAR_START_AFTER_S + 30)
     assert halo.car_calls == [] and controller.car_refuses_notice is not None
+    assert controller.car_start_status is not None and controller.car_start_status["state"] == "refuses"
 
 
 async def test_a_replug_within_half_an_hour_is_told_without_a_second_start(hass: HomeAssistant, freezer: Any) -> None:
@@ -458,17 +604,30 @@ async def test_a_replug_within_half_an_hour_is_told_without_a_second_start(hass:
     assert controller.car_start_status is not None and controller.car_start_status["state"] == "refuses"
 
 
-async def test_a_restart_does_not_tell_the_notice_again(hass: HomeAssistant, freezer: Any) -> None:
-    controller, halo, _told, car_id = await _refusing(hass, freezer, "kia_uvo")
+async def test_a_restart_brings_the_line_back_at_once_and_tells_nothing_again(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    controller, halo, _told, car_id = await _refusing(hass, freezer)
+    hass.states.async_set(vehicle_charge_start.charge_switch(hass, car_id).entity_id, "unavailable")  # type: ignore[union-attr]
     await _later(hass, freezer, CAR_START_AFTER_S + 30)
     assert controller.car_refuses_notice is not None
+    before = controller.car_start_status
+    assert before is not None and before["since"] is not None
     # Home Assistant restarts within the plug-in: the controller's memory is gone, the stored notice is not.
     await _store(hass)
     controller._car_start = car_start.CarStartMemory()  # noqa: SLF001
     controller._car_refusal.reset()  # noqa: SLF001
-    await _later(hass, freezer, CAR_START_AFTER_S + 30)
-    assert controller.car_start_status is not None and controller.car_start_status["state"] == "refuses"
+    assert controller.car_start_status == before, "the line is back at once, with when it was told"
     assert controller.car_refuses_notice is None, "told before the restart"
+    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+    assert controller.car_refuses_notice is None
+    # The car draws: the line ends, and a restart does not bring it back.
+    halo.draws()
+    await _later(hass, freezer, 30)
+    assert controller.car_start_status is None
+    await _store(hass)
+    controller._car_start = car_start.CarStartMemory()  # noqa: SLF001
+    assert controller.car_start_status is None
 
 
 # ---------------------------------------------------------------------------------------------- the notice
@@ -519,9 +678,106 @@ def test_an_app_that_does_not_read_the_lines_gets_none_of_them() -> None:
         "tone": "notice",
         "lines": [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "car_refuses", "params": {"soc_percent": 65.0, "target": 80.0}},
+            {"code": "car_refuses", "params": {"soc_percent": 65.0, "target": 80.0, "since": None}},
         ],
     }
     older = _for_app({"status": status}, {"reads": []})["status"]
     assert older == {"tone": "normal", "lines": [{"code": "charging_now", "params": {"until": None}}]}
     assert _for_app({"status": status}, {"reads": ["car_start"]})["status"] == status
+
+
+# ---------------------------------------------------------------------------------------------- the car at this charger
+
+
+class _Identifier:
+    def __init__(self, confirmed: bool) -> None:
+        self.confirmed = confirmed
+
+    def confirms(self, _vehicle_id: str) -> bool:
+        return self.confirmed
+
+
+def _sources(hass: HomeAssistant, car: str, *, plug: str, location: str) -> tuple[str, str]:
+    """The car's own plug sensor and its tracker, as a Tesla integration has them."""
+    registry = er.async_get(hass)
+    device = dr.async_get(hass).async_get(car)
+    assert device is not None
+    platform = next(iter(device.identifiers))[0]
+    cable = registry.async_get_or_create(
+        "binary_sensor", platform, f"VIN-{car}-charge_state_conn_charge_cable", device_id=car,
+        original_device_class="plug", suggested_object_id="car_charge_cable",
+    )
+    hass.states.async_set(cable.entity_id, plug, {"device_class": "plug"})
+    tracker = registry.async_get_or_create(
+        "device_tracker", platform, f"VIN-{car}-location", device_id=car, suggested_object_id="car_location",
+    )
+    hass.states.async_set(tracker.entity_id, location)
+    return cable.entity_id, tracker.entity_id
+
+
+async def test_the_car_is_here_only_when_settled_plugged_in_and_home(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav import runtime
+    from custom_components.spotnav.vehicles.identification_sources import identification_sources
+
+    car, _switch = _car(hass, "tessie")
+    identifier = _Identifier(True)
+    monkeypatch.setattr(runtime, "charger_data", lambda _hass, _entry: type("D", (), {"identifier": identifier})())
+    # A car without a plug sensor or a tracker: the settled identification alone.
+    assert REAL_CAR_HERE(hass, "charger", car) is True
+    identifier.confirmed = False
+    assert REAL_CAR_HERE(hass, "charger", car) is False, "a question open, or a guess"
+    identifier.confirmed = True
+    cable, tracker = _sources(hass, car, plug="on", location="home")
+    plug, location = identification_sources(hass, car)
+    assert (plug.entity_id, location.entity_id) == (cable, tracker)
+    assert REAL_CAR_HERE(hass, "charger", car) is True
+    for entity_id, state in ((cable, "off"), (cable, "unavailable"), (tracker, "not_home"), (tracker, "unknown")):
+        before = hass.states.get(entity_id)
+        assert before is not None
+        hass.states.async_set(entity_id, state, before.attributes)
+        assert REAL_CAR_HERE(hass, "charger", car) is False, (entity_id, state)
+        hass.states.async_set(entity_id, before.state, before.attributes)
+    assert REAL_CAR_HERE(hass, "charger", None) is False
+    monkeypatch.setattr(runtime, "charger_data", lambda _hass, _entry: None)
+    assert REAL_CAR_HERE(hass, "charger", car) is False
+
+
+def test_identification_confirms_a_car_only_once_settled() -> None:
+    """Two Teslas: the other one plugged in, or the question still open, never confirms the named car."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.planning.auto_settings import IDENTIFY_OFF
+    from custom_components.spotnav.vehicles import identification as ident
+
+    def judged(**facts: Any) -> bool:
+        values: dict[str, Any] = {
+            "claims": True, "elsewhere": False, "session": None, "mode": "auto", "cars": 2, "method": ident.METHOD_PLUG_SENSOR,
+        }
+        values.update(facts)
+        fake = SimpleNamespace(
+            claims=lambda _car: values["claims"],
+            _elsewhere=lambda _car: values["elsewhere"],
+            _session=values["session"],
+            _method=values["method"],
+            _settings=lambda: SimpleNamespace(identify_mode=values["mode"]),
+            _candidates=lambda _settings: [("c", "C")] * values["cars"],
+        )
+        return ident.VehicleIdentifier.confirms(fake, "car")  # type: ignore[arg-type]
+
+    def session(state: str, *, single: bool = False, listening: bool = False, ruled_out: bool = False) -> Any:
+        return SimpleNamespace(state=state, single=single, listening=listening, ruled_out=ruled_out)
+
+    assert judged() is True
+    assert judged(claims=False) is False, "another car decided, or the car only assumed"
+    assert judged(elsewhere=True) is False, "claimed at another charger"
+    assert judged(mode=IDENTIFY_OFF, method=ident.METHOD_MANUAL) is False, "two cars and nothing identifying them"
+    assert judged(mode=IDENTIFY_OFF, method=ident.METHOD_MANUAL, cars=1) is True
+    assert judged(session=session(ident.STATE_WAITING)) is False, "still identifying"
+    assert judged(session=session(ident.STATE_ASKING)) is False, "the question is open"
+    assert judged(session=session(ident.STATE_DECIDED)) is True
+    assert judged(session=session(ident.STATE_DECIDED, listening=True), method=ident.METHOD_LOCATION) is False
+    assert judged(session=session(ident.STATE_DECIDED, listening=True), method=ident.METHOD_PLUG_SENSOR) is True
+    assert judged(session=session(ident.STATE_WAITING, single=True), method=ident.METHOD_ONLY_CANDIDATE) is True
+    assert judged(session=session(ident.STATE_ASKING, single=True), method=ident.METHOD_ONLY_CANDIDATE) is False
