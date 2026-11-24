@@ -46,7 +46,8 @@ card's gear or the charging card's **Settings** (administrators only). The secti
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
   why, on, stopped, or only watching while the AI mode, or a battery's own strategy SpotNav cannot read, is not yet accepted);
 * the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
-  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
+  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy, or, for a brand that waits for one, run
+  the hardware test first), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended;
@@ -91,6 +92,7 @@ administrators can confirm, and never over the webhook. The entities per brand:
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
+* FoxESS (FoxESS Modbus; both enabled by default): Max Charge Current and Max Discharge Current.
 * Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
   limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
   disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
@@ -162,15 +164,44 @@ integration (level and power, and what each states of its size and floor: see
 battery plan can run in shadow. It has no control for them and writes nothing to them. Both are read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
-**Read only: FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also the 1KOMMA5 `1K5-HI` units).** SpotNav reads these
-through the FoxESS Modbus integration (`foxess_modbus`): the battery's power and level, its floor (*Min SoC (On Grid)*)
-and, on the three-phase H3 family, the grid per phase for the site's meter. The H3-Pro and H3-Smart (and 1KOMMA5's
-units, which the integration reads as an H3-Smart) report a level per battery pack and none for the whole battery:
-SpotNav combines the packs, weighted by the energy each holds. The size is learnt; the ratings are learnt too, except
-on the H1 and KH once you enable their two sensors *BMS Charge Rate* and *BMS Discharge Rate* (disabled in Home
-Assistant by default). SpotNav has no control for FoxESS and writes nothing to it: the integration's force charge and
-discharge, work mode and charge periods stay yours. Read from the integration's source and not yet tested on a
-battery: [tell us](supported.md) how yours reads.
+**FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also the 1KOMMA5 `1K5-HI` units): limits only, never run on a
+device.** SpotNav reads these through the FoxESS Modbus integration (`foxess_modbus`): the battery's power and level,
+its floor (*Min SoC (On Grid)*) and, on the three-phase H3 family, the grid per phase for the site's meter. The H3-Pro
+and H3-Smart (and 1KOMMA5's units, which the integration reads as an H3-Smart) report a level per battery pack and none
+for the whole battery: SpotNav combines the packs, weighted by the energy each holds. The size is learnt; the ratings
+are learnt too, except on the H1 and KH once you enable their two sensors *BMS Charge Rate* and *BMS Discharge Rate*
+(disabled in Home Assistant by default).
+
+Its control only lowers the battery's own current limits, read from the integration's source:
+
+* **Hold:** *Max Discharge Current* to 0 A. The battery covers nothing; a sun surplus is still stored. When the house
+  needs the battery to keep under the fuse, the limit is given back for that time.
+* **Cover the house:** *Max Charge Current* to 0 A. The battery covers the house and stores nothing (a sun surplus is
+  exported).
+* **Hand back:** both limits to the values they had.
+* **No grid charge and no sale.** The integration's only way to charge from the grid is its remote control (*Force
+  Charge* in the work mode). Before it starts that, it sets the work mode to *Back-up*, and the inverter runs Back-up
+  once Home Assistant stops renewing the command (after 20 to 30 seconds). Back-up charges at full power, and the
+  integration does not set the mode back after a restart. A Home Assistant that stopped mid-charge could leave the plant
+  charging at full power from the grid, so SpotNav does not use it until a plant has shown what happens. The plan
+  therefore plans no grid charge on FoxESS.
+
+What to know before you turn it on:
+
+* **Run the hardware test first.** Nothing is written until a hardware test (Support, Hardware test) has passed on
+  the firmware the inverter runs; until then control only logs what it would do, whatever the test-mode setting says,
+  and the checklist says so. After a firmware update it waits for a new test.
+* **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
+  *Back-up*, *Peak Shaving* or the integration's *Force Charge* and *Force Discharge* it only watches.
+* **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home Assistant
+  is back and hands it back. It never takes more from the grid because of it.
+* **Writes a day:** 96. Nobody states whether the inverter keeps these limits in flash.
+* **Restore by hand:** set *Max Charge Current* and *Max Discharge Current* back to your values (often the battery's
+  maximum).
+
+Please [tell us](supported.md) what the hardware test says on yours. To help decide about a grid charge, a supervised
+script (`tools/foxess_watchdog_test.py` in the repository) shows what your inverter does when the remote control stops
+being renewed, with the charge current capped low first; ask before you run it.
 
 **Read only: Solis (hybrid inverters such as the S6-EH3P).** SpotNav reads these through the Solis Modbus integration
 (`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor (*Overdischarge SOC*, the on-grid one)
