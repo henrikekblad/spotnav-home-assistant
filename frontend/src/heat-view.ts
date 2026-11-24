@@ -1712,8 +1712,17 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
 }
 
 /** A kW figure as a settings row says it, or "not given". */
-function kwOrNone(language: Language, kw: number | null): string {
-  return kw === null ? translate(language, "heat.settings.kwNone") : kwText(language, kw);
+/** A load's power as its settings row says it: the entered kW, else the learned one, else the typical one it counts
+ * on until learned (the status' `kw` and `kw_source`, `loads/learned_kw.py`). */
+export function powerWords(language: Language, entered: number | null, status: { kw: number | null; kw_source: string | null } | null): string {
+  if (entered !== null) {
+    return translate(language, "heat.settings.kwEntered", { kw: kwText(language, entered) });
+  }
+  if (status === null || status.kw === null) {
+    return translate(language, "heat.settings.kwNone");
+  }
+  const key = status.kw_source === "learned" ? "heat.settings.kwLearned" : "heat.settings.kwTypical";
+  return translate(language, key, { kw: kwText(language, status.kw) });
 }
 
 type SettingRowAdd = (key: HeatSettingKey, label: string, value: string, help?: string, editable?: boolean) => void;
@@ -1793,10 +1802,10 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
         pool.filter_hours === null ? t("heat.settings.poolFilterAuto") : hoursWord(language, pool.filter_hours),
       );
       if (pool.heat_pump !== null) {
-        row("poolHeatPumpKw", t("heat.settings.poolHeatPumpKw"), kwOrNone(language, pool.heat_pump_kw));
+        row("poolHeatPumpKw", t("heat.settings.poolHeatPumpKw"), powerWords(language, pool.heat_pump_kw, answer.pool?.heat_pump ?? null));
       }
       if (pool.circulation_id !== null) {
-        row("poolCirculationKw", t("heat.settings.poolCirculationKw"), kwOrNone(language, pool.circulation_kw));
+        row("poolCirculationKw", t("heat.settings.poolCirculationKw"), powerWords(language, pool.circulation_kw, answer.pool?.circulation ?? null));
         row("poolCirculationControl", t("heat.settings.poolCirculationControl"), t(pool.control_circulation ? "settings.value.on" : "settings.value.off"));
       }
       if (pool.heat_pump !== null && pool.circulation_id !== null) {
@@ -1813,7 +1822,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
     row("spa", t("heat.settings.spa"), nameOf(names, spa?.entity_id ?? null, none));
     if (spa !== null) {
       row("spaIdle", t("heat.spa.idleLabel"), degrees(language, spa.idle_c));
-      row("spaKw", t("heat.settings.spaKw"), kwOrNone(language, spa.heater_kw));
+      row("spaKw", t("heat.settings.spaKw"), powerWords(language, spa.heater_kw, answer.spa));
       if (SPA_CONTROLLABLE.includes(spa.family)) {
         row("spaControl", t("heat.settings.spaControl"), t(spa.control ? "settings.value.on" : "settings.value.off"));
       }
@@ -1826,7 +1835,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
     const { section, row } = settingsSection(doc, "sauna", t("heat.settings.section.sauna"), onEdit);
     row("sauna", t("heat.settings.sauna"), nameOf(names, sauna?.entity_id ?? null, none));
     if (sauna !== null) {
-      row("saunaKw", t("heat.settings.saunaKw"), kwOrNone(language, sauna.heater_kw));
+      row("saunaKw", t("heat.settings.saunaKw"), powerWords(language, sauna.heater_kw, answer.sauna));
       if (sauna.family === "relay") {
         row("saunaSafety", t("heat.settings.saunaSafety"), t(sauna.safety_declared ? "heat.settings.saunaSafetyYes" : "heat.settings.saunaSafetyNo"));
       }

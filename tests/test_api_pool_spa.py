@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -62,7 +63,7 @@ async def test_get_heat_shows_the_pool_watched_and_nothing_is_written(hass: Home
     assert (pool["water_c"], pool["water_source"]) == (24.0, "heat_pump")
     assert pool["water_at"] == (now - timedelta(minutes=4)).isoformat()
     assert pool["heat_pump"] == {
-        "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": pool["heat_pump"]["reason"],
+        "on": True, "heating": False, "kw": 1.6, "kw_source": "entered", "live": False, "state": "watched", "reason": pool["heat_pump"]["reason"],
         "paused_until": None, "failures": 0,
     }
     assert pool["circulation"]["on"] is False and pool["circulation"]["state"] == "watched"
@@ -150,7 +151,11 @@ async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant)
 
     again = PoolSpaShadow(hass, controller)
     again._restore(shadow._book_data(), dt_util.now())  # noqa: SLF001
-    assert again.energy_hours("pool") == {moment: round(kwh, 4) for moment, kwh in hours.items()}
+    assert again.energy_hours("pool") == pytest.approx(hours, abs=1e-3)
+    # Each part per quarter hour, for the energy flow's heat parts: the heat pump's one minute in each.
+    quarters = again.energy_quarters("pool_heat")
+    assert quarters == pytest.approx({first + timedelta(minutes=45): 1.6 / 60, first + timedelta(hours=1): 1.6 / 60}, abs=1e-3)
+    assert again.energy_hours("pool_circulation") == pytest.approx({first: 0.4 / 60, first + timedelta(hours=1): 0.4 / 60}, abs=1e-3)
 
 
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1, 2, 3, 4, 5, 6, 7], "time": "19:00"}]}
@@ -196,11 +201,13 @@ async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant,
     assert spa["next_bath"]["source"] == "weekly" and spa["rate_learned"] is False and spa["rate_c_h"] == 1.5
     assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None, "failures": 0} and spa["live"] is False
     assert set(spa) == {
-        "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "rate_c_h", "rate_learned", "state",
+        "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "kw_source", "rate_c_h", "rate_learned", "state",
         "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "planned",
         "notes",
     }
     assert sauna["family"] == "harvia_sauna" and sauna["temp_c"] == 21.0 and sauna["locked"] is True
+    # Nothing entered and nothing learned yet: the typical figure, said so.
+    assert spa["kw_source"] in ("entered", "typical") and sauna["kw_source"] in ("entered", "typical")
     assert sauna["next_session"] is None and sauna["would"]["action"] == "off" and sauna["would"]["reason"] == "no_session"
     assert sauna["control"]["reason"] == "cloud_slow"
 

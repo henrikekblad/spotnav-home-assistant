@@ -297,3 +297,28 @@ def test_the_short_term_window_decides_the_reading() -> None:
     assert not reads_quarters(now - timedelta(days=10, seconds=1), now, 10)
     assert reads_quarters(now - timedelta(days=3), now, 3) and not reads_quarters(now - timedelta(days=4), now, 3)
     assert not reads_quarters(now, now, None)
+
+
+def test_the_pool_the_spa_and_the_sauna_move_from_the_house_into_heat_counted_once() -> None:
+    """Their counted quarters are added to each period's heat: the house drops by their kWh, heat rises by the same,
+    an hour takes its four quarters, a quarter its own, and a period without them keeps its heat as it was."""
+    from custom_components.spotnav.site.energy_flow import EnergyHour, allocate_hour, with_heat_parts
+
+    t0 = datetime(2026, 11, 24, 16, tzinfo=timezone.utc)
+    sauna = {t0 + timedelta(minutes=15): 2.25, t0 + timedelta(minutes=30): 2.25, t0 + timedelta(minutes=45): 2.25}
+    pool = {t0: 0.1, t0 + timedelta(hours=1): 0.1}
+    hours = [
+        EnergyHour(start=t0, grid_in=9.0, grid_out=0.0, heat=1.0),
+        EnergyHour(start=t0 + timedelta(hours=1), grid_in=1.0, grid_out=0.0, heat=None),
+        EnergyHour(start=t0 + timedelta(hours=2), grid_in=1.0, grid_out=0.0, heat=None),
+    ]
+    moved = with_heat_parts(hours, [sauna, pool])
+    before, after = allocate_hour(hours[0]), allocate_hour(moved[0])
+    assert moved[0].heat == 1.0 + 6.75 + 0.1
+    assert after[("grid", "heat")] - before[("grid", "heat")] == 6.85
+    assert round(before[("grid", "house")] - after[("grid", "house")], 6) == 6.85
+    # An hour without a heat figure gets theirs alone; one without them keeps none.
+    assert moved[1].heat == 0.1 and moved[2].heat is None
+    # By the quarter hour: each quarter its own.
+    quarters = [EnergyHour(start=t0 + timedelta(minutes=15 * q), grid_in=2.5, grid_out=0.0, minutes=15) for q in range(4)]
+    assert [period.heat for period in with_heat_parts(quarters, [sauna])] == [None, 2.25, 2.25, 2.25]

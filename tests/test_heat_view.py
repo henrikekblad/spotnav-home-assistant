@@ -448,12 +448,12 @@ def controlled_answer() -> dict[str, Any]:
         "season_open": True, "water_c": 24.6, "water_source": "heat_pump",
         "water_at": (MIDNIGHT + timedelta(hours=7, minutes=40)).isoformat(), "target_c": 27.0,
         "heat_pump": {
-            "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting", "paused_until": None,
+            "on": True, "heating": False, "kw": 1.6, "kw_source": "entered", "live": False, "state": "watched", "reason": "waiting", "paused_until": None,
             "failures": 0,
         },
         # The circulation SpotNav controls (its opt-in on): one write did not read back once.
         "circulation": {
-            "on": False, "kw": None, "live": True, "state": "controlled", "reason": "waiting", "paused_until": None, "failures": 1,
+            "on": False, "kw": 0.42, "kw_source": "learned", "live": True, "state": "controlled", "reason": "waiting", "paused_until": None, "failures": 1,
         },
         "today": {"need_h": 8.25, "need_source": "water", "done_h": 3.0, "planned_h": 4.0, "heat_h": 2.0, "kwh": None},
         "planned": [
@@ -465,7 +465,7 @@ def controlled_answer() -> dict[str, Any]:
         "notes": [],
     }
     spa = {
-        "family": "balboa", "water_c": 36.5, "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heating": True, "kw": 3.0,
+        "family": "balboa", "water_c": 36.5, "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heating": True, "kw": 3.0, "kw_source": "entered",
         "rate_c_h": 2.0, "rate_learned": True, "state": "heating", "ready_at": (MIDNIGHT + timedelta(hours=18, minutes=40)).isoformat(),
         "next_bath": {"at": (MIDNIGHT + timedelta(hours=19)).isoformat(), "source": "weekly"},
         "baths": [{"weekdays": [5, 6], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
@@ -479,7 +479,7 @@ def controlled_answer() -> dict[str, Any]:
         "notes": [],
     }
     sauna = {
-        "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "rate_c_h": 80.0,
+        "family": "relay", "temp_c": None, "target_c": 80.0, "heating": False, "kw": 9.0, "kw_source": "entered", "rate_c_h": 80.0,
         "rate_learned": False, "state": "idle", "ready_at": None, "next_session": None, "sessions": [], "session_once": None,
         "session_now": None, "locked": None, "lock_id": None, "safety_declared": False, "live": False,
         "control": {"state": "watch_only", "reason": "no_safety", "paused_until": None, "failures": 0},

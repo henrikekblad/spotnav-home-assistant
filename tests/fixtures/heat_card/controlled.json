@@ -1472,7 +1472,8 @@
   "pool": {
     "circulation": {
       "failures": 1,
-      "kw": null,
+      "kw": 0.42,
+      "kw_source": "learned",
       "live": true,
       "on": false,
       "paused_until": null,
@@ -1484,6 +1485,7 @@
       "failures": 0,
       "heating": false,
       "kw": 1.6,
+      "kw_source": "entered",
       "live": false,
       "on": true,
       "paused_until": null,
@@ -1578,6 +1580,7 @@
     "family": "relay",
     "heating": false,
     "kw": 9.0,
+    "kw_source": "entered",
     "live": false,
     "lock_id": null,
     "locked": null,
@@ -1634,6 +1637,7 @@
     "heating": true,
     "idle_c": 30.0,
     "kw": 3.0,
+    "kw_source": "entered",
     "live": false,
     "next_bath": {
       "at": "2026-11-16T18:00:00+00:00",

@@ -158,11 +158,11 @@ describe("the Plan tab", () => {
     }
   });
 
-  it("draws the pool's circulation and heat pump as watched lanes, worded in every language", () => {
+  it("draws the pool's circulation and heat pump as watched lanes and layers of their own, worded in every language", () => {
     const pool = plan("pool.json");
     const circulation = pool.loads.find((load) => load.kind === "pool_circulation")!;
     const heat = pool.loads.find((load) => load.kind === "pool_heat")!;
-    expect(circulation.would && heat.would && circulation.in_house).toBe(true);
+    expect(circulation.would && heat.would && !circulation.in_house && !heat.in_house).toBe(true);
     const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
     expect(laneReason("sv", ctx, circulation)).toContain("Filtrerar 6 h av 5 h per dygn");
     expect(laneReason("en", ctx, heat)).toContain("Heats 2 h");
@@ -175,13 +175,26 @@ describe("the Plan tab", () => {
       }
     }
     expect(body(pool).querySelectorAll("[data-load='pool_circulation']").length).toBeGreaterThan(0);
+    // Each a layer of the stacked chart in its own colour, and in the legend.
+    const drawn = body(pool);
+    expect(drawn.querySelectorAll("rect[data-layer='pool_circulation']").length).toBe(6);
+    expect(drawn.querySelectorAll("rect[data-layer='pool_heat']").length).toBe(2);
+    expect(drawn.querySelector<SVGRectElement>("rect[data-layer='pool_heat']")!.getAttribute("fill")).toBe("var(--spotnav-pool-heat-colour)");
+    expect(drawn.querySelector(".spotnav-plan-legend")!.textContent).toContain("Poolens värmepump");
   });
 
-  it("draws the spa and the sauna as watched lanes with their heat-up and hold, worded in every language", () => {
+  it("draws the spa and the sauna as watched lanes and layers with their heat-up and hold, worded in every language", () => {
     const value = plan("spa_sauna.json");
     const spa = value.loads.find((load) => load.kind === "spa")!;
     const sauna = value.loads.find((load) => load.kind === "sauna")!;
-    expect(spa.would && sauna.would && spa.in_house).toBe(true);
+    expect(spa.would && sauna.would && !spa.in_house && !sauna.in_house).toBe(true);
+    // The booked sauna is a layer of its own on top of the house (its 6.75 kW in the hour), in the legend.
+    const drawn = body(value);
+    const layer = [...drawn.querySelectorAll<SVGRectElement>("rect[data-layer='sauna']")];
+    expect(layer.length).toBe(1);
+    expect(layer[0]!.getAttribute("fill")).toBe("var(--spotnav-sauna-colour)");
+    expect(layer[0]!.querySelector("title")!.textContent).toMatch(/Bastu 6,8\s*kW/u);
+    expect(drawn.querySelector(".spotnav-plan-legend")!.textContent).toContain("Bastu");
     const ctx = { language: "sv", timeZone: "Europe/Stockholm", clock24: true } as never;
     expect(laneReason("sv", ctx, spa)).toMatch(/38 °C kl\. \d\d:\d\d/u);
     expect(runWords("sv", spa, spa.runs[0]!)).toBe("Spat värms upp: billig timme");

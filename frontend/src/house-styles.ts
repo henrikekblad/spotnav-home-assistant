@@ -6,6 +6,7 @@
 // card. Red and green stay the price's own (dear and cheap).
 
 import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
+import { LOAD_COLOUR_VARS } from "./load-colours";
 
 export const HOUSE_CLASSES = {
   card: "spotnav-house",
@@ -81,7 +82,7 @@ export const HOUSE_STYLES = `
     --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
     --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
     --spotnav-flow-heat: var(--spotnav-flow-heat-colour, #ff8f87);
-    --spotnav-flow-other: #b0bec5;
+    --spotnav-flow-other: #b0bec5;${LOAD_COLOUR_VARS}
   }
   .${H.compareRow} {
     display: grid;

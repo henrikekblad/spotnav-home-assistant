@@ -141,7 +141,7 @@
       "ceiling": "power_tariff",
       "ceiling_kw": 5.0,
       "house_kw": 1.6,
-      "net_kw": 1.6,
+      "net_kw": 4.6,
       "past": false,
       "planned_net_kw": null,
       "price": 110.0,
@@ -154,7 +154,7 @@
       "ceiling": "power_tariff",
       "ceiling_kw": 5.0,
       "house_kw": 2.4,
-      "net_kw": 2.4,
+      "net_kw": 3.9,
       "past": false,
       "planned_net_kw": null,
       "price": 180.0,
@@ -284,7 +284,7 @@
       "ceiling": "power_tariff",
       "ceiling_kw": 5.0,
       "house_kw": 2.4,
-      "net_kw": 0.6,
+      "net_kw": 7.35,
       "past": false,
       "planned_net_kw": null,
       "price": 230.0,
@@ -800,7 +800,7 @@
     {
       "does_not_fit": null,
       "id": "spa",
-      "in_house": true,
+      "in_house": false,
       "kind": "spa",
       "kw": [
         0.0,
@@ -867,7 +867,7 @@
     {
       "does_not_fit": null,
       "id": "sauna",
-      "in_house": true,
+      "in_house": false,
       "kind": "sauna",
       "kw": [
         0.0,
@@ -937,7 +937,7 @@
   "power_tariff": true,
   "site_id": "site_villa",
   "summary": {
-    "cost": 4461.0,
+    "cost": 6613.5,
     "over": true,
     "peak_ceiling": "power_tariff",
     "peak_ceiling_kw": 5.0,

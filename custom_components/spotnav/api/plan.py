@@ -63,7 +63,9 @@ from ..site.plan_view import (
     PriceHour,
     WaterHeaterPlan,
     ZonePlan,
+    learned_share,
     plan_view,
+    window,
 )
 from .common import send_unsupported_version
 from .house_history import ERROR_INVALID_DATE
@@ -249,6 +251,19 @@ def _pool(hass: HomeAssistant, controller: Any) -> PoolPlanView | None:
     )
 
 
+def _learned_kw(controller: Any, now: datetime) -> dict[str, dict[datetime, float]]:
+    """What the house forecast has learned of the pool, the spa and the sauna per hour of the window
+    (`site/plan_view.learned_share`, from the shadow's counted energy)."""
+    from ..pool.runtime import DAYS_KEPT, ENERGY_KINDS  # noqa: PLC0415 - it imports the site
+
+    shadow = getattr(controller, "pool_spa", None)
+    if shadow is None:
+        return {}
+    tz = controller.demand.tracker.tz
+    hours = window(now, tz, _prices(controller, now))
+    return {kind: learned_share(shadow.energy_hours(kind), hours, tz, now, DAYS_KEPT) for kind in ENERGY_KINDS}
+
+
 def _deadlines(hass: HomeAssistant, controller: Any) -> tuple[DeadlinePlanView, ...]:
     """The spa's and the sauna's shadow plans (`spa/runtime.py`)."""
     shadow = getattr(controller, "pool_spa", None)
@@ -397,6 +412,7 @@ async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: dat
             water_heater=heater,
             pool=_guarded("pool plan", lambda: _pool(hass, controller), None),
             deadlines=_guarded("spa and sauna plans", lambda: _deadlines(hass, controller), ()),
+            learned_kw=_guarded("loads' learned share", lambda: _learned_kw(controller, now), {}),
             hold_kw=_guarded("import target's hold", lambda: site_hour_caps(hass, controller, now), {}),
             hold_kind=CEILING_IMPORT_TARGET if _import_target_kw(controller) is not None else CEILING_POWER_LEVEL,
             soft_kw=_guarded("soft ceiling", lambda: _soft(controller), {}),

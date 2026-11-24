@@ -21,7 +21,7 @@ Refusals as `spotnav/get_house_history`, and `spotnav_read_failed` when the stat
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timezone
 import logging
 from typing import Any, Final
@@ -56,7 +56,7 @@ from ..site.house_loads import (
     stored_belongs,
 )
 from .common import send_unsupported_version
-from .house import fuse_kw
+from .house import HeatPart, fuse_kw, heat_parts
 from .house_history import history_with_periods
 from .power_month import PowerMonthRefusal, _site_of_request
 
@@ -214,6 +214,16 @@ async def _read_heat(
     return await _work(hass, heavy, judge)
 
 
+def part_reads(parts: Sequence[HeatPart], start: datetime, through: datetime) -> list[tuple[DashboardMeter, MeterRead]]:
+    """The pool's, the spa's and the sauna's parts in the heat pie: each part's counted energy in `[start, through)`
+    (the quarters the energy flow's heat holds, `api/house.py`), its `source` the part's name."""
+    out: list[tuple[DashboardMeter, MeterRead]] = []
+    for part in parts:
+        kwh = sum(value for moment, value in part.quarters.items() if start <= moment < through)
+        out.append((DashboardMeter(part.entity_id, part.name, source=part.part), MeterRead(kwh)))
+    return out
+
+
 def _zone_devices(hass: HomeAssistant, climates: Any) -> set[str]:
     registry = er.async_get(hass)
     out: set[str] = set()
@@ -251,6 +261,11 @@ async def loads_answer(
     zones = await heat.async_current_zones()
     moved: list[tuple[DashboardMeter, str]] = []
     meters: list[DashboardMeter] = []
+    try:
+        parts = heat_parts(hass, controller, meter, zones)
+    except Exception:  # noqa: BLE001 - without them they stay in the house
+        _LOGGER.debug("SpotNav house loads: the pool's and the spa's energy could not be read", exc_info=True)
+        parts = []
     if kind == KIND_HOUSE:
         car_entities, car_devices = charger_sensors(hass, controller)
         # The heat's own sensors are sorted out by themselves; a meter the household moved to heat is listed as moved.
@@ -261,12 +276,14 @@ async def loads_answer(
             car_entities=car_entities,
             car_devices=car_devices,
             heat_entities=heat_entities,
-            heat_devices=_zone_devices(hass, heat.zone_climates()),
+            # A dashboard meter on the pool's, the spa's or the sauna's device: that part is in the heat already.
+            heat_devices=_zone_devices(hass, [*heat.zone_climates(), *(part.entity_id for part in parts)]),
         )
         meters, moved = split_belongs(counted, belongs)
     cache: dict[tuple[Any, ...], tuple[Any, dict[str, Any]]] = hass.data.setdefault(_CACHE, {})
     key = (site.entry_id, kind, period.kind, period.first)
-    mark = (through, figure, tuple(meters), tuple(moved), zones.signature(), meter.entity_id, tuple(sorted(belongs.items())))
+    part_mark = tuple((part.part, part.entity_id, round(sum(part.quarters.values()), 4)) for part in parts)
+    mark = (through, figure, tuple(meters), tuple(moved), zones.signature(), meter.entity_id, tuple(sorted(belongs.items())), part_mark)
     held = cache.get(key)
     if held is not None and held[0] == mark:
         return held[1]
@@ -279,6 +296,7 @@ async def loads_answer(
         cap = fuse_kw(controller)  # kW over an hour: kWh
         if kind == KIND_HEAT:
             reads = await _read_heat(hass, meter, zones, start, through, five, limits, cap, heavy)
+            reads += part_reads(parts, start, through)
         else:
             reads = await _read(hass, meters, start, through, five, limits, cap, heavy)
     elif kind == KIND_HEAT:

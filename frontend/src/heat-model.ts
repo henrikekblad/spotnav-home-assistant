@@ -302,8 +302,8 @@ const POOL = O({
   water_source: N("string"),
   water_at: N("string"),
   target_c: "number",
-  heat_pump: N(O({ on: N("boolean"), heating: N("boolean"), kw: N("number"), ...POOL_PART })),
-  circulation: N(O({ on: N("boolean"), kw: N("number"), ...POOL_PART })),
+  heat_pump: N(O({ on: N("boolean"), heating: N("boolean"), kw: N("number"), kw_source: N("string"), ...POOL_PART })),
+  circulation: N(O({ on: N("boolean"), kw: N("number"), kw_source: N("string"), ...POOL_PART })),
   today: O({
     need_h: N("number"),
     need_source: N("string"),
@@ -332,6 +332,7 @@ const DEADLINE_COMMON = {
   family: "string",
   heating: N("boolean"),
   kw: N("number"),
+  kw_source: N("string"),
   rate_c_h: "number",
   rate_learned: "boolean",
   state: N("string"),
@@ -974,7 +975,10 @@ export interface HeatNotReady {
 interface HeatDeadlineCommon {
   family: string;
   heating: boolean | null;
+  /** The power that counts: the entered kW, else the learned one, else a typical one (`kw_source`). */
   kw: number | null;
+  /** "entered", "learned" or "typical" (`loads/learned_kw.py`). */
+  kw_source: string | null;
   rate_c_h: number;
   rate_learned: boolean;
   /** "idle", "heating", "ready" or "late". */
@@ -1019,7 +1023,10 @@ export interface HeatSauna extends HeatDeadlineCommon {
 
 export interface HeatPoolPart {
   on: boolean | null;
+  /** The power that counts: the entered kW, else the learned one, else a typical one (`kw_source`). */
   kw: number | null;
+  /** "entered", "learned" or "typical" (`loads/learned_kw.py`). */
+  kw_source: string | null;
   /** SpotNav steers it live (its opt-in on and a local route): its steps count in the shed order. */
   live: boolean;
   /** "watched" (the opt-in off), "season_closed", "controlled", "paused" or "handed_back" (`loads/hold_part.py`). */

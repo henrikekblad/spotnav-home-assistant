@@ -8,7 +8,8 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
     {api_version: 1, site_id, kind: "house" | "heat", period: "day" | "month" | "year", date (the period's first
      day), end (the first day after it), through (the end of the energy flow's last period) | null,
      house_kwh (the block's figure: the house, or the heat) | null, meters_kwh, other_kwh | null, over_kwh,
-     loads: [{statistic_id, name, kwh, source: "meter" | "heat_pump" | "zone", changed}],
+     loads: [{statistic_id, name, kwh, source: "meter" | "heat_pump" | "zone" | "pool_heat" | "pool_circulation" | "spa"
+              | "sauna", changed}],
      moved: [{statistic_id, name, belongs}], belongs: {statistic_id: "heat" | "car" | "none"},
      implausible: [{statistic_id, name, hours, left_out}]}
 
@@ -28,7 +29,11 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
   house is listed in the house pie's `moved` (to bring it back); in the heat pie a moved meter is a row with
   `source` `meter` and `changed` true.
 * **The heat pie** (`kind: "heat"`): the heat pump's meter (`heat_pump`), each heat zone counted (`zone`, named by
-  its thermostat) and each meter moved to heat (`meter`); `house_kwh` is the flow's heat block and `other_kwh` what
+  its thermostat), each meter moved to heat (`meter`) and the pool's heat pump and circulation, the spa and the sauna
+  (`pool_heat`, `pool_circulation`, `spa`, `sauna`, named by their entity; `statistic_id` their entity: the energy
+  the pool and spa shadow counted, as the energy flow's heat holds it, `api/house.py`), a part whose device the meter
+  or a zone already reads left out; a dashboard meter on such a part's device is sorted out of the house pie as a
+  heat zone's is; `house_kwh` is the flow's heat block and `other_kwh` what
   the flow's heat holds beyond them (none, but for rounding and hours the meter missed).
 * **The figures** (`meter_kwh`): each meter's energy over the same span as the flow's house block (the period's
   start up to `through`): the recorder's hourly statistics where the hour is whole, else its 5-minute ones (today's

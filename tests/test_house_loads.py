@@ -587,3 +587,46 @@ def test_contract_fixtures() -> None:
             through=datetime(2026, 11, 17, 13, tzinfo=UTC), house_kwh=6120.4, loads=[],
         ),
     )
+
+
+async def test_the_pools_the_spas_and_the_saunas_parts_are_in_the_heat_pie_once(hass) -> None:  # noqa: ANN001
+    """Each part set up with energy counted is a heat part named by its entity; a part on a device a zone already
+    reads is left out (counted once); the pie's figure is its counted energy in the span."""
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.spotnav.api.house import heat_parts
+    from custom_components.spotnav.api.house_loads import part_reads
+    from custom_components.spotnav.heat.config import read_config
+    from custom_components.spotnav.site.heat_zones import ZoneSources
+
+    owner = MockConfigEntry(domain="plugs")
+    owner.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    entities = er.async_get(hass)
+
+    def on_device(domain: str, key: str) -> str:
+        device = devices.async_get_or_create(config_entry_id=owner.entry_id, identifiers={("plugs", key)}, name=key)
+        return entities.async_get_or_create(domain, "plugs", key, device_id=device.id, suggested_object_id=key).entity_id
+
+    sauna = on_device("switch", "bastu")
+    spa = on_device("climate", "spa")
+    hass.states.async_set(sauna, "off", {"friendly_name": "Bastu"})
+    t0 = datetime(2026, 11, 24, 16, tzinfo=timezone.utc)
+    quarters = {"sauna": {t0 + timedelta(minutes=15): 2.25, t0 + timedelta(minutes=30): 2.25}, "spa": {t0: 0.75}}
+    config = read_config(
+        {"sauna": {"entity_id": sauna, "family": "relay", "target_c": 80}, "spa": {"entity_id": spa, "family": "balboa"}}
+    )
+    shadow = SimpleNamespace(config=lambda: config, energy_quarters=lambda part: quarters.get(part, {}))
+    controller = SimpleNamespace(pool_spa=shadow, house_forecast=SimpleNamespace(heat=SimpleNamespace(zone_climates=lambda: [])))
+    meter = SimpleNamespace(found=False, entity_id=None)
+    parts = heat_parts(hass, controller, meter, ZoneSources())
+    assert [(part.part, part.entity_id, part.name) for part in parts] == [("spa", spa, spa), ("sauna", sauna, "Bastu")]
+    reads = part_reads(parts, t0, t0 + timedelta(minutes=40))
+    assert [(row.source, read.kwh) for row, read in reads] == [("spa", 0.75), ("sauna", 4.5)]
+    # A zone whose thermostat is on the spa's device already counts it: the spa is left out, the sauna stays.
+    controller.house_forecast.heat.zone_climates = lambda: [spa]
+    assert [part.part for part in heat_parts(hass, controller, meter, ZoneSources())] == ["sauna"]

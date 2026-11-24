@@ -5,7 +5,8 @@ A past local day has every hour of it (23 or 25 on the clock's change), `past` t
 the history and the running hour on from the live answer, to midnight. An hour gone by:
 
 * `hours[]`: `price` and `sell` as the plan had them at the hour's start, `house_kw` the house measured (the grid less
-  the cars and the battery, so less the sun: `house.sun_in_house` is true and `sun_kw` null), `net_kw` the grid's
+  the cars and the battery, so less the sun: `house.sun_in_house` is true and `sun_kw` null) less the pool's, the
+  spa's and the sauna's measured power (layers of their own, `in_house` false, as live), `net_kw` the grid's
   measured import, `ceiling_kw`/`ceiling` the ceiling that applied at the hour's start, `past` true, `recorded`
   `full`, `partial` (Home Assistant ran only part of it) or `missing` (nothing recorded: every figure null, never
   filled in), `planned_net_kw` the net the plan counted on at the hour's start.
@@ -51,7 +52,10 @@ from .plan_view import (
     history_block,
 )
 
-_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER, KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
+_IN_HOUSE = (KIND_HEAT, KIND_HEAT_ZONE, KIND_WATER_HEATER)
+#: Drawn as layers of their own on top of the house (`site/plan_view.py`): in an hour gone by the house measured holds
+#: them, so their measured power is taken off its `house_kw` (the stack still sums to what was measured).
+_OWN_LAYER = (KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
 #: The pool's and the spa's lanes keep the live answer's summary (their figures are the shadow's plan).
 _LIVE_SUMMARY = (KIND_POOL_HEAT, KIND_POOL_CIRCULATION, KIND_SPA, KIND_SAUNA)
 
@@ -288,6 +292,12 @@ def past_view(
                 "reason": reason,
             }
         )
+    for index in range(len(past_hours)):
+        row = hour_rows[index]
+        if row["house_kw"] is not None:
+            own = sum(max(0.0, load["kw"][index] or 0.0) for load in loads if load["kind"] in _OWN_LAYER)
+            if own > 0:
+                row["house_kw"] = _r(max(0.0, row["house_kw"] - own))
 
     cost = 0.0
     priced = False
