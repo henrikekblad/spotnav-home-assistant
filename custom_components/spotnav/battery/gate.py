@@ -549,7 +549,10 @@ def without_removed_hold(report: Mapping[str, Any] | None, names: tuple[str, ...
     row = dict(_modes(report).get("hold") or {})
     for name in ("outcome", "variant", "commanded_at", "decided_at"):
         row.pop(name, None)
-    return {**report, "modes": {**_modes(report), "hold": row}}
+    # A check to run again, not one that ran out of attempts: its count starts over, and no gap is owed to its last
+    # run (`report_status`, `needs_run`, `RETRY_GAP_S`).
+    migrated = {key: value for key, value in report.items() if key != "last_run_at"}
+    return {**migrated, "attempts": 0, "modes": {**_modes(report), "hold": row}}
 
 
 def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> str | None:

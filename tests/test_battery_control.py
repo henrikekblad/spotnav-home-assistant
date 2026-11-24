@@ -2378,11 +2378,16 @@ async def test_a_report_that_passed_a_hold_the_recipe_no_longer_has_checks_the_r
     control, _plant = await _forced_hold_site(
         hass, monkeypatch, hass_storage, [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
     )
-    control.reports[control.firmware_key()]["modes"]["normal"] = {"mode": "normal", "outcome": "restored"}
+    stored = control.reports[control.firmware_key()]
+    stored["modes"]["normal"] = {"mode": "normal", "outcome": "restored"}
+    # The owner's plant ran its routine often (per phase, expiry): out of attempts, last run just now.
+    stored |= {"attempts": gate.MAX_ATTEMPTS, "last_run_at": dt_util.now().isoformat()}
     assert control.hold_variant() == "pv_first"
     report = control.report()
     assert report is not None and gate.report_status(report) == "pending" and control.state() == "waiting"
     assert "hold" in gate.modes_to_run(report) and gate.needs_run(report)
+    # A check to run again at the next suitable moment, never one that failed or waits out a gap.
+    assert report["attempts"] == 0 and "last_run_at" not in report
     assert report["modes"]["hold"]["variants"] == [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
     # The routine's pass of PV First makes control run again.
     report["modes"]["hold"] |= {"outcome": "obeyed", "variant": "pv_first"}
