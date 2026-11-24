@@ -22,7 +22,7 @@ from .pool_spa_fakes import MIN, S, TZ, Devices, make_control
 
 ZONE = ZoneInfo(TZ)
 DAY = datetime(2026, 7, 1, tzinfo=ZONE)
-WD = DAY.weekday()
+WD = DAY.isoweekday()  # spa and sauna weekdays are numbered 1-7 like departures
 SAUNA = "climate.bastu"
 SPA = "climate.spa"
 
