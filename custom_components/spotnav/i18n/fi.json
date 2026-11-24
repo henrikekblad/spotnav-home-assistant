@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Allas",
     "pool_season.message": "Vesi on ollut noin 10 °C kolme päivää – aika sulkea allaskausi?",
-    "pool_season.close": "Sulje kausi"
+    "pool_season.close": "Sulje kausi",
+    "hardware_test.title": "SpotNav · Akku",
+    "hardware_test.message": "Akun laitteistotesti on nyt käynnissä (noin {minutes} min).",
+    "hardware_test.stop": "Pysäytä testi"
   },
   "add_charger": {
     "hint": "Lisää latauslaite: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."

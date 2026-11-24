@@ -195,7 +195,8 @@ What to know before you turn it on:
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
   passed once on this inverter; until then control only logs what it would do, whatever the test-mode setting says,
   and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
-  if that check fails does the checklist ask for the hardware test again.
+  if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
+  lets the check run again, as for every brand).
 * **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
   *Back-up*, *Peak Shaving* or the integration's *Force Charge* and *Force Discharge* it only watches.
 * **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home Assistant

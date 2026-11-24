@@ -69,6 +69,11 @@ says when that is likely ("Runs by itself, likely from about 17:00"). It waits u
 not be judged (no room under the fuse, the sun came out) runs again by itself at the next suitable moment, up to
 three times. **Stop the test** ends a waiting test too.
 
+A battery brand's **first** test on your plant (FoxESS, EcoFlow and Marstek wait for it before SpotNav writes
+anything) starts only between 08:00 and 21:00. When it starts, each phone that is on for SpotNav's notices gets one
+notification, "Hardware test of the battery is running now (about 10 min)", with a **Stop the test** button; it is
+taken off when the test ends. Later checks after an update run by themselves, at any suitable hour, and tell no one.
+
 While the battery part runs, SpotNav holds every charger on the site stopped: no plan, sun or Start starts one, and
 a charge a charger begins by itself is stopped. An OCPP charger is set unavailable meanwhile (the `ocpp` integration's
 **Availability** switch) and set back to available afterwards, also at the next start should Home Assistant stop in

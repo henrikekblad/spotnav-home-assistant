@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Zwembad",
     "pool_season.message": "Het water is al drie dagen rond 10 °C – tijd om het zwembadseizoen te sluiten?",
-    "pool_season.close": "Seizoen sluiten"
+    "pool_season.close": "Seizoen sluiten",
+    "hardware_test.title": "SpotNav · Batterij",
+    "hardware_test.message": "De hardwaretest van de batterij loopt nu (ongeveer {minutes} min).",
+    "hardware_test.stop": "Test stoppen"
   },
   "add_charger": {
     "hint": "Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."

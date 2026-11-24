@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Piscina",
     "pool_season.message": "El agua lleva tres días en torno a 10 °C: ¿hora de cerrar la temporada de piscina?",
-    "pool_season.close": "Cerrar la temporada"
+    "pool_season.close": "Cerrar la temporada",
+    "hardware_test.title": "SpotNav · Batería",
+    "hardware_test.message": "La prueba de hardware de la batería está en marcha (unos {minutes} min).",
+    "hardware_test.stop": "Detener la prueba"
   },
   "add_charger": {
     "hint": "Añade un cargador: Ajustes → Dispositivos y servicios → SpotNav → Añadir entrada → Cargador; te ofrecerá unirse a esta instalación."

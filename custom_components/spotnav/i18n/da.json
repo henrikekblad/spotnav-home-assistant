@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Pool",
     "pool_season.message": "Vandet har ligget omkring 10 °C i tre dage – tid til at lukke poolsæsonen?",
-    "pool_season.close": "Luk sæsonen"
+    "pool_season.close": "Luk sæsonen",
+    "hardware_test.title": "SpotNav · Batteri",
+    "hardware_test.message": "Hardwaretesten af batteriet kører nu (cirka {minutes} min).",
+    "hardware_test.stop": "Stop testen"
   },
   "add_charger": {
     "hint": "Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg."

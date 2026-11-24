@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Bastu",
     "pool_season.title": "SpotNav · Pool",
     "pool_season.message": "Vattnet har legat runt 10 °C i tre dagar – dags att stänga poolsäsongen?",
-    "pool_season.close": "Stäng säsongen"
+    "pool_season.close": "Stäng säsongen",
+    "hardware_test.title": "SpotNav · Batteri",
+    "hardware_test.message": "Hårdvarutestet av batteriet körs nu (cirka {minutes} min).",
+    "hardware_test.stop": "Stoppa testet"
   },
   "add_charger": {
     "hint": "Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen."

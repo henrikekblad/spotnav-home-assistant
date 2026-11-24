@@ -250,3 +250,12 @@ def pool_season_text(language: str) -> tuple[str, str, str]:
     """The pool's season notice: its title, message and button ("Stäng säsongen")."""
     text = table(language, NAMESPACE)
     return text["pool_season.title"], text["pool_season.message"], text["pool_season.close"]
+
+
+def hardware_test_text(language: str, minutes: int) -> tuple[str, str, str]:
+    """The battery's first hardware test running now: its title, message and button ("Stoppa testet")."""
+    text = table(language, NAMESPACE)
+    return (
+        text["hardware_test.title"], text["hardware_test.message"].replace("{minutes}", str(minutes)),
+        text["hardware_test.stop"],
+    )

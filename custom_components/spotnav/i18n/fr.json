@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Piscine",
     "pool_season.message": "L’eau est autour de 10 °C depuis trois jours : temps de fermer la saison de la piscine ?",
-    "pool_season.close": "Fermer la saison"
+    "pool_season.close": "Fermer la saison",
+    "hardware_test.title": "SpotNav · Batterie",
+    "hardware_test.message": "Le test matériel de la batterie est en cours (environ {minutes} min).",
+    "hardware_test.stop": "Arrêter le test"
   },
   "add_charger": {
     "hint": "Ajoutez une borne : Paramètres → Appareils et services → SpotNav → Ajouter une entrée → Borne ; elle proposera de rejoindre ce site."

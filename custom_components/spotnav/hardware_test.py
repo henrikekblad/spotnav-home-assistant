@@ -7,6 +7,11 @@ Where the site has a battery part, the test waits for a moment that suits every 
 gives, so the battery covers it; its level between `gate.SUITABLE_SOC_PCT`; no car charging; the fuse with room) for
 at most `WAIT_MAX`, and the card says when it is likely to run (`state` `waiting`, `next_at`). A run where a battery
 step could not be judged (and none failed) runs again by itself at the next such moment, up to `MAX_RETRIES` times.
+A brand's **first** pass on the plant (the battery's recipe waits for a person's hardware test,
+`BatteryControl.hardware_test_due` `hardware_test_first`: never run on this plant) runs only in waking hours
+(`WAKING_HOURS`, local), and when it starts writing each phone that is on for SpotNav's notices gets one notification
+"the battery's hardware test is running now (about N min)" with a Stop button (`STOP_ACTION`), taken off when the run
+ends; the automatic routine after a later change tells no one.
 It runs the parts the site has, each through the engine that already writes to it, with every rule of that engine,
 in at most `MAX_TEST` all told:
 
@@ -52,12 +57,13 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .battery.gate import mode_verdict
 from .const import DOMAIN
+from .texts import language_of
 
 if TYPE_CHECKING:
     from .site.site_capacity_controller import SiteCapacityController
@@ -96,6 +102,17 @@ WAIT_POLL_S: Final = 60.0
 MAX_RETRIES: Final = 3
 #: The local hour a daytime wait is likely to end at (the evening's house load over the sun, `gate.EVENING_HOURS`).
 LIKELY_HOUR: Final = 17
+#: After a start, how long a stored wait keeps waiting for a battery part that is not there yet (an integration that
+#: loads after SpotNav's own start-up wait), rather than giving up.
+LOAD_GRACE: Final = timedelta(minutes=15)
+#: The local hours a brand's first pass on the plant may start in (from, until): someone is likely awake to see it.
+WAKING_HOURS: Final = (8, 21)
+#: The Stop button of the first pass's notification, with the site's entry id.
+STOP_ACTION: Final = "SPOTNAV_HARDWARE_TEST_STOP_"
+#: Home Assistant's event for a notification's button (`notifications.notifier.NOTIFICATION_ACTION_EVENT`), and the
+#: notify domain: named here, the notifications package imports the site.
+NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
+NOTIFY_DOMAIN: Final = "notify"
 #: The chargers' hold ends by itself this long after the test's deadline, should nothing release it.
 HOLD_SLACK: Final = timedelta(minutes=1)
 #: How long the unload waits for the OCPP chargers to be set back to operative (s): more than one call's own time
@@ -234,10 +251,19 @@ class HardwareTest:
         #: `why` (the battery's reason to wait now); stored, so a restart goes on waiting.
         self.waiting: dict[str, Any] | None = None
         self._waiter: asyncio.Task[None] | None = None
+        #: The phones told that a first pass runs now (taken off at its end), and the action listener.
+        self._told: tuple[str, ...] = ()
+        #: When this runner loaded its store (`LOAD_GRACE`), and whether a wait began or ended since (written at the
+        #: unload).
+        self._loaded_at = dt_util.now()
+        self._wait_touched = False
+        self._unsubscribe: Any = None
         self._closed = False
         self._unloading = False
 
     async def async_load(self) -> None:
+        with contextlib.suppress(Exception):
+            self._unsubscribe = self.hass.bus.async_listen(NOTIFICATION_ACTION_EVENT, self._on_action)
         try:
             raw = await self._store.async_load()
         except Exception:  # noqa: BLE001 - nothing kept: the next test may start
@@ -256,6 +282,7 @@ class HardwareTest:
             self._wait()
 
     def _save(self) -> None:
+        self._wait_touched = self._wait_touched or self.waiting is not None
         if not self._closed:
             self._store.async_delay_save(self._data, 1.0)
 
@@ -351,6 +378,9 @@ class HardwareTest:
         site charging), `None` when it may run: also when it has no battery part to wait for."""
         if self._parts(now).get("battery", "absent") is not None:
             return None
+        if self._first_pass() and not WAKING_HOURS[0] <= dt_util.as_local(now).hour < WAKING_HOURS[1]:
+            # A recipe never run on this plant: its first writes only when someone is likely awake to see them.
+            return "not_waking_hours"
         try:
             why = self.site.battery_control.hardware_test_moment(now)
         except Exception:  # noqa: BLE001 - nothing read: wait, the next look tries again
@@ -360,6 +390,55 @@ class HardwareTest:
             # The battery's charge step is reckoned with the site's chargers held stopped: none may run at the start.
             return "car_charging"
         return why
+
+    def _first_pass(self) -> bool:
+        """Whether the battery part is the brand's first pass on this plant (`hardware_test_first`)."""
+        try:
+            return self.site.battery_control.hardware_test_due() == "hardware_test_first"
+        except Exception:  # noqa: BLE001 - no battery control: no first pass
+            return False
+
+    def _tell_running(self, minutes: int) -> None:
+        """A first pass starts writing: one notification to each phone on for SpotNav's notices, with Stop."""
+        from .notifications.messages import hardware_test_text  # noqa: PLC0415 - the package imports the site
+        from .notifications.phone_store import phone_store  # noqa: PLC0415
+
+        store = phone_store(self.hass)
+        targets = () if store is None else store.companion_on()
+        if not targets:
+            return
+        title, message, button = hardware_test_text(language_of(self.hass.config.language), minutes)
+        url = (None if store is None else store.url) or "/"
+        payload = {"title": title, "message": message, "data": {
+            "url": url, "clickAction": url, "tag": self._tag, "group": "spotnav", "channel": "SpotNav",
+            "actions": [{"action": f"{STOP_ACTION}{self.site.entry_id}", "title": button}],
+        }}
+        self._told = targets
+        for target in targets:
+            self.hass.async_create_background_task(self._async_notify(target, payload), f"{DOMAIN} hardware test notice")
+        _LOGGER.info("SpotNav hardware test: the battery's first test told on %d phone(s)", len(targets))
+
+    def _clear_told(self) -> None:
+        targets, self._told = self._told, ()
+        payload = {"message": "clear_notification", "data": {"tag": self._tag}}
+        for target in targets:
+            self.hass.async_create_background_task(self._async_notify(target, payload), f"{DOMAIN} hardware test notice")
+
+    @property
+    def _tag(self) -> str:
+        return f"spotnav_site_{self.site.entry_id}_hardware_test"
+
+    async def _async_notify(self, target: str, payload: dict[str, Any]) -> None:
+        try:
+            await self.hass.services.async_call(NOTIFY_DOMAIN, target, payload, blocking=True)
+        except Exception as err:  # noqa: BLE001 - a phone that cannot be reached must not stop the test
+            _LOGGER.warning("SpotNav could not notify %s: %s", target, type(err).__name__)
+
+    @callback
+    def _on_action(self, event: Any) -> None:
+        if event.data.get("action") == f"{STOP_ACTION}{self.site.entry_id}" and (self.running or self.waiting):
+            _LOGGER.info("SpotNav hardware test: stopped from a phone")
+            self.hass.async_create_task(self.async_stop("phone"), f"{DOMAIN} hardware test stop")
 
     def _schedule(self, now: datetime, version: str | None, *, retry: int, why: str) -> None:
         self.waiting = {"since": now.isoformat(), "until": (now + WAIT_MAX).isoformat(), "version": version,
@@ -388,8 +467,11 @@ class HardwareTest:
             return
         until = _time(waiting.get("until"))
         parts = self._parts(now)
+        if "battery" not in parts and until is not None and now < until and now - self._loaded_at < LOAD_GRACE:
+            waiting["why"] = "starting"  # the battery's integration may load later than SpotNav itself
+            return
         if until is None or now >= until or "battery" not in parts:
-            self.waiting = None
+            self.waiting, self._wait_touched = None, True
             self._give_up(now, "no_suitable_moment" if "battery" in parts else str(parts.get("battery") or "absent"))
             return
         if parts["battery"] is not None:
@@ -401,14 +483,16 @@ class HardwareTest:
                 waiting["why"] = why
                 self._save()
             return
-        self.waiting = None
+        self.waiting, self._wait_touched = None, True
         self._save()
         self._begin(now, waiting.get("version"), retry=int(waiting.get("retry") or 0))
 
     def _give_up(self, now: datetime, why: str) -> None:
         """A wait that found no suitable moment: the record says so, and the day's slot is left (`skipped`)."""
         self.record = {
-            "site": self.site.entry_id, "started_at": now.isoformat(), "finished_at": now.isoformat(),
+            # Started when it was pressed: a `skipped` record of that press leaves the day's slot (`_counted_last`).
+            "site": self.site.entry_id, "started_at": (self.last or {}).get("at") or now.isoformat(),
+            "finished_at": now.isoformat(),
             "spotnav_version": None, "firmware_key": self._firmware_key(), "result": "skipped", "stopped": None,
             "error": None, "steps": [{"part": "battery", "step": "battery", "status": "skipped", "reason": why}],
             "battery": None, "heat": None,
@@ -432,6 +516,8 @@ class HardwareTest:
         except BaseException:
             self._release_hold()
             raise
+        if parts.get("battery", "absent") is None and self._first_pass():
+            self._tell_running(int(-(-self._max_test().total_seconds() // 60)))
         return None
 
     def _release_hold(self) -> None:
@@ -462,7 +548,7 @@ class HardwareTest:
         waiter, self._waiter = self._waiter, None
         if self.waiting is not None and why != "unload":
             # The person's stop ends the wait; an unload keeps it (stored), so a restart goes on waiting.
-            self.waiting = None
+            self.waiting, self._wait_touched = None, True
             self._save()
         if waiter is not None and not waiter.done():
             waiter.cancel()
@@ -512,8 +598,9 @@ class HardwareTest:
                 await self._async_hand_back("error")
         finally:
             # Whatever ended the run (done, a failure, the deadline, the person's stop, an error, a cancel): the
-            # chargers are let go, after the battery was handed back.
+            # chargers are let go, after the battery was handed back, and the phones told are cleared.
             self._release_hold()
+            self._clear_told()
         retry = int(running.get("retry") or 0)
         self._finish()
         self._retry_if_unjudged(retry, running.get("version"))
@@ -670,9 +757,14 @@ class HardwareTest:
         """The site unloads: a running test ends and hands back first (before the battery's own shutdown)."""
         # The chargers unload too: their plans are not armed again from here.
         self._unloading = True
+        if self._unsubscribe is not None:
+            with contextlib.suppress(Exception):
+                self._unsubscribe()
+            self._unsubscribe = None
         await self.async_stop("unload")
-        if self.waiting is not None:
-            # Kept for the next start, written now (a delayed save may not come before the restart).
+        self._clear_told()
+        if self._wait_touched:
+            # Written now: a wait kept for the next start, or one just ended (a delayed save may not come before it).
             with contextlib.suppress(Exception):
                 await self._store.async_save(self._data())
         self._closed = True
@@ -699,7 +791,7 @@ class HardwareTest:
         record = self.record
         if self.waiting is not None:
             # Pressed and waiting for a suitable moment: when it is likely to run (`likely_at`), nothing asked.
-            likely = likely_at(now)
+            likely = likely_at(now, waking_only=self._first_pass())
             return {
                 "state": "waiting", "blocked": BLOCKED_WAITING, "next_at": None if likely is None else likely.isoformat(),
                 "started_at": self.waiting.get("since"), "finished_at": None,
@@ -718,12 +810,16 @@ class HardwareTest:
         }
 
 
-def likely_at(now: datetime) -> datetime | None:
+def likely_at(now: datetime, *, waking_only: bool = False) -> datetime | None:
     """When a waiting test is likely to run, for the card: in the daytime the evening (`LIKELY_HOUR`, when the house
-    draws more than the sun gives), `None` (soon) in the evening and at night."""
+    draws more than the sun gives), `None` (soon) in the evening and at night; a first pass (`waking_only`) after
+    `WAKING_HOURS` the next day's evening."""
     local = dt_util.as_local(now)
-    if 6 <= local.hour < LIKELY_HOUR:
-        return local.replace(hour=LIKELY_HOUR, minute=0, second=0, microsecond=0)
+    evening = local.replace(hour=LIKELY_HOUR, minute=0, second=0, microsecond=0)
+    if waking_only and local.hour >= WAKING_HOURS[1]:
+        return evening + timedelta(days=1)
+    if (6 if not waking_only else 0) <= local.hour < LIKELY_HOUR:
+        return evening
     return None
 
 

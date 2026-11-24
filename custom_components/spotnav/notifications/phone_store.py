@@ -297,6 +297,14 @@ class PhoneStore:
                 services.append(phone.notify)
         return tuple(dict.fromkeys(services)), tuple(dict.fromkeys(refs))
 
+    def companion_on(self) -> tuple[str, ...]:
+        """The Companion service of every phone that is on for SpotNav's notices (whatever it wants): for a notice
+        about the site itself that no event names (the battery's first hardware test running)."""
+        return tuple(dict.fromkeys(
+            phone.notify for phone in self._phones
+            if phone.on and phone.notify is not None and self._has_service(phone.notify)
+        ))
+
     def companion_of(self, charger: str) -> tuple[str, ...]:
         """Every Companion service of a phone that follows `charger` (whatever it wants): where a question is taken
         off."""

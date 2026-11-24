@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Pool",
     "pool_season.message": "The water has been around 10 °C for three days: time to close the pool season?",
-    "pool_season.close": "Close the season"
+    "pool_season.close": "Close the season",
+    "hardware_test.title": "SpotNav · Battery",
+    "hardware_test.message": "Hardware test of the battery is running now (about {minutes} min).",
+    "hardware_test.stop": "Stop the test"
   },
   "add_charger": {
     "hint": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."
