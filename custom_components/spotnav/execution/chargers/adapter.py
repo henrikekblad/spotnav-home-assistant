@@ -167,6 +167,7 @@ class ChargerAdapter:
         status_entity_id: str | None = None,
         charging_values: tuple[str, ...] = (),
         vehicle_idle_values: tuple[str, ...] = (),
+        car_refuses_values: tuple[str, ...] = (),
         held_values: tuple[str, ...] = (),
         disconnected_values: tuple[str, ...] = (),
         connector_status_entity: Callable[[], str | None] | None = None,
@@ -191,6 +192,7 @@ class ChargerAdapter:
         self.status_entity_id = status_entity_id
         self._charging_values = tuple(value.lower() for value in charging_values)
         self._idle_values = tuple(value.lower() for value in vehicle_idle_values)
+        self._car_refuses_values = tuple(value.lower() for value in car_refuses_values)
         self._held_values = tuple(value.lower() for value in held_values)
         #: The status values that say no vehicle is plugged in: the profile's, and those the platform's
         #: connection table (what the dashboard shows) words as disconnected, so both read one table.
@@ -632,6 +634,23 @@ class ChargerAdapter:
             return CHARGING, None
         return UNKNOWN, None
 
+    def car_refuses_offer(self) -> bool:
+        """Whether the status sensor says the charger offers current and the car refuses it, by the profile's
+        verified values only (`PlatformProfile.car_refuses_values`); `False` for a charger whose values are not
+        verified, or with no readable status. OCPP's connector is read by the controller instead."""
+        status = self._status()
+        return status is not None and status in self._car_refuses_values
+
+    def offered_current_a(self) -> float | None:
+        """The current the charger offers now, as far as SpotNav can read it: its current path's offer
+        (`CurrentPath.offered_a`), capped by a circuit limit outside SpotNav's reach when one is read; `None` when it
+        cannot be read."""
+        offered = self.current.offered_a()
+        if offered is None:
+            return None
+        circuit = self.current.circuit_limit_a()
+        return float(offered) if circuit is None else min(float(offered), circuit)
+
     def progress_status(self) -> str | None:
         """The status in the progress check's vocabulary: `Charging`, `SuspendedEV` (connected, the
         vehicle asks for no current) or the raw text; `None` with no readable status sensor.
@@ -805,6 +824,7 @@ def build_adapter(
     profile = profile_for(platform)
     charging_values = tuple(str(v) for v in (raw_state.get("charging_values") or ()))
     idle_values = tuple(profile.vehicle_idle_values) if profile is not None else ()
+    car_refuses_values = tuple(profile.car_refuses_values) if profile is not None else ()
     held_values = tuple(profile.held_values) if profile is not None else ()
     min_start_a = profile.min_start_current_a if profile is not None else None
 
@@ -858,6 +878,7 @@ def build_adapter(
         status_entity_id=status_entity_id,
         charging_values=charging_values,
         vehicle_idle_values=idle_values,
+        car_refuses_values=car_refuses_values,
         held_values=held_values,
         min_start_current_a=min_start_a,
         current_entity_ids=tuple(current_entities) if isinstance(current_entities, (list, tuple)) else (),

@@ -466,6 +466,11 @@ class EaseeDynamicLimit(CurrentPath):
         read = self.read_back_a()
         return read if read is not None else self.last_written_a
 
+    def offered_a(self) -> float | None:
+        """Only the dynamic limit the charger reports (its sensor enabled and reading): what was last written may not
+        be what it applies."""
+        return self.read_back_a()
+
     def wait_s(self) -> float:
         return self._limiter.wait_s()
 

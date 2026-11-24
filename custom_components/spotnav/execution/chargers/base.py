@@ -400,6 +400,11 @@ class CurrentPath(ABC):
         """The limit the charger itself reports, when it can be read back; `None` otherwise."""
         return None
 
+    def offered_a(self) -> float | None:
+        """The current the charger offers the car, as far as it can be known (`setpoint_a`); `None` when it cannot.
+        A path that reads its limit back answers only from that reading."""
+        return self.setpoint_a()
+
     def circuit_limit_a(self) -> float | None:
         """A lower limit outside SpotNav's reach that caps the charger whatever this path sets (Easee's circuit
         dynamic limit), when it can be read; `None` otherwise. Read only: SpotNav never writes it."""
