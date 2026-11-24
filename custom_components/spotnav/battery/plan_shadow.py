@@ -231,8 +231,15 @@ def battery_params(facts: BatteryFacts) -> tuple[BatteryParams | None, str | Non
         max_discharge_kw=max(0.0, float(facts.rated_discharge_kw)),  # type: ignore[arg-type]
         min_soc_pct=ASSUMED_MIN_SOC_PCT,
         round_trip_efficiency=DEFAULT_ROUND_TRIP_EFFICIENCY if learned is None else learned,
+        sun_round_trip_efficiency=_sun_round_trip(facts),
     )
     return params, None, (EST_MIN_SOC, EST_ROUND_TRIP) if learned is None else (EST_MIN_SOC,)
+
+
+def _sun_round_trip(facts: BatteryFacts) -> float | None:
+    """The sun's own round trip over a DC bus (`BatteryFacts.sun_round_trip_efficiency`), where it is a believable one."""
+    value = facts.sun_round_trip_efficiency
+    return float(value) if _finite(value) and 0 < value <= 1 else None  # type: ignore[operator]
 
 
 @dataclass(frozen=True, slots=True)

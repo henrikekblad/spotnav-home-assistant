@@ -115,6 +115,8 @@ def battery_of(record: dict[str, Any], model: Any) -> Any:
         min_soc_pct=float(battery["min_soc_pct"]),
         max_soc_pct=float(battery.get("max_soc_pct", 100.0)),
         round_trip_efficiency=float(battery["round_trip_efficiency"]),
+        sun_round_trip_efficiency=None if battery.get("sun_round_trip_efficiency") is None
+        else float(battery["sun_round_trip_efficiency"]),
     )
 
 
