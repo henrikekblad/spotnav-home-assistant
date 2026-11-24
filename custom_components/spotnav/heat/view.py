@@ -63,7 +63,7 @@
             planned: [{start, end, what: "filter" | "heat" | "extra", reason: "sun" | "cheap" | "need" | "extra"}],
             extra: {hours, until} | null, season_hint, would: {action: "heat" | "filter" | "off", until, reason} | null,
             notes: [{code, params}]} | null,
-     spa: {family, water_c, bath_c, idle_c, floor_c, heating, kw, rate_c_h, rate_learned,
+     spa: {family, water_c, bath_c, idle_c, floor_c (the fixed 10 °C frost floor), heating, kw, rate_c_h, rate_learned,
            state: "idle" | "heating" | "ready" | "late", ready_at, next_bath: {at, source: "weekly" | "once" | "now"} | null,
            baths: [{weekdays, time}], bath_once, bath_now: {until} | null, live,
            control: {state: "watched" | "watch_only" | "controlled" | "paused" | "handed_back", reason, paused_until,

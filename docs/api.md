@@ -1071,7 +1071,7 @@ control on or off: those switches stay with an administrator in Home Assistant.
 | `pool` | `"pool_action": "season"` | `open`: `true` or `false`. Closed, SpotNav writes nothing to the pool and an extra filtering ends. |
 | `pool` | `"pool_action": "extra_filtering"` | `hours`: `2` or `4`, placed in the cheapest or sunniest hours of the next 24 (a second press replaces the first; refused while the season is closed or no circulation is chosen). |
 | `pool` | `"pool_action": "cancel_extra"` | Ends the extra filtering. |
-| `spa` | `"spa_action": "bath_c"` / `"idle_c"` | `value`: the bath temperature (20 to 40) or the temperature between baths (10 to 40), in steps of 0.5. |
+| `spa` | `"spa_action": "bath_c"` | `value`: the bath temperature (20 to 40), in steps of 0.5. The temperature between baths is an administrator's setting (`spotnav/update_heat`'s `spa.idle_c`), not a webhook action. |
 | `spa` | `"spa_action": "baths"` | `value`: up to four weekly bath times, `[{"weekdays": [1, …, 7], "time": "HH:MM"}]`, the weekdays numbered as a car's `departure_weekdays` (Monday 1 to Sunday 7, each once). `[]` or `null` clears them. |
 | `spa` | `"spa_action": "bath_once"` | `value`: one bath on a date, an ISO instant with its offset in the next 30 days, or `null` to clear it. |
 | `spa` | `"spa_action": "bath_now"` / `"cancel_now"` | Heat at once at any price (still under the fuse) until the bath temperature is reached and held two hours; once per ten minutes. |

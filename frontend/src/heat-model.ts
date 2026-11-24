@@ -88,7 +88,6 @@ const CONFIG = O({
       family: "string",
       bath_c: "number",
       idle_c: "number",
-      floor_c: "number",
       baths: A(O({ weekdays: A("number"), time: "string" })),
       bath_once: N("string"),
       heater_kw: N("number"),
@@ -625,7 +624,6 @@ export interface HeatSpaConfig {
   family: string;
   bath_c: number;
   idle_c: number;
-  floor_c: number;
   /** Weekly bath times: weekdays (Monday 1 to Sunday 7, as departures) and the local time. */
   baths: { weekdays: number[]; time: string }[];
   bath_once: string | null;
@@ -997,6 +995,7 @@ export interface HeatSpa extends HeatDeadlineCommon {
   water_c: number | null;
   bath_c: number;
   idle_c: number;
+  /** The fixed frost floor (10 °C), sent so older clients keep decoding the answer. */
   floor_c: number;
   next_bath: { at: string; source: string } | null;
   baths: { weekdays: number[]; time: string }[];

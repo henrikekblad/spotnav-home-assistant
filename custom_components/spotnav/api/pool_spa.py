@@ -18,15 +18,16 @@ The webhook's `pool` is the same body without `type` (`pool_action` routes it, a
 `spotnav/spa` and `spotnav/sauna` (API v1), the deadline heat loads (the sauna is the spa without an idle temperature):
 
     {type: "spotnav/spa", api_version: 1, site_id | charger_id,
-     action: "bath_c" | "idle_c" | "baths" | "bath_once" | "bath_now" | "cancel_now" | "take_what_fits" | "later_bath"
+     action: "bath_c" | "baths" | "bath_once" | "bath_now" | "cancel_now" | "take_what_fits" | "later_bath"
              | "accept_peak", value?}
     -> {api_version, ok, error, spa}
     {type: "spotnav/sauna", ..., action: "target_c" | "sessions" | "session_once" | "session_now" | "cancel_now"
              | "take_what_fits" | "later_session" | "accept_peak", value?}
     -> {api_version, ok, error, sauna}
 
-`value` is the setting's new value for the first four (the temperatures, the weekly sessions `[{weekdays, time}]`, the
-one-off as an ISO instant or `null`), judged as the settings are. `bath_now`/`session_now` heats at once, at any price
+`value` is the setting's new value for the first three (the temperature, the weekly sessions `[{weekdays, time}]`, the
+one-off as an ISO instant or `null`), judged as the settings are. The spa's temperature between baths is an
+administrator's setting (`spotnav/update_heat`, administrators only), not a household control. `bath_now`/`session_now` heats at once, at any price
 (still under the fuse), until the temperature is reached and held two hours, or `cancel_now`; once per ten minutes
 (`spotnav_rate_limited`). The last three answer a session that will not be ready (`not_ready`): take what fits (it
 heats as far as it can), move it to the earliest later hour that fits (`spotnav_no_later_bath` when there is none, the
@@ -145,7 +146,7 @@ async def websocket_pool(hass: HomeAssistant, connection: websocket_api.ActiveCo
 #: Per load: its settings field, the shadow's part, the status reader, and each action's setting key or press.
 DEADLINE_ACTIONS: Final[dict[str, dict[str, str]]] = {
     "spa": {
-        "bath_c": "bath_c", "idle_c": "idle_c", "baths": "baths", "bath_once": "bath_once",
+        "bath_c": "bath_c", "baths": "baths", "bath_once": "bath_once",
         "bath_now": "!now", "cancel_now": "!cancel", "take_what_fits": "!fits", "later_bath": "!later",
         "accept_peak": "!peak",
     },

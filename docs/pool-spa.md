@@ -18,8 +18,8 @@ heat card's **Pool**, **Spa** and **Sauna** tabs show the plan and what SpotNav 
 ## The settings
 
 Each load has its own section in the gear's settings, shown once it is set up or found: **Pool** (heat pump,
-circulation, water sensor, filtering per day, the powers and the two control switches), **Spa** (the spa, its lowest
-temperature, the heater's power, **Control the spa**) and **Sauna** (the sauna, the heater's power, a relay's safety
+circulation, water sensor, filtering per day, the powers and the two control switches), **Spa** (the spa, the temperature
+**between baths**, the heater's power, **Control the spa**) and **Sauna** (the sauna, the heater's power, a relay's safety
 declaration, **Control the sauna**). The heat card's phones and what they hear about (**Not ready in time**, **Pool
 season**) close the last of them; they cover all three. The gear on the heat card opens at the shown tab's section.
 **Heating** keeps the house's own heat. As everywhere, only an administrator can change them.
@@ -50,10 +50,11 @@ through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Ev
   plan's hours, and the dial's temperature written once each time you change it. Core Tuya's pool heat pump without a
   climate entity is switched by its switch and its `temp_set` number. Presets, fan modes and the cool or auto modes
   are never written; a pump you set to one of them is left alone until it reads `heat` or `off` again.
-* **Control the spa**: heats for your bath times, holds the temperature between baths, never lets the water below its
-  lowest temperature. The temperature between baths starts at 30 °C (or at the spa's own setpoint when that is lower),
-  so the spa saves between baths; set it higher in the Spa tab to keep it warmer. The lowest temperature (10 °C) is
-  only a floor for frost and is never the target. Balboa is set by its presets, **Ready** to heat and **Rest** between (Home Assistant shows
+* **Control the spa**: heats for your bath times, holds the temperature between baths, never lets the water below 10 °C.
+  The temperature between baths (10 to 40 °C) starts at 30 °C (or at the spa's own setpoint when that is lower), so
+  the spa saves between baths; an administrator sets it higher in the gear's **Spa** section to keep it warmer, and the
+  Spa tab shows it in its status (**Resting at 30 °C between baths**). The 10 °C is a fixed frost floor, not a setting,
+  and is never the target. Balboa is set by its presets, **Ready** to heat and **Rest** between (Home Assistant shows
   Balboa's Rest as `off`); SmartTub and Gecko by their setpoint, never below the temperature between baths; MSpa,
   Bestway, Intex and Tuya Local's Intex by turning the heater on and off. Gecko is set through its water heater only,
   never the water-care presets. MSpa is watched while its own heat schedule (its **Scheduled for**) is set.
@@ -83,7 +84,7 @@ says:
   the circulation's switch on, a heat pump that says when it heats (`hvac_action`) keeps the circulation on while it
   heats and for the run-on after; one that does not say is left to its own flow switch and the tab says so (turn on
   **Control the pool heat pump** too).
-* **The spa's lowest temperature** (10 °C by default): water at or below it is heated whatever else holds.
+* **The spa's frost floor** (10 °C, fixed): water at or below it is heated whatever else holds.
 * **The sauna**: only for a session you booked or **Heat now**; never while its door or lock reads locked, or while a
   lock you chose cannot be read (a lock that turns locked or unreadable while it heats turns it off); never longer
   than its own longest run (Harvia's on time, Saunum's session length) and never longer than 3 hours, counted over the
@@ -111,7 +112,7 @@ step's write is never held back by the budget. Between baths SpotNav only starts
 at the idle temperature) where its Rest still fits the day's writes, and on a bath day it keeps four of them for the
 bath, so a spent budget never leaves an idle spa heating to the bath temperature. The heat pump runs at least 30 minutes and rests 10; the circulation
   runs 30 and rests 15. A write a hard rule needs (the heat pump off, the circulation on for the run-on, the spa's
-  lowest temperature) is never held back by a budget.
+  frost floor) is never held back by a budget.
 * **Through a cloud** (core Tuya, Aquatemp, WarmLink, Fairland, iAquaLink, SmartTub, MSpa, Bestway, Huum, Harvia):
   only the plan's slow changes. Such a load never steps in the shed order, nor is turned off through the
   circulation's step.
@@ -120,8 +121,8 @@ bath, so a spent budget never leaves an idle spa heating to the bath temperature
 
 Where SpotNav controls a load locally, the [priority list](site-and-load-balancing.md) sheds it under the import target
 or a power level: the pool's heat pump first, then the circulation beyond the day's filtering need (the hours are
-moved, never dropped: the need is still met before its deadline), the spa's heat between baths (never below its lowest
-temperature), and further up a booked bath and a sauna session. A watched or cloud load only shows the step it would
+moved, never dropped: the need is still met before its deadline), the spa's heat between baths (never below its 10 °C frost
+floor), and further up a booked bath and a sauna session. A watched or cloud load only shows the step it would
 take.
 
 ## A bath or a session that will not be ready

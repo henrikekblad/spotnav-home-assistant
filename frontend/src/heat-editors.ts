@@ -654,19 +654,13 @@ function loadEditor(input: HeatEditorInput, key: HeatSettingKey | "away", prefix
         },
         t("heat.settings.spaHelp"),
       );
-    case "spaFloor": {
+    case "spaIdle": {
       const spa = config.spa;
       return spa === null
         ? null
         : {
-            title: t("heat.settings.spaFloor"),
-            body: numberEditor(
-              doc,
-              language,
-              { help: t("heat.settings.spaFloorHelp"), unit: "°C", current: spa.floor_c, min: 5, max: 30, decimals: 1, rangeMessage: t("heat.error.range"), idPrefix: prefix },
-              async (value) => (value === null ? t("heat.error.range") : halfStep(language, value) ?? (await input.write({ spa: { floor_c: value } }))),
-              handlers,
-            ),
+            title: t("heat.spa.idleLabel"),
+            body: idleEditor(doc, language, prefix, spa.idle_c, (value) => (value === spa.idle_c ? Promise.resolve(null) : input.write({ spa: { idle_c: value } })), handlers),
           };
     }
     case "spaKw":
@@ -912,7 +906,7 @@ export function sessionsEditor(
   return editor.form;
 }
 
-/** The spa's idle temperature between baths (10 to 40 °C in half degrees; never below its lowest, `floor_c`). */
+/** The spa's idle temperature between baths (10 to 40 °C in half degrees), an administrator's setting. */
 export function idleEditor(
   doc: Document,
   language: Language,

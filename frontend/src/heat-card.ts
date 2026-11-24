@@ -32,7 +32,7 @@ import {
 import { decodePlan } from "./house-plan";
 import { NOT_READY_STYLES, openedForNotReady, type NotReady, type NotReadyPress } from "./not-ready-sheet";
 import { browserStore, type PreferenceStore } from "./chart-preference";
-import { idleEditor, sessionsEditor, writeError, writeHeat, type HeatWriteOptions, type SessionsChoice } from "./heat-editors";
+import { sessionsEditor, writeError, writeHeat, type HeatWriteOptions, type SessionsChoice } from "./heat-editors";
 import { decodeHeat, decodeHeatBoost, decodeLoadAnswer, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
 import {
@@ -798,8 +798,9 @@ export class SpotnavHeatCard extends HTMLElement {
     );
   }
 
-  /** The spa's or the sauna's times, or the spa's idle temperature, in an editor of their own (any user's). */
-  editLoad(kind: "spa" | "sauna", what: "times" | "idle"): void {
+  /** The spa's or the sauna's times in an editor of their own (any user's; the spa's idle temperature is an
+   * administrator's, in the settings). */
+  editLoad(kind: "spa" | "sauna", _what: "times"): void {
     const answer = this.answer();
     const load = kind === "spa" ? answer?.spa : answer?.sauna;
     if (answer === null || load === null || load === undefined) {
@@ -809,13 +810,6 @@ export class SpotnavHeatCard extends HTMLElement {
     const language = this.cardLanguage();
     const send = (action: string, value: unknown): Promise<string | null> =>
       this.loadPress(kind, (hass, target) => deadlineAction(hass, target, kind, action, value));
-    if (what === "idle" && answer.spa !== null) {
-      const spa = answer.spa;
-      this.ensurePopover().openFormAlone(translate(language, "heat.spa.idleLabel"), (handlers) =>
-        idleEditor(doc, language, this.idPrefix, spa.idle_c, (value) => (value === spa.idle_c ? Promise.resolve(null) : send("idle_c", value)), handlers),
-      );
-      return;
-    }
     const current: SessionsChoice = answer.spa !== null && kind === "spa"
       ? { weekly: answer.spa.baths, once: answer.spa.bath_once }
       : { weekly: answer.sauna?.sessions ?? [], once: answer.sauna?.session_once ?? null };

@@ -5,7 +5,7 @@
 // presses go through `spotnav/pool`, for anyone who sees the card. Text is written with `textContent` only.
 
 import type { NotReady } from "./not-ready-sheet";
-import { loadControlLine } from "./spa-view";
+import { CONTROL_STATES, loadControlLine } from "./spa-view";
 import { formatFixed, kwhText } from "./format";
 import type { HeatAnswer, HeatPool } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -93,6 +93,25 @@ export function poolWouldLine(language: Language, answer: HeatAnswer, pool: Heat
     return translate(language, "heat.pool.would.noPrices");
   }
   return until === null ? translate(language, "heat.pool.would.offNow") : translate(language, "heat.pool.would.off", { until });
+}
+
+/**
+ * The would-line where it adds something: only while SpotNav watches the pool (with either part controlled, paused or
+ * handed back the parts' control lines say what it does), and never a plain "would stand still" while the status
+ * already says it stands still. `withStatus` false where no status line is shown beside it (the settings' help line).
+ */
+export function poolWouldShown(language: Language, answer: HeatAnswer, pool: HeatPool, withStatus = true): string | null {
+  if ([pool.heat_pump, pool.circulation].some((part) => part !== null && CONTROL_STATES.includes(part.state))) {
+    return null;
+  }
+  const would = pool.would;
+  if (withStatus && would !== null && would.action !== "heat" && would.action !== "filter" && would.reason !== "need_met" && would.reason !== "no_prices") {
+    const still = pool.heat_pump?.heating !== true && pool.circulation?.on !== true;
+    if (still) {
+      return null;
+    }
+  }
+  return poolWouldLine(language, answer, pool);
 }
 
 /** Today's filtering ("Filtrering i dag: 3 h klart, 4 h kvar av 8,3 h") and the heat pump's planned hours. */
@@ -221,7 +240,7 @@ export function poolPanel(input: LoadPanelInput, pool: HeatPool, panel: HTMLElem
   panel.append(season);
   const lines = element(doc, "div", X.statusBlock);
   lines.append(line(doc, X.status, poolStatusLine(language, pool), "pool-status"));
-  const would = poolWouldLine(language, answer, pool);
+  const would = poolWouldShown(language, answer, pool);
   if (would !== null) {
     lines.append(line(doc, X.status, would, "pool-would"));
   }

@@ -9,7 +9,7 @@ from custom_components.spotnav.heat.config import HeatConfig, apply_changes, rea
 from custom_components.spotnav.notifications.heat_settings import HeatNotifications
 from custom_components.spotnav.pool.config import PoolConfig, PoolHeatPump, read_pool
 from custom_components.spotnav.sauna.config import SaunaConfig, read_sauna
-from custom_components.spotnav.spa.config import Bath, SpaConfig, idle_from_setpoint, read_spa
+from custom_components.spotnav.spa.config import DEFAULT_FLOOR_C, Bath, SpaConfig, idle_from_setpoint, read_spa
 
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
 KNOWN = {
@@ -166,7 +166,7 @@ def test_a_new_spa_starts_watched_at_30_or_the_lower_setpoint_found() -> None:
     # A spa found below 30 °C keeps its own setpoint as the idle temperature.
     lower, _ = write({"spa": {"entity_id": "climate.spa", "family": "balboa"}}, setpoint=27.8)
     assert lower.spa.idle_c == 28.0
-    assert (config.spa.bath_c, config.spa.floor_c, config.spa.control) == (38.0, 10.0, False)
+    assert (config.spa.bath_c, config.spa.hold_c, config.spa.control) == (38.0, 30.0, False)
     assert read_config(config.as_dict()) == config
     # Without a setpoint: 30 °C.
     config, _ = write({"spa": {"entity_id": "climate.spa"}})
@@ -179,7 +179,8 @@ def test_the_spa_ranges_baths_and_one_off_bath() -> None:
     for changes, expected in (
         ({"bath_c": 41}, ("spa.bath_c", "out_of_range")),
         ({"idle_c": 30.2}, ("spa.idle_c", "not_a_step")),
-        ({"floor_c": 4}, ("spa.floor_c", "out_of_range")),
+        # The frost floor is fixed: it cannot be written.
+        ({"floor_c": 12}, ("spa.floor_c", "unknown_field")),
         ({"heater_kw": 0.1}, ("spa.heater_kw", "out_of_range")),
         ({"baths": [{"weekdays": [8], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
         ({"baths": [{"weekdays": [0], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
@@ -221,6 +222,17 @@ def test_a_broken_stored_spa_reads_as_its_defaults() -> None:
         {"entity_id": "climate.spa", "family": "generic", "control": True, "bath_c": 50, "baths": [{"weekdays": [9], "time": "x"}]}
     )
     assert spa == SpaConfig("climate.spa")
+
+
+def test_a_stored_floor_from_earlier_builds_is_ignored() -> None:
+    # The lowest temperature was a setting once: a stored one reads without failing and the fixed 10 °C holds.
+    spa = read_spa({"entity_id": "climate.spa", "family": "balboa", "idle_c": 8.0, "floor_c": 25.0})
+    assert spa == SpaConfig("climate.spa", "balboa")
+    assert "floor_c" not in spa.as_dict()
+    low = read_spa({"entity_id": "climate.spa", "idle_c": 10.0, "floor_c": 25.0})
+    assert low is not None and low.hold_c == DEFAULT_FLOOR_C == 10.0
+    config = read_config({"spa": {"entity_id": "climate.spa", "family": "balboa", "idle_c": 28.0, "floor_c": 25.0}})
+    assert config.spa is not None and config.spa.idle_c == 28.0 and config.spa.hold_c == 28.0
 
 
 def test_stored_weekdays_in_the_first_numbering_read_as_iso_numbers() -> None:

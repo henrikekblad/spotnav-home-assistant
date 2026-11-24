@@ -17,8 +17,8 @@ import { heatBody, heatSettingsSection, heatTabsOf, loadFound, loadSettingsSecti
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard } from "../src/index";
-import { poolExtraLine, poolPlanLine, poolSourceLine, poolStatusLine, poolTodayLines, poolWouldLine } from "../src/pool-view";
-import { deadlineControlLine, deadlineStatusLine, deadlineWouldLine, loadControlLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
+import { poolExtraLine, poolPlanLine, poolSourceLine, poolStatusLine, poolTodayLines, poolWouldLine, poolWouldShown } from "../src/pool-view";
+import { deadlineControlLine, deadlineStatusLine, deadlineWouldLine, deadlineWouldShown, loadControlLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
 /** The fixtures' moment: 16 November 2026, 17:20 in Stockholm. */
@@ -53,6 +53,12 @@ function body(ui: Partial<HeatUi>, value: HeatAnswer = answer(), extra: Partial<
     nowMs: NOW,
     idPrefix: "t",
   });
+}
+
+function section_row(value: HeatAnswer, key: string): string | null {
+  const holder = document.createElement("div");
+  holder.append(...loadSettingsSections(document, "sv", value, () => undefined));
+  return holder.querySelector<HTMLElement>(`[data-row='${key}']`)?.textContent ?? null;
 }
 
 function lineOf(root: ParentNode, key: string): string | null {
@@ -194,7 +200,7 @@ describe("the Spa and Sauna tabs", () => {
     expect(deadlineWouldLine("sv", value, "spa", value.spa!)).toBe("Skulle värma till 18:45: billiga timmar");
   });
 
-  it("draws the spa's dial, Bada nu, the bath times and the idle temperature, and sends each press", () => {
+  it("draws the spa's dial, Bada nu and the bath times, and sends each press; the idle temperature is not edited here", () => {
     const onDeadline = vi.fn();
     const onLoadEdit = vi.fn();
     const onLoadStep = vi.fn();
@@ -207,9 +213,18 @@ describe("the Spa and Sauna tabs", () => {
     expect(lineOf(panel, "spa-times")).toBe("Badtider: fre, lör 19:00Ändra");
     panel.querySelector<HTMLButtonElement>("button[data-action='spa-times-change']")!.click();
     expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "times");
-    panel.querySelector<HTMLButtonElement>("button[data-action='spa-idle-change']")!.click();
-    expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "idle");
+    // The temperature between baths is an administrator's setting: no row to change it on the tab.
+    expect(panel.querySelector("[data-line='spa-idle'], button[data-action='spa-idle-change']")).toBeNull();
     expect(lineOf(panel, "spa-band")).toBe("Värms 17:20–18:45 · Hålls varmt till 21:00");
+  });
+
+  it("shows the temperature between baths read-only in the spa's status line", () => {
+    const resting = answer((v) => {
+      Object.assign(v["spa"] as Record<string, unknown>, { state: "idle", ready_at: null, next_bath: null, baths: [], bath_once: null });
+    });
+    const panel = body({ tab: "spa" }, resting).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "spa-status")).toBe("Vilar på 30,0 °C mellan baden, inget bad bokat");
+    expect(panel.querySelector("button[data-action='spa-idle-change']")).toBeNull();
   });
 
   it("offers a bath pressed now its end and a cancel", () => {
@@ -238,6 +253,48 @@ describe("the Spa and Sauna tabs", () => {
     expect(onDeadline).toHaveBeenLastCalledWith("sauna", "later_session");
     expect(lineOf(panel, "sauna-control")).toContain("SpotNav startar aldrig ett aggregat på relä utan eget säkerhetsskydd");
     expect(panel.querySelector("[data-action='sauna-now']")!.textContent).toBe("Värm nu");
+  });
+
+  it("shows what SpotNav would do only while it watches, and never a repeat of the status", () => {
+    const watched = { state: "watched", reason: null, paused_until: null, failures: 0 };
+    // Controlled: "Styrs av SpotNav." says it; no would-line beside it, in the tab or in the settings' help.
+    const controlled = answer((v) => {
+      (v["spa"] as Record<string, unknown>)["control"] = { ...watched, state: "controlled" };
+    });
+    expect(lineOf(body({ tab: "spa" }, controlled).querySelector<HTMLElement>("[role='tabpanel']")!, "spa-would")).toBeNull();
+    expect(deadlineWouldShown("sv", controlled, "spa", controlled.spa!, false)).toBeNull();
+    const holder = document.createElement("div");
+    holder.append(...loadSettingsSections(document, "sv", controlled, () => undefined));
+    expect(holder.querySelector("[data-help='spa']")).toBeNull();
+    // Watched and off with nothing booked: the status says it, the would-line does not repeat it.
+    const off = answer((v) => {
+      Object.assign(v["sauna"] as Record<string, unknown>, { control: { ...watched } });
+    });
+    const sauna = body({ tab: "sauna" }, off).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(sauna, "sauna-status")).toBe("Av, inget bastupass bokat");
+    expect(lineOf(sauna, "sauna-would")).toBeNull();
+    // Watched and it would do something else: shown.
+    const heat = answer((v) => {
+      Object.assign(v["sauna"] as Record<string, unknown>, {
+        control: { ...watched },
+        would: { action: "heat", until: "2026-11-16T19:00:00+00:00", reason: "cheap" },
+      });
+    });
+    expect(lineOf(body({ tab: "sauna" }, heat).querySelector<HTMLElement>("[role='tabpanel']")!, "sauna-would")).toBe("Skulle värma till 20:00: billiga timmar");
+    // The pool: a controlled part hides it; watched and standing still, "would stand still" is not repeated.
+    const pool = answer();
+    expect(poolWouldShown("sv", pool, pool.pool!)).toBeNull();
+    const watchedPool = answer((v) => {
+      ((v["pool"] as Record<string, unknown>)["circulation"] as Record<string, unknown>)["state"] = "watched";
+    });
+    expect(poolStatusLine("sv", watchedPool.pool!)).toBe("Cirkulation och värmepump står still");
+    expect(lineOf(body({ tab: "pool" }, watchedPool).querySelector<HTMLElement>("[role='tabpanel']")!, "pool-would")).toBeNull();
+    const filtering = answer((v) => {
+      const raw = v["pool"] as Record<string, unknown>;
+      (raw["circulation"] as Record<string, unknown>)["state"] = "watched";
+      raw["would"] = { action: "filter", until: "2026-11-16T21:00:00+00:00", reason: "cheap" };
+    });
+    expect(poolWouldShown("sv", filtering, filtering.pool!)).toMatch(/^Skulle filtrera till 22:00/);
   });
 
   it("says a locked sauna and one that must be started by hand plainly", () => {
@@ -286,7 +343,7 @@ describe("the settings rows and editors", () => {
         "pool", "Pool",
         ["poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw", "poolCirculationControl", "poolHeatPumpControl"],
       ],
-      ["spa", "Spa", ["spa", "spaFloor", "spaKw", "spaControl"]],
+      ["spa", "Spa", ["spa", "spaIdle", "spaKw", "spaControl"]],
       ["sauna", "Bastu", ["sauna", "saunaKw", "saunaSafety"]],
     ]);
     const rows = sections.flatMap(rowsOf);
@@ -296,7 +353,8 @@ describe("the settings rows and editors", () => {
     expect(section.querySelector("[data-row='poolHeatPumpControl']")!.textContent).toBe("Styr poolens värmepumpAv");
     // A relay sauna without its declared safety has no opt-in row.
     expect(rows).not.toContain("saunaControl");
-    expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Skulle stå still till 22:00");
+    // The circulation is SpotNav's: its help says what the pool does, not what SpotNav would do.
+    expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Cirkulation och värmepump står still");
     expect(section.querySelector("[data-row='poolFilterHours']")!.textContent).toBe("Filtrering per dygnEfter vattentemperaturen");
     expect(section.querySelector("[data-row='saunaSafety']")!.textContent).toBe("Aggregatets eget säkerhetsskyddNej, eller vet inte");
   });
@@ -464,6 +522,16 @@ describe("SpotNav's control of the pool, the spa and the sauna", () => {
     built.body.querySelector<HTMLInputElement>("input[value='on']")!.click();
     built.body.dispatchEvent(new Event("submit", { cancelable: true }));
     await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ pool: { control_heat_pump: true } }));
+    // The temperature between baths is the administrator's, in the spa's settings (10 to 40 °C in half degrees).
+    expect(section_row(value, "spaIdle")).toBe("Mellan baden30,0 °C");
+    const idle = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: value, write }, "spaIdle", { onDone: vi.fn(), onCancel: vi.fn() })!;
+    expect(idle.title).toBe("Mellan baden");
+    document.body.append(idle.body);
+    const field = idle.body.querySelector<HTMLInputElement>("input")!;
+    field.value = "28,5";
+    field.dispatchEvent(new Event("input"));
+    idle.body.dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ spa: { idle_c: 28.5 } }));
     const spa = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: value, write }, "spaControl", { onDone: vi.fn(), onCancel: vi.fn() })!;
     expect(spa.title).toBe("Styr spat");
     document.body.append(spa.body);

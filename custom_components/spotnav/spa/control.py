@@ -6,8 +6,8 @@ restore, the hand-back, the read-back, the budgets) is `loads/hold_part.py`.
 **The spa** (behind `spa.control`):
 
 * heats for a bath (the plan's `heat` and `hold`), holds its idle temperature between baths, and is never let below
-  its floor: water at or below `floor_c` turns the heat on whatever the plan, the shed order or the day's budget
-  (only a hand-back to the person comes first). No setpoint is ever written below `max(idle_c, floor_c)`.
+  its floor: water at or below `DEFAULT_FLOOR_C` (10 °C) turns the heat on whatever the plan, the shed order or the day's budget
+  (only a hand-back to the person comes first). No setpoint is ever written below `max(idle_c, DEFAULT_FLOOR_C)`.
 * Balboa is set by its presets, Ready to heat and Rest between (its hvac `off` is Rest, never "off"); the bath
   temperature is written only when the dial changes. MSpa is watched only while its own heat schedule is set. Gecko
   is set through its water heater only, never the water-care presets.
@@ -55,7 +55,7 @@ from .adapters import (
     route_of,
     setpoint_call,
 )
-from .config import FAMILY_MSPA, SpaConfig
+from .config import DEFAULT_FLOOR_C, FAMILY_MSPA, SpaConfig
 from .plan import ACTION_FLOOR, ACTION_HEAT, ACTION_HOLD, ACTION_IDLE, SOURCE_NOW
 
 if TYPE_CHECKING:
@@ -262,7 +262,7 @@ class DeadlinePart:
         part = self.part
         plan = self.shadow.plan
         current = self.shadow.reading.current_c
-        floor = current is not None and current <= config.floor_c
+        floor = current is not None and current <= DEFAULT_FLOOR_C
         paused = part.paused(now)
         if paused and not floor:
             part.state, part.reason = STATE_PAUSED, part.paused_reason
@@ -308,7 +308,7 @@ class DeadlinePart:
             # The setpoint is the handle: the bath, or the idle temperature (never below the floor).
             value = config.bath_c if (bath and not shed_bath) else hold
             if floor_rule:
-                value = max(value, config.floor_c + FLOOR_MARGIN_C)
+                value = max(value, DEFAULT_FLOOR_C + FLOOR_MARGIN_C)
             await self._async_setpoint(now, config, route, max(value, hold), exempt=exempt)
         elif route.setpoint == SETPOINT_DIAL:
             await self._async_dial(now, config, route, config.bath_c)
@@ -489,7 +489,7 @@ class DeadlinePart:
         def setpoint(value: Value) -> tuple[str, str, dict[str, Any]] | None:
             if isinstance(value, str):
                 return None
-            if isinstance(config, SpaConfig) and value < config.floor_c:
+            if isinstance(config, SpaConfig) and value < DEFAULT_FLOOR_C:
                 return None
             return setpoint_call(route, config.entity_id, float(value))
 
@@ -521,7 +521,7 @@ class DeadlinePart:
         plan = self.shadow.plan
         current = self.shadow.reading.current_c
         action = None if plan is None else plan.action
-        warm = current is not None and current > config.floor_c + 1.0
+        warm = current is not None and current > DEFAULT_FLOOR_C + 1.0
         out: dict[str, Offer] = {}
         if action in (ACTION_HEAT, ACTION_HOLD):
             if self.control.shed_until(LOAD_SPA, now) is not None:

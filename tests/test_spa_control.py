@@ -90,6 +90,19 @@ async def test_the_floor_comes_before_the_shed_and_the_budget(hass: HomeAssistan
     assert not offers[LOAD_SPA_IDLE].ready and offers[LOAD_SPA_IDLE].why == "floor"
 
 
+async def test_the_floor_is_the_fixed_10_degrees_whatever_was_stored(hass: HomeAssistant) -> None:
+    # A lowest temperature stored by an earlier build is ignored: water at 20 °C is not "at the floor".
+    _balboa(hass)
+    control, shadow, _order = make_control(hass, _spa(idle_c=15.0, floor_c=25.0))
+    shadow.spa.set("idle", current=20.0)
+    await looks(control, NOW, NOW + MIN)
+    assert control.spa.part.reason != "floor"
+    assert control.spa.offers(NOW + MIN, control.config().spa)[LOAD_SPA_IDLE].why != "floor"
+    shadow.spa.set("idle", current=9.5)
+    await control.async_look(NOW + 2 * MIN)
+    assert control.spa.part.reason == "floor"
+
+
 async def test_a_booked_bath_and_the_idle_hold_step_live_and_a_hand_change_hands_back(hass: HomeAssistant) -> None:
     devices = _balboa(hass)
     control, shadow, order = make_control(hass, _spa())

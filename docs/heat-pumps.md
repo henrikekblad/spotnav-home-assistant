@@ -104,8 +104,9 @@ out until there is a path SpotNav steers.
     filtering hours done and planned against the day's need, and the heat pump's. When the water has stayed around
     10 °C for a few autumn days the tab asks whether it is time to close the season.
   * **Spa**: the dial for the bathing temperature, the status (**Ready 18:40, heating 2 °C/h** once the rate is
-    learnt), what SpotNav would do, **Bathe now**, the **bath times** like the car's departures (weekly times on their
-    weekdays, and one date), the temperature **between baths**, and the heat-up and hold as a band. A bath that will not
+    learnt), what SpotNav would do (while it only watches the load, and only when that is not what the status
+    already says; a load SpotNav controls says so instead), **Bathe now**, the **bath times** like the car's departures (weekly times on their
+    weekdays, and one date), the temperature **between baths** in the status (set in the gear's **Spa** section), and the heat-up and hold as a band. A bath that will not
     be ready says why and offers **Take what fits**, **Later bath time** and, under the import target or a power
     level, **Allow the peak**.
   * **Sauna**: as the spa without the temperature between sessions, with **Heat now** and its **sessions**. A door or
@@ -114,7 +115,7 @@ out until there is a path SpotNav steers.
 
   The dial, the season, the extra filtering, the times and the press are anyone's who sees the card. The pool's heat
   pump, circulation and water sensor (a detected pool is confirmed once), the filtering hours (by default the water
-  temperature divided by three, 2 to 12 hours), the spa's lowest temperature, the heaters' power, the sauna and a relay
+  temperature divided by three, 2 to 12 hours), the spa's temperature between baths, the heaters' power, the sauna and a relay
   sauna's safety declaration, each load's own switch (**Control the circulation**, **Control the pool heat pump**,
   **Control the spa**, **Control the sauna**) and the phones that hear about them are in the gear's own **Pool**,
   **Spa** and **Sauna** sections ([the settings](pool-spa.md#the-settings)). Under each load the tab says whether SpotNav controls it, has paused it (and why, until when) or has handed
