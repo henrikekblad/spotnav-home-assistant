@@ -20,7 +20,16 @@ from .config import CLOUD as SPA_CLOUD, SpaConfig
 from .plan import (
     ACTION_HEAT,
     ACTION_HOLD,
+    ACTION_IDLE,
+    ACTION_OFF,
     HOLD,
+    HORIZON,
+    LATER_TRIES,
+    REASON_WAITING,
+    STATE_IDLE,
+    _hour_of,
+    _quarter,
+    _usable,
     READY_MARGIN_C,
     STATE_HEATING,
     STATE_LATE,
@@ -41,6 +50,9 @@ from .plan import (
     sessions_ahead,
 )
 
+#: How far back the booked sessions are listed: a session moved by "Later" (at most `LATER_TRIES` hours) is still the
+#: original's, and its hold after.
+BOOKED_BACK: Final = timedelta(hours=LATER_TRIES) + HOLD
 #: A "now" press at most this often (spec section 10.2).
 NOW_SPACING: Final = timedelta(minutes=10)
 LEARN_KEPT: Final = 20
@@ -100,6 +112,13 @@ class DeadlineShadow:
         #: The session whose heat-up has started `(at, source)`: kept, heated and held to `at + HOLD` whatever the
         #: plan made again from the temperature now says (`_latched`).
         self.latch: tuple[datetime, str] | None = None
+        #: The latched session's quarters as placed when its heat-up started, and the hours and answers they were
+        #: placed on (`_replace_quarters`).
+        self.latch_quarters: dict[datetime, str] = {}
+        #: Behind the heat-up: straight through to the target from then on.
+        self.latch_through = False
+        self._latch_hours: dict[datetime, tuple[Any, ...]] = {}
+        self._latch_answers: tuple[Any, ...] = ()
 
     # ---- the record
 
@@ -112,6 +131,8 @@ class DeadlineShadow:
             "accept_peak": sorted(moment.isoformat() for moment in self.accept_peak),
             "later": {a.isoformat(): b.isoformat() for a, b in self.later.items()},
             "latch": None if self.latch is None else [self.latch[0].isoformat(), self.latch[1]],
+            "latch_quarters": {start.isoformat(): why for start, why in sorted(self.latch_quarters.items())},
+            "latch_through": self.latch_through,
         }
 
     def restore(self, raw: Any) -> None:
@@ -129,6 +150,14 @@ class DeadlineShadow:
         latch = raw.get("latch")
         if isinstance(latch, list) and len(latch) == 2 and (at := _aware(latch[0])) is not None and isinstance(latch[1], str):
             self.latch = (at, latch[1])
+            quarters = raw.get("latch_quarters")
+            if isinstance(quarters, Mapping):
+                self.latch_quarters = {
+                    start: why for start, why in ((_aware(k), v) for k, v in quarters.items()) if start is not None and isinstance(why, str)
+                }
+            self.latch_through = raw.get("latch_through") is True
+            # The hours it was placed on are not kept: the next look's are taken as they stand.
+            self._latch_answers = ("restored",)
         later = raw.get("later")
         if isinstance(later, Mapping):
             self.later = {a: b for a, b in ((_aware(k), _aware(v)) for k, v in later.items()) if a is not None and b is not None}
@@ -170,7 +199,15 @@ class DeadlineShadow:
         else:
             target, weekly, once, hold, floor = config.target_c, config.sessions, config.session_once_at(), None, None
             kw = config.heater_kw
-        sessions = sessions_ahead(weekly, once, now, tz)
+        # The booked sessions reaching back far enough to cover a move (review R1, R2): each original with the time
+        # it is held for (moved by "Later", else its own). A move whose original is no longer booked is dropped.
+        originals = sessions_ahead(weekly, once, now - BOOKED_BACK, tz, horizon=HORIZON + BOOKED_BACK)
+        booked_at = {at for at, _source in originals}
+        self.later = {first: moved for first, moved in self.later.items() if first in booked_at}
+        held_for = [(self.later.get(at, at), at, source) for at, source in originals]
+        # The plan's sessions: the originals whose (moved) time is still ahead; the planner applies the move itself.
+        sessions = sorted((at, source) for moved, at, source in held_for if now < moved <= now + HORIZON)
+        kw_used = kw or DEFAULT_KW[self.profile.kind]
         plan = plan_deadline(
             DeadlineInputs(
                 now=now,
@@ -179,7 +216,7 @@ class DeadlineShadow:
                 target_c=target,
                 current_c=current,
                 rate_c_h=rate,
-                kw=kw or DEFAULT_KW[self.profile.kind],
+                kw=kw_used,
                 sessions=sessions,
                 hours=hours,
                 now_until=self.now_until,
@@ -191,8 +228,35 @@ class DeadlineShadow:
                 max_on=reading.max_on,
             )
         )
-        self.plan = self._latched(plan, now, target, current, sessions, [at for at, _source in sessions_ahead(weekly, once, now - HOLD, tz)])
+        self.plan = self._latched(plan, now, target, current, {moved for moved, _at, _source in held_for}, hours, kw_used, rate)
         return self.plan
+
+    @staticmethod
+    def _hours_seen(hours: list[HeatHour]) -> dict[datetime, tuple[Any, ...]]:
+        return {hour.start: (hour.buy, hour.sell, hour.surplus_kw, hour.room_kw, hour.ceiling) for hour in hours}
+
+    def _replace_quarters(
+        self, plan: DeadlinePlan, now: datetime, hours: list[HeatHour], answers: tuple[Any, ...], short: bool = False
+    ) -> None:
+        """The latched quarters placed again only on a change of the prices, the room or the sun ahead, or of an
+        answer (take what fits, allow the peak), or where those left no longer cover the heat-up at the rate learnt
+        since (`short`), never because the water warmed; the running quarter is kept."""
+        seen = self._hours_seen(hours)
+        if self._latch_answers == ("restored",):
+            # After a restart: the quarters kept are taken as placed on the hours and answers as they stand now.
+            self._latch_hours, self._latch_answers = seen, answers
+            return
+        first = now.replace(minute=0, second=0, microsecond=0)
+        old = self._latch_hours
+        until = self.latch[0] if self.latch is not None else now
+        changed = short or answers != self._latch_answers or any(
+            old.get(start) != value for start, value in seen.items() if first <= start < until
+        )
+        if changed:
+            running = _quarter(now)
+            kept = {running: self.latch_quarters[running]} if running in self.latch_quarters else {}
+            self.latch_quarters = {**dict(plan.quarters), **kept}
+            self._latch_hours, self._latch_answers = seen, answers
 
     def _latched(
         self,
@@ -200,40 +264,83 @@ class DeadlineShadow:
         now: datetime,
         target: float,
         current: float | None,
-        sessions: list[tuple[datetime, str]],
-        booked: list[datetime],
+        booked: set[datetime],
+        hours: list[HeatHour],
+        kw: float,
+        rate: float,
     ) -> DeadlinePlan:
-        """The plan with its session latched (review B1): once the heat-up for a booked session has started (the plan
-        heats for it, or it is due within the heat-up), the session is kept, heated and held at the target to its
-        end (`at + HOLD`): the device's own thermostat holds the target. Never dropped because the need shrank as the
-        water or the room warmed, nor at the session's time. A session no longer booked (or moved) ends the latch."""
+        """The plan with its session and its quarters latched (reviews B1 and R3): once the heat-up for a booked
+        session has started (its first planned quarter, or the session due with nothing left to heat), the session is
+        kept to its end (`at + HOLD`) and its quarters as they were placed: it heats in them and idles between two
+        blocks, goes straight through only once the time left is the heat-up itself (`at - need - QUARTER`, in hours
+        with room, and not after the person took what fits), and from its last block on is held at the target by the
+        device's own thermostat. A session no longer booked (its original, for a moved one) ends the latch."""
         nxt = plan.next_session
         if self.latch is not None:
             at, _source = self.latch
-            still_booked = at in booked or at in self.later.values()
-            if now >= at + HOLD or at in self.later or not still_booked:
+            if now >= at + HOLD or at not in booked:
                 self.latch = None
+                self.latch_quarters = {}
+                self.latch_through = False
         if self.latch is None and nxt is not None and nxt[1] != SOURCE_NOW:
             at = nxt[0]
-            due = at - timedelta(hours=plan.need_h) - QUARTER
-            if plan.action == ACTION_HEAT or now >= due:
+            if plan.action == ACTION_HEAT or (not plan.quarters and now >= at - QUARTER):
                 self.latch = (at, nxt[1])
+                self.latch_quarters = dict(plan.quarters)
+                self._latch_hours = self._hours_seen(hours)
+                self._latch_answers = (at in self.took_what_fits, at in self.accept_peak)
         if self.latch is None or (nxt is not None and nxt[1] == SOURCE_NOW):
             return plan
         at, source = self.latch
         ready = current is not None and current >= target - READY_MARGIN_C
-        state = STATE_READY if ready else (STATE_LATE if now > at else STATE_HEATING)
-        action = ACTION_HOLD if ready else ACTION_HEAT
-        rate, _learnt = learnt_rate(self.runs, self.profile.seed_rate_c_h)
-        ready_at = now if ready or current is None else now + timedelta(hours=max(0.0, target - current) / max(0.1, rate))
+        running = _quarter(now)
+        left = sum(1 for q in self.latch_quarters if q >= running)
+        short = (
+            not ready
+            and current is not None
+            and bool(plan.quarters)
+            and left / 4.0 * max(0.1, rate) < target - READY_MARGIN_C - current
+        )
+        self._replace_quarters(plan, now, hours, (at in self.took_what_fits, at in self.accept_peak), short)
+        quarters = self.latch_quarters
+        last_end = max(quarters) + QUARTER if quarters else None
+        need = timedelta(hours=max(0.0, target - (current if current is not None else target)) / max(0.1, rate))
+        room, _why = _usable(_hour_of(hours, now), kw, peak=at in self.accept_peak)
+        # Behind: the heat-up itself is all the time left, and the quarters kept no longer cover it.
+        covered = sum(1 for q in quarters if q >= running) / 4.0 * max(0.1, rate) >= target - READY_MARGIN_C - (current if current is not None else target)
+        behind = now >= at - need - QUARTER and not covered and at not in self.took_what_fits
+        if behind and not ready:
+            # Once behind, straight through to the target (never on and off at the edge of "behind").
+            self.latch_through = True
+        through = self.latch_through and room
+        if running in quarters:
+            action, reason, until = (ACTION_HOLD if ready else ACTION_HEAT), quarters[running], running + QUARTER
+        elif not ready and not room and now < at:
+            # No room under the ceiling now: wait for it, as the plan does.
+            action = ACTION_IDLE if self.profile.idles else ACTION_OFF
+            reason, until = REASON_WAITING, None
+        elif last_end is None or now >= last_end or (through and not ready):
+            # After the last block (or with none, or behind the heat-up): held at the target to the session's end.
+            action, reason, until = (ACTION_HOLD if ready else ACTION_HEAT), REASON_BATH, at + HOLD
+        else:
+            # Between two blocks: idle, as the plan placed them.
+            action = ACTION_IDLE if self.profile.idles else ACTION_OFF
+            reason = REASON_WAITING
+            until = min((q for q in quarters if q > now), default=at)
+        heating = action == ACTION_HEAT or (action == ACTION_HOLD and not ready)
+        state = STATE_READY if ready and action == ACTION_HOLD else (STATE_LATE if now > at and not ready else (STATE_HEATING if heating else STATE_IDLE))
+        ready_at = now if ready or current is None else now + need
+        if plan.action == "floor":
+            action, reason, until = plan.action, plan.reason, plan.until
         return replace(
             plan,
             next_session=(at, source),
+            quarters={q: why for q, why in quarters.items() if q + QUARTER > now},
             hold_until=at + HOLD,
             state=state,
             action=action,
-            reason=REASON_BATH if ready or now >= at else (plan.reason if plan.action == ACTION_HEAT else REASON_BATH),
-            until=at + HOLD,
+            reason=reason,
+            until=until,
             ready_at=ready_at,
             not_ready=plan.not_ready if plan.not_ready is not None and plan.not_ready.at == at else None,
         )
