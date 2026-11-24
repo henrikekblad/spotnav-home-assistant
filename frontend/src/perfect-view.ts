@@ -171,6 +171,11 @@ export function perfectTable(doc: Document, language: Language, perfect: Perfect
   const table = element(doc, "table", `${H.table} ${H.wayTable}`);
   const head = element(doc, "thead");
   const headRow = element(doc, "tr");
+  // On a wide dialog the way's name is the row's first cell (the name row is hidden); on a phone the name row shows
+  // and these cells are hidden (house-styles.ts, a container query), so each name is read once either way.
+  const nameHead = element(doc, "th", H.wayName);
+  nameHead.scope = "col";
+  headRow.append(nameHead);
   for (const key of columns) {
     const cell = element(doc, "th", undefined, translate(language, key));
     cell.scope = "col";
@@ -186,13 +191,16 @@ export function perfectTable(doc: Document, language: Language, perfect: Perfect
     const work = perfect.work[way];
     const group = element(doc, "tbody");
     group.dataset["way"] = way;
-    const nameRow = element(doc, "tr");
+    const nameRow = element(doc, "tr", H.wayNameRow);
     const nameCell = element(doc, "th", undefined, name);
     nameCell.scope = "rowgroup";
     nameCell.colSpan = columns.length;
     nameRow.append(nameCell);
     const figures = element(doc, "tr");
+    const inline = element(doc, "th", H.wayName, name);
+    inline.scope = "row";
     figures.append(
+      inline,
       element(doc, "td", undefined, saving === null ? "–" : money(language, saving, money_)),
       element(doc, "td", undefined, work === null ? "–" : formatFixed(language, work.cycles, 2)),
       element(doc, "td", undefined, work === null ? "–" : formatNumber(language, work.switches, 0)),
