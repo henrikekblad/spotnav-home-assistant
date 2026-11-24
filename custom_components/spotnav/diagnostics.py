@@ -44,6 +44,7 @@ from .site.import_target import stored_import_target_kw
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
+from .vehicles.vehicle_charge_start import charge_start_diagnostics
 from .vehicles.vehicle_wake import wake_diagnostics
 
 
@@ -174,6 +175,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # Each car's last wake for a reading (`vehicles/vehicle_wake.py`): when, through which integration, for which
         # charge end and its result, with whether the car has it turned on and its integration offers a wake now.
         "vehicle_wake": wake_diagnostics(hass),
+        # Each car's last start of the charge in the car (`vehicles/vehicle_charge_start.py`): when, which switch, for
+        # which plug-in and its result, the plug-in whose "the car takes no current" notice was told, and the car's
+        # charge switch now (null: none, or unavailable).
+        "vehicle_charge_start": charge_start_diagnostics(hass),
         # The state of charge's kept anchor and what the last reading's age was measured from: the car's own report
         # time, the state's `last_updated`, or the anchor's (a value Home Assistant only set again).
         "soc": _soc(hass, entry.entry_id),
