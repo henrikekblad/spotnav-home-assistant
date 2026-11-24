@@ -97,8 +97,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
   (`battery_power_combined`, discharge-positive, `site_detection.BATTERY_ROWS`). The inverter's "AC Grid Port Active
   Power Phase A-C" (33512/33515/33518, S16, lines 1799-1823) states no sign, so there is no `plant_phase_power`.
-* Marstek (Venus E, C, D, A), read 2026-11-23 (`plans/v3_marstek_adapter.md`), one adapter for two integrations, read
-  only (no control is mapped). Each finds only its own entities (the battery entity's platform), so the keys of both
+* Marstek (Venus E, C, D, A), read 2026-11-23 (`plans/v3_marstek_adapter.md`), one adapter for two integrations
+  (the control recipe, `commands.MARSTEK_CONTROL`, is `marstek_modbus`'s only). Each finds only its own entities (the battery entity's platform), so the keys of both
   sit in one match where they differ:
   * `marstek_local_api` (jaapp/ha-marstek-local-api `624881c`, manifest 1.2.0.rc7; Marstek's local Open API over UDP,
     Rev 1.0; line numbers in `sensor.py`): unique ids are `<mac>_<key>` per battery (lines 644, 694) and, when one
@@ -1146,7 +1146,7 @@ def _any_key(*keys: str, domains: tuple[str, ...] = ("sensor",)) -> Match:
     return Match(domains, re.compile(rf"(?:^|_)(?:{'|'.join(re.escape(key) for key in keys)})$"))
 
 
-#: Marstek through `marstek_local_api` or `marstek_modbus` (see the module): read only.
+#: Marstek through `marstek_local_api` or `marstek_modbus` (see the module); controlled only through the latter.
 MARSTEK: Final = Adapter(
     brand="marstek",
     label="Marstek",

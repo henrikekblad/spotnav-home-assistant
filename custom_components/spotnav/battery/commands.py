@@ -300,6 +300,36 @@ The entity keys, options and services below were checked against each integratio
     written back; a negative number is written as 65535 plus the value (`number.py` `async_set_native_value`), one
     off from two's complement; and its ESS mode select names Hub4Mode's values 1 and 2 `SELF_CONSUMPTION` and
     `KEEP_CHARGED`. It has no entity for the maximum charge power.
+* **Marstek** (Venus E v1/v2/v3, C, D, A), `marstek_modbus`, ViperRNMC/marstek_venus_modbus 2026.10.1 (`cb5a241`,
+  `registers/e_v12.yaml`, `e_v3.yaml`, `a.yaml`, `d.yaml`, same keys in each) and 2026.11.1 (`f1db53b`, the rewrite:
+  same keys, same `<config entry id>_<key>` unique ids, `entity.py` line 77, `venus/components.py` `Control`); read
+  2026-11-24 (`plans/research_integrations/marstek_control_2026-11-23.md` has the background). **Never run on a
+  device.** Switch `rs485_control_mode` (42000: on 0x55AA, off 0x55BB), select `force_mode` (42010: `standby`,
+  `charge`, `discharge`), numbers `set_charge_power` (42020, W, 0-2500 on the Venus E, 0-1500 on the A, step 50) and
+  `max_discharge_power` (44003, W, same range). All four are disabled by default. Registers 42000-42999 act only with
+  RS485 control on (the integration's README); 44002/44003 do not need it. Every write is read back from the
+  register (the integration polls the control block again a few seconds after a write, and every 10 s).
+  **Limits first, and no dead-man.** No timeout or watchdog register is documented on any route but the local API's
+  Passive countdown, which is unreliable in the field and has no read-back (research §3, §5.2): not used. So the hold
+  is a limit that is safe if left standing (evcc's `holddischarge`): the maximum discharge power at 0, with the
+  battery's own self-consumption (`user_work_mode` `anti_feed`) still storing a sun surplus. A grid charge is a force
+  command that stays until changed (RS485 control on, the charge power, then the force mode `charge`), so it runs
+  only under the HA-down cap (`gate.grid_charge_cap_kw`, all of it on the one phase the battery is on:
+  `grid_charge_phases` 1); the battery's own `charge_to_soc` (42011) is never written, as nothing shows it ends a
+  force charge. The hand-back is the force mode back to `standby`, then RS485 control off,
+  which lands the battery back in its own work mode (evcc's templates note that turning it off "resets the device":
+  to be seen in the hardware test); the discharge limit goes back to its value found. The charge power is never
+  written back: it acts only in a force charge, a 42xxx write needs RS485 control on, and a change of action turns
+  that off in the same pass; the next charge writes its own before the mode. A discharge to the house is
+  the battery's own self-consumption, written as nothing; a discharge to the grid and the battery's maximum charge
+  power (44002) are not mapped. A plant is taken only in `anti_feed` with RS485 control off (`adapters.MARSTEK`'s
+  mode rules) and with the force mode at `standby` (`requires`: a force mode left standing would run the moment
+  RS485 control goes on). evcc #36110 saw the maximum powers reset to 800 W after its own stop until toggled in the
+  app: the limit's read-back and the hand-back's settle check show such a change. The local API (`marstek_local_api`)
+  and Marstek's own `marstek` have none of these entities: the status names this integration as the one needed
+  (`hacs_roles`). A battery run by Omnibattery is not this recipe's: Omnibattery is the Modbus client itself (one
+  client at a time), so no `marstek_modbus` entity exists, and its presence marks the battery as run by someone else
+  (`coexist.OUTSIDE_INTEGRATIONS`), never written over.
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -315,7 +345,8 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    FERROAMP, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key, _tesla,
+    FERROAMP, GOODWE, HUAWEI, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key,
+    _tesla,
 )
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -1927,6 +1958,63 @@ FERROAMP_CONTROL: Final = BrandControl(
     note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
 )
 
+# --- Marstek Venus (marstek_modbus, see the module) ------------------------------------------------------------------
+
+#: The Venus E's largest charge power (kW; the entity's own maximum, 2500 W): a rate above it is written as it, never
+#: refused by the entity. The Venus A's is 1500 W: a write above it is refused and handed back.
+MARSTEK_MAX_KW: Final = 2.5
+_MS_RS485 = Role("rs485_control", "switch", _key("rs485_control_mode", "switch"))
+_MS_FORCE = Role("force_mode", "select", _key("force_mode", "select"), write_class="setpoint")
+# 42020 acts only in a force charge with RS485 control on, and is written only with it on: never written back (a
+# change of action turns RS485 control off before it would come in turn), the next charge writes it before the mode.
+_MS_CHARGE = Role(
+    "charge_power", "number", _key("set_charge_power", "number"), scale=1000.0, step=50.0, restored=False,
+    write_class="setpoint",
+)
+_MS_MAX_DISCHARGE = Role(
+    "max_discharge_power", "number", _key("max_discharge_power", "number"), scale=1000.0, step=50.0
+)
+
+
+def _ms_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    return (
+        Want("rs485_control", True), Want("charge_power", native(_MS_CHARGE, min(rate_kw, MARSTEK_MAX_KW))),
+        Want("force_mode", "charge"),
+    )
+
+
+MARSTEK_CONTROL: Final = BrandControl(
+    brand="marstek",
+    adapter=MARSTEK,
+    roles=(_MS_MAX_DISCHARGE, _MS_RS485, _MS_CHARGE, _MS_FORCE),
+    states={
+        # A limit safe to keep: the battery's own self-consumption, discharging nothing (the sun is still stored).
+        ACTION_HOLD: lambda _rate, _w: (Want("max_discharge_power", 0.0),),
+        ACTION_GRID_CHARGE: _ms_charge,
+        # The battery's own self-consumption covers the house.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
+    },
+    # RS485 control first (42xxx act only with it on), the power before the mode, so the mode never runs at a power
+    # left there. Back: the force mode to standby first (it stops the charge), then RS485 control off.
+    enter_order=("max_discharge_power", "rs485_control", "charge_power", "force_mode"),
+    restore_order=("force_mode", "rs485_control", "max_discharge_power"),
+    # RS485 control that SpotNav turned on is not someone else's while it runs.
+    own_states={"RS485 control": frozenset({"on"})},
+    requires=(("force_mode", frozenset({"standby"}), "force_mode_left_standing"),),
+    peak_first={ACTION_HOLD: ("max_discharge_power",), ACTION_GRID_CHARGE: ("force_mode",)},
+    # A single-phase battery: the whole charge on its one phase.
+    grid_charge_phases=1,
+    # No dead-man on any Modbus route (the module): a force charge stays until changed.
+    expiry=NO_EXPIRY,
+    hacs_roles=("max_discharge_power", "rs485_control", "charge_power", "force_mode"),
+    hacs_repo="ViperRNMC/marstek_venus_modbus",
+    # Nothing says whether the force registers are kept in flash: the moderate cap.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    note="Needs the Modbus integration (ViperRNMC/marstek_venus_modbus). Hold: the maximum discharge power at 0. Grid"
+    " charge: RS485 control with a force charge, which the battery keeps if Home Assistant stops (no dead-man), so it"
+    " runs under the HA-down cap. Never run on a device.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -1939,7 +2027,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
-    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL,
+    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, MARSTEK_CONTROL,
 )
 
 
