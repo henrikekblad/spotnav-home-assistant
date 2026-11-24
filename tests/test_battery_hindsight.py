@@ -218,11 +218,21 @@ def test_a_day_stored_before_the_yardstick_is_measured_again_where_a_way_sold() 
     assert again is not None and again.rules == RULES_SELL and again.best is not None
     assert again.best.as_dict() == made.perfect[MODE_MAX_PROFIT].as_dict()
     assert again.candidates[OWN].share == pytest.approx(made.candidates[OWN].share, abs=0.1)
-    # No way sold: kept as it was, against the site's mode's perfect plan.
+    # No way sold and Max profit's own plan sold nothing: that plan is the no-sell one with the true wear, not the
+    # site's mode's (Balanced: twice the wear). Stored with `rules: "mode"` it is read the same.
     ran = [(ACTION_GRID_CHARGE, 1.5)] * 6 + [(ACTION_DISCHARGE_HOUSE, 0.0)] * 18
     quiet = _facit(_day(battery=[0.0] * 24, soc=[10.0] * 25, ran=ran), end_value=100.0).as_dict()
-    del quiet["rules"], quiet["best"]
-    kept = Facit.from_dict(quiet)
+    assert quiet["perfect"][MODE_MAX_PROFIT]["work"]["to_grid_kwh"] < 0.1
+    quiet["rules"], quiet["best"] = RULES_MODE, None
+    for raw in (quiet, {k: v for k, v in quiet.items() if k not in ("rules", "best")}):
+        kept = Facit.from_dict(raw)
+        assert kept is not None and kept.rules == RULES_NO_SELL and kept.best is not None
+        assert kept.saving == pytest.approx(kept.perfect[MODE_MAX_PROFIT].saving)
+    # Max profit's plan sold where no way did: kept as it was, against the site's mode's perfect plan.
+    sold = dict(quiet)
+    sold["perfect"] = {k: dict(v) for k, v in quiet["perfect"].items()}
+    sold["perfect"][MODE_MAX_PROFIT]["work"] = {**quiet["perfect"][MODE_MAX_PROFIT]["work"], "to_grid_kwh": 2.0}
+    kept = Facit.from_dict(sold)
     assert kept is not None and kept.rules == RULES_MODE and kept.best is None
     assert kept.saving == pytest.approx(kept.perfect[MODE_BALANCED].saving)
 
@@ -310,3 +320,15 @@ def test_the_days_cell_temperature_from_five_minute_statistics() -> None:
     assert HOT_C == 30.0
     assert cell_temperature([], 5) is None
     assert CellTemperature.from_dict(made.as_dict()) == CellTemperature(round(made.mean_c, 1), 33.5, 40, 1440)
+
+
+def test_the_sites_export_alone_does_not_make_selling_possible() -> None:
+    """The sell rule follows what a battery sent to the grid, not the meter: a house that exports a little on its
+    own (the sun's surplus, a meter's few watt-hours) while no battery sold keeps the no-sell yardstick."""
+    ran = [(ACTION_GRID_CHARGE, 1.5)] * 6 + [(ACTION_DISCHARGE_HOUSE, 0.0)] * 18
+    buckets = _day(battery=[0.0] * 24, soc=[10.0] * 25, ran=ran)
+    for bucket in buckets[48:52]:
+        bucket.export_kwh = 0.2  # 0.8 kWh exported with the battery idle
+    made = _facit(buckets, end_value=100.0)
+    assert made.candidates[OWN].work.to_grid_kwh == pytest.approx(0.0)
+    assert made.rules == RULES_NO_SELL

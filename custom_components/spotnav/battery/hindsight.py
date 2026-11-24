@@ -12,11 +12,15 @@ that day had everything been known, and each way's share of it.
   each mode's own rules). A quarter hour the meters lost counts in no run, as in the review: the plan steps over it.
 * **The yardstick** (`Facit.best`, `Facit.rules`; owner 2026-11-17): every share is measured against one perfect plan,
   under the most permissive rules any way shown used, so no way can beat it but by the model's ideal battery. Where
-  selling was possible that day (the site sent energy to the grid, or any way sold from the battery: the battery's
-  own optimiser, or a SpotNav mode run beside it) that is Max profit's (`RULES_SELL`: selling allowed, the true
-  wear). Otherwise it is a perfect plan that does not sell, with the true wear (`RULES_NO_SELL`). A day stored before
-  this (`RULES_MODE`) measured each SpotNav mode against its own mode's plan and the rest against the site's; read
-  back, it is measured against Max profit's where a way sold, and kept as it was otherwise.
+  any way sold from the battery that day (`Work.to_grid_kwh` of `SELL_KWH` or more: the battery's own optimiser, or
+  a SpotNav mode run beside it) that is Max profit's (`RULES_SELL`: selling allowed, the true wear). Otherwise it is
+  a perfect plan that does not sell, with the true wear (`RULES_NO_SELL`). What the battery sold is each quarter
+  hour's discharge that went to the grid (the lesser of the two), not the site's export: the sun's surplus and the
+  grid meter's few watt-hours while a battery follows the house (0.01-0.03 kWh a day on the owner's plant) are not
+  the battery selling. A day stored before this (`RULES_MODE`) measured each SpotNav mode against its own mode's plan
+  and the rest against the site's (Balanced's: twice the wear); read back, it is measured against Max profit's
+  perfect plan where a way sold, and where none did and Max profit's own plan sold nothing that plan is the no-sell
+  one with the true wear (`RULES_NO_SELL`); otherwise it is kept as it was.
 * **The day boundary** (fairness): every way (what really happened, which is the battery's own optimiser on a battery
   that runs its own way; each SpotNav mode; the perfect plan) starts the day at the same measured SoC, and the energy
   each leaves at midnight is valued the same way (`end_value_next_day`): at the next day's mean buy price with its
@@ -94,7 +98,8 @@ RULES_SELL: Final = "max_profit"
 RULES_NO_SELL: Final = "no_sell"
 RULES_MODE: Final = "mode"
 RULES: Final = (RULES_SELL, RULES_NO_SELL, RULES_MODE)
-#: Selling counts as possible on a day where at least this much (kWh) went to the grid.
+#: Selling counts as possible on a day where a way's battery sent at least this much (kWh) to the grid: a few times the
+#: watt-hours a battery that follows the house leaks to the grid on its own (see the module).
 SELL_KWH: Final = 0.1
 #: The yardstick where nothing could be sold: Max profit's wear, no selling.
 NO_SELL_MODE: Final = BatteryMode(RULES_NO_SELL, plans=True, export=EXPORT_OFF, wear_factor=MODE_DEFS[MODE_MAX_PROFIT].wear_factor)
@@ -425,7 +430,7 @@ class Facit:
                 perfect={k: Candidate.from_dict(v) for k, v in raw["perfect"].items() if k in PLANNING_MODES},
                 candidates={k: Candidate.from_dict(v) for k, v in raw["candidates"].items() if k in CANDIDATES},
             )
-            if "rules" not in raw:
+            if "rules" not in raw or raw["rules"] == RULES_MODE:
                 return made.measured_again()  # stored before the yardstick
             rules, best = raw["rules"], raw["best"]
             if rules not in RULES:
@@ -435,14 +440,21 @@ class Facit:
             return None
 
     def measured_again(self) -> Facit:
-        """A day stored before the yardstick (see the module): against Max profit's perfect plan where a way sold,
-        else as it was."""
+        """A day stored before the yardstick (see the module): against Max profit's perfect plan where a way sold, or
+        where none did and that plan sold nothing either (it is then the no-sell plan with the true wear); else as it
+        was."""
         best = self.perfect.get(MODE_MAX_PROFIT)
-        if best is None or not any(item.work.to_grid_kwh >= SELL_KWH for item in self.candidates.values()):
+        if best is None:
+            return self
+        if any(item.work.to_grid_kwh >= SELL_KWH for item in self.candidates.values()):
+            rules = RULES_SELL
+        elif best.work.to_grid_kwh < SELL_KWH:
+            rules = RULES_NO_SELL
+        else:
             return self
         return replace(
             self,
-            rules=RULES_SELL,
+            rules=rules,
             best=best,
             candidates={name: against(item, best.saving, self.whole) for name, item in self.candidates.items()},
         )
@@ -513,8 +525,7 @@ def facit_day(
         run = simulate(slots, battery, start_soc_pct, [bucket.ran_modes[name] for bucket in buckets])
         add(name, run.cost, run.end_soc_pct, run.work)
 
-    exported = sum(bucket.export_kwh for bucket in buckets) >= SELL_KWH
-    if exported or any(item.work.to_grid_kwh >= SELL_KWH for item in ways.values()):
+    if any(item.work.to_grid_kwh >= SELL_KWH for item in ways.values()):
         rules, best = RULES_SELL, perfect[MODE_MAX_PROFIT]
     else:
         runs = perfect_plans(slots, battery, start_soc_pct, wear, end_value, (NO_SELL_MODE,))
