@@ -486,7 +486,7 @@ both directions:
   which is the list read from the bottom.
 
 Hard rules and deadlines always come before the list: a car's minimum level and a person's Start, the water heater's
-full heat and legionella rules, a spa's lowest temperature, the heat control's limits and the main fuse.
+full heat and legionella rules, a spa's 10 °C frost floor, the heat control's limits and the main fuse.
 
 **From an earlier version.** Until the list is first saved, the old settings count exactly as before: the site's
 *car or home battery first* and each charger's *Charger priority* (First, Normal, Last; chargers with the same
