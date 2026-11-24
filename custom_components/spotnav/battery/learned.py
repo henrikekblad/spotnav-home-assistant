@@ -22,6 +22,9 @@ the battery's energy and the SoC at the start and end of each) show it.
   The sun's charge over the DC bus gets its own round trip beside it (`conversion_loss.sun_round_trip`): the AC one
   turned back with the same loss, at most the DC counters' own and 0.98 (0.97 and the assumed round trip's until they
   are learnt), and the loss on the way out, which splits the plan's stored energy as the cells do.
+  The inverter's standing use the same fit learns (`ConversionLoss.idle_kw`) is not in either round trip: it is a
+  fixed load the plan already has in the house forecast (the house rows are the grid's balance, which holds it), so it
+  is not added again.
 
 Size and rating are estimates: SpotNav marks them (`capacity_learned`, `rated_learned`) and never lets one replace a value the
 integration reads. What this cannot tell: a battery that was never cycled 20 points, or never charged at its limit,
