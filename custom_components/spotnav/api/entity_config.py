@@ -326,9 +326,12 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
         if site is not None:
             order = site_order(hass, site)
             shown = {member: charger_priority_value(hass, site, member) for member in members(site.data)}
-            moved = with_charger_priority(order, entry.entry_id, changes[FIELD_CHARGER_PRIORITY], shown)
-            if moved != order:
-                store_order(hass, site, moved)
+            value = changes[FIELD_CHARGER_PRIORITY]
+            if shown.get(entry.entry_id) != value:
+                # Stored whenever the value changes, also where the order does not (A "first" over B "normal"
+                # keeps [A, B], but B must now give way first): the list, and the classes the app reads back.
+                moved = with_charger_priority(order, entry.entry_id, value, shown)
+                store_order(hass, site, moved, {**shown, entry.entry_id: value})
         updated.pop(CONF_CHARGER_PRIORITY, None)
     if FIELD_PHASE_SWITCHING in changes:
         # Stored only while on, so a charger left alone keeps exactly its old data.

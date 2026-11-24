@@ -178,10 +178,16 @@ def charger_rank(config: Mapping[str, Any], entry_id: str) -> int | None:
     return order.index(row) if row in order else len(order)
 
 
-def derived_charger_priorities(order: Sequence[str]) -> dict[str, str]:
-    """The old `charger_priority` an older app is shown, from the list: the top car "first", the bottom one "last",
-    the rest (and a car alone) "normal"."""
+def derived_charger_priorities(order: Sequence[str], classes: Mapping[str, Any] | None = None) -> dict[str, str]:
+    """The old `charger_priority` an older app is shown, from the list: the classes an older app last wrote where
+    they are kept (`const.CONF_PRIORITY_CLASSES`; a charger without one is "normal"), else the top car "first", the
+    bottom one "last", the rest (and a car alone) "normal"."""
     cars = [entry_id for item in order if (entry_id := charger_entry_of(item)) is not None]
+    if classes:
+        return {
+            entry_id: str(classes[entry_id]) if classes.get(entry_id) in _LEGACY_RANK else CHARGER_PRIORITY_NORMAL
+            for entry_id in cars
+        }
     out = {entry_id: CHARGER_PRIORITY_NORMAL for entry_id in cars}
     if len(cars) >= 2:
         out[cars[0]] = CHARGER_PRIORITY_FIRST

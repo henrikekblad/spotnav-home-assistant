@@ -247,6 +247,10 @@ YIELD_CEILING_FUSE_FACTOR = 1.15
 # The site's one priority list (`site/priority.py`, since 3.0): load ids, top = gets energy first and gives way last.
 # It replaces `solar_priority` and each charger's `charger_priority`, which are read only while no list is stored.
 CONF_PRIORITY = "priority"
+# The old `charger_priority` an older app last wrote per member charger (`{entry id: "first" | "normal" | "last"}`),
+# kept beside the list only so the app reads back what it wrote; the list's order (sorted by these classes on each
+# such write) is what counts. Dropped when the list itself is saved.
+CONF_PRIORITY_CLASSES = "priority_classes"
 
 # Per-site solar priority: `car_first` (default) or `battery_first`. Read only while no `priority` list is stored
 # (`site/priority.py` derives it from the list otherwise); no longer written.
