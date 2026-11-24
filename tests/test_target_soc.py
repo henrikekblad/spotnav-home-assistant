@@ -247,17 +247,18 @@ async def test_a_restart_in_the_middle_of_a_charge_keeps_the_estimate(hass: Home
 # ------------------------------------------------------------- planning: gaps and price wait
 
 
-async def test_a_missing_source_and_a_missing_capacity_are_named(
+async def test_no_level_and_no_battery_size_names_the_battery_size(
     harness: Harness, no_execution: dict[str, Any]
 ) -> None:
+    """An unreadable level is planned on (a full charge here); only the battery size it needs is a setting."""
     serve(harness.transport)
     harness.vehicle_reader = lambda vehicle_id: LiveVehicleFacts(vehicle_id=vehicle_id)
     controller = await harness.auto(
         driver=DRIVER_TARGET_SOC, target=TargetSocIntent(vehicle_id="car", target_percent=80)
     )
     snapshot = controller.snapshot()
-    assert (snapshot.state, snapshot.reason) == ("incomplete_settings", "target_soc_unknown")
-    assert snapshot.missing == ("live_soc",)
+    assert (snapshot.state, snapshot.reason) == ("incomplete_settings", "target_capacity_unknown")
+    assert snapshot.missing == ("capacity",)
 
     assert_nothing_executed(no_execution)
 
