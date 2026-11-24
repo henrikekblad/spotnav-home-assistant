@@ -309,13 +309,19 @@ async def test_an_older_apps_writes_move_the_rows(hass: HomeAssistant, hass_ws_c
     answer = (await ws_call(client, message))["result"]
     assert answer["ok"] is True and answer["site"]["solar_priority"] == "battery_first"
     assert site_controller.config[CONF_PRIORITY][:4] == ["heat", "battery", "charger:a_charger", "charger:b_charger"]
+    # The chargers an older app read as normal/normal still read so after the list is stored (re-review nit).
+    from custom_components.spotnav.site.priority_store import charger_priority_value  # noqa: PLC0415
+
+    site_entry = hass.config_entries.async_get_entry(site_controller.entry_id)
+    assert site_entry is not None
+    assert [charger_priority_value(hass, site_entry, entry_id) for entry_id in ("a_charger", "b_charger")] == ["normal", "normal"]
 
     priority = {
         "type": "spotnav/update_entity_config",
         "api_version": 1,
         "charger_id": "b_charger",
         "scope": "charger",
-        "expected": {"charger_priority": "last"},
+        "expected": {"charger_priority": "normal"},
         "changes": {"charger_priority": "first"},
     }
     result = (await ws_call(client, priority))["result"]

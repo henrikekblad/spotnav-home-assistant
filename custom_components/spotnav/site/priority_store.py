@@ -69,6 +69,11 @@ def _config(hass: HomeAssistant, site: ConfigEntry) -> Mapping[str, Any]:
     return site.data if controller is None else controller.config
 
 
+def has_stored_list(hass: HomeAssistant, site: ConfigEntry) -> bool:
+    """Whether the site has its own list stored (else it is read from the old keys)."""
+    return stored(_config(hass, site)) is not None
+
+
 def site_order(hass: HomeAssistant, site: ConfigEntry) -> list[str]:
     """The site's whole list now (`priority.effective_order`)."""
     config = _config(hass, site)
