@@ -12,9 +12,10 @@ temperature, a learnt rate of heating, and a "now" press. What differs is config
   in minutes, so there is nothing to move), and is held to `HOLD` after it. It is never started but for a session the
   person booked or a "now" press.
 
-**The rate** (`learnt_rate`): the median of the last `LEARN_RUNS` heating runs that rose at least `LEARN_MIN_C`, the first
-`FIRST_STEP_C` after the heater came on not counted (MSpa's lesson: the reading jumps as the water at the sensor turns
-over); the profile's seed before that. **Not ready** (`NotReady`): the session cannot be met because the time left is too
+**The rate** (`learnt_rate`): the median of the last `LEARN_RUNS` heating runs that rose at least `LEARN_MIN_C`, each run
+counted from the look where the reading had risen `FIRST_STEP_C` after the heater came on (MSpa's lesson: the reading
+jumps as the water at the sensor turns over; `spa/runtime.py` keeps the run from there, so a short block teaches the
+true rate); the profile's seed before that. **Not ready** (`NotReady`): the session cannot be met because the time left is too
 short (`rate`), the hours with room under the import target or the power level are too few (`import_target`,
 `power_level`), or under the main fuse (`fuse`); with the temperature it reaches, what is short and the earliest later
 whole local hour where it fits (at most `LATER_TRIES`). A session the person took "what fits" for, or allowed the peak
@@ -42,6 +43,8 @@ HOLD: Final = timedelta(hours=2)
 LEARN_RUNS: Final = 10
 LEARN_MIN_C: Final = 1.0
 FIRST_STEP_C: Final = 0.5
+#: What a spa loses an hour while it does not heat before a bath (placeholder, spec section 5.2).
+IDLE_DRIFT_C_H: Final = 0.3
 LATER_TRIES: Final = 48
 #: A reading this close under the target is ready.
 READY_MARGIN_C: Final = 0.5
@@ -122,9 +125,10 @@ def learnt_rate(runs: Sequence[tuple[datetime, datetime, float, float]], seed: f
     """The rate learnt from the heating runs `(start, end, from_c, to_c)` (see the module), and whether it is learnt."""
     rates = []
     for start, end, from_c, to_c in runs:
-        rise = to_c - from_c - FIRST_STEP_C
+        # Each run is kept from the look where the reading had risen `FIRST_STEP_C` (its time and temperature).
+        rise = to_c - from_c
         hours = (end - start).total_seconds() / 3600.0
-        if to_c - from_c >= LEARN_MIN_C and rise > 0 and hours > 0:
+        if rise >= LEARN_MIN_C and hours > 0:
             rates.append(rise / hours)
     rates = rates[-LEARN_RUNS:]
     if not rates:
@@ -307,7 +311,16 @@ def plan_deadline(inputs: DeadlineInputs) -> DeadlinePlan:
                     # Later rather than earlier at the same price: less to hold.
                     candidates.append((cost, -moment.timestamp(), moment, why))
                 moment += QUARTER
-            for _cost_value, _later, moment, why in sorted(candidates)[:needed]:
+            ranked = sorted(candidates)
+            chosen = ranked[:needed]
+            if chosen and profile.idles:
+                # The water's idle drift between the blocks chosen and the bath (spec section 5.2): the quarters
+                # that drift takes back are added once, at the same cost order (final check's nit).
+                first_q = min(item[2] for item in chosen)
+                gap_h = max(0.0, (at - first_q).total_seconds() / 3600.0 - len(chosen) / 4.0)
+                extra = math.ceil(IDLE_DRIFT_C_H * gap_h / rate * 4 - 1e-9)
+                chosen = ranked[: needed + extra]
+            for _cost_value, _later, moment, why in chosen:
                 quarters[moment] = why
         if inputs.max_on is not None and quarters:
             hold_until = min(hold_until, min(quarters) + inputs.max_on)
