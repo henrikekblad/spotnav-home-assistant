@@ -284,7 +284,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     loads = (
         []
         if pool_spa is None
-        else [LoadUse(kind, pool_spa.energy_hours(kind)) for kind in ("pool", "spa", "sauna") if pool_spa.energy.get(kind)]
+        else [LoadUse(kind, pool_spa.energy_hours(kind)) for kind in ("pool", "spa", "sauna") if pool_spa.has_energy(kind)]
     )
     try:
         model_mae = dict(forecast_maes(controller.house_forecast.log).get(KIND_HEAT) or {})

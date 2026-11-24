@@ -186,6 +186,23 @@ describe("the heat pie, where a meter belongs and meters that jump", () => {
     expect([...admin.querySelectorAll<HTMLButtonElement>("button[data-choose]")].map((button) => button.dataset["choose"])).toEqual(["sensor.shelly_golv_energy"]);
   });
 
+  it("shows the pool's, the spa's and the sauna's parts of heat in their own colours, never as a meter to move", () => {
+    const raw = read("house_loads", "heat_villa_day.json");
+    const extra = [
+      { statistic_id: "switch.bastu", name: "Bastu", kwh: 6.75, source: "sauna", changed: false },
+      { statistic_id: "switch.pool_cirkulation", name: "Poolpump", kwh: 1.2, source: "pool_circulation", changed: false },
+    ];
+    const decoded = decodeHouseLoads({ ...raw, loads: [...(raw["loads"] as unknown[]), ...extra] });
+    expect(decoded.ok).toBe(true);
+    const answer = (decoded as { ok: true; value: HouseLoads }).value;
+    const slices = pieModel("sv", answer).slices;
+    expect(slices.find((slice) => slice.key === "switch.bastu")!.colour).toBe("var(--spotnav-sauna-colour)");
+    expect(slices.find((slice) => slice.key === "switch.pool_cirkulation")!.colour).toBe("var(--spotnav-pool-circulation-colour)");
+    const admin = loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer }, controls());
+    expect([...admin.querySelectorAll<HTMLButtonElement>("button[data-choose]")].map((button) => button.dataset["choose"])).toEqual(["sensor.shelly_golv_energy"]);
+    expect(decodeHouseLoads({ ...raw, loads: [{ ...extra[0], source: "jacuzzi" }] }).ok).toBe(false);
+  });
+
   it("offers House (default), Heat, Car and Don't count for a meter, by its slice or its row", () => {
     const answer = loads("moved_and_implausible_month.json");
     const onChoose = vi.fn();

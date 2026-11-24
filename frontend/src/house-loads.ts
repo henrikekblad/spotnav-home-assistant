@@ -31,6 +31,7 @@ import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { bad, record, text, number, numberOrNull } from "./decode-primitives";
 import { element } from "./dom";
+import { LOAD_COLOURS, type OwnLoadKind } from "./load-colours";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -224,8 +225,10 @@ export interface HouseLoad {
   statistic_id: string;
   name: string;
   kwh: number;
-  /** An Energy dashboard device (`meter`, whose belonging may be chosen), the heat pump's meter or a heat zone. */
-  source: "meter" | "heat_pump" | "zone";
+  /** An Energy dashboard device (`meter`, whose belonging may be chosen), the heat pump's meter, a heat zone, or a
+   * part of heat SpotNav counted itself (`pool_heat`, `pool_circulation`, `spa`, `sauna`: drawn in their own colours,
+   * `load-colours.ts`). */
+  source: "meter" | "heat_pump" | "zone" | OwnLoadKind;
   /** The household moved it here (its belonging is not the default). */
   changed: boolean;
 }
@@ -278,7 +281,12 @@ function movedBelongs(value: unknown): Exclude<Belongs, "house"> {
 }
 
 function sourceOf(value: unknown): HouseLoad["source"] {
-  return value === undefined || value === "meter" ? "meter" : value === "heat_pump" || value === "zone" ? value : bad();
+  if (value === undefined || value === "meter") {
+    return "meter";
+  }
+  return value === "heat_pump" || value === "zone" || (typeof value === "string" && Object.prototype.hasOwnProperty.call(LOAD_COLOURS, value))
+    ? (value as HouseLoad["source"])
+    : bad();
 }
 
 /** A list a backend before it did not send: empty. */
@@ -375,14 +383,16 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
       merged.push(load);
     }
   }
-  // A meter's colour by its statistic id among those shown, not by its size.
-  const byId = [...shown].map((load) => load.statistic_id).sort();
+  // A meter's colour by its statistic id among those shown, not by its size; the pool's, the spa's and the sauna's
+  // parts keep their own (as in the Plan tab and the heat card's Use tab).
+  const own = (load: HouseLoad): string | null => (Object.prototype.hasOwnProperty.call(LOAD_COLOURS, load.source) ? LOAD_COLOURS[load.source as OwnLoadKind] : null);
+  const byId = shown.filter((load) => own(load) === null).map((load) => load.statistic_id).sort();
   const slices: PieSlice[] = shown.map((load) => ({
     key: load.statistic_id,
     name: load.name,
     kwh: load.kwh,
     share: whole > 0 ? load.kwh / whole : 0,
-    colour: `var(--spotnav-pie-${byId.indexOf(load.statistic_id) + 1})`,
+    colour: own(load) ?? `var(--spotnav-pie-${byId.indexOf(load.statistic_id) + 1})`,
   }));
   const metered = merged.reduce((sum, load) => sum + load.kwh, 0);
   const unknown = answer.other_kwh ?? 0;

@@ -9,8 +9,10 @@ the prices or the settings change or a household control is pressed (`pool/plan.
 would do in its shadow book (`battery/shadow.py`, part `pool`). The sun's surplus over the house is read every
 `SUN_REFRESH` (as the Plan tab reads it, `api/plan.py`).
 
-It also counts each load's energy per hour as it really draws (the circulation and the heat pump while on, the spa
-or the sauna while it heats, at the entered powers or typical ones) for the heat card's Use tab (`energy_hours`,
+It also counts each part's energy per quarter hour as it really draws (its own trusted power sensor where it has one,
+else the circulation and the heat pump while on, the spa or the sauna while it heats, at their powers as they count:
+entered, learned or typical) for the heat card's Use tab and the house card's energy flow (`energy_hours`,
+`energy_quarters`,
 `DAYS_KEPT` days).
 
 Nothing here writes to a device: no service is called. The settings are the heat settings'; the household's extra
@@ -118,8 +120,14 @@ REASON_NO_PRICES: Final = "no_prices"
 STATE_WATCHED: Final = "watched"
 STATE_SEASON_CLOSED: Final = "season_closed"
 NOTE_SEASON_CLOSE: Final = "pool_season_close"
-#: The loads whose energy is counted per hour (the heat card's Use tab).
+#: The loads whose energy is counted (the heat card's Use tab), and their parts, each counted per quarter hour (the
+#: energy flow's heat parts, `api/house.py`).
 ENERGY_KINDS: Final = ("pool", "spa", "sauna")
+PART_POOL_HEAT: Final = "pool_heat"
+PART_POOL_CIRCULATION: Final = "pool_circulation"
+ENERGY_PARTS: Final = (PART_POOL_HEAT, PART_POOL_CIRCULATION, "spa", "sauna")
+PARTS_OF: Final[dict[str, tuple[str, ...]]] = {"pool": (PART_POOL_HEAT, PART_POOL_CIRCULATION), "spa": ("spa",), "sauna": ("sauna",)}
+QUARTER: Final = timedelta(minutes=15)
 
 ERROR_NO_POOL: Final = "spotnav_not_supported"
 
@@ -186,8 +194,11 @@ class PoolSpaShadow:
         self._night_start: tuple[datetime, float] | None = None
         self._night_heated = False
         self._last_tick: datetime | None = None
-        #: Each load's energy per UTC hour (`energy_hours`): `{"pool" | "spa" | "sauna": {hour start ISO: kWh}}`.
+        #: Each load's energy per UTC hour as counted before the quarters (`energy_hours`, read only, pruned):
+        #: `{"pool" | "spa" | "sauna": {hour start ISO: kWh}}`.
         self.energy: dict[str, dict[str, float]] = {}
+        #: Each part's energy per UTC quarter hour (`energy_quarters`): `{part: {quarter start ISO: kWh}}`.
+        self.energy_q: dict[str, dict[str, float]] = {}
         self._energy_tick: datetime | None = None
         self._last_filter = False
         self._plan_key: Any = None
@@ -253,6 +264,15 @@ class PoolSpaShadow:
         self.spa.restore(self.book.section("spa"))
         self.sauna.restore(self.book.section("sauna"))
         self.power.restore(self.book.section("power"))
+        quarters = self.book.section("energy_q")
+        for part in ENERGY_PARTS:
+            rows = quarters.get(part)
+            if isinstance(rows, dict):
+                self.energy_q[part] = {
+                    key: float(value)
+                    for key, value in rows.items()
+                    if isinstance(key, str) and _aware(key) is not None and _float(value) is not None
+                }
         energy = self.book.section("energy")
         for kind in ENERGY_KINDS:
             rows = energy.get(kind)
@@ -320,6 +340,7 @@ class PoolSpaShadow:
         self.book.set_section("sauna", self.sauna.as_dict())
         self.book.set_section("power", self.power.as_dict())
         self.book.set_section("energy", {kind: {key: round(kwh, 4) for key, kwh in rows.items()} for kind, rows in self.energy.items()})
+        self.book.set_section("energy_q", {part: {key: round(kwh, 4) for key, kwh in rows.items()} for part, rows in self.energy_q.items()})
         return self.book.as_dict()
 
     # ---- reads
@@ -639,52 +660,87 @@ class PoolSpaShadow:
         except Exception:  # noqa: BLE001 - the shadow goes on; the next change tells again
             _LOGGER.debug("SpotNav site %s: the combined notice could not be told", self.site.entry_id, exc_info=True)
 
+    def _measured_kw(self, part: str) -> float | None:
+        """What the load's own power sensor reads now (kW), where it is trusted as the load's (`loads/learned_kw.py`)."""
+        from ..site.heat_zones import read_power_w  # noqa: PLC0415
+
+        learned = self.power.loads.get(part)
+        if learned is None or learned.trusted_sensor is None:
+            return None
+        watts = read_power_w(self.hass, learned.trusted_sensor)
+        return None if watts is None else max(0.0, watts) / 1000.0
+
     def _draws(self, config: HeatConfig) -> dict[str, float]:
-        """What each load draws now (kW), as read: the pool's circulation and heat pump while on, the spa or the
-        sauna while it heats, each at its entered power or a typical one."""
+        """What each part draws now (kW): its own trusted power sensor's reading where it has one (measured), else the
+        pool's circulation and heat pump while on and the spa or the sauna while it heats, each at its power as it
+        counts (entered, learned, else typical)."""
         out: dict[str, float] = {}
         pool = config.pool
         if pool is not None:
-            kw = 0.0
-            if self._switch_on(pool.circulation_id):
-                kw += pool.circulation_kw or DEFAULT_CIRCULATION_KW
-            if self._pump_state(pool)[1]:
-                kw += pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW
-            out["pool"] = kw
+            if pool.circulation_id is not None:
+                on = self._switch_on(pool.circulation_id)
+                measured = self._measured_kw(PART_POOL_CIRCULATION)
+                out[PART_POOL_CIRCULATION] = measured if measured is not None else (pool.circulation_kw or DEFAULT_CIRCULATION_KW) if on else 0.0
+            if pool.heat_pump is not None:
+                measured = self._measured_kw(PART_POOL_HEAT)
+                heating = self._pump_state(pool)[1]
+                out[PART_POOL_HEAT] = measured if measured is not None else (pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW) if heating else 0.0
         for kind, part, block in (("spa", self.spa, config.spa), ("sauna", self.sauna, config.sauna)):
-            if block is not None and part.reading.heating:
-                out[kind] = block.heater_kw or DEFAULT_KW[kind]
+            if block is not None:
+                measured = self._measured_kw(kind)
+                out[kind] = measured if measured is not None else (block.heater_kw or DEFAULT_KW[kind]) if part.reading.heating else 0.0
         return out
 
     def _account_energy(self, now: datetime, config: HeatConfig) -> None:
-        """Count each load's energy since the last look into its hours (a gap over `MAX_GAP` is not counted), and
-        forget the hours older than `DAYS_KEPT` days."""
+        """Count each part's energy since the last look into its UTC quarter hours (a gap over `MAX_GAP` is not
+        counted), and forget the quarters (and the hours of before) older than `DAYS_KEPT` days."""
         last, self._energy_tick = self._energy_tick, now
         if last is None or not last < now or now - last > MAX_GAP:
             return
-        for kind, kw in self._draws(config).items():
+        for part, kw in self._draws(config).items():
             if kw <= 0:
                 continue
-            rows = self.energy.setdefault(kind, {})
+            rows = self.energy_q.setdefault(part, {})
             moment = last
             while moment < now:
-                hour = moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
-                end = min(now, hour + HOUR)
-                key = hour.isoformat()
+                utc = moment.astimezone(UTC)
+                quarter = utc.replace(minute=utc.minute - utc.minute % 15, second=0, microsecond=0)
+                end = min(now, quarter + QUARTER)
+                key = quarter.isoformat()
                 rows[key] = rows.get(key, 0.0) + kw * (end - moment).total_seconds() / 3600.0
                 moment = end
         oldest = (now - timedelta(days=DAYS_KEPT)).astimezone(UTC).isoformat()
-        for rows in self.energy.values():
+        for rows in (*self.energy.values(), *self.energy_q.values()):
             for key in [key for key in rows if key < oldest]:
                 del rows[key]
 
+    def energy_quarters(self, part: str) -> dict[datetime, float]:
+        """A part's energy per UTC quarter-hour start (kWh) over the days kept (`ENERGY_PARTS`); the hours counted
+        before the quarters were are not in it."""
+        out: dict[datetime, float] = {}
+        for key, kwh in (self.energy_q.get(part) or {}).items():
+            moment = _aware(key)
+            if moment is not None:
+                out[moment] = kwh
+        return out
+
+    def has_energy(self, kind: str) -> bool:
+        """Whether any energy of a load (`ENERGY_KINDS`) or a part (`ENERGY_PARTS`) is counted."""
+        return any(self.energy.get(name) or self.energy_q.get(name) for name in (kind, *PARTS_OF.get(kind, ())))
+
     def energy_hours(self, kind: str) -> dict[datetime, float]:
-        """A load's energy per UTC hour start (kWh) over the days kept (`get_heat_history`'s `pool`, `spa`, `sauna`)."""
+        """A load's energy per UTC hour start (kWh) over the days kept (`get_heat_history`'s `pool`, `spa`, `sauna`):
+        its parts' quarters summed by the hour, with the hours counted before the quarters were. A part's name gives
+        that part's alone."""
         out: dict[datetime, float] = {}
         for key, kwh in (self.energy.get(kind) or {}).items():
             moment = _aware(key)
             if moment is not None:
-                out[moment] = kwh
+                out[moment] = out.get(moment, 0.0) + kwh
+        for part in PARTS_OF.get(kind, (kind,)):
+            for moment, kwh in self.energy_quarters(part).items():
+                hour = moment.replace(minute=0)
+                out[hour] = out.get(hour, 0.0) + kwh
         return out
 
     def _heat_hours(self, now: datetime) -> list[HeatHour]:

@@ -15,8 +15,13 @@ disagree and it would be, the missing energy is taken off the uses in the order 
 **Heat** is the heat pump's own use, where its meter is found or set (`site/heat_meter.py`, the recorder's hourly
 statistics of it), and the heat zones' own (electric floor heating, an air-to-air heat pump: a sensor on each chosen
 zone's device, `site/heat_zones.py`), each counted once: a use of its own, split out of the house (which drops by
-the same energy); an hour without its figure leaves it in the house. `heat_sources` is how many sources it holds
-(the meter and each zone counted), so the card offers their split (`spotnav/get_house_loads` `kind: "heat"`) only
+the same energy); an hour without its figure leaves it in the house. **The pool's heat pump and circulation, the
+spa and the sauna** are parts of heat too (`with_heat_parts`): the energy the pool and spa shadow counts per quarter
+hour (`pool/runtime.energy_quarters`: the part's own power sensor where it is trusted, else its on time at its power
+as it counts), added to each period's heat, so the house drops by the same energy and the heat card's Use tab shows the
+same figures; a part whose device the heat pump's meter or a zone already reads is left out (`api/house.py`), and a
+period without a part's quarters leaves it in the house. `heat_sources` is how many sources it holds (the meter, each
+zone and each such part counted), so the card offers their split (`spotnav/get_house_loads` `kind: "heat"`) only
 when there is more than one.
 
 **What is not measured** is which source fed which use: no meter says whether the sun or the grid charged the
@@ -106,6 +111,35 @@ class EnergyHour:
     @property
     def end(self) -> datetime:
         return self.start + timedelta(minutes=self.minutes)
+
+
+def with_heat_parts(periods: Sequence[EnergyHour], parts: Sequence[Mapping[datetime, float]]) -> list[EnergyHour]:
+    """The periods with each part's energy (kWh per UTC quarter-hour start) added to their heat: an hour takes its
+    four quarters, a quarter hour its own (the running one what is counted so far). A period with nothing of them
+    keeps its heat as it was (`None` stays `None`)."""
+    if not parts:
+        return list(periods)
+    out: list[EnergyHour] = []
+    for period in periods:
+        count = 4 if period.minutes >= 60 else -(-period.minutes // 15)
+        added = sum(part.get(period.start + QUARTER * index, 0.0) for part in parts for index in range(count))
+        if added <= 0:
+            out.append(period)
+            continue
+        out.append(
+            EnergyHour(
+                start=period.start,
+                grid_in=period.grid_in,
+                grid_out=period.grid_out,
+                solar=period.solar,
+                battery_in=period.battery_in,
+                battery_out=period.battery_out,
+                car=period.car,
+                heat=(period.heat or 0.0) + added,
+                minutes=period.minutes,
+            )
+        )
+    return out
 
 
 def node_id(side: str, role: str) -> str:

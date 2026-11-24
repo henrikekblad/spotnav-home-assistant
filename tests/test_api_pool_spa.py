@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -150,7 +151,11 @@ async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant)
 
     again = PoolSpaShadow(hass, controller)
     again._restore(shadow._book_data(), dt_util.now())  # noqa: SLF001
-    assert again.energy_hours("pool") == {moment: round(kwh, 4) for moment, kwh in hours.items()}
+    assert again.energy_hours("pool") == pytest.approx(hours, abs=1e-3)
+    # Each part per quarter hour, for the energy flow's heat parts: the heat pump's one minute in each.
+    quarters = again.energy_quarters("pool_heat")
+    assert quarters == pytest.approx({first + timedelta(minutes=45): 1.6 / 60, first + timedelta(hours=1): 1.6 / 60}, abs=1e-3)
+    assert again.energy_hours("pool_circulation") == pytest.approx({first: 0.4 / 60, first + timedelta(hours=1): 0.4 / 60}, abs=1e-3)
 
 
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1, 2, 3, 4, 5, 6, 7], "time": "19:00"}]}

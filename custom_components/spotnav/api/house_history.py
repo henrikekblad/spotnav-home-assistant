@@ -52,7 +52,7 @@ from ..site.energy_statistics import async_energy_prefs, energy_flow_ids
 from ..site.history_period import PERIOD_DAY, Period, local_date, requested_period, utc_bounds
 from ..site.house_period import HOUSE_HISTORY_API_VERSION, HouseHistoryInputs, house_history
 from .common import send_unsupported_version
-from .house import _car_register_ids, _hourly_periods, async_cached_day_flow, five_slot
+from .house import _car_register_ids, _hourly_periods, _with_parts, async_cached_day_flow, five_slot, heat_parts
 from .saving import async_day_savings_by_hour
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
@@ -139,7 +139,9 @@ async def _read_periods(
         moment += timedelta(hours=1)
     car_ids = _car_register_ids(hass, controller)
     heat = controller.house_forecast.heat
-    return await _hourly_periods(hass, controller, hours, end, ids, car_ids, heat.meter, await heat.async_current_zones()), 60, ids
+    zones = await heat.async_current_zones()
+    periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, heat.meter, zones)
+    return _with_parts(hass, controller, periods, heat.meter, zones)[0], 60, ids
 
 
 async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any) -> dict[str, Any]:
@@ -202,7 +204,11 @@ async def history_with_periods(
     except Exception:  # noqa: BLE001 - the rest is still shown
         _LOGGER.debug("SpotNav house history: what SpotNav saved could not be worked out", exc_info=True)
         savings, car_hours = {}, {}
-    heat_sources = (1 if heat.meter.found else 0) + len(zones.sources)
+    try:
+        parts = len(heat_parts(hass, controller, heat.meter, zones))
+    except Exception:  # noqa: BLE001 - without them they stay in the house
+        parts = 0
+    heat_sources = (1 if heat.meter.found else 0) + len(zones.sources) + parts
     answer = house_history(
         HouseHistoryInputs(
             site_id=site.entry_id,

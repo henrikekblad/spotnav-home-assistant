@@ -41,6 +41,7 @@ from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from ..core.electric import site_fuse_kw
 from ..planning.demand_charge import hour_start
 from ..site.energy_flow import (
+    with_heat_parts,
     SETTLE,
     EnergyHour,
     FlowSeries,
@@ -463,6 +464,77 @@ async def _hourly_periods(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class HeatPart:
+    """A pool, spa or sauna part counted in heat (`site/energy_flow.with_heat_parts`): its part name
+    (`pool/runtime.ENERGY_PARTS`), the entity it is set up by, its name and its energy per UTC quarter hour."""
+
+    part: str
+    entity_id: str
+    name: str
+    quarters: Mapping[datetime, float]
+
+
+def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSources) -> list[HeatPart]:
+    """The pool's heat pump and circulation, the spa and the sauna as parts of heat: those set up with energy counted,
+    less a part whose device the heat pump's meter, a zone's climate or a zone's sensor (a meter moved to heat) is on,
+    which already counts it (counted once)."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    shadow = getattr(controller, "pool_spa", None)
+    if shadow is None:
+        return []
+    config = shadow.config()
+    found: list[tuple[str, str]] = []
+    pool = config.pool
+    if pool is not None:
+        if pool.heat_pump is not None:
+            found.append(("pool_heat", pool.heat_pump.switch_id or pool.heat_pump.entity_id))
+        if pool.circulation_id is not None:
+            found.append(("pool_circulation", pool.circulation_id))
+    for name in ("spa", "sauna"):
+        block = getattr(config, name)
+        if block is not None:
+            found.append((name, block.entity_id))
+    if not found:
+        return []
+    registry = er.async_get(hass)
+
+    def device(entity_id: str | None) -> str | None:
+        entry = None if entity_id is None else registry.async_get(entity_id)
+        return None if entry is None else entry.device_id
+
+    covered = {
+        device(entity_id)
+        for entity_id in (
+            meter.entity_id if meter.found else None,
+            *(source.sensor_id for source in zones.sources),
+            *(source.entity_id for source in zones.sources),
+            *controller.house_forecast.heat.zone_climates(),
+        )
+    } - {None}
+    out: list[HeatPart] = []
+    for part, entity_id in found:
+        if device(entity_id) in covered:
+            continue
+        quarters = shadow.energy_quarters(part)
+        if not quarters:
+            continue
+        state = hass.states.get(entity_id)
+        out.append(HeatPart(part, entity_id, entity_id if state is None else state.name, quarters))
+    return out
+
+
+def _with_parts(hass: HomeAssistant, controller: Any, periods: Sequence[EnergyHour], meter: Any, zones: ZoneSources) -> tuple[list[EnergyHour], int]:
+    """The periods with the pool's, the spa's and the sauna's energy in their heat, and how many parts that is."""
+    try:
+        parts = heat_parts(hass, controller, meter, zones)
+    except Exception:  # noqa: BLE001 - without them they stay in the house
+        _LOGGER.debug("SpotNav house view: the pool's and the spa's energy could not be read", exc_info=True)
+        return list(periods), 0
+    return with_heat_parts(periods, [part.quarters for part in parts]), len(parts)
+
+
 async def async_day_flow(
     hass: HomeAssistant, controller: Any, now: datetime, day: date | None = None, site_entry_id: str | None = None
 ) -> DayFlow | None:
@@ -507,6 +579,7 @@ async def async_day_flow(
         periods = await _quarter_periods(hass, controller, now, hours, ids, car_ids, meter, held, zones)
     else:
         periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter, zones)
+    periods, parts = _with_parts(hass, controller, periods, meter, zones)
     has_battery = bool(ids.battery_in)
     soc = None
     if has_battery and day == today:
@@ -523,8 +596,8 @@ async def async_day_flow(
         has_solar=bool(ids.solar),
         has_battery=has_battery,
         soc_pct=soc,
-        has_heat=meter.found or bool(zones.sources),
-        heat_sources=(1 if meter.found else 0) + len(zones.sources),
+        has_heat=meter.found or bool(zones.sources) or parts > 0,
+        heat_sources=(1 if meter.found else 0) + len(zones.sources) + parts,
         step_min=15 if quarters else 60,
         since=since,
     )
