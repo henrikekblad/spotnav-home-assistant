@@ -1,6 +1,7 @@
 {
   "api_version": 1,
   "at": "2026-11-16T16:20:00+00:00",
+  "battery_ac_kw": -1.5,
   "battery_kw": -1.5,
   "car_connected": true,
   "car_kw": 0.0,
@@ -14,6 +15,7 @@
   },
   "heat_from": "recent",
   "heat_kw": 1.1,
+  "house_from": "balance",
   "house_kw": 3.1,
   "site_id": "site",
   "soc_pct": 54.0,

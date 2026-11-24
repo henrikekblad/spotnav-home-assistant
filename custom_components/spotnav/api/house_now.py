@@ -3,7 +3,8 @@
 `{api_version: 1, charger_id | site_id}`, any user who can see the card. The answer is
 `site/house_now.py:house_now` (its docstring has the shape), from what the site already reads every recompute: the
 net grid power and the chargers' draw as solar reads them (`execution/solar_execution.py`), the battery's facts
-(`battery/facts.py`), the Energy dashboard's solar power sensors (`stat_rate`) and the heat pump's meter where it is a
+(`battery/facts.py`: its power, whether it is read on the DC side, the plant's own house load) with the inverter's
+loss the battery plan knows (`battery/conversion_loss.py`), the Energy dashboard's solar power sensors (`stat_rate`) and the heat pump's meter where it is a
 power sensor. Without a power sensor the sun and the heat take the last period of today's energy flow (cached per
 5-minute row, `api/house.py:async_cached_day_flow`), so the card polls this every 30 s cheaply.
 
@@ -104,6 +105,21 @@ def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool |
     return plugged, soc
 
 
+def battery_loss(controller: Any) -> tuple[float, float] | None:
+    """The inverter's `(charge, discharge)` loss for a battery read at the battery (the plan's learnt one, else the
+    assumed one), `None` for one read on the AC side."""
+    shadow = getattr(controller, "battery_shadow", None)
+    facts = getattr(shadow, "facts", None)
+    if facts is None or not getattr(facts, "power_dc", False):
+        return None
+    learned = getattr(getattr(shadow, "plan", None), "learned", None)
+    if learned is None:
+        from ..battery.conversion_loss import ConversionLoss  # noqa: PLC0415 - kept beside its only use
+
+        return ConversionLoss().loss(True)
+    return learned.conversion.loss(True)
+
+
 def _recent(periods: Sequence[Any], role: str, now: datetime) -> float | None:
     """The last period's mean power for `role` (`solar` or `heat`), `None` when it is too old or has none."""
     if not periods:
@@ -172,6 +188,8 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             has_heat=has_heat,
             car_connected=plugged,
             car_soc_pct=car_soc,
+            battery_loss=battery_loss(controller) if has_battery else None,
+            plant_load_kw=facts.plant_load_kw if has_battery else None,
         )
     )
 
