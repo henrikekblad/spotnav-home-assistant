@@ -222,8 +222,9 @@ SpotNav turns the car's charge switch **on** once when all of these hold:
 - the charge is one SpotNav runs (the plan's charge in an open window, a person's Start, a solar or hybrid charge with
   enough sun, the catch-up after a missed departure, the car's minimum level) and the charger offers current: not
   held by load balancing or by the charger itself, no phase switch settling, the start answered, and the current it
-  offers at least 6 A where SpotNav reads it (Easee: its *Dynamic charger limit* sensor, enabled, and the circuit's
-  dynamic limit when read; a limit that cannot be read is no start);
+  offers at least 6 A where SpotNav reads it (Easee: its *Dynamic charger limit* sensor when enabled, else the limit
+  SpotNav set, and the circuit's dynamic limit when read; a value that cannot be read holds nothing back, one read
+  below 6 A does);
 - for two minutes the car has taken nothing while the charger says the car refuses the offer. Only statuses verified
   to mean that count: an OCPP connector's `SuspendedEV`, and Easee's *Ready to charge* and *Completed*. Any other
   charger never starts the car;
@@ -254,7 +255,8 @@ When the car still takes nothing two minutes after the call has answered, or the
 the plug-in, too soon, the switch unavailable), and the car's level, read again, still allows it, the person is told
 once per plug-in (*The car is not taking current at 65 % though the target is 80 %. Start the charge in the car's
 app.*, [notifications](notifications.md)), and the card's status says the same until the car draws or is unplugged,
-also after a restart. The car ending the charge is handled as before, its five minutes counted from the call's answer.
+also after a restart while the car is still plugged in. A call that has not answered after five minutes counts as
+timed out. The car ending the charge is handled as before, its five minutes counted from the call's answer.
 A car with no such switch, or not confirmed to be here, keeps what it had: the plain notice that the car takes no
 current, and the car's end. The charger's diagnostics show each car's last start (`vehicle_charge_start`: when, which
 switch, for which plug-in, the result, the starts of the last day, and the notice told for the plug-in).
