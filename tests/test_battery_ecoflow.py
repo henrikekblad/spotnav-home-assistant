@@ -536,3 +536,16 @@ def test_the_card_shows_the_dead_man_step_before_the_hand_back_only_where_it_run
     assert [row["step"] for row in rows] == ["hold", "charge", "discharge", DEADMAN_STEP[0], "hand_back"]
     assert rows[3]["status"] == "passed"
     assert battery_steps({"modes": {"expiry": {"outcome": None}}}, "expiry", True)[3]["status"] == "running"
+
+
+def test_shadow_only_shows_what_it_would_write_and_hand_back_and_writes_nothing() -> None:
+    from custom_components.spotnav.battery.executor import preview  # noqa: PLC0415
+
+    _executor, ocean = _ocean()
+    seen = preview(ECOFLOW_CONTROL, inputs(ocean, T0, "grid_charge", 3.0, power_kw=ocean.power_kw()))
+    assert seen.blocker is None
+    assert [(op.role, op.value) for op in seen.writes] == [
+        ("modbus_control", True), ("charge_power", 3000.0), ("battery_mode", "charge_battery")
+    ]
+    assert [(op.role, op.value) for op in seen.restores] == [("battery_mode", "automatic"), ("modbus_control", False)]
+    assert ocean.writes == [] and ocean.states == STATES
