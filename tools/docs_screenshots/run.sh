@@ -88,7 +88,8 @@ mkdir -p "$CONFIG/custom_components" "$LOGS"
 ln -s "$REPO/custom_components/spotnav" "$CONFIG/custom_components/spotnav"
 # The demo integrations keep their manifest as manifest.demo.json in the repository, so the repo
 # holds exactly one manifest.json (HACS's checks require that); the copy gets the real name.
-for demo in "$HERE"/demo_components/*/; do
+# The fake spa and sauna (tools/fake_devices/, core Balboa's and Saunum's shapes) come in the same way.
+for demo in "$HERE"/demo_components/*/ "$REPO"/tools/fake_devices/balboa/ "$REPO"/tools/fake_devices/saunum/; do
   target="$CONFIG/custom_components/$(basename "$demo")"
   cp -r "${demo%/}" "$target"
   mv "$target/manifest.demo.json" "$target/manifest.json"
@@ -103,6 +104,7 @@ config:
 recorder:
 history:
 energy:
+mobile_app:
 automation: !include automations.yaml
 logger:
   default: warning

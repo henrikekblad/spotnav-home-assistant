@@ -11,6 +11,12 @@ SpotNav plans a pool (its circulation pump and its heat pump), a spa and a sauna
 filtering and the pool's heat in the sunniest or cheapest hours, the spa and the sauna warm by the times you book. The
 heat card's **Pool**, **Spa** and **Sauna** tabs show the plan and what SpotNav would do ([the heat card](heat-pumps.md#the-heat-card)).
 
+![The heat card's Pool tab: the dial for the water, Season open, the heat pump heating towards 28 °C read from the heat pump, Extra filtering, the next 24 hours and today's filtering hours against the need](images/heat-card-pool.png)
+
+![The heat card's Spa tab: the dial for the bathing temperature, when the spa is ready, Bathe now, the bath times and the heat-up and hold as a band](images/heat-card-spa.png)
+
+![The heat card's Sauna tab: the dial for the sauna's temperature, off until the next session, Heat now, the sessions and the heat-up before this evening's session](images/heat-card-sauna.png)
+
 **Watched by default.** Nothing is written until an administrator turns on the load's own switch in the gear's
 **Pool**, **Spa** or **Sauna** section: **Control the circulation**, **Control the pool heat pump**, **Control the spa** or
 **Control the sauna**. Without it the tab says what SpotNav *would* do.
@@ -23,6 +29,12 @@ circulation, water sensor, filtering per day, the powers and the two control swi
 declaration, **Control the sauna**). The heat card's phones and what they hear about (**Not ready in time**, **Pool
 season**) close the last of them; they cover all three. The gear on the heat card opens at the shown tab's section.
 **Heating** keeps the house's own heat. As everywhere, only an administrator can change them.
+
+![The Pool section: the heat pump, the circulation pump, the water sensor, filtering per day, the two powers and the two control switches](images/settings-pool.png)
+
+![The Spa section: the spa, the temperature between baths, the heater's power and Control the spa](images/settings-spa.png)
+
+![The Sauna section: the sauna, the heater's power and Control the sauna](images/settings-sauna.png)
 
 ## The pool's water temperature
 

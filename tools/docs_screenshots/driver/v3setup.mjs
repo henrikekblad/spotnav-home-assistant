@@ -37,7 +37,7 @@ export async function signedIn() {
   return api;
 }
 
-export const DEMOS = ["ocpp", "sigen", "kia_uvo", "demo_vision", "nordpool", "demo_house"];
+export const DEMOS = ["ocpp", "sigen", "kia_uvo", "demo_vision", "nordpool", "demo_house", "tuya_local", "balboa", "saunum"];
 
 /** Onboard, add the demo integrations and the SpotNav charger and site. Returns the helpers the pictures need. */
 export async function setupInstall(api, { appUrl } = {}) {
@@ -79,6 +79,8 @@ export async function setupInstall(api, { appUrl } = {}) {
   const entries = await api.entries("spotnav");
   const site = entries.find((e) => e.title === "Home").entry_id;
   await setupHeat(api, site);
+  await setupPoolSpa(api, site);
+  await setupPhones(api);
   // A fully set-up installation: every "Get started" row left is answered "Not needed", as a person would.
   log("Get started rows answered");
   for (const item of (await demo.dashboard(api, garage)).setup?.items ?? []) {
@@ -132,6 +134,80 @@ async function setupHeat(api, site) {
   const expected = Object.fromEntries(Object.keys(changes).map((k) => [k, current[k]]));
   const r = await api.ws({ type: "spotnav/update_heat", api_version: 1, site_id: site, changes, expected });
   if (!r.ok) throw new Error("heat settings: " + JSON.stringify(r).slice(0, 400));
+}
+
+/** The pool (the demo Tuya Local heat pump and its circulation relay), the spa and the sauna (the fakes of
+ * `tools/fake_devices/`, renamed as a person would: their device names say "fake"), each under SpotNav's control. */
+async function setupPoolSpa(api, site) {
+  log("pool, spa and sauna");
+  for (const id of ["climate.pool_heat_pump", "switch.pool_pump", "climate.balboa_spa_fake", "climate.saunum_leil_fake"]) {
+    await waitForState(api, id);
+  }
+  const devices = await api.ws({ type: "config/device_registry/list" });
+  for (const [name, given] of [["Balboa spa (fake)", "Spa"], ["Saunum Leil (fake)", "Sauna"]]) {
+    const device = devices.find((d) => d.name === name);
+    if (device) await api.ws({ type: "config/device_registry/update", device_id: device.id, name_by_user: given });
+  }
+  const changes = {
+    pool: {
+      heat_pump: { entity_id: "climate.pool_heat_pump", shape: "climate", switch_id: null, number_id: null },
+      circulation_id: "switch.pool_pump", target_c: 28, season_open: true, heat_pump_kw: 1.6, circulation_kw: 0.4,
+      control_heat_pump: true, control_circulation: true,
+    },
+    spa: { entity_id: "climate.balboa_spa_fake", family: "balboa", bath_c: 38, idle_c: 30, heater_kw: 3, control: true },
+    sauna: {
+      entity_id: "climate.saunum_leil_fake", family: "saunum", target_c: 80, heater_kw: 6,
+      lock_id: "binary_sensor.saunum_leil_fake_door", control: true,
+    },
+  };
+  const r = await api.ws({ type: "spotnav/update_heat", api_version: 1, site_id: site, changes });
+  if (!r.ok) throw new Error("pool, spa and sauna: " + JSON.stringify(r).slice(0, 600));
+}
+
+/** A bath booked for tonight and the weekend, a sauna session this evening and on Saturdays, by the household's own
+ * commands (`spotnav/spa`, `spotnav/sauna`). Booked again at each run, so that "tonight" is the day of the run: before
+ * 15:00 today, later tomorrow. */
+export async function bookPoolSpa(api, site) {
+  const at = (hour) => {
+    const day = new Date();
+    if (day.getHours() >= 15) day.setDate(day.getDate() + 1);
+    day.setHours(hour, 0, 0, 0);
+    return day.toISOString();
+  };
+  const ask = async (type, action, value) => {
+    const r = await api.ws({ type, api_version: 1, site_id: site, action, value });
+    if (!r.ok) throw new Error(`${type} ${action}: ${JSON.stringify(r).slice(0, 300)}`);
+  };
+  await ask("spotnav/spa", "baths", [{ weekdays: [5, 6], time: "20:00" }]);
+  await ask("spotnav/spa", "bath_once", at(20));
+  await ask("spotnav/sauna", "sessions", [{ weekdays: [6], time: "17:00" }]);
+  await ask("spotnav/sauna", "session_once", at(19));
+}
+
+/** Two phones with the Companion app (registered through the mobile_app API as the app does; the push address is
+ * nothing that listens, and nothing is sent), so that the Notifications section has phones to list. */
+async function setupPhones(api) {
+  const have = await api.entries("mobile_app");
+  for (const [name, model] of [["Anna's phone", "Pixel 8"], ["Erik's phone", "iPhone 15"]]) {
+    if (have.some((e) => e.title === name)) continue;
+    await api.post("/api/mobile_app/registrations", {
+      device_id: "docs-" + model.replace(/\W+/g, "-").toLowerCase(), app_id: "io.homeassistant.companion.android",
+      app_name: "Home Assistant", app_version: "2026.11", device_name: name, manufacturer: model.startsWith("iPhone") ? "Apple" : "Google",
+      model, os_name: model.startsWith("iPhone") ? "iOS" : "Android", os_version: "17", supports_encryption: false,
+      app_data: { push_token: "docs", push_url: "http://127.0.0.1:9/push" },
+    });
+  }
+  // Both turned on, as the household would (a new Companion phone starts quiet); the defaults' events stand.
+  for (let i = 0; i < 20; i++) {
+    const listing = await api.ws({ type: "spotnav/notification_phones", api_version: 1 });
+    if (listing.phones.length >= 2) {
+      for (const phone of listing.phones) {
+        if (!phone.on) await api.ws({ type: "spotnav/update_notification_phone", api_version: 1, phone: phone.id, changes: { on: true } });
+      }
+      return;
+    }
+    await sleep(1000);
+  }
 }
 
 /** What the site answers about its heat and its day: the first answers of a new site keep the hours they saw. */

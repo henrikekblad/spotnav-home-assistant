@@ -466,6 +466,8 @@ battery, a spa between baths, the pool's circulation beyond the day's filtering 
 shows only once the site has that load). Move a row with its up and down buttons and save. The apps show the list,
 read only.
 
+![The Priority editor: house heat, the car, the spa with a booked bath, the sauna, the home battery, the spa between baths, the pool's circulation and the pool's heat pump, each with up and down buttons](images/settings-priority.png)
+
 The default, top to bottom: **house heat, the cars, the spa with a booked bath, the sauna, house cooling, the water
 heater, the home battery, the spa between baths, the pool's circulation, the pool's heat pump.** The list is read in
 both directions:

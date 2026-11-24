@@ -28,6 +28,10 @@ settings of the house and heat cards. It lists the **phones**. Tap a phone to ch
 
 Only an administrator changes the phones in the card. In the SpotNav app a person changes their own phone.
 
+![The Notifications section: two phones, each with how many of its events are on and which app reaches it](images/settings-notifications.png)
+
+![One phone opened: Send to this phone, the Charging events and the Pool season, ticked as by default](images/settings-notification-phone.png)
+
 **One phone, one entry.** A phone can reach Home Assistant through the Companion app, the SpotNav app, or both. With
 both, they are one entry and SpotNav tells that phone through the SpotNav app only, never twice; see
 [Which app tells the phone](#which-app-tells-the-phone). When the SpotNav app is paired, it is joined to its Companion
