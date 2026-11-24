@@ -3,6 +3,7 @@
 // (`house-history.ts`, `heat-history.ts`). A newer read wins over an older one; a period that cannot be read keeps the
 // one shown before, dimmed no more, with the sentence under the tabs. The Detailed switch is remembered per browser.
 
+import { VISUAL_CLASSES as C } from "./visual-classes";
 import { getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { createDialog, type DialogHandle } from "./dialog";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -72,6 +73,7 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
           this.read += 1;
         },
       });
+      this.dialog.element.classList.add(C.historyWide);
     }
     return this.dialog;
   }

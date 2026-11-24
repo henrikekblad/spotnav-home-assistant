@@ -9,7 +9,7 @@
 
 import { dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajor as amount } from "./format";
 import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
-import { hasPerfect, onlyPartial, perfectHeadline, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
+import { hasPerfect, onlyPartial, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { element } from "./dom";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -670,12 +670,7 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
   const { doc, language } = input;
   const ownName = translate(language, "house.compare.own");
   const block = section(doc, translate(language, "perfect.headingPeriod"), "perfect");
-  const headline = perfectHeadline(language, perfect, ownName, answer.money);
-  if (headline !== null) {
-    const line = element(doc, "p", H.perfectHead, headline);
-    line.dataset["line"] = "perfect-headline";
-    block.append(line);
-  }
+  // No headline: the rows below give every way's share, and repeating two of them above was noise.
   block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode, answer.money));
   // The figures first, then every word about them together.
   const table = perfectTable(doc, language, perfect, answer.money, ownName);
