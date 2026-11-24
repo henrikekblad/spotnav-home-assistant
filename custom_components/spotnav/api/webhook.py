@@ -180,6 +180,11 @@ APP_READS_STOP_UNPLUG_UNSEEN: Final = "stop_unplug_unseen"
 #: for an app that does not read `APP_READS_CIRCUIT_LIMITED`. It is a notice, so the block's tone is worked out again.
 APP_UNREAD_CIRCUIT_LIMITED_CODES: Final = ("charger_circuit_limited",)
 APP_READS_CIRCUIT_LIMITED: Final = "circuit_limited"
+#: The car refusing the offered current (`execution/car_start.py`): SpotNav started the charge in the car
+#: (`car_start_made`), or the person is to start it in the car's app (`car_refuses`): left out for an app that does not
+#: read `APP_READS_CAR_START`. `car_refuses` is a notice, so the block's tone is worked out again.
+APP_UNREAD_CAR_START_CODES: Final = ("car_start_made", "car_refuses")
+APP_READS_CAR_START: Final = "car_start"
 #: The departure calendar (`planning/calendar_departure.py`): the dashboard's `departure_calendar` block is left out for
 #: an app that does not read `APP_READS_DEPARTURE_CALENDAR`, as is the settings field of the same name (a replacement
 #: without it keeps the stored calendar).
@@ -275,6 +280,8 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
         return None
     if code in APP_UNREAD_CIRCUIT_LIMITED_CODES and APP_READS_CIRCUIT_LIMITED not in opted_in:
         return None
+    if code in APP_UNREAD_CAR_START_CODES and APP_READS_CAR_START not in opted_in:
+        return None
     if APP_READS_IMPORT_TARGET_STATUS not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         if code in APP_UNREAD_IMPORT_TARGET_FACT_CODES:
@@ -307,7 +314,13 @@ def _status_block_for_app(status: dict[str, Any], opted_in: set[str]) -> dict[st
     shown = {**status, "lines": lines}
     if any(
         isinstance(line, dict)
-        and line.get("code") in (*APP_UNREAD_OWN_MODE_CODES, *APP_UNREAD_GUEST_CODES, *APP_UNREAD_CIRCUIT_LIMITED_CODES)
+        and line.get("code")
+        in (
+            *APP_UNREAD_OWN_MODE_CODES,
+            *APP_UNREAD_GUEST_CODES,
+            *APP_UNREAD_CIRCUIT_LIMITED_CODES,
+            *APP_UNREAD_CAR_START_CODES,
+        )
         for line in status["lines"]
     ):
         # A notice left out may have been the only one: the tone is the strongest line the app still gets.
@@ -390,7 +403,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `grid_tariff.demand.power_level` and `.level_count`; `supplier_fees` for
     `grid_tariff.supplier_markup`, `.sell_adjustment` and `.sells`; `guest` for the guest
     car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
-    `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `departure_calendar` for the
+    `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `car_start` for the status lines
+    of the car refusing the offered current (`car_start_made`, `car_refuses`); `departure_calendar` for the
     dashboard's `departure_calendar` block and the settings field; `power_charger` for `current_range.kw_per_a`);
     anything else in it, or a `reads` that is not a list, is ignored.
     """

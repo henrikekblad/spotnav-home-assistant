@@ -168,6 +168,17 @@
       ],
       "tone": "normal"
     },
+    "car_refuses": {
+      "params": [
+        "soc_percent",
+        "target"
+      ],
+      "tone": "notice"
+    },
+    "car_start_made": {
+      "params": [],
+      "tone": "normal"
+    },
     "charger_circuit_limited": {
       "params": [
         "limit_a"

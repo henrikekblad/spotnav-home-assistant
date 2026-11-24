@@ -332,6 +332,8 @@ class CapturedLive:
     #: The car ended the plan's charge short of the target and the plan waits for its level
     #: (`ChargingController.car_ended_wait`), else `None`.
     car_ended_wait: dict[str, Any] | None = None
+    #: The car refusing the offered current (`ChargingController.car_start_status`), else `None`.
+    car_start: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1356,6 +1358,7 @@ def _capture_dashboard(
             top_off_until=None if controller is None else controller.top_off_until,
             min_soc_percent=_min_soc_percent(hass, entry_id),
             car_ended_wait=None if controller is None else controller.car_ended_wait,
+            car_start=None if controller is None else controller.car_start_status,
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -2913,6 +2916,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ignores_person_stop=capture.live.ignores_person_stop,
         hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
         hold_overridden=capture.live.hold_overridden,
+        car_start_state=None if capture.live.car_start is None else capture.live.car_start.get("state"),
+        car_start_soc_percent=None if capture.live.car_start is None else capture.live.car_start.get("soc_percent"),
+        car_start_target=None if capture.live.car_start is None else capture.live.car_start.get("target"),
         reports_plug_in=capture.live.reports_plug_in,
         stop_unplug_unseen=capture.live.stop_unplug_unseen,
         vehicle_limit_percent=(
