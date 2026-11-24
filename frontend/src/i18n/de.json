@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Speicher: kleine Ladung aus dem Netz",
   "test.step.battery.discharge": "Speicher: Entladung ins Haus",
   "test.step.battery.handBack": "Speicher: zurückgegeben",
+  "test.step.battery.deadman": "Speicher: hört von selbst auf, wenn Home Assistant verstummt",
   "test.step.heat": "Heizung",
   "test.step.heat.engage": "Heizung: einschalten",
   "test.step.heat.release": "Heizung: freigeben",

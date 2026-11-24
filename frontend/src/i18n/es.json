@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Batería: pequeña carga desde la red",
   "test.step.battery.discharge": "Batería: descarga a la casa",
   "test.step.battery.handBack": "Batería: devuelta",
+  "test.step.battery.deadman": "Batería: se detiene sola cuando Home Assistant deja de responder",
   "test.step.heat": "Calefacción",
   "test.step.heat.engage": "Calefacción: activar",
   "test.step.heat.release": "Calefacción: soltar",

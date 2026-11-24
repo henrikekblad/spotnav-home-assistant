@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Akku: pieni lataus verkosta",
   "test.step.battery.discharge": "Akku: purku taloon",
   "test.step.battery.handBack": "Akku: palautettu",
+  "test.step.battery.deadman": "Akku: lopettaa itsestään, kun Home Assistant hiljenee",
   "test.step.heat": "Lämmitys",
   "test.step.heat.engage": "Lämmitys: kytke",
   "test.step.heat.release": "Lämmitys: vapauta",

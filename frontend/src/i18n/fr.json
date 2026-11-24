@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Batterie : petite charge depuis le réseau",
   "test.step.battery.discharge": "Batterie : décharge vers la maison",
   "test.step.battery.handBack": "Batterie : rendue",
+  "test.step.battery.deadman": "Batterie : s'arrête d'elle-même quand Home Assistant se tait",
   "test.step.heat": "Chauffage",
   "test.step.heat.engage": "Chauffage : enclencher",
   "test.step.heat.release": "Chauffage : relâcher",

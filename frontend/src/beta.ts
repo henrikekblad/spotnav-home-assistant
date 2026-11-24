@@ -148,6 +148,7 @@ const STEP_LABELS: Record<string, TranslationKey> = {
   "battery:hold": "test.step.battery.hold",
   "battery:charge": "test.step.battery.charge",
   "battery:discharge": "test.step.battery.discharge",
+  "battery:deadman": "test.step.battery.deadman",
   "battery:hand_back": "test.step.battery.handBack",
   "battery:battery": "test.step.battery",
   "heat:engage": "test.step.heat.engage",

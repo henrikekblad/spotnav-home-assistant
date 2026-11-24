@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Batterij: kleine lading van het net",
   "test.step.battery.discharge": "Batterij: ontladen naar het huis",
   "test.step.battery.handBack": "Batterij: teruggegeven",
+  "test.step.battery.deadman": "Batterij: stopt vanzelf als Home Assistant stil valt",
   "test.step.heat": "Verwarming",
   "test.step.heat.engage": "Verwarming: inschakelen",
   "test.step.heat.release": "Verwarming: vrijgeven",

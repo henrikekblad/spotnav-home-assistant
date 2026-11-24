@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Battery: small grid charge",
   "test.step.battery.discharge": "Battery: discharge to the house",
   "test.step.battery.handBack": "Battery: handed back",
+  "test.step.battery.deadman": "Battery: stops by itself when Home Assistant goes quiet",
   "test.step.heat": "Heating",
   "test.step.heat.engage": "Heating: engage",
   "test.step.heat.release": "Heating: release",

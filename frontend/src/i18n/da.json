@@ -877,6 +877,7 @@
   "test.step.battery.charge": "Batteri: lille opladning fra nettet",
   "test.step.battery.discharge": "Batteri: afladning til huset",
   "test.step.battery.handBack": "Batteri: givet tilbage",
+  "test.step.battery.deadman": "Batteri: stopper af sig selv, når Home Assistant bliver stille",
   "test.step.heat": "Varme",
   "test.step.heat.engage": "Varme: aktivér",
   "test.step.heat.release": "Varme: slip",
