@@ -139,8 +139,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     site row reads), so no battery entity of it is found. Read 2026-11-23 (`plans/research_integrations/marstek_control_2026-11-23.md`).
 
 * EcoFlow PowerOcean, read 2026-11-23 (`plans/research_integrations/ecoflow_control_2026-11-23.md`), one adapter for two
-  integrations, read only (no control is mapped; both write a battery setpoint under a heartbeat that SpotNav does not
-  send). `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
+  integrations; the adapter reads only, and the control (`commands.ECOFLOW_CONTROL`) writes `ef_powerocean_tcpmodbus`'s
+  own controls, whose heartbeat the integration sends. `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
   `<config entry id>_<key>` (`entity.py` line 38), one entry per inverter, the keys from `definitions.py`: the level
   `battery_soc` (line 200), the size `battery_capacity` (40552, Wh, line 241), the counters `bat_charged_total` and
   `bat_discharged_total` (lines 585, 594), the app's reserve as the integration holds it `battery_reserve_effective`
@@ -158,7 +158,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (`battery_power`, 40525: the control's own sign is +1 for charge, `powerocean/const.py` line 170; `batt_w`, 0x020C:
   "positive = charging", `stream_proto.py` line 28; `site_detection.BATTERY_ROWS`). The firmware is the device's
   `sw_version`. The inverter has a heartbeat dead-man of its own (60 s) and the EcoFlow app locks while Modbus control
-  is on; none of it is written here.
+  is on (`commands.ECOFLOW_CONTROL`).
 
 * Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
   one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
@@ -1170,7 +1170,7 @@ MARSTEK: Final = Adapter(
     reserves=(ReserveSource(_key("discharging_cutoff_capacity", "number")),),
 )
 
-#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module): read only. The
+#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module). The
 #: `ecoflow_energy` keys follow the device's serial, which has no underscore, so `unit_` and `inverter_<n>_` are not them.
 _ECOFLOW_SN: Final = r"^[^_]+_"
 ECOFLOW: Final = Adapter(

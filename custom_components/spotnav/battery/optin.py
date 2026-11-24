@@ -133,6 +133,13 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("switch", "components_disallow_charge_from_grid_with_solar_installed"),
         ("sensor", "total_pack_energy"),
     ),
+    # `ef_powerocean_tcpmodbus` enables its controls by default; listed so a person's own disable is offered.
+    "ecoflow": (
+        ("switch", "modbus_control"),
+        ("number", "charge_battery_power"),
+        ("number", "discharge_battery_power"),
+        ("select", "battery_mode"),
+    ),
 }
 
 #: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.

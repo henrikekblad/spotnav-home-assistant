@@ -10,7 +10,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
   for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
-  runs only once that passed, under every fuse rule.
+  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (FoxESS, EcoFlow,
+  Marstek) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
+  on the plant's firmware key (`hardware_test_passed`, kept by the shell per key); the checklist says so
+  (`hardware_test_first`) and the test itself runs.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
@@ -285,6 +288,35 @@ class Options:
 def shadow_default(*, field_tested: bool, beta: bool) -> bool:
     """Shadow only's default for a site that never stored it: off for a field-tested recipe or a beta tester."""
     return not (field_tested or beta)
+
+
+def _step_status(outcome: Any) -> str:
+    """One mode's outcome as the hardware test's step shows it: `passed`, `failed`, `not_judgeable`, `skipped` (an
+    action the recipe does not have, `verify.Verification.unsupported`) or `open` (not run, or stopped)."""
+    if outcome == "skipped":
+        return "skipped"
+    if isinstance(outcome, str) and outcome.startswith("not_judgeable:"):
+        return "not_judgeable"
+    return {"pass": "passed", "fail": "failed"}.get(mode_verdict(outcome), "open")
+
+
+def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
+    """Whether a person's finished hardware test (its verification's report) shows the battery doing as told: what a
+    recipe with `BrandControl.hardware_test_first` waits for before anything is written outside a test. The hold and
+    the hand-back (`normal`) passed; the grid charge passed where the recipe has one (`supported`, the modes it has
+    an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, where the test
+    times one) passed or could not be judged; every other step passed, could not be judged or was skipped. A step
+    stopped or still open is no pass."""
+    if not isinstance(report, Mapping):
+        return False
+    modes = _modes(report)
+    status = {name: _step_status((row or {}).get("outcome")) for name, row in modes.items()}
+    must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
+    if any(status.get(name) != "passed" for name in must):
+        return False
+    if MODE_EXPIRY in status and status[MODE_EXPIRY] not in ("passed", "not_judgeable"):
+        return False
+    return all(value in ("passed", "not_judgeable", "skipped") for value in status.values())
 
 
 def _mode(config: Mapping[str, Any]) -> str:
@@ -806,6 +838,19 @@ def expiry_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
     the live clamp can lower. An integration's own renewal or nobody's is never tried (a field test recorded in the
     recipe is its only route, and it still never lifts)."""
     return expiry_lifts(expiry, measured=True, slow=slow, fixed_charge=fixed_charge)
+
+
+def deadman_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
+    """Whether a person's hardware test times this expiry (the verification's mode `expiry`, after its hold): a
+    dead-man an integration renews that SpotNav can silence with a write of its own (`Expiry.silence`, EcoFlow's
+    Modbus Control off), within `SILENCE_FALLBACK_MAX_S`. Its result is the tester's evidence for the recipe
+    (`Expiry.measured_on`); like every hardware test row it never counts for the routine, and an integration's
+    renewal never lifts a cap (`expiry_lifts`)."""
+    window = expiry.window_s
+    return (
+        expiry.kind == "device_deadman" and expiry.renewer == "integration" and bool(expiry.silence)
+        and not slow and not fixed_charge and window is not None and 0 < window <= SILENCE_FALLBACK_MAX_S
+    )
 
 
 def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bool) -> bool:

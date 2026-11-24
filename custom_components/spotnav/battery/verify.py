@@ -98,7 +98,14 @@ again at a later run, `Verification._expiry_decide`), `ignored` later or not by
 `expiry_deadline_s` (the window plus `max(15 s, half the window)` from the last write; the silence never runs past
 `EXPIRY_TEST_MAX_S`), `not_judgeable:*` (tried again at a later run) or `aborted:*` (near the fuse or a peak cover
 due: `fuse_headroom`; the battery taking from the grid: `charge_in_silence`; any hand-back of the executor's own). The battery is then handed back at once. Its row never decides the report (`gate.allowed_actions`
-and `gate.report_status` ignore it); only a pass changes anything. The hardware test never runs it.
+and `gate.report_status` ignore it); only a pass changes anything. The routine never tries a dead-man an
+integration renews; a person's hardware test does where SpotNav can silence it with a write
+(`gate.deadman_testable`, `Expiry.silence`: EcoFlow's Modbus Control off, which stops the integration's heartbeat
+and writes nothing else). The silence is then that write (`executor.Executor.silenced`), the fallback is timed from
+it (the integration's last renewal came up to one of its intervals before, so any fallback within the window and a
+look is `obeyed`, later `ignored`), and after the outcome the plant is taken back as the inverter's own
+self-consumption (`_retake`: the discharge to the house, the integration renewing again) before the hand-back, so a
+dead-man that did not act leaves no command standing. That row is the tester's evidence; it never lifts a cap.
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -376,6 +383,10 @@ class Verification:
         self.expiry_last_write: datetime | None = None
         self.expiry_fallback_at: datetime | None = None
         self.expiry_fallback_looks = 0
+        #: For a silence the test wrote (`Expiry.silence`, a dead-man the integration renews): since when the plant is
+        #: being taken back after the outcome (the discharge to the house, the integration's own state again) before
+        #: the hand-back; `None` otherwise.
+        self.expiry_retake_since: datetime | None = None
         self.timing = timing or Timing()
         #: Up to which state of charge the mode `charge` is tried (`TEST_CHARGE_SOC_MAX_PCT` for the hardware test; see
         #: the module). From `CHARGE_TAPER_SOC_PCT` on, a step taken short is `not_judgeable:battery_full`.
@@ -446,6 +457,10 @@ class Verification:
     def command(self, now: datetime, sample: Sample, rated_charge_kw: float | None) -> tuple[str, float]:
         """The action (and rate) to give the executor in this look."""
         result = self.current
+        if result is not None and self.stage == "hand_back" and self.expiry_retake_since is not None:
+            # After a silence: the plant taken back as the inverter's own self-consumption (`_retake`), then handed
+            # back as ever. A dead-man that did not act leaves the inverter on its last command until it is.
+            return ACTION_DISCHARGE_HOUSE, 0.0
         if result is None or self.stage == "hand_back":
             return ACTION_SELF_CONSUME, 0.0
         if result.commanded_at is None and result.mode == MODE_EXPIRY:
@@ -641,8 +656,9 @@ class Verification:
         state = step.state
         if result.action != ACTION_SELF_CONSUME and (step.ops or state.phase in ("active", "restoring")):
             self.wrote = True
-        if result.mode == MODE_EXPIRY and any(op.role in self.executor.control.watchdog_roles for op in step.ops):
-            # The dead-man counts from the last write of a renewed role, not from the look the test began.
+        if result.mode == MODE_EXPIRY and any(op.role in self._expiry_roles() for op in step.ops):
+            # The dead-man counts from the last write of a renewed role (or of the silence), not from the look the
+            # test began.
             self.expiry_last_write = now
         if result.action != ACTION_SELF_CONSUME and self.stage != "hand_back":
             hand_back = next((event for event in step.events if event["kind"] == "hand_back"), None)
@@ -711,6 +727,9 @@ class Verification:
                 self._read_phase(now, result, sample, state.phase_kw)
             else:
                 self._read(now, result, sample, capability)
+            return
+        if self.stage == "hand_back" and self.expiry_retake_since is not None:
+            self._retake(now, result, step)
             return
         if self.stage == "hand_back" and state.phase in ("idle", "blocked") and not state.holds_snapshot and not step.ops:
             if state.phase == "blocked":
@@ -1024,6 +1043,27 @@ class Verification:
             return True
         return False
 
+    def _expiry_roles(self) -> tuple[str, ...]:
+        """The roles whose write the dead-man counts from: those SpotNav renews, and a silence's (`Expiry.silence`)."""
+        silence = () if self.expiry is None else tuple(name for name, _value in self.expiry.silence)
+        return (*self.executor.control.watchdog_roles, *silence)
+
+    def _retake(self, now: datetime, result: ModeResult, step: StepResult) -> None:
+        """After a silence the test wrote: the discharge to the house is commanded until the executor has it in place
+        (the integration renewing again, the inverter in its own self-consumption whatever the dead-man did), then
+        the hand-back. Ended without it when the executor handed back by itself or after `command_timeout_s`."""
+        state = step.state
+        since = self.expiry_retake_since
+        assert since is not None
+        done = (
+            state.phase == "active" and state.action == ACTION_DISCHARGE_HOUSE and state.pending is None
+            and not state.in_flight and not step.ops
+        )
+        if done or state.phase != "active" or (now - since).total_seconds() >= self.timing.command_timeout_s:
+            why = "done" if done else "handed_back" if state.phase != "active" else "timeout"
+            result.readings.append({"at": now.isoformat(), "retake": why})
+            self.expiry_retake_since = None
+
     def _expiry_decide(self, now: datetime, result: ModeResult, expiry: Expiry, fallback_s: float) -> None:
         """The plant read as fallen back, first seen `fallback_s` after the last write of a renewed role (a look's
         resolution: the fallback itself came up to one look sooner). With `W` the window (at most
@@ -1039,6 +1079,19 @@ class Verification:
         * later: `ignored` (late, decided)."""
         assert expiry.window_s is not None
         result.fallback_s = round(fallback_s, 1)
+        if expiry.silence:
+            # Timed from the silence's write: the integration's last renewal came up to one of its own intervals
+            # before it, so a fallback sooner than the window is still the dead-man; one past it by more than a look
+            # is not.
+            if fallback_s <= expiry.window_s + EXPIRY_LOOK_S:
+                outcome = "obeyed"
+            elif fallback_s <= expiry.window_s + 2 * EXPIRY_LOOK_S:
+                outcome = "not_judgeable:late_look"
+            else:
+                result.late = True
+                outcome = "ignored"
+            self._expiry_outcome(now, result, outcome)
+            return
         window = min(expiry.window_s, SILENCE_FALLBACK_MAX_S)
         renew_s = expiry.renew_s or WATCHDOG_RENEW_S
         if fallback_s < renew_s:
@@ -1087,6 +1140,8 @@ class Verification:
         """The mode `expiry` decided (or left for a later run): the silence ends and the battery is handed back."""
         result.outcome = outcome
         self.expiry_since = None
+        if self.executor.silenced:
+            self.expiry_retake_since = now
         self._enter(now, "hand_back")
 
     def _runaway(self, now: datetime, result: ModeResult, sample: Sample) -> None:

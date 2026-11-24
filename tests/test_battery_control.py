@@ -2639,7 +2639,12 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    monkeypatch.setattr(control_module, "hardware_test_first", lambda brand: brand == "sigenergy")
+    # A recipe without a grid charge (FoxESS's limits only): its hardware test skips the charge step.
+    waiting = replace(commands_module.SIGENERGY_CONTROL, hardware_test_first=True)
+    waiting = replace(waiting, states={
+        action: build for action, build in waiting.states.items() if action != commands_module.ACTION_GRID_CHARGE
+    })
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: waiting.with_hold(variant))
     control = await _started(hass, site, controller, plan_source=_hold)
     # Opted in, shadow only stored off, the routine passed: still shadow only, and the checklist says why.
     assert control.options().shadow_only and control.state() == "shadow_only"
@@ -2674,6 +2679,12 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     assert not control.hardware_test_due() and control.state() == "on"
     assert control.firmware_key() in control._data()["gate"]["hardware_passed"]
     assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
+    # A later test on the same firmware that fails takes the pass back.
+    control.verification, control._hw_run = Run(  # type: ignore[assignment]
+        hold="obeyed", charge="skipped", discharge_house="ignored", normal="restored"
+    ), True
+    control._end_verification(now)
+    assert control.hardware_test_due() and control.state() == "shadow_only"
     # Another firmware needs its own test.
     control.hardware_passed = {"another | sigen 2.0.3"}
     assert control.state() == "shadow_only"

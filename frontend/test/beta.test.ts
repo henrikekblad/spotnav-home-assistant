@@ -61,6 +61,9 @@ describe("the words", () => {
       "Batteri: liten laddning från nätet: misslyckades",
     );
     expect(stepText("en", { part: "heat", step: "engage", status: "passed", reason: null })).toBe("Heating: engage: OK");
+    expect(stepText("en", { part: "battery", step: "deadman", status: "passed", reason: null })).toBe(
+      "Battery: stops by itself when Home Assistant goes quiet: OK",
+    );
     const idle = decodeBetaAnswer(fixture("off_idle.json"))!.test!;
     expect(blockedText("en", idle)).toBeNull();
     expect(blockedText("en", { ...idle, blocked: "nothing_to_test" })).toBe(translate("en", "test.blocked.nothing"));

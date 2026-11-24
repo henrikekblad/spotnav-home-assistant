@@ -124,6 +124,8 @@ describe("the battery's words", () => {
     expect(batteryNeed("en", "strategy_ack")).toBe(
       "Accept that SpotNav's commands override the strategy the battery runs in its own cloud.",
     );
+    expect(batteryNeed("en", "hardware_test_first")).toContain("until it has passed on the battery's present firmware");
+    expect(batteryNeed("sv", "hardware_test_first")).toContain("Kör hårdvarutestet");
     expect(batteryNeed("sv", "inverter_power_zero")).toContain("\"Max inverter power\" är 0 i Victrons GX");
     expect(batteryNeed("en", "inverter_power_zero")).toContain("SpotNav cannot run a discharge");
     expect(batteryNeed("en", "grid_setpoint_selling")).toContain("far below 0");
