@@ -502,3 +502,66 @@ def test_the_pool_shadow_tells_the_season_once_a_season_and_only_once_heard() ->
     shadow.season_hinted = None
     PoolSpaShadow._tell_season(shadow, now, SimpleNamespace(season_open=False))  # noqa: SLF001
     assert len(told) == 2
+
+
+async def test_a_car_dropping_out_of_the_sites_notice_is_its_notifiers_again(hass: HomeAssistant) -> None:
+    with freeze_time(_DAY):
+        world = await _world(hass, garage=_Car("Garage"), carport=_Car("Carport"))
+        world.car_blocks = {"garage": _car_block(), "carport": _car_block(_DEPARTURE + timedelta(hours=1))}
+        world.baths = [_bath()]
+        world.tell()
+        carport = world.cars["carport"]
+        assert carport.holds and carport.own == [None]
+        # The carport's driver answers; the garage and the bath still stand: the carport is told as alone (nothing to
+        # ask) and no longer held behind the site's notice.
+        world.car_blocks["carport"] = None
+        world.tell()
+        assert not carport.holds and carport.own[-1] is None and len(carport.own) == 2
+        assert world.cars["garage"].holds
+
+
+async def test_a_car_told_alone_is_taken_off_when_it_answers_as_a_bath_stops_fitting(hass: HomeAssistant) -> None:
+    with freeze_time(_DAY):
+        world = await _world(hass)
+        world.car_blocks["garage"] = _car_block()
+        world.tell()
+        car = world.cars["garage"]
+        assert car.own == [world.car_blocks["garage"]]
+        # At once: the car's choice made, the spa no longer fits. The car's own notice gets its "nothing asks".
+        world.car_blocks["garage"] = None
+        world.baths = [_bath()]
+        world.tell()
+        assert car.own[-1] is None and not car.holds
+
+
+async def test_a_held_plan_at_risk_is_told_once_its_car_drops_out_of_the_sites_notice(hass: HomeAssistant) -> None:
+    from custom_components.spotnav import texts
+    from custom_components.spotnav.runtime import charger_data
+
+    from .test_notifications import _charger
+
+    with freeze_time(_DAY) as frozen:
+        await texts.async_load(hass)
+        await hass.config.async_set_time_zone("Europe/Stockholm")
+        entry, _calls = await _charger(hass, events=("plan_at_risk",))
+        notifier = charger_data(hass, entry.entry_id).notifier
+        world = _World(hass, {entry.entry_id: notifier})
+        calls = world.pixel  # the phone's service, mocked again by the world
+        world.car_blocks[entry.entry_id] = _car_block()
+        world.baths = [_bath()]
+        world.tell()
+        await hass.async_block_till_done()
+        assert notifier._fit_holds_back()  # noqa: SLF001
+        tag = f"spotnav_{entry.entry_id}_plan_at_risk"
+        # The plan cannot be met for reasons of its own as well: held behind the site's notice.
+        notifier._at_risk_behind_target = {"departure": "07:30"}  # noqa: SLF001
+        notifier._at_risk_now = True  # noqa: SLF001
+        # The car's ceiling question is answered (past the repeat rule, as for its own notice); the bath still stands:
+        # its own plan_at_risk is told now.
+        frozen.tick(timedelta(minutes=16))
+        world.car_blocks[entry.entry_id] = None
+        world.tell()
+        await hass.async_block_till_done()
+        assert not notifier._fit_holds_back()  # noqa: SLF001
+        assert [call.data["data"]["tag"] for call in calls if call.data.get("message") != "clear_notification"][-1] == tag
+        assert notifier._at_risk_behind_target is None  # noqa: SLF001
