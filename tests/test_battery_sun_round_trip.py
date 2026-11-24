@@ -38,10 +38,10 @@ from custom_components.spotnav.battery.plan_shadow import battery_params
 T0 = datetime(2026, 6, 21, 6, tzinfo=timezone.utc)
 H = timedelta(hours=1)
 #: The owner's plant: the AC round trip the plan uses and the loss learnt from its own load.
-AC_RT, LOSS = 0.872, (0.0366, 0.0648)
-SUN_RT = sun_round_trip(AC_RT, LOSS)
+AC_RT, LOSS, DC_RT = 0.872, (0.0366, 0.0648), 0.967
+SUN_RT = sun_round_trip(AC_RT, LOSS, DC_RT)
 AC_BATTERY = BatteryParams(10.0, 5.0, 5.0, min_soc_pct=10.0, round_trip_efficiency=AC_RT)
-DC_BATTERY = replace(AC_BATTERY, sun_round_trip_efficiency=SUN_RT)
+DC_BATTERY = replace(AC_BATTERY, sun_round_trip_efficiency=SUN_RT, discharge_loss=LOSS[1])
 
 
 def _slot(index: int, *, buy: float, sell: float, house: float, sun: float = 0.0) -> PlanSlot:
@@ -77,24 +77,30 @@ def _charged(decisions) -> float:
 
 def test_the_owners_sun_round_trip_is_about_the_dc_one() -> None:
     assert SUN_RT == pytest.approx(0.967, abs=0.002)
+    # Until the counters show it: never above the assumed round trip turned back, nor 0.97.
+    assert sun_round_trip(0.90, LOSS) == pytest.approx(0.97)
+    assert sun_round_trip(AC_RT, LOSS) == pytest.approx(AC_RT * (1 + LOSS[0]) / (1 - LOSS[1]))
+    assert sun_round_trip(0.85, (0.03, 0.05)) == pytest.approx(0.85 * 1.03 / 0.95)
     # Within what the DC counters showed, never above them, and never worse than the AC one.
     assert sun_round_trip(AC_RT, LOSS, dc=0.95) == pytest.approx(0.95)
-    assert sun_round_trip(0.95, (0.08, 0.08)) == SUN_ROUND_TRIP_CAP
+    assert sun_round_trip(0.95, (0.08, 0.08), dc=0.99) == SUN_ROUND_TRIP_CAP
     assert sun_round_trip(0.90, (0.0, 0.0)) == pytest.approx(0.90)
     assert sun_round_trip(0.90, (0.03, 0.05), dc=0.80) == pytest.approx(0.90)
 
 
 def test_a_kwh_of_sun_stored_and_given_back_makes_the_sun_round_trip() -> None:
     stored = DC_BATTERY.stored_kwh(1.0, 1.0, 1.0)
-    assert stored * DC_BATTERY.one_way_efficiency == pytest.approx(SUN_RT)
+    assert stored * DC_BATTERY.discharge_efficiency == pytest.approx(SUN_RT)
     # The grid's part keeps the AC round trip; a charge beyond the surplus is the grid's.
-    assert DC_BATTERY.stored_kwh(1.0, 0.0, 1.0) * DC_BATTERY.one_way_efficiency == pytest.approx(AC_RT)
+    assert DC_BATTERY.stored_kwh(1.0, 0.0, 1.0) * DC_BATTERY.discharge_efficiency == pytest.approx(AC_RT)
     assert DC_BATTERY.stored_kwh(2.0, 0.5, 1.0) == pytest.approx(
-        0.5 * DC_BATTERY.sun_charge_efficiency + 1.5 * DC_BATTERY.one_way_efficiency
+        0.5 * DC_BATTERY.sun_charge_efficiency + 1.5 * DC_BATTERY.charge_efficiency
     )
-    # Discharge is the same either way.
-    assert DC_BATTERY.stored_kwh(-1.0, 3.0, 1.0) == AC_BATTERY.stored_kwh(-1.0, 3.0, 1.0)
-    # An AC-coupled battery: one round trip.
+    # A discharge is the same whatever the sun does.
+    assert DC_BATTERY.stored_kwh(-1.0, 3.0, 1.0) == DC_BATTERY.stored_kwh(-1.0, 0.0, 1.0)
+    # An AC-coupled battery: one round trip, split equally.
+    assert AC_BATTERY.discharge_efficiency == pytest.approx(math.sqrt(AC_RT))
+    assert AC_BATTERY.charge_efficiency == pytest.approx(math.sqrt(AC_RT))
     assert AC_BATTERY.stored_kwh(1.0, 1.0, 1.0) == pytest.approx(math.sqrt(AC_RT))
 
 
@@ -135,15 +141,18 @@ def test_a_dc_battery_gets_the_sun_round_trip_from_the_learnt_one() -> None:
     assert facts.round_trip_efficiency == pytest.approx(0.872, abs=0.002)
     assert facts.sun_round_trip_efficiency == pytest.approx(0.967, abs=0.002)
     assert facts.sun_round_trip_efficiency <= 0.967
+    assert facts.discharge_loss == LOSS[1]
     params, _reason, _estimates = battery_params(facts)
     assert params is not None and params.sun_round_trip_efficiency == facts.sun_round_trip_efficiency
+    assert params.discharge_loss == LOSS[1]
 
 
 def test_a_dc_battery_not_yet_learnt_takes_the_assumed_loss() -> None:
     facts = with_learned(_facts(True), LearnedBattery())
     assert facts.round_trip_efficiency is None
-    # The assumed 90 % turned back with the assumed 3 % in and 5 % out.
-    assert facts.sun_round_trip_efficiency == pytest.approx(0.90 * 1.03 / 0.95, abs=0.001)
+    # The assumed 90 % turned back with the assumed 3 % in and 5 % out (0.976), held to 0.97 until learnt.
+    assert facts.sun_round_trip_efficiency == pytest.approx(0.97)
+    assert facts.discharge_loss == 0.05
 
 
 def test_an_ac_coupled_battery_has_one_round_trip() -> None:
@@ -152,8 +161,9 @@ def test_an_ac_coupled_battery_has_one_round_trip() -> None:
     facts = with_learned(_facts(False), learned)
     assert facts.sun_round_trip_efficiency is None
     params, _reason, _estimates = battery_params(facts)
-    assert params is not None and params.sun_round_trip_efficiency is None
-    assert params.sun_charge_efficiency == params.one_way_efficiency
+    assert params is not None and params.sun_round_trip_efficiency is None and params.discharge_loss == 0.0
+    assert params.sun_charge_efficiency == params.charge_efficiency == params.one_way_efficiency
+    assert params.sun_charge_cap_kw == params.max_charge_kw
 
 
 # ---- the plan
@@ -176,9 +186,11 @@ def test_a_winter_day_without_surplus_is_unchanged() -> None:
     slots = _winter()
     before = plan_battery(_request(slots, AC_BATTERY))
     after = plan_battery(_request(slots, DC_BATTERY))
-    assert after.plan.decisions == before.plan.decisions
-    assert after.plan.cost == before.plan.cost
-    assert after.savings == before.savings
+    # The same actions and about the same money; only the stored kWh are counted as the cells hold them (the frame,
+    # `test_the_plans_stored_energy_is_the_cells_on_every_path`: about 1.6 % less energy through a full span).
+    assert [d.action for d in after.plan.decisions] == [d.action for d in before.plan.decisions]
+    assert after.plan.cost == pytest.approx(before.plan.cost, rel=0.01)
+    assert after.savings == pytest.approx(before.savings, rel=0.03)
 
 
 def test_an_ac_coupled_battery_plans_as_before() -> None:
@@ -209,7 +221,7 @@ def test_a_grid_charge_beside_the_sun_pays_the_ac_round_trip_for_its_own_part() 
     slot = _slot(0, buy=10, sell=5, house=0.0, sun=1.0)
     ran = run_slot(slot, DC_BATTERY, 2.0, ACTION_GRID_CHARGE, 3.0)
     stored = (ran.soc_end_pct / 100 * DC_BATTERY.usable_kwh) - 2.0
-    assert stored == pytest.approx(1.0 * DC_BATTERY.sun_charge_efficiency + 2.0 * DC_BATTERY.one_way_efficiency)
+    assert stored == pytest.approx(1.0 * DC_BATTERY.sun_charge_efficiency + 2.0 * DC_BATTERY.charge_efficiency)
     assert ran.grid_kw == pytest.approx(2.0)
     selfc = run_slot(slot, AC_BATTERY, 2.0, ACTION_SELF_CONSUME, 1.0)
     assert (selfc.soc_end_pct / 100 * 10.0) - 2.0 == pytest.approx(AC_BATTERY.one_way_efficiency)
@@ -218,8 +230,58 @@ def test_a_grid_charge_beside_the_sun_pays_the_ac_round_trip_for_its_own_part() 
 def test_the_ac_side_count_of_a_sun_charge_gives_back_what_the_cells_do() -> None:
     """A sun charge read at the battery (DC) is counted on the AC side at the way-out loss (`ac_kw`); stored and given
     back at the sun's round trip, the plan returns what the cells really give the house at the DC round trip."""
-    dc_charge, dc_rt = 2.0, SUN_RT
+    dc_charge, dc_rt = 2.0, DC_RT
     counted = ac_kw(dc_charge, LOSS, grid_kw=-1.0)
-    given_back_by_plan = DC_BATTERY.stored_kwh(counted, counted, 1.0) * DC_BATTERY.one_way_efficiency
+    given_back_by_plan = DC_BATTERY.stored_kwh(counted, counted, 1.0) * DC_BATTERY.discharge_efficiency
     given_back_by_cells = dc_charge * dc_rt * (1 - LOSS[1])
-    assert given_back_by_plan == pytest.approx(given_back_by_cells)
+    assert given_back_by_plan == pytest.approx(given_back_by_cells, rel=1e-3)
+
+
+#: The owner's battery: 40.3 kWh of cells, 13.2 kW rated at the battery, kept between 10 and 100 %.
+OWNER = BatteryParams(
+    40.3, 13.2, 13.2, min_soc_pct=10.0, round_trip_efficiency=AC_RT, sun_round_trip_efficiency=SUN_RT,
+    discharge_loss=LOSS[1],
+)
+
+
+def test_the_plans_stored_energy_is_the_cells_on_every_path() -> None:
+    """Per AC kWh: a grid charge stores √DC/(1+c), a sun charge √DC/(1-d), a stored kWh gives √DC·(1-d) (the cells'
+    way, then the inverter's); the plan's frame is the cells', not a battery a few percent bigger."""
+    c, d = LOSS
+    root = math.sqrt(DC_RT)
+    assert OWNER.charge_efficiency == pytest.approx(root / (1 + c), rel=2e-3)
+    assert OWNER.sun_charge_efficiency == pytest.approx(root / (1 - d), rel=1e-3)
+    assert OWNER.discharge_efficiency == pytest.approx(root * (1 - d), rel=1e-3)
+
+
+def test_six_kw_of_sun_from_ten_percent_climbs_as_the_cells_do() -> None:
+    """The review's sunny day: 6 kW of AC surplus from 10 %, hour by hour, against a cell model."""
+    root = math.sqrt(DC_RT)
+    soc = OWNER.min_kwh
+    for hour in range(6):
+        slot = _slot(hour, buy=60, sell=50, house=0.0, sun=6.0)
+        ran = run_slot(slot, OWNER, soc, ACTION_HOLD, action_power(slot, OWNER, soc, ACTION_HOLD))
+        soc = ran.soc_end_pct / 100 * OWNER.usable_kwh
+        cells = min(100.0, 10.0 + 6.0 * (hour + 1) / (1 - LOSS[1]) * root / 40.3 * 100)
+        assert ran.soc_end_pct == pytest.approx(cells, abs=0.05)
+    assert soc == pytest.approx(OWNER.max_kwh)
+    # What the full span gives back on the AC side: the cells' way out and the inverter's.
+    assert (OWNER.max_kwh - OWNER.min_kwh) * OWNER.discharge_efficiency == pytest.approx(
+        36.27 * root * (1 - LOSS[1]), abs=0.01
+    )
+
+
+def test_the_sun_charges_no_faster_than_the_rating_at_the_battery() -> None:
+    """13.2 kW is the rating at the battery: 13.2 × (1 - d) of AC surplus at most, the rest sold."""
+    slot = _slot(0, buy=60, sell=50, house=0.0, sun=15.0)
+    soc = OWNER.min_kwh
+    power = action_power(slot, OWNER, soc, ACTION_HOLD)
+    assert power == pytest.approx(13.2 * (1 - LOSS[1]))
+    ran = run_slot(slot, OWNER, soc, ACTION_HOLD, power)
+    stored = ran.soc_end_pct / 100 * OWNER.usable_kwh - soc
+    assert stored == pytest.approx(13.2 * math.sqrt(DC_RT), rel=1e-3)
+    assert ran.grid_kw == pytest.approx(-(15.0 - power))
+    # A grid charge beside it takes no more than the sun's cap; below the cap the grid tops up to the rating.
+    assert action_power(slot, OWNER, soc, ACTION_GRID_CHARGE, 13.2) == pytest.approx(13.2 * (1 - LOSS[1]))
+    small = _slot(0, buy=60, sell=50, house=0.0, sun=4.0)
+    assert action_power(small, OWNER, soc, ACTION_GRID_CHARGE, 13.2) == pytest.approx(13.2)

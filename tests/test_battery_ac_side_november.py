@@ -112,6 +112,7 @@ def _month(
         min_soc_pct=0.0,
         round_trip_efficiency=round_trip,
         sun_round_trip_efficiency=sun_round_trip,
+        discharge_loss=0.0 if sun_round_trip is None else loss[1],
     )
     out = {}
     for day in DAYS:
@@ -287,5 +288,6 @@ def test_the_suns_own_round_trip_barely_moves_a_november(data: dict) -> None:
     share_before = sum(v[0] for v in before.values()) / sum(v[1] for v in before.values())
     assert 0.77 <= share <= 0.92
     assert share == pytest.approx(share_before, abs=0.02)
-    # Never a worse perfect plan for a better-priced sun.
-    assert all(after[day][1] >= before[day][1] - 1.0 for day in DAYS)
+    # The perfect plan moves by the cells' frame (a battery counted as its cells hold, `plan_model.BatteryParams`), a
+    # kronor or so a day either way, not by the sun.
+    assert all(abs(after[day][1] - before[day][1]) < 150 for day in DAYS)
