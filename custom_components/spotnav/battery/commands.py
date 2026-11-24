@@ -989,8 +989,14 @@ class BrandControl:
     #: recipe never run on a device, whose first writes should be supervised. The checklist says so
     #: (`hardware_test_first`). The test itself and every hand-back still run. `False`: the routine alone.
     hardware_test_first: bool = False
+    #: The role whose entity's own range bounds a grid charge (its `max`, over the role's scale): for a recipe whose
+    #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
+    #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
+    charge_power_bound: str | None = None
 
     def __post_init__(self) -> None:
+        if self.charge_power_bound is not None and self.charge_power_bound not in {role.name for role in self.roles}:
+            raise ValueError(f"{self.brand}: the charge power bound names a role of the control's own")
         if self.import_limit is not None and self.import_limit_trust is None:
             raise ValueError(f"{self.brand}: an import limit needs to say where it was shown to act")
         names = {role.name for role in self.roles}
@@ -2248,6 +2254,8 @@ MARSTEK_CONTROL: Final = BrandControl(
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
     # Never run on a device: nothing is written until a person's hardware test passed on the plant's firmware.
     hardware_test_first=True,
+    # A Venus A's Set Charge Power stops at 1500 W (and refuses a write above it), a Venus E's at 2500 W.
+    charge_power_bound="charge_power",
     note="Needs the Modbus integration (ViperRNMC/marstek_venus_modbus). Hold: the maximum discharge power at 0. Grid"
     " charge: RS485 control with a force charge, which the battery keeps if Home Assistant stops (no dead-man), so it"
     " runs under the HA-down cap. Never run on a device; writes only after a passed hardware test.",

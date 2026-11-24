@@ -386,6 +386,9 @@ def _accept_applies(control: BrandControl | None) -> bool:
 NEED_HARDWARE_TEST_FIRST: Final = "hardware_test_first"
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
 RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
+#: The plan's cap rule where the battery's own charge power entity holds the charge below the fuse's cap
+#: (`BrandControl.charge_power_bound`).
+RULE_CHARGE_POWER_ENTITY: Final = "charge_power_entity"
 
 #: Refusals of the per-phase import-limit rule that leave it a way for the person (`BatteryControl._phase_path_open`):
 #: none, a step they can take (enable the Output Type or the grid sensor status, turn the phase switch on), or the
@@ -479,6 +482,8 @@ class BatteryControl:
         self._sources: tuple[datetime, str | None] | None = None
         #: The look (or status read) being answered, and `_phase_missing` as read in it.
         self._look_id = 0
+        #: The charge power entity's bound as read in the look `(look id, brand)` (`_charge_entity_max_kw`).
+        self._charge_bound: tuple[tuple[int, str | None], float | None] | None = None
         self._missing: tuple[int, str | None] | None = None
         #: For a recipe whose targets per phase are the grid's: the load behind each point and the power at it, read
         #: once a look (`_grid_phases`).
@@ -1444,51 +1449,34 @@ class BatteryControl:
 
     def _within_charge_power(self, cap: float | None) -> float | None:
         """A grid charge cap (`None`: none) lowered to what the plant's own charge power entity takes
-        (`_charge_entity_max_kw`), for a live charge and the plan alike; never raised."""
+        (`_charge_entity_max_kw`), for a live charge, a test action and the plan alike; never raised."""
         control = control_for(self.facts.brand)
-        if control is None:
-            return cap
-        executor = self.executor
-        if executor is None or executor.control.brand != control.brand:
-            executor = Executor(control)
-        entity_kw = self._charge_entity_max_kw(executor)
+        entity_kw = None if control is None else self._charge_entity_max_kw(control)
         if entity_kw is None:
             return cap
         return entity_kw if cap is None else min(cap, entity_kw)
 
-    def _charge_entity_max_kw(self, executor: Executor) -> float | None:
-        """The largest grid charge the plant's own charge power entity takes (kW: its `max`, or its `min` for a power
-        written negative, over the role's scale), `None` where none says. The recipe may allow more than a model
-        takes (Marstek: 2500 W for the Venus E, where a Venus A's *Set Charge Power* stops at 1500 W and refuses a
-        write above it). The power roles are those whose value follows the rate. It bounds the check's charge step,
-        a live grid charge and the plan's grid charge cap (`_within_charge_power`)."""
-        control = executor.control
-        build = control.states.get(ACTION_GRID_CHARGE)
-        if build is None:
+    def _charge_entity_max_kw(self, control: BrandControl) -> float | None:
+        """The largest grid charge the recipe's charge power entity takes (kW: its `max` over the role's scale), only
+        for a recipe that names one (`BrandControl.charge_power_bound`: Marstek, whose Venus A stops at 1500 W where
+        the recipe allows 2500 W); `None` for every other recipe, where none is read, and where the entity says
+        nothing or less than the least rate control commands (a range left at Home Assistant's default). Read once
+        a look (`_look_id`). It bounds the check's charge step, a live grid charge, a test action and the plan's
+        cap (`_within_charge_power`)."""
+        name = control.charge_power_bound
+        if name is None:
             return None
-        try:
-            one = {want.role: want.value for want in build(1.0, executor.watchdog_s)}
-            two = {want.role: want.value for want in build(2.0, executor.watchdog_s)}
-        except Exception:  # noqa: BLE001 - a recipe that cannot build a probe rate has no entity bound to read
-            return None
-        roles = {role.name: role for role in control.roles}
-        found: float | None = None
-        for name, value in one.items():
-            role = roles.get(name)
-            other = two.get(name)
-            if (
-                role is None or role.method != "number" or not role.scale or isinstance(value, bool)
-                or not isinstance(value, (int, float)) or not isinstance(other, (int, float)) or value == other
-            ):
-                continue
-            entity_id = plant_entity_id(self.hass, self.site.config, role.match)
-            state = None if entity_id is None else self.hass.states.get(entity_id)
-            if state is None:
-                continue
-            bound = _float(state.attributes.get("max" if value > 0 else "min"))
-            if bound is None or bound == 0:
-                continue
-            found = _least(found, abs(bound) / role.scale)
+        cached = self._charge_bound
+        if cached is not None and cached[0] == (self._look_id, control.brand):
+            return cached[1]
+        role = next(role for role in control.roles if role.name == name)
+        entity_id = plant_entity_id(self.hass, self.site.config, role.match)
+        state = None if entity_id is None else self.hass.states.get(entity_id)
+        bound = None if state is None else _float(state.attributes.get("max"))
+        found = None if bound is None or not role.scale else bound / role.scale
+        if found is not None and found < gate.MIN_RATE_KW:
+            found = None
+        self._charge_bound = ((self._look_id, control.brand), found)
         return found
 
     def _keep_hardware_verdict(self, done: bool) -> None:
@@ -1518,7 +1506,7 @@ class BatteryControl:
             volts_between_phases=inputs.volts_between_phases,
         )
         # The charge step never asks for more than the battery's rating or its own charge power entity takes.
-        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor))
+        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control))
         action, rate = verification.command(now, sample, charge_max_kw)
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
@@ -1918,8 +1906,8 @@ class BatteryControl:
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         report = self.report()
         allowed = self._supported(gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge()))
-        cap, caps = self._charge_limits(now, options)
-        cap = self._within_charge_power(cap)
+        fuse_cap, caps = self._charge_limits(now, options)
+        cap = self._within_charge_power(fuse_cap)
         if caps is None and gate.charge_by_phases(report):
             # The charge was shown only per phase: the balanced one is never run on that.
             allowed = allowed - {ACTION_GRID_CHARGE}
@@ -1927,6 +1915,8 @@ class BatteryControl:
             self._merged_slot(now), allowed, cap, self._export_cap_kw(), self._fixed_charge_kw(),
             hold_charges=self._hold_charges(),
         )
+        if why == "grid_charge_cap" and cap is not None and (fuse_cap is None or cap < fuse_cap):
+            why = RULE_CHARGE_POWER_ENTITY  # the battery's own charge power entity, not the fuse
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
             self._restricted = why
@@ -2537,8 +2527,11 @@ class BatteryControl:
             phased = executor is not None and executor.control.phased
             cap, caps = self._charge_limits(now, options, phased=phased)
             rule = self._cap_rule(options, cap, False, self._learned(now))
-            # Never more than the plant's own charge power entity takes, as `_control_slot` (the rule stays the fuse's).
-            cap = self._within_charge_power(cap)
+            # Never more than the plant's own charge power entity takes, as `_control_slot`: its own rule where it
+            # is what holds the charge.
+            bounded = self._within_charge_power(cap)
+            if bounded is not None and (cap is None or bounded < cap):
+                cap, rule = bounded, RULE_CHARGE_POWER_ENTITY
             # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
             if caps is None and gate.charge_by_phases(self.report()):
                 return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run

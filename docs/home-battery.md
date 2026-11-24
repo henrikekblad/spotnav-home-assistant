@@ -400,8 +400,8 @@ The cap answers one question: how much may the battery draw from the grid so tha
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
 house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
 Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
-plant not known to balance its charge, all of it on that one phase. A grid charge, planned or running, is also never
-more than the battery's own charge power entity takes (its maximum in Home Assistant).
+plant not known to balance its charge, all of it on that one phase. On a Marstek a grid charge, planned or running,
+is also never more than the battery's own *Set Charge Power* takes (its maximum in Home Assistant).
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no
