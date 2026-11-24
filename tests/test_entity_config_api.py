@@ -579,13 +579,14 @@ async def test_a_site_charger_takes_a_priority_and_a_lone_charger_has_none(hass:
         charger.entry_id, scope="charger", expected={"charger_priority": "normal"}, changes={"charger_priority": "first"}
     )
     result = (await ws_call(client, set_first))["result"]
-    # The order lives in the site's priority list now, nothing is stored on the charger; the value written reads back.
+    # The order lives in the site's priority list now; the charger keeps the old value derived from it (for a
+    # downgrade), and the value written reads back.
     assert result["ok"] is True and field(result, "charger_priority")["value"] == "first"
-    assert CONF_CHARGER_PRIORITY not in hass.config_entries.async_get_entry(charger.entry_id).data
+    assert hass.config_entries.async_get_entry(charger.entry_id).data[CONF_CHARGER_PRIORITY] == "first"
 
     back = update_entity_config_message(charger.entry_id, scope="charger", changes={"charger_priority": "normal"})
     assert (await ws_call(client, back))["result"]["ok"] is True
-    assert CONF_CHARGER_PRIORITY not in hass.config_entries.async_get_entry(charger.entry_id).data
+    assert hass.config_entries.async_get_entry(charger.entry_id).data[CONF_CHARGER_PRIORITY] == "normal"
 
     for entry_id, value, code in ((charger.entry_id, "urgent", "invalid_value"), (lone.entry_id, "first", "not_writable")):
         refused = (

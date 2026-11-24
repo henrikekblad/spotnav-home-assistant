@@ -279,8 +279,18 @@ async def test_the_list_is_written_in_the_site_settings_and_the_solar_split_foll
     site = hass.config_entries.async_get_entry("pair_site")
     assert site.data[CONF_PRIORITY][:3] == ["heat", "charger:b_charger", "charger:a_charger"]
     assert site_controller.config[CONF_PRIORITY] == site.data[CONF_PRIORITY]
-    # The old keys are dropped.
-    assert CONF_CHARGER_PRIORITY not in hass.config_entries.async_get_entry("a_charger").data
+    # The old keys are derived from the list, for a downgrade: the top car first, the bottom one last.
+    assert hass.config_entries.async_get_entry("a_charger").data[CONF_CHARGER_PRIORITY] == "last"
+    assert hass.config_entries.async_get_entry("b_charger").data[CONF_CHARGER_PRIORITY] == "first"
+    assert site.data[CONF_SOLAR_PRIORITY] == site_controller.config[CONF_SOLAR_PRIORITY]
+    # A release before the list reads the same car order and battery place from them.
+    from custom_components.spotnav.site.priority import legacy_order  # noqa: PLC0415
+
+    ranks = {entry_id: hass.config_entries.async_get_entry(entry_id).data[CONF_CHARGER_PRIORITY] for entry_id in ("a_charger", "b_charger")}
+    before = legacy_order(["a_charger", "b_charger"], ranks, site.data[CONF_SOLAR_PRIORITY])
+    cars = [item for item in before if item.startswith("charger:")]
+    assert cars == ["charger:b_charger", "charger:a_charger"]
+    assert (before.index("battery") < before.index(cars[0])) == (site.data[CONF_SOLAR_PRIORITY] == "battery_first")
     assert site_controller.charger_priority("b_charger") < site_controller.charger_priority("a_charger")
 
     # The solar surplus goes to `b` first now.

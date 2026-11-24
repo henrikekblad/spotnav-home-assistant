@@ -16,7 +16,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import Any, Final
 
-from homeassistant.core import HomeAssistant
+from homeassistant.const import ATTR_DOMAIN, ATTR_SERVICE, EVENT_SERVICE_REGISTERED
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from ..const import DOMAIN
@@ -24,6 +25,7 @@ from .phones import (
     APP_NAME,
     APP_SHOWS,
     AppLink,
+    DEFAULT_PHONE_EVENTS,
     LegacyCharger,
     LegacyHeat,
     MAX_PHONES,
@@ -40,14 +42,15 @@ from .phones import (
     heat_view,
     judge_changes,
     match_companion,
+    merge_choices,
     migrate,
     new_phone_id,
     read_phones,
     route_of,
     valid_ref,
 )
-from .settings import _PATH, NOTIFY_DOMAIN, NotificationSettings
-from .targets import available_targets, companion_devices
+from .settings import _PATH, MOBILE_APP_PREFIX, NOTIFY_DOMAIN, NotificationSettings
+from .targets import available_targets, companion_devices, companion_names, slug_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +85,17 @@ class PhoneStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, STORE_KEY)
         self._phones: tuple[Phone, ...] = ()
         self._migrated = False
+        #: The kept phones could not be read: no migration and no save (either would overwrite them) until a load
+        #: succeeds; the changes made meanwhile live in memory only.
+        self._load_failed = False
+        #: The skipped save is logged once.
+        self._skip_logged = False
+        #: Per charger, how often what an older client reads as its `notifications` changed (kept): part of the
+        #: charger's settings revision on the wire (`pricing/price_source.wire_offset`), so an older client's body read
+        #: before a phone change is a conflict rather than an echo that undoes it (notifications review S1).
+        self._view_revisions: dict[str, int] = {}
+        #: The phones as last saved (or loaded): what each charger's view is compared with at a save.
+        self._saved_phones: tuple[Phone, ...] = ()
         #: Where a tap opens when a charger has no dashboard of its own: the page an administrator last saved a phone
         #: from (`url` of `spotnav/update_notification_phone`).
         self._url: str | None = None
@@ -95,18 +109,61 @@ class PhoneStore:
         try:
             raw = await self._store.async_load()
         except Exception:  # noqa: BLE001 - the integration never fails to start on what the phones kept
-            _LOGGER.warning("SpotNav: the phones' notification settings could not be read", exc_info=True)
-            raw = None
+            _LOGGER.warning(
+                "SpotNav: the phones' notification settings could not be read; they are not written over until they can",
+                exc_info=True,
+            )
+            self._load_failed = True
+            return
+        self._load_failed = False
         if isinstance(raw, dict):
             self._phones = read_phones(raw.get("phones"))
+            self._saved_phones = self._phones
             self._migrated = raw.get("migrated") is True
+            revisions = raw.get("view_revisions")
+            if isinstance(revisions, dict):
+                self._view_revisions = {
+                    charger: count
+                    for charger, count in revisions.items()
+                    if isinstance(charger, str) and type(count) is int and count >= 0
+                }
             url = raw.get("url")
             self._url = url if isinstance(url, str) and _PATH.match(url) else None
 
+    @property
+    def load_failed(self) -> bool:
+        return self._load_failed
+
+    def view_revision(self, charger: str) -> int:
+        """How often the charger's `notifications` view changed (see `_view_revisions`)."""
+        return self._view_revisions.get(charger, 0)
+
+    def _count_view_changes(self) -> None:
+        for charger in every_charger(self._hass):
+            before = charger_view(self._saved_phones, charger, None)
+            after = charger_view(self._phones, charger, None)
+            if set(before.targets) != set(after.targets) or set(before.events) != set(after.events):
+                self._view_revisions[charger] = self._view_revisions.get(charger, 0) + 1
+        self._saved_phones = self._phones
+
     async def _async_save(self) -> None:
-        await self._store.async_save(
-            {"migrated": self._migrated, "url": self._url, "phones": [phone.as_dict() for phone in self._phones]}
-        )
+        self._count_view_changes()
+        if self._load_failed:
+            if not self._skip_logged:
+                self._skip_logged = True
+                _LOGGER.warning(
+                    "SpotNav: the phones' notification settings are not saved (they could not be read); "
+                    "changes last until Home Assistant restarts"
+                )
+        else:
+            await self._store.async_save(
+                {
+                    "migrated": self._migrated,
+                    "url": self._url,
+                    "phones": [phone.as_dict() for phone in self._phones],
+                    "view_revisions": dict(self._view_revisions),
+                }
+            )
         for listener in list(self._listeners):
             listener()
 
@@ -116,7 +173,7 @@ class PhoneStore:
 
     async def async_migrate(self) -> None:
         """Once per installation: the per-charger, push and heat choices of the release before become phones."""
-        if self._migrated:
+        if self._migrated or self._load_failed:
             return
         from ..api.heat import stored_config  # noqa: PLC0415 - the API imports the notifier
         from ..vehicles.charger_inventory import charger_entries, site_entries  # noqa: PLC0415
@@ -131,14 +188,38 @@ class PhoneStore:
         for site in site_entries(self._hass):
             heat = stored_config(site).heat_notifications
             heats.append(LegacyHeat(heat.targets, heat.events))
-        names = dict(available_targets(self._hass))
+        # The Companion app's own names, also for a phone whose service is not there yet at the start.
+        names = {**companion_names(self._hass), **dict(available_targets(self._hass))}
         async with self._lock:
             migrated = migrate(chargers, heats, names, every_charger(self._hass))
             self._phones = (*self._phones, *migrated)[:MAX_PHONES]
+            # What the chargers' views were before: an older client read the same from the charger's own settings.
+            self._saved_phones = self._phones
             self._migrated = True
-            await self._async_save()
+            try:
+                await self._async_save()
+            except BaseException:
+                # Not kept: carried over again at the next start.
+                self._migrated = False
+                raise
         if migrated:
             _LOGGER.info("SpotNav: %d phones' notification settings carried over from the chargers", len(migrated))
+
+    async def async_name_phones(self) -> None:
+        """A stored Companion phone still named after its service (migrated before its name was known) takes the
+        Companion app's name for it, once that is known."""
+        names = companion_names(self._hass)
+        async with self._lock:
+            renamed = tuple(
+                replace(phone, name=clean_name(names[phone.notify], phone.name))
+                if phone.notify is not None and phone.notify in names and phone.name == slug_name(phone.notify)
+                and names[phone.notify] != phone.name
+                else phone
+                for phone in self._phones
+            )
+            if renamed != self._phones:
+                self._phones = renamed
+                await self._async_save()
 
     async def _legacy_push(self, charger_id: str) -> tuple[str | None, tuple[str, ...]]:
         try:
@@ -333,17 +414,18 @@ class PhoneStore:
         ]
         service = match_companion(name, model, devices)
         found = listed.get(service) if service is not None else None
-        return found if found is not None and found.app is None else None
+        return found if found is not None and found.app is None and not found.apart else None
 
     def _link_found(self, phone: Phone, name: str | None, model: str | None) -> Phone:
         """`phone` (the app's, stored, without a Companion service) linked to its Companion phone where one matches
-        and no administrator split them: its own choices kept, the Companion phone's name and service taken."""
+        and no administrator split them: the Companion phone's name and service taken, and the choices of both
+        entries merged (`phones.merge_choices`: a Companion phone that was on keeps what it heard)."""
         if phone.notify is not None or phone.apart or phone.app is None:
             return phone
         match = self._match_companion(name, model)
         if match is None:
             return phone
-        linked = replace(phone, notify=match.notify, name=match.name)
+        linked = merge_choices(replace(phone, notify=match.notify, name=match.name), match)
         self._phones = tuple(item for item in self._phones if item.id != match.id)
         self._store_phone(linked)
         return linked
@@ -360,29 +442,54 @@ class PhoneStore:
             out[index] = phone
             self._phones = tuple(item for i, item in enumerate(out) if i == index or item.id not in (phone.id, replacing))
 
-    def _attach_app(self, key: str, name: str, ref: str | None, model: str | None = None) -> Phone:
-        """The app's own entry, made now if it has none: one from before this release with the same reference is
-        adopted; else the Companion phone it is (`_match_companion`) is linked (turned on, its choices kept); else a
-        new one, on, the defaults. An entry without a Companion service is linked whenever its phone is found, unless
-        an administrator split them. Not saved."""
+    def _attach_app(
+        self,
+        key: str,
+        name: str,
+        ref: str | None,
+        model: str | None = None,
+        *,
+        pairing: bool = False,
+        changes: Any = None,
+    ) -> Phone:
+        """The app's own entry, made now if it has none, with the app's own `changes` (`{on?, events?, chargers?}`)
+        applied to the app's side before any link: one from before this release with the same reference is adopted;
+        else the Companion phone it is (`_match_companion`) is linked, the choices of both merged
+        (`phones.merge_choices`); else a new one, on, the defaults. A Companion phone that was off is turned on only
+        by a pairing or by the app's own choice. An entry without a Companion service is linked whenever its phone
+        is found, unless an administrator split them. Not saved. Raises `PhoneError` for `changes` that cannot be
+        stored."""
+        every = every_charger(self._hass)
+
+        def own(phone: Phone) -> Phone:
+            return phone if changes is None else judge_changes(phone, changes, every)
+
         found = self.app_phone(key)
         if found is not None:
-            return self._link_found(found, name, model)
+            phone = own(found)
+            self._store_phone(phone)
+            return self._link_found(phone, name, model)
         if ref is not None:
             legacy = next(
                 (p for p in self._phones if p.app is not None and p.app.key is None and p.app.push_ref == ref), None
             )
             if legacy is not None:
-                phone = replace(legacy, app=replace(legacy.app or AppLink(), key=key, via=()), name=name)
+                phone = own(replace(legacy, app=replace(legacy.app or AppLink(), key=key, via=()), name=name))
                 self._store_phone(phone)
                 return self._link_found(phone, name, model)
         match = self._match_companion(name, model)
         if match is not None:
-            phone = replace(match, id=new_phone_id() if match.id.startswith(UNTOUCHED_PREFIX) else match.id,
-                            app=AppLink(key=key), on=True)
-            self._store_phone(phone, replacing=match.id)
-            return phone
-        phone = Phone(id=new_phone_id(), name=name, app=AppLink(key=key), on=True)
+            linked = replace(match, id=new_phone_id() if match.id.startswith(UNTOUCHED_PREFIX) else match.id,
+                             app=AppLink(key=key))
+            if pairing:
+                linked = replace(linked, on=True)
+            if changes is not None:
+                # The app's own choice beside the Companion phone's: merged, never one undoing the other.
+                app_side = own(replace(linked, on=False, events=DEFAULT_PHONE_EVENTS, chargers=None))
+                linked = merge_choices(linked, app_side)
+            self._store_phone(linked, replacing=match.id)
+            return linked
+        phone = own(Phone(id=new_phone_id(), name=name, app=AppLink(key=key), on=True))
         self._store_phone(phone)
         return phone
 
@@ -390,7 +497,7 @@ class PhoneStore:
         """A pairing of an app from this release was approved: its entry, linked where one Companion phone matches."""
         async with self._lock:
             try:
-                self._attach_app(key, clean_name(device, "SpotNav app"), None, _model(model))
+                self._attach_app(key, clean_name(device, "SpotNav app"), None, _model(model), pairing=True)
             except PhoneRefusal:
                 _LOGGER.warning("SpotNav: no room for another phone's notification settings")
                 return
@@ -411,7 +518,8 @@ class PhoneStore:
             before = self._phones
             try:
                 phone = self._attach_app(
-                    key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref, _model(model)
+                    key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref, _model(model),
+                    changes=changes,
                 )
                 app = phone.app or AppLink(key=key)
                 if push_ref is not ...:
@@ -419,8 +527,6 @@ class PhoneStore:
                 if shows is not ...:
                     app = replace(app, shows=tuple(item for item in APP_SHOWS if item in shows))
                 phone = replace(phone, app=app)
-                if changes is not None:
-                    phone = judge_changes(phone, changes, every_charger(self._hass))
                 self._store_phone(phone)
             except (PhoneError, PhoneRefusal):
                 self._phones = before
@@ -454,8 +560,12 @@ class PhoneStore:
                 elif "unlink" in changes:
                     if changes["unlink"] is not True or phone.notify is None or phone.app is None:
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
-                    # Split for good: the app's phone is never linked again by itself.
+                    # Split for good: the app's phone is never linked again by itself, and its Companion phone (kept
+                    # as its own row, off as an untouched one) is never linked by itself again either, also to the
+                    # entry of a later call after the app's row was forgotten.
                     self._store_phone(replace(phone, notify=None, apart=True))
+                    companion = replace(self._untouched(phone.notify), id=new_phone_id(), apart=True)
+                    self._store_phone(companion)
                 elif "forget" in changes:
                     if changes["forget"] is not True or phone.id.startswith(UNTOUCHED_PREFIX):
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
@@ -511,6 +621,13 @@ def phone_store(hass: HomeAssistant) -> PhoneStore | None:
     return domain_data(hass).phones
 
 
+async def _async_name_phones(store: PhoneStore) -> None:
+    try:
+        await store.async_name_phones()
+    except Exception:  # noqa: BLE001 - the names stay as they were, tried again later
+        _LOGGER.warning("SpotNav: the phones' names could not be updated", exc_info=True)
+
+
 async def async_setup_phones(hass: HomeAssistant) -> PhoneStore:
     """Create, load and migrate the installation's phones, once (before any entry is set up)."""
     from ..runtime import domain_data  # noqa: PLC0415
@@ -524,5 +641,14 @@ async def async_setup_phones(hass: HomeAssistant) -> PhoneStore:
         await store.async_migrate()
     except Exception:  # noqa: BLE001 - a migration that fails leaves the phones as they were, tried at the next start
         _LOGGER.warning("SpotNav: the phones' notification settings could not be carried over", exc_info=True)
+    await _async_name_phones(store)
+
+    @callback
+    def _service_registered(event: Event) -> None:
+        # A Companion phone's service appearing (its app set up after SpotNav): named on first sight.
+        if event.data.get(ATTR_DOMAIN) == NOTIFY_DOMAIN and str(event.data.get(ATTR_SERVICE, "")).startswith(MOBILE_APP_PREFIX):
+            hass.async_create_background_task(_async_name_phones(store), "spotnav phone names")
+
+    hass.bus.async_listen(EVENT_SERVICE_REGISTERED, _service_registered)
     data.phones = store
     return store

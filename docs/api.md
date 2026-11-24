@@ -549,15 +549,18 @@ Companion notification for the same notice. Examples are in `tests/fixtures/webh
 
 `app_id` is a secret the app makes once and keeps (also sent with its pairing request); Home Assistant keeps it hashed
 and never answers or logs it. The first call makes the phone (on, the default events, every charger), adopting the
-phone of an older app whose `push_ref` is the same, and linking it to its Companion phone. While the phone has no
+phone of an older app whose `push_ref` is the same, and linking it to its Companion phone. A link keeps what both
+entries heard: on if either was on, the union of the events and of the chargers of the entries that are on. A Companion
+phone that was off is turned on by a pairing, or by the app's own `set` in that call, never by the call alone. While the phone has no
 Companion service and no administrator split the two, every call tries that link: the one Companion phone whose
 name or name in Home Assistant is `name` (or ends with it as a word, or `name` ends with it), else the one whose model
 is `model` (or `name`: an older app sends its model as its name); two that match link nothing. `push_ref`
 sets the wake-up reference (`null` clears it); `shows` says which notices the app shows itself (a notice it cannot show
 goes to the phone's Companion service instead); `set` changes `on`, `events` and `chargers` (`null` for every charger).
 Every field but `app_id` is optional. The answer: `{"ok": true, "action", "api_version": 1, "phone": {"id", "name",
-"on", "events", "chargers", "companion": {"name"} | null, "instant"}, "chargers": [{"id", "name"}], "loads":
-{"chargers", "pool", "spa", "sauna"}, "events"}`; a body that cannot be stored HTTP 400 `{"ok": false, "error":
+"on", "events", "chargers", "companion": {"name", "found"} | null, "instant"}, "chargers": [{"id", "name"}], "loads":
+{"chargers", "pool", "spa", "sauna"}, "events"}`; `companion.found` says whether the Companion service exists now:
+while it does and `instant` is false, Home Assistant tells the phone there, and the app shows nothing of its own; a body that cannot be stored HTTP 400 `{"ok": false, "error":
 "invalid_phone_notifications", "action"}`. Examples: `tests/fixtures/webhook/phone_notifications_*.json`.
 
 Turning **active load balancing** on or off is not available through the webhook, only through
@@ -870,7 +873,8 @@ title, `null` for the other rows. `writable` is true for an administrator's sock
 only. `spotnav/update_site_settings` takes `priority` in `changes`: exactly the ids of `order` in a new order (else
 `spotnav_invalid_value`), with `expected.priority` the order last read (another is `spotnav_conflict`); naming
 `solar_priority` beside it is `spotnav_invalid_value`. Stored without a reload; rows of loads the site does not have
-keep their places; the old `solar_priority` and each charger's `charger_priority` are dropped. The answer carries
+keep their places; the old `solar_priority` and each charger's `charger_priority` are written as derived from the list
+(read only while no list is stored, so going back to an older release keeps the order). The answer carries
 `priority` (as the view states it) beside `site`. Over the webhook it is `spotnav_not_permitted_over_webhook`. The
 `site` block's `solar_priority` stays, derived from the list: `battery_first` where the battery stands above every
 car (with no car, above the water heater), else `car_first`; a write of it moves the battery's row. Example with
@@ -1161,7 +1165,9 @@ and `charger_priority.writable` say whether it may change those (an administrato
 Rules that hold across them:
 
 - **Full replacement, not patches.** Settings are replaced in full and name the `revision` they
-  edited (`expected_revision`); a stale write returns `revision_conflict` with the current record.
+  edited (`expected_revision`); a stale write returns `revision_conflict` with the current record. A charger's
+  `revision` also moves when the phones that hear it change (its `notifications` as an older client reads them), so
+  an older client's body read before such a change is a conflict rather than an echo that undoes it.
   Other writes carry `expected` values and answer `conflict` with the current state.
 - **Stable codes, no prose.** Refusals are codes (`spotnav_unknown_charger`,
   `spotnav_charger_unloaded`, `spotnav_invalid_value` with per-field `field_errors`, and so on);

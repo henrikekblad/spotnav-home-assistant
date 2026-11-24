@@ -299,8 +299,8 @@ async def test_site_settings_over_the_webhook_write_solar_only(
     assert success["site"]["solar_priority"] == SOLAR_PRIORITY_BATTERY_FIRST
     assert success["site"]["solar_forecast"]["selected"] == [roof.entry_id]
     assert success["site"]["active_control"]["writable"] is False and success["site"]["writable"] is True
-    # Stored as the battery's place in the site's priority list (above the cars), the old key dropped.
-    assert CONF_SOLAR_PRIORITY not in site.data
+    # Stored as the battery's place in the site's priority list (above the cars), the old key derived from it.
+    assert site.data[CONF_SOLAR_PRIORITY] == SOLAR_PRIORITY_BATTERY_FIRST
     assert site.data["priority"].index("battery") < min(
         index for index, item in enumerate(site.data["priority"]) if item.startswith("charger:")
     )
@@ -336,7 +336,7 @@ async def test_site_settings_over_the_webhook_write_solar_only(
         assert refused["site"]["active_control"]["writable"] is False
         forbidden.append(refused)
     assert site.data.get(CONF_ACTIVE_CONTROL_ENABLED) == active_before
-    assert success["site"]["solar_priority"] == SOLAR_PRIORITY_BATTERY_FIRST and CONF_SOLAR_PRIORITY not in site.data
+    assert success["site"]["solar_priority"] == SOLAR_PRIORITY_BATTERY_FIRST == site.data[CONF_SOLAR_PRIORITY]
     status, other_version = await post(
         client, "webhook-entry_site",
         {"action": "update_site_settings", "api_version": 2, "expected": {}, "changes": {"solar_priority": SOLAR_PRIORITY_CAR_FIRST}},
@@ -422,10 +422,10 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         {"action": "update_charger_priority", "api_version": 1, "expected": "normal", "priority": "first"},
     )
     assert status == 200 and success["ok"] is True and success["error"] is None
-    # No longer stored on the charger: the site's priority list holds the order, beside the value the app wrote, which
-    # it reads back (`const.CONF_PRIORITY_CLASSES`).
+    # The site's priority list holds the order, beside the value the app wrote, which it reads back
+    # (`const.CONF_PRIORITY_CLASSES`); the charger keeps that old value too, for a downgrade.
     assert success["charger_priority"] == {"value": "first", "choices": ["first", "normal", "last"], "writable": True}
-    assert CONF_CHARGER_PRIORITY not in charger.data
+    assert charger.data[CONF_CHARGER_PRIORITY] == "first"
     # A priority alone is read live by the site: the charger is not reloaded for it.
     assert charger.runtime_data.controller is controller_before
 
@@ -436,7 +436,7 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "last"}
     )
     assert status == 409 and conflict["error"] == "spotnav_conflict"
-    assert conflict["charger_priority"]["value"] == "first" and CONF_CHARGER_PRIORITY not in charger.data
+    assert conflict["charger_priority"]["value"] == "first" == charger.data[CONF_CHARGER_PRIORITY]
 
     status, invalid = await post(
         client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "top"}
@@ -465,12 +465,12 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
     assert status == 400 and no_site["error"] == "spotnav_no_site" and no_site["charger_priority"] is None
     assert CONF_CHARGER_PRIORITY not in lone.data
 
-    # Back to the default: stored as nothing, as the socket stores it.
+    # Back to the default: the old value derived from the list, as the socket stores it.
     status, back = await post(
         client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "normal"}
     )
     assert status == 200 and back["charger_priority"]["value"] == "normal"
-    assert CONF_CHARGER_PRIORITY not in charger.data
+    assert charger.data[CONF_CHARGER_PRIORITY] == "normal"
 
     # The socket refuses the same stale write with the same code.
     frame = (

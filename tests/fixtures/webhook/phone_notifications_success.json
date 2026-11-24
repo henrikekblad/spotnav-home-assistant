@@ -28,6 +28,7 @@
   "phone": {
     "chargers": null,
     "companion": {
+      "found": true,
       "name": "Pixel 8"
     },
     "events": [

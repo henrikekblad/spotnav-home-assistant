@@ -250,6 +250,21 @@ def match_companion(
     return None
 
 
+def merge_choices(keep: Phone, other: Phone) -> Phone:
+    """`keep` (its id, name, routes) with the choices of both entries of one phone: on if either is on, the union of
+    the events and of the chargers (`None`, every charger, if either follows every one) of the entries that are on;
+    an entry that is off adds nothing, and with both off `keep` stays as it is."""
+    ons = [phone for phone in (keep, other) if phone.on]
+    if not ons:
+        return keep
+    events = ordered_events(event for phone in ons for event in phone.events)
+    if any(phone.chargers is None for phone in ons):
+        chargers: tuple[str, ...] | None = None
+    else:
+        chargers = tuple(dict.fromkeys(charger for phone in ons for charger in phone.chargers or ()))
+    return replace(keep, on=True, events=events, chargers=chargers)
+
+
 # ---------------------------------------------------------------------------------------------------------- routing
 
 
@@ -519,6 +534,28 @@ def apply_push_register(
         return out
     chosen = set(events)
     i = next((n for n, phone in enumerate(out) if phone.app is not None and phone.app.push_ref == ref), None)
+    if i is None:
+        # A new reference of the same older app (its token renewed) replaces the one its entry on this charger had,
+        # and a registration after a `null` takes the older app's entry left with nothing to reach it by (no key, no
+        # reference, no Companion service): never a second "SpotNav app" row woken, or kept, for nothing.
+        i = next(
+            (
+                n for n, phone in enumerate(out)
+                if phone.app is not None and phone.app.key is None and charger_id in phone.app.via
+            ),
+            None,
+        )
+        if i is None:
+            i = next(
+                (
+                    n for n, phone in enumerate(out)
+                    if phone.app is not None and phone.app.key is None and phone.app.push_ref is None
+                    and not phone.app.via and phone.notify is None
+                ),
+                None,
+            )
+        if i is not None:
+            out[i] = replace(out[i], app=replace(out[i].app, push_ref=ref))  # type: ignore[arg-type]
     if i is None:
         if len(out) >= MAX_PHONES:
             return out

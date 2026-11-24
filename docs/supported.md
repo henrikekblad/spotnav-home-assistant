@@ -304,7 +304,7 @@ A pump or route missing or wrong here? [Hardware tested](https://github.com/henr
 
 ## Supported pool heat pumps, spas and saunas
 
-SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are found from the integrations below and chosen once in the heat settings. SpotNav only watches them and shows what it would do until an administrator turns on the load's own switch; then it sets them within hard rules (the circulation before the heat pump, the spa's lowest temperature, your settings written back, no writes with the season closed). A sauna is only ever heated for a session you booked, and never past its own door or safety lock. See [Pool, spa and sauna](pool-spa.md). *Untested* means read from the integration's source and not yet run on real equipment.
+SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are found from the integrations below and chosen once in the heat settings. SpotNav only watches them and shows what it would do until an administrator turns on the load's own switch; then it sets them within hard rules (the circulation before the heat pump, the spa's lowest temperature, your settings written back, then no writes with the season closed). A sauna is only ever heated for a session you booked, and never past its own door or safety lock. See [Pool, spa and sauna](pool-spa.md). *Untested* means read from the integration's source and not yet run on real equipment.
 
 | Kind | Integration | Local or cloud | How SpotNav finds it | SpotNav controls |
 | --- | --- | --- | --- | --- |

@@ -387,11 +387,17 @@ def plan_revision_for(hass: HomeAssistant, charger_id: str) -> str | None:
 
 
 def wire_offset(hass: HomeAssistant, charger_id: str, settings_revision: int) -> int:
-    """What the charger's wire revision adds to its own revision: its price entry's write counter, plus the offset
-    the installation's ledger keeps for it since its source last moved (`pricing/price_store.py`)."""
+    """What the charger's wire revision adds to its own revision: its price entry's write counter and the phones'
+    changes of its `notifications` view, plus the offset the installation's ledger keeps for it since its source last
+    moved (`pricing/price_store.py`)."""
     source = entry_source_for(hass, charger_id)
     source_id = None if source is None else source.entry_id
     write = 0 if source is None else source.write_revision
+    # The phones' changes of what an older client reads as this charger's `notifications`: a body read before one is
+    # a conflict (`notifications/phone_store.view_revision`).
+    phones = domain_data(hass).phones
+    if phones is not None:
+        write += phones.view_revision(charger_id)
     store = domain_data(hass).price_store
     if store is None:
         return write

@@ -12,7 +12,7 @@ A part is in one of these states (the card's line under the load):
   writes (`foreign_mode`), its own scheduler (`own_scheduler`).
 * `handed_back`: a change SpotNav did not make was kept: the load is the person's to the next local day
   (`foreign_change`).
-* `season_closed`: the pool's season is closed: nothing written at all.
+* `season_closed`: the pool's season is closed: what SpotNav held is handed back, then nothing is written at all.
 """
 
 from __future__ import annotations

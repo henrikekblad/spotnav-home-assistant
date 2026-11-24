@@ -24,7 +24,11 @@ async def choose_in_the_card(world: World, hass: HomeAssistant, car: str) -> Non
     current = world.settings
     body = {key: value for key, value in encode_settings(current).items() if key != "revision"}
     body["target"] = {**body["target"], "vehicle_id": world.cars[car]}
-    await async_update_settings(hass, world.entry.entry_id, expected_revision=current.revision, replacement=body)
+    from custom_components.spotnav.pricing.price_source import wire_revision  # noqa: PLC0415
+
+    # The revision the card read: the wire one (the phones' changes of this charger's view are part of it).
+    revision = wire_revision(hass, world.entry.entry_id, current.revision)
+    await async_update_settings(hass, world.entry.entry_id, expected_revision=revision, replacement=body)
     await hass.async_block_till_done()
 
 

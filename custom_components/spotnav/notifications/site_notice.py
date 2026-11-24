@@ -56,6 +56,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..runtime import entry_task
 from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_LATER, CHOICE_TAKES_WHAT_FITS
 from ..texts import language_of
 from .phone_store import phone_store
@@ -355,7 +356,7 @@ class SiteNotice:
             phones = ()
         pushed = bool(refs)
         if refs:
-            self._hass.async_create_task(async_wake_refs(self._hass, refs), eager_start=True)
+            entry_task(self._hass, self._entry_id, async_wake_refs(self._hass, refs), "spotnav site app wake")
         if not phones and not pushed:
             return False
         # Told for these deadlines from here on, whatever else happens to them.
@@ -378,7 +379,7 @@ class SiteNotice:
             notifier.fit_sent(now)
         payload = self._payload(asking, ranked, car_blocks, now)
         for target in phones:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav site notification")
         _LOGGER.info("SpotNav site %s: told that %d deadline(s) will not be ready in time", self._entry_id, len(asking))
         return True
 
@@ -504,7 +505,7 @@ class SiteNotice:
     def _clear(self, targets: tuple[str, ...], tag: str | None = None) -> None:
         payload = {"message": "clear_notification", "data": {"tag": tag or self.tag}}
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav site notification")
 
     async def _async_send(self, target: str, payload: dict[str, Any]) -> bool:
         try:
@@ -524,7 +525,7 @@ class SiteNotice:
         store = phone_store(self._hass)
         targets, refs = ((), ()) if store is None else store.recipients(EVENT_POOL_SEASON)
         if refs:
-            self._hass.async_create_task(async_wake_refs(self._hass, refs), eager_start=True)
+            entry_task(self._hass, self._entry_id, async_wake_refs(self._hass, refs), "spotnav site app wake")
         if not targets or not self._within_limit(now):
             return bool(refs)
         self._sent.append(now)
@@ -543,7 +544,7 @@ class SiteNotice:
             },
         }
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav site notification")
         _LOGGER.info("SpotNav site %s: told that the pool season could be closed", self._entry_id)
         return True
 

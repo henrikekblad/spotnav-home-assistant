@@ -3,8 +3,9 @@ old `charger_priority` while no list is stored, the rows a site has now, the blo
 the one write.
 
 **The write** (`store_order`) stores the whole list in the site entry's data and in the running site's config (no
-reload: every reader reads the config when it decides), drops the old `solar_priority` from the site and each member
-charger's `charger_priority`, and asks the site to work its chargers out again at once. An older app's write of the
+reload: every reader reads the config when it decides), writes the old `solar_priority` on the site and each member
+charger's `charger_priority` as derived from the list (only read while no list is stored, so going back to a release
+before the list keeps the order), and asks the site to work its chargers out again at once. An older app's write of the
 old values becomes a change of the list (`site/priority.with_solar_priority`, `with_charger_priority`).
 
 **The rows shown** (`present_ids`): each member charger, and each other row whose load the site has: house heat (a
@@ -28,8 +29,11 @@ from ..const import (
     CONF_PRIORITY_CLASSES,
     CONF_SOLAR_PRIORITY,
     DEFAULT_CHARGER_PRIORITY,
+    SOLAR_PRIORITY_BATTERY_FIRST,
+    SOLAR_PRIORITY_CAR_FIRST,
 )
 from .priority import (
+    battery_first_in,
     charger_entry_of,
     charger_id,
     derived_charger_priorities,
@@ -44,6 +48,7 @@ from .priority import (
     ID_SPA_IDLE,
     ID_WATER_HEATER,
     members,
+    complete,
     solar_priority,
     stored,
 )
@@ -171,7 +176,7 @@ _KEEP: Any = object()
 def store_order(
     hass: HomeAssistant, site: ConfigEntry, order: Sequence[str], classes: Mapping[str, str] | None = _KEEP
 ) -> None:
-    """Store the whole list (see the module): the site entry, the running site's config, the old keys dropped.
+    """Store the whole list (see the module): the site entry, the running site's config, the old keys derived.
     `classes`: the old values an older app reads back (`const.CONF_PRIORITY_CLASSES`): set by an older app's
     `charger_priority` write, `None` drops them (the list itself saved), left out keeps what is stored."""
     from ..runtime import site_controller_for  # noqa: PLC0415
@@ -179,22 +184,27 @@ def store_order(
     order = list(order)
     data = dict(site.data)
     data[CONF_PRIORITY] = order
-    data.pop(CONF_SOLAR_PRIORITY, None)
     if classes is None:
         data.pop(CONF_PRIORITY_CLASSES, None)
     elif classes is not _KEEP:
         data[CONF_PRIORITY_CLASSES] = dict(classes)
+    # The old keys, derived from the list: a release before the list reads them (a downgrade keeps the order).
+    chargers = members(site.data)
+    whole = complete(order, chargers)
+    legacy_solar = SOLAR_PRIORITY_BATTERY_FIRST if battery_first_in(whole) else SOLAR_PRIORITY_CAR_FIRST
+    kept_classes = data.get(CONF_PRIORITY_CLASSES)
+    legacy_ranks = derived_charger_priorities(whole, kept_classes if isinstance(kept_classes, dict) else None)
+    data[CONF_SOLAR_PRIORITY] = legacy_solar
     hass.config_entries.async_update_entry(site, data=data)
-    for entry_id in members(site.data):
+    for entry_id in chargers:
         entry = hass.config_entries.async_get_entry(entry_id)
-        if entry is not None and CONF_CHARGER_PRIORITY in entry.data:
-            charger_data = dict(entry.data)
-            charger_data.pop(CONF_CHARGER_PRIORITY, None)
-            hass.config_entries.async_update_entry(entry, data=charger_data)
+        rank = legacy_ranks.get(entry_id, DEFAULT_CHARGER_PRIORITY)
+        if entry is not None and entry.data.get(CONF_CHARGER_PRIORITY) != rank:
+            hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_CHARGER_PRIORITY: rank})
     controller = site_controller_for(hass, site.entry_id)
     if controller is not None:
         controller.config[CONF_PRIORITY] = order
-        controller.config.pop(CONF_SOLAR_PRIORITY, None)
+        controller.config[CONF_SOLAR_PRIORITY] = legacy_solar
         if CONF_PRIORITY_CLASSES in data:
             controller.config[CONF_PRIORITY_CLASSES] = dict(data[CONF_PRIORITY_CLASSES])
         else:

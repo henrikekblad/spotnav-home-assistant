@@ -37,7 +37,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   carrying `revision` is refused as an unknown field rather than overriding the compare-and-set.
   While an electricity price entry is the charger's price source, the record's `revision` is the charger's own
   plus the price entry's write counter (`pricing/price_source.py:wire_revision`), so a body read before a change
-  of the area or fees made anywhere else is a `revision_conflict`.
+  of the area or fees made anywhere else is a `revision_conflict`. The phones' changes of the charger's
+  `notifications` view count too (`notifications/phone_store.view_revision`): an older client's body read before an
+  administrator's phone change is a conflict, never an echo that undoes it.
 * `area_id` and the row for the price source's area belong to that source: while it is an electricity price
   entry, a body that changes them changes the price entry (in place, `async_write_price_entry`), never the
   charger's own record, and every charger using that entry follows. The other rows (areas the charger used

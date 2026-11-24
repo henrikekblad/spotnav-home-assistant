@@ -7,7 +7,8 @@ restore, the hand-back, the read-back, the budgets) is `loads/hold_part.py`.
 
 * heats for a bath (the plan's `heat` and `hold`), holds its idle temperature between baths, and is never let below
   its floor: water at or below `DEFAULT_FLOOR_C` (10 °C) turns the heat on whatever the plan, the shed order or the day's budget
-  (only a hand-back to the person comes first). No setpoint is ever written below `max(idle_c, DEFAULT_FLOOR_C)`.
+  (only a hand-back to the person comes first), until it reads `FLOOR_MARGIN_C` above it; the Rest that ends that run is
+  the floor's own write, never held back by the budget either. No setpoint is ever written below `max(idle_c, DEFAULT_FLOOR_C)`.
 * Balboa is set by its presets, Ready to heat and Rest between (its hvac `off` is Rest, never "off"); the bath
   temperature is written only when the dial changes. MSpa is watched only while its own heat schedule is set. Gecko
   is set through its water heater only, never the water-care presets.
@@ -107,8 +108,12 @@ class DeadlinePart:
         self.readable = False
         #: The spa's idle heat is on (on/off families: SpotNav keeps the idle temperature within `IDLE_BAND_C`).
         self.idle_heating = False
-        #: The heater was last turned on for a bath (not an idle cycle).
+        #: The heater was last turned on for a bath (not an idle cycle, not the floor).
         self.on_for_bath = False
+        #: The floor's run: water at or below `DEFAULT_FLOOR_C` is heated to `DEFAULT_FLOOR_C + FLOOR_MARGIN_C` before
+        #: the Rest (kept), and the heater was turned on for it, so the Rest that ends it is the floor's own write.
+        self.floor_heating = False
+        self.on_for_floor = False
         # The sauna: since when SpotNav has it on, the run (its session, or the "now" press) and its on time so far,
         # and the run its longest run ended (kept).
         self.on_since: datetime | None = None
@@ -128,6 +133,8 @@ class DeadlinePart:
             "off_since": None if self.off_since is None else self.off_since.isoformat(),
             "on_seconds": self.on_seconds,
             "max_on_for": None if self.max_on_for is None else self.max_on_for.isoformat(),
+            "floor_heating": self.floor_heating,
+            "on_for_floor": self.on_for_floor,
         }
 
     def restore(self, raw: Any) -> None:
@@ -138,6 +145,8 @@ class DeadlinePart:
             self.off_since = aware_instant(raw.get("off_since"))
             self.on_seconds = finite_number(raw.get("on_seconds")) or 0.0
             self.max_on_for = aware_instant(raw.get("max_on_for"))
+            self.floor_heating = raw.get("floor_heating") is True
+            self.on_for_floor = raw.get("on_for_floor") is True
 
     @property
     def shadow(self) -> Any:
@@ -262,7 +271,13 @@ class DeadlinePart:
         part = self.part
         plan = self.shadow.plan
         current = self.shadow.reading.current_c
-        floor = current is not None and current <= DEFAULT_FLOOR_C
+        if current is not None:
+            if current <= DEFAULT_FLOOR_C:
+                self.floor_heating = True
+            elif current >= DEFAULT_FLOOR_C + FLOOR_MARGIN_C:
+                self.floor_heating = False
+        # Water at the floor is heated past it by the margin before the Rest, so the floor never flaps at 10 °C.
+        floor = current is not None and self.floor_heating
         paused = part.paused(now)
         if paused and not floor:
             part.state, part.reason = STATE_PAUSED, part.paused_reason
@@ -289,8 +304,11 @@ class DeadlinePart:
         floor_rule = floor or action == ACTION_FLOOR
         if floor_rule:
             part.reason = REASON_FLOOR
-        # The floor's write and a shed step's are never held back by the day's budget (review, should-fix).
-        exempt = floor_rule or shed_bath or shed_idle
+        if route.heat is not None and self.heat_read == route.off:
+            self.on_for_floor = False
+        # The floor's writes (its Ready, and the Rest that ends its run) and a shed step's are never held back by the
+        # day's budget (review, should-fix; notifications review B3).
+        exempt = floor_rule or shed_bath or shed_idle or (self.on_for_floor and not heat)
         if route.heat is not None:
             # An idle cycle is SpotNav's own thermostat between baths; waiting between two blocks of a bath's heat-up
             # (the latched session) is the bath's. On a bath day the idle cycles leave the bath its writes.
@@ -303,7 +321,9 @@ class DeadlinePart:
             idle_write = idle_cycle and (value == route.on or not self.on_for_bath)
             await self._async_set_heat(now, config, route, value, exempt=exempt, idle=idle_write, reserve=reserve)
             if value == route.on and self.heat_read != route.on:
-                self.on_for_bath = not idle_cycle
+                # Only a bath's on is held for the bath (review S7); the floor's on is the floor's.
+                self.on_for_bath = bath and not shed_bath
+                self.on_for_floor = floor_rule and not self.on_for_bath
         if route.setpoint == SETPOINT_HOLD:
             # The setpoint is the handle: the bath, or the idle temperature (never below the floor).
             value = config.bath_c if (bath and not shed_bath) else hold

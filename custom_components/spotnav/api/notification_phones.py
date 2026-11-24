@@ -19,9 +19,10 @@ The webhook action, on a charger's webhook and on a site's:
     {action: "phone_notifications", api_version?: 1, app_id, name?, model?, push_ref?, shows?,
      set?: {on?, events?, chargers?}}
 
-answers `{ok, action, api_version: 1, phone: {id, name, on, events, chargers, companion: {name} | null, instant},
-chargers, loads, events}`. It reads and writes the caller's own phone only, the one whose app sent this `app_id` (made
-on the first call, see `PhoneStore.async_app_call`). `name` is the phone's own name, `model` its model: while the
+answers `{ok, action, api_version: 1, phone: {id, name, on, events, chargers, companion: {name, found} | null,
+instant}, chargers, loads, events}`. It reads and writes the caller's own phone only, the one whose app sent this `app_id` (made
+on the first call, see `PhoneStore.async_app_call`; a Companion phone that was off is turned on there only by the
+app's own `set`, merged with what the Companion phone had). `name` is the phone's own name, `model` its model: while the
 app's phone has no Companion service and no administrator split them, each call links it to the one Companion phone
 of that name or model; 400 `invalid_phone_notifications` for a body that cannot be
 stored, nothing written. The `app_id` is a secret: never logged, kept hashed only, never answered.
@@ -184,7 +185,12 @@ def _own_phone(hass: HomeAssistant, store: PhoneStore, phone: Phone) -> dict[str
         "on": phone.on,
         "events": list(phone.events),
         "chargers": None if phone.chargers is None else list(phone.chargers),
-        "companion": None if phone.notify is None else {"name": names.get(phone.notify, phone.name)},
+        "companion": None if phone.notify is None else {
+            "name": names.get(phone.notify, phone.name),
+            # Whether the Companion service exists now: while it does and `instant` is false, Home Assistant tells
+            # the phone there, and the app shows nothing of its own.
+            "found": hass.services.has_service(NOTIFY_DOMAIN, phone.notify),
+        },
         "instant": phone.instant,
     }
 

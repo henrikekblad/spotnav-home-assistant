@@ -291,7 +291,7 @@ async def test_the_night_reviews_the_days_within_the_5_minute_statistics_once(
     sun = _review(hass, now)
     await sun.async_load()
     sun.tick()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     # One read of the 5-minute rows over the days in reach (10 days back from 00:30: the 13th is partly purged, so the
     # 14th to the 22nd).
     assert len(statistics) == 1 and statistics[0][3] == "5minute"
@@ -302,7 +302,7 @@ async def test_the_night_reviews_the_days_within_the_5_minute_statistics_once(
     assert sun.last_run is not None and sun.last_run["status"] == "ok"
     # Done for the day: nothing read again until the next night.
     sun.tick()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert len(statistics) == 1
     diagnostics = sun.diagnostics()
     assert diagnostics["days"] == 9 and diagnostics["basis"] == {"quarter": 9} and len(diagnostics["last_days"]) == 7
@@ -314,7 +314,7 @@ async def test_before_the_hour_after_midnight_nothing_runs_and_yesterday_short_i
     sun = _review(hass, datetime(2026, 11, 22, 23, 5, tzinfo=timezone.utc))  # 00:05
     await sun.async_load()
     sun.tick()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert statistics == []
 
     async def empty(*_args: Any) -> Any:
@@ -323,7 +323,7 @@ async def test_before_the_hour_after_midnight_nothing_runs_and_yesterday_short_i
     monkeypatch.setattr(sun_review, "async_statistics", empty)
     sun._demand.moment = datetime(2026, 11, 22, 23, 30, tzinfo=timezone.utc)
     sun.tick()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sun.days == {} and sun.last_run["failed"]["2026-11-22"] == FAIL_NO_DATA
     assert sun.diagnostics()["retry_at"] is not None
     # An older day without its rows is left to the hourly estimate; yesterday is tried again an hour on.
@@ -331,7 +331,7 @@ async def test_before_the_hour_after_midnight_nothing_runs_and_yesterday_short_i
     monkeypatch.setattr(sun_review, "async_statistics", lambda *args: _async(_rows([date(2026, 11, 22)])))
     sun._demand.moment += timedelta(hours=1, minutes=1)
     sun.tick()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert list(sun.days) == [date(2026, 11, 22)]
 
 

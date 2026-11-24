@@ -13,8 +13,10 @@ administrator, one tap): without it nothing is written and the card says what Sp
    circulation goes off only once the heat pump has read off for `RUN_ON_MIN`. The circulation reading off (or no
    flow, or the pump's problem sensor on) while SpotNav runs the heat pump turns the heat pump off at once; a fault
    keeps it off for `FAULT_HOLD`. With only the heat pump's opt-in, the person's circulation decides when it may run.
-2. **Season closed: no writes at all.** What SpotNav held is let go as it stands (restoring could start a winterised
-   pump); the person owns the pool until it is reopened.
+2. **Season closed: handed back, then no writes at all.** What SpotNav still holds is handed back first, as at an
+   opt-out (the heat pump before the circulation, the run-on respected, only where the device still reads SpotNav's
+   value); a heat that would wait for the water to move is left off. After that nothing is written, and the person
+   owns the pool until it is reopened.
 3. **Minimum times and budgets**: the heat pump `HEAT_PUMP_MIN_ON_MIN`/`MIN_OFF`, at most `HEAT_PUMP_STARTS_DAY`
    starts in a day; the circulation `CIRCULATION_MIN_ON_MIN`/`MIN_OFF`, `CIRCULATION_STARTS_HOUR` and
    `CIRCULATION_STARTS_DAY`; the setpoint at most `SETPOINT_WRITES_DAY` writes a day, on/off `ON_OFF_WRITES_DAY`. A
@@ -392,15 +394,25 @@ class PoolPart:
             # The person's setpoint at the panel is theirs: only a change of the dial writes again (review S1).
             self.dial_written = pool.target_c
         if not pool.season_open:
-            # No writes at all: what SpotNav held is the person's as it stands.
-            for part, keys in ((self.hp, (KEY_HP, KEY_HP_SET)), (self.circ, (KEY_CIRC,))):
-                for key in keys:
-                    held = part.helds.get(key)
-                    if held is not None and held.holds():
-                        held.drop(None)
-                        self.control.log(now, part.name, "let_go", why="season_closed")
+            # What SpotNav still holds is handed back first, as at an opt-out (the heat pump before the circulation,
+            # the run-on respected); once nothing of SpotNav's is left, nothing is written at all.
+            for part in (self.hp, self.circ):
                 part.state, part.reason = STATE_SEASON_CLOSED, None
                 part.restart_restore = False
+            if self.hp.holds() or self.circ.holds():
+                done = await self._async_exit(now, pool)
+                if not done and self.hp.reason == REASON_RESTORE_WAITS:
+                    # The person's heat would wait for the water to move; with the season closed the heat pump is
+                    # left off (SpotNav's last value) rather than heated again.
+                    held = self.hp.helds.get(KEY_HP)
+                    if held is not None:
+                        held.drop(self.hp_read)
+                    self.hp.state, self.hp.reason = STATE_SEASON_CLOSED, None
+                    done = not self.hp.holds() and not self.circ.holds()
+                if done:
+                    self.dial_written = None
+                    for part in (self.hp, self.circ):
+                        self.control.log(now, part.name, "let_go", why="season_closed")
             return
         for part in (self.hp, self.circ):
             part.trim(now)
@@ -796,7 +808,7 @@ class PoolSpaControl:
             config = None
         jobs = []
         if config is not None:
-            if (self.pool.hp.holds() or self.pool.circ.holds()) and config.pool is not None and config.pool.season_open:
+            if (self.pool.hp.holds() or self.pool.circ.holds()) and config.pool is not None:
                 jobs.append(self._async_settle(lambda: self.pool._async_exit(now, config.pool)))
             for part, block in ((self.spa, config.spa), (self.sauna, config.sauna)):
                 if part.part.holds():

@@ -147,7 +147,7 @@ a vehicle integration, charge a fixed number of kWh instead.
   nothing; the period's own end remains the guard. While the car's level sensor reads nothing (an expired
   login of the car's integration, a cloud outage), the target is still planned: from the estimate carried
   from the last reading by the energy the charger delivered since, else from the last reading the charger
-  holds, else as a full charge from empty to the target (the most the target can ask for; the car ends it
+  holds while it is under 24 hours old (the car may have been driven since an older one), else as a full charge from empty to the target (the most the target can ask for; the car ends it
   when full). The status says so calmly, as a notice, never as a missing setting: *The car's charge level
   can't be read; planning from the estimated 88 %* or *…from the last known 88 % (Mon 20:30)*. It waits 15
   minutes without a value before saying so, so a cloud poll that drops out says nothing, and it says nothing
