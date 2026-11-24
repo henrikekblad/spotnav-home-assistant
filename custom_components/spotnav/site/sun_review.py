@@ -35,6 +35,7 @@ from ..battery.plan_shadow import PriceSlot
 from ..battery.review_baselines import sun_by_quarter
 from ..const import DOMAIN
 from ..debug_day import DayStore
+from ..runtime import entry_task
 from .energy_flow import EnergyHour
 from .energy_statistics import async_energy_prefs, async_statistics, energy_flow_ids, short_term_days, summed
 from .history_period import PERIOD_DAY, Period, local_date, midnight_utc, period_of
@@ -139,6 +140,7 @@ class SiteSunReview:
         prices: Callable[[Period], Sequence[PriceSlot]],
     ) -> None:
         self.hass = hass
+        self._entry_id = entry_id
         self._demand = demand
         self._has_battery = has_battery
         self._prices = prices
@@ -229,8 +231,9 @@ class SiteSunReview:
         if today == self._done_for and (self._retry_at is None or now < self._retry_at):
             return
         self._running = True
-        # Short (one statistics read in the recorder's executor and a day's arithmetic per day): a tracked task.
-        self._task = self.hass.async_create_task(self.async_review(), "spotnav_sun_review", eager_start=False)
+        # A background task tied to the entry: a statistics read just after a start never holds up the start, and an
+        # unload cancels it (as `halt` does).
+        self._task = entry_task(self.hass, self._entry_id, self.async_review(), "spotnav sun review", eager_start=False)
 
     async def async_review(self) -> None:
         """Review the days not reviewed yet within the 5-minute statistics. Never raises."""

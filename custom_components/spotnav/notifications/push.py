@@ -43,6 +43,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..runtime import entry_task
 from .settings import DEFAULT_EVENTS, EVENT_VEHICLE_IDENTIFY, NOTIFICATION_EVENTS
 
 _LOGGER = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ class ChargerPush:
     def _start_wake(self, refs: tuple[str, ...], now: datetime) -> None:
         self._sent_times.append(now)
         self._in_flight = True
-        self._hass.async_create_task(self._async_wake(refs), eager_start=True)
+        entry_task(self._hass, self._entry_id, self._async_wake(refs), "spotnav app wake")
 
     async def _async_wake(self, refs: tuple[str, ...]) -> None:
         try:

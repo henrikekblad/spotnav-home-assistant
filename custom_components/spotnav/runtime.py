@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -157,6 +157,17 @@ def domain_data(hass: HomeAssistant) -> SpotNavData:
     if data is None:
         data = hass.data[DATA_KEY] = SpotNavData()
     return data
+
+
+def entry_task(
+    hass: HomeAssistant, entry_id: str | None, target: Coroutine[Any, Any, Any], name: str, *, eager_start: bool = True
+) -> asyncio.Task[Any]:
+    """A background task tied to the entry: cancelled when it unloads, never holding up the start or the stop. Without
+    a loaded entry (a test's bare object, an entry going away) a plain background task."""
+    entry = None if entry_id is None else hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        return hass.async_create_background_task(target, name, eager_start)
+    return entry.async_create_background_task(hass, target, name, eager_start)
 
 
 def holiday_dates(hass: HomeAssistant) -> frozenset[date]:

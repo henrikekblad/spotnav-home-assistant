@@ -130,6 +130,7 @@ from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_LATER, CHOICE_TA
 from ..sessions.store import SessionStore
 from ..vehicles.guest import is_guest
 from ..const import DOMAIN
+from ..runtime import entry_task
 from ..texts import language_of
 from .messages import compose, does_not_fit_choice_text, does_not_fit_text, EVENT_TEST, identify_text, Money
 from .phone_store import phone_store
@@ -913,7 +914,7 @@ class ChargerNotifier:
         )
         payload = self._payload(event, title, message, self._url())
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav notification")
 
     def _companion(self, event: str) -> tuple[str, ...]:
         """The Companion services of the phones that hear `event` from this charger by that route (`phone_store.py`):
@@ -1125,7 +1126,7 @@ class ChargerNotifier:
             },
         }
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav notification")
         return True
 
     def _arm_fit_timer(self, due: datetime | None) -> None:
@@ -1224,7 +1225,7 @@ class ChargerNotifier:
         title, message = compose(EVENT_VEHICLE_IDENTIFY, self._name(), {}, language)
         payload = {"title": title, "message": message, "data": {**data, "actions": actions}}
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav notification")
         return targets
 
     def vehicle_question_settled(self) -> None:
@@ -1246,13 +1247,13 @@ class ChargerNotifier:
             "data": {**self._identify_data(tag), "alert_once": True, "push": {"interruption-level": "passive"}},
         }
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav notification")
 
     def clear_vehicle_question(self, tag: str, targets: tuple[str, ...]) -> None:
         """Take the question off every phone it went to (the car was unplugged, or nobody answered in time)."""
         payload = {"message": "clear_notification", "data": {"tag": tag}}
         for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+            entry_task(self._hass, self._entry_id, self._async_send(target, payload), "spotnav notification")
 
     async def async_send_test(self) -> list[str]:
         """A test message to this charger's phones that are on and reached through the Companion app now
