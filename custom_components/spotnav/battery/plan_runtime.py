@@ -913,7 +913,9 @@ class BatteryPlanShadow:
             None if car_w is None else car_w / 1000.0,
             facts.power_kw,
             facts.soc_pct,
-            None if facts.power_kw is None else ac_kw(facts.power_kw, self.learned.conversion.loss(facts.power_dc)),
+            None
+            if facts.power_kw is None
+            else ac_kw(facts.power_kw, self.learned.conversion.loss(facts.power_dc), grid_kw),
         )
         if turned:
             # After the reading above, which closed the quarter hour that just ended.
@@ -922,8 +924,10 @@ class BatteryPlanShadow:
     def _learn_round_trip(self, now: datetime, facts: BatteryFacts) -> None:
         """The round trip from the battery's own meters (`round_trip.py`), at each quarter hour's turn."""
         ratings = [kw for kw in (facts.rated_charge_kw, facts.rated_discharge_kw) if kw is not None and kw > 0]
-        # Counted at the battery, the plan turns it into an AC round trip itself (`learned.with_learned`).
-        self.learned.round_trip.set_cap(DC_CAP if facts.power_dc else PLAN_CAP)
+        # Counted at the battery, the plan turns it into an AC round trip itself (`learned.with_learned`); only on
+        # facts that know the battery, so a passing start-up read does not flip it.
+        if facts.battery_entity_id is not None:
+            self.learned.round_trip.set_cap(DC_CAP if facts.power_dc else PLAN_CAP)
         before = self.learned.round_trip.efficiency
         if self.learned.round_trip.observe(
             now,
@@ -1114,13 +1118,13 @@ class BatteryPlanShadow:
                 _LOGGER.debug("SpotNav battery plan: %s cannot be rebuilt (no statistics or prices)", day)
                 return
             grid, battery, step = power
-            quarters, actual = rebuilt_quarters(
+            quarters, actual, loss_cost = rebuilt_quarters(
                 start, end, grid, battery, step, prices, self._cap_kw, self.learned.conversion.loss(True)
             )
             wear, _unknown = self._wear()
             made: DayReview | None = await self.hass.async_add_executor_job(
                 partial(
-                    rebuilt_review, review, quarters, actual, params, self._prices_after(day), end, next_end,
+                    rebuilt_review, review, quarters, actual, loss_cost, params, self._prices_after(day), end, next_end,
                     day_quarters(day, self._tz), wear, now, self._sell_margin(),
                 )
             )
@@ -1132,7 +1136,12 @@ class BatteryPlanShadow:
                 day, "5-minute" if step < timedelta(hours=1) else "hourly", review.battery_saving or 0.0,
                 made.battery_saving or 0.0,
             )
-            self.reviews = [made if item.day == day else item for item in self.reviews]
+            current = next((item for item in self.reviews if item.day == day), None)
+            if current is not review:
+                # Changed meanwhile (its sun, its perfect plan): tried again at the next quarter hour, on the new one.
+                self._rebuild_tried.discard(day)
+                return
+            self.reviews = [made if item is review else item for item in self.reviews]
             self._save()
         except Exception:  # noqa: BLE001 - a day that cannot be rebuilt keeps its figures
             _LOGGER.debug("SpotNav battery plan: %s could not be rebuilt", day, exc_info=True)

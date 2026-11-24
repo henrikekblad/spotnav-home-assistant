@@ -14,11 +14,14 @@ statistics are kept (ten days by default), else per hour.
   (as the house card prices a past day) and the site's import cap now.
 * **What really happened** (`actual_cost`): the grid as measured over the same quarter hours, so it and the day with
   no battery cover the same time. The start and end SoC are the stored review's.
+* **The loss's cost** (`loss_cost`): the day with no battery over the same quarter hours counted with the battery as
+  read less counted on the AC side, from the same statistics: the loss alone, whatever quarter hours the stored review
+  covered and however an hour's mean nets.
 * **Again** (`rebuilt_review`): the day with no battery, self-consumption and the perfect plans (`hindsight.facit_day`,
   with the AC round trip) worked out again; the battery's own way's saving follows from them. The SpotNav modes'
   runs cannot be run again (what each planned per quarter hour is gone): their savings are kept as stored, which is
   right to the first order because the loss lay in their house and in the day with no battery alike, and only
-  measured against the new yardstick. The review's own runs are moved by the loss's cost (`loss_cost`), so the
+  measured against the new yardstick. The review's own runs are moved by the loss's cost, so the
   battery's own way against self-consumption and against no battery fall by it while the modes' figures stay. The sun's
   figure is kept. The review is marked `BATTERY_AC_STATISTICS`.
 
@@ -38,12 +41,13 @@ from .conversion_loss import ac_kw
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, OWN, PLANNING_MODES, against, end_value_next_day, facit_day
 from .plan_model import BatteryParams
 from .plan_shadow import BATTERY_AC_STATISTICS, BUCKET, Bucket, DayReview, PriceSlot, Run
-from .review_baselines import no_battery_cost
+from .review_baselines import grid_cost, no_battery_cost
 
 FIVE_MIN: Final = timedelta(minutes=5)
 HOUR: Final = timedelta(hours=1)
-#: A rebuilt day must cover at least this share of the quarter hours the review covered.
+#: A rebuilt day must cover at least this share of the quarter hours the review covered, and at most the second.
 MIN_COVER_SHARE: Final = 0.9
+MAX_COVER_SHARE: Final = 1.1
 
 
 def rebuilt_quarters(
@@ -55,12 +59,13 @@ def rebuilt_quarters(
     prices: Sequence[PriceSlot],
     cap_kw: float | None,
     loss: tuple[float, float],
-) -> tuple[list[Bucket], float]:
+) -> tuple[list[Bucket], float, float]:
     """The day's quarter hours from [start] to [end] (UTC) as the review counts them, the battery taken out on the AC
-    side (see the module), and what really happened over them (minor units). [grid_kw] and [battery_kw] are the
-    periods' means (kW, import and charging positive) by their start, each [step] long (five minutes or an hour)."""
+    side (see the module), what really happened over them and the loss's cost (minor units). [grid_kw] and
+    [battery_kw] are the periods' means (kW, import and charging positive) by their start, each [step] long (five
+    minutes or an hour)."""
     quarters: list[Bucket] = []
-    actual = 0.0
+    actual = loss_cost = 0.0
     moment = start
     while moment < end:
         if step == HOUR:
@@ -70,8 +75,10 @@ def rebuilt_quarters(
         price = next((p for p in prices if p.start <= moment < p.end), None)
         if price is not None and all(p in grid_kw and p in battery_kw for p in periods):
             grid = sum(grid_kw[p] for p in periods) / len(periods)
-            without = sum(grid_kw[p] - ac_kw(battery_kw[p], loss) for p in periods) / len(periods)
+            without = sum(grid_kw[p] - ac_kw(battery_kw[p], loss, grid_kw[p]) for p in periods) / len(periods)
+            as_read = sum(grid_kw[p] - battery_kw[p] for p in periods) / len(periods)
             hours = BUCKET.total_seconds() / 3600.0
+            loss_cost += grid_cost(as_read * hours, price.buy, price.sell) - grid_cost(without * hours, price.buy, price.sell)
             quarters.append(
                 Bucket(
                     start=moment,
@@ -86,13 +93,14 @@ def rebuilt_quarters(
             )
             actual += grid * hours * (price.buy if grid >= 0 else price.sell)
         moment += BUCKET
-    return quarters, actual
+    return quarters, actual, loss_cost
 
 
 def rebuilt_review(
     review: DayReview,
     quarters: Sequence[Bucket],
     actual_cost: float,
+    loss_cost: float,
     battery: BatteryParams,
     prices_after: Sequence[PriceSlot],
     end: datetime,
@@ -102,13 +110,14 @@ def rebuilt_review(
     now: datetime,
     sell_margin: float | None = None,
 ) -> DayReview | None:
-    """[review] counted again over the rebuilt [quarters] (see the module); `None` when they cover too little of it or
-    the review has no day without a battery to move from."""
-    if review.no_battery_cost is None or len(quarters) < MIN_COVER_SHARE * review.covered:
+    """[review] counted again over the rebuilt [quarters] with what really happened over them and [loss_cost] (see the
+    module); `None` when they cover too little or too much of it, the review has no day without a battery to move
+    from, or its perfect plan cannot be worked out (the review then keeps its figures)."""
+    if review.no_battery_cost is None:
+        return None
+    if not MIN_COVER_SHARE * review.covered <= len(quarters) <= MAX_COVER_SHARE * review.covered:
         return None
     nothing = no_battery_cost(quarters)
-    # What the battery saved against no battery, before and now: the difference is the loss's cost.
-    loss_cost = (review.no_battery_cost - review.actual.cost) - (nothing - actual_cost)
     value = end_value_next_day(prices_after, end, next_end, battery)
     kwargs = {} if sell_margin is None else {"sell_margin": sell_margin}
     stored = review.facit
@@ -128,7 +137,9 @@ def rebuilt_review(
         own_work=None if stored is None or OWN not in stored.candidates else stored.candidates[OWN].work,
         **kwargs,
     )
-    if made is not None and stored is not None:
+    if made is None:
+        return None
+    if stored is not None:
         # The modes' runs are gone: their savings as stored, against the new yardstick.
         yardstick = made.yardstick
         kept = {
@@ -147,6 +158,6 @@ def rebuilt_review(
         plan=moved(review.plan),
         self_consumption=moved(review.self_consumption),
         modes={name: moved(run) for name, run in review.modes.items()},
-        facit=made if made is not None else stored,
+        facit=made,
         battery_ac=BATTERY_AC_STATISTICS,
     )

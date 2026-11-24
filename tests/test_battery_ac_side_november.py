@@ -82,7 +82,7 @@ def _day(data: dict, day: date, loss: tuple[float, float]) -> tuple[list[Bucket]
                 export_kwh=max(0.0, -grid) / 4,
                 car_kwh=(car or 0.0) / 4,
                 battery_kwh=battery / 4,
-                battery_ac_kwh=ac_kw(battery, loss) / 4,
+                battery_ac_kwh=ac_kw(battery, loss, grid) / 4,
                 covered_s=900.0,
             )
         )
@@ -194,11 +194,11 @@ def test_a_stored_review_from_before_the_ac_side_is_rebuilt_from_the_statistics(
             moment = bucket.start + index * FIVE_MIN
             grid[moment] = (bucket.import_kwh - bucket.export_kwh) * 4
             battery[moment] = bucket.battery_kwh * 4
-    quarters, actual = rebuilt_quarters(start, end, grid, battery, FIVE_MIN, _prices(data, day), CAP_KW, loss)
+    quarters, actual, loss_cost = rebuilt_quarters(start, end, grid, battery, FIVE_MIN, _prices(data, day), CAP_KW, loss)
     assert len(quarters) == len(stored_buckets) and actual == pytest.approx(old.actual.cost, rel=1e-6)
     battery_ac = replace(battery_dc, round_trip_efficiency=ac_round_trip(DC_ROUND_TRIP, loss))
     made = rebuilt_review(
-        old, quarters, actual, battery_ac, _prices(data, day + timedelta(days=1)), end, next_end, 96, 15.0, end
+        old, quarters, actual, loss_cost, battery_ac, _prices(data, day + timedelta(days=1)), end, next_end, 96, 15.0, end
     )
     assert made is not None and made.battery_ac == BATTERY_AC_STATISTICS
     assert made.facit is not None and old.facit is not None
@@ -207,9 +207,59 @@ def test_a_stored_review_from_before_the_ac_side_is_rebuilt_from_the_statistics(
     assert after < before and after < 0
     # The battery's own way against no battery and against self-consumption fall by the loss's cost; the plan's
     # figure against self-consumption stays.
-    loss_cost = (old.battery_saving or 0.0) - (made.battery_saving or 0.0)
     assert loss_cost > 100
+    assert (old.battery_saving or 0.0) - (made.battery_saving or 0.0) == pytest.approx(loss_cost)
     assert made.actual_saving == pytest.approx(old.actual_saving - loss_cost)
     assert made.saving == pytest.approx(old.saving)
     # Its own work is kept: the rebuilt quarter hours do not hold the battery.
     assert made.facit.candidates[OWN].work == old.facit.candidates[OWN].work
+
+
+def test_the_rebuilt_loss_does_not_hang_on_the_quarter_hours_the_review_covered(data: dict) -> None:
+    """The loss's cost comes from the statistics alone: a review that missed a few quarter hours (a restart) gets the
+    same loss, and none of the battery's saving over the quarter hours it missed; an hour's mean nets a charge and a
+    discharge in it, so hourly statistics give about the same loss, never much more."""
+    from custom_components.spotnav.battery.plan_shadow import review_day
+    from custom_components.spotnav.battery.review_rebuild import FIVE_MIN, HOUR, rebuilt_quarters, rebuilt_review
+
+    day = date(2026, 11, 19)
+    loss = _learnt(data).loss(True)
+    start, end = _bounds(day)
+    _end, next_end = _bounds(day + timedelta(days=1))
+    buckets, _socs = _day(data, day, (0.0, 0.0))
+    for bucket in buckets:
+        bucket.battery_ac_kwh = None
+        bucket.soc_start = bucket.soc_end = data["rows"][int((bucket.start - data["t0"]) / Q)][5]
+    battery = BatteryParams(USABLE_KWH, POWER_KW, POWER_KW, min_soc_pct=0.0, round_trip_efficiency=0.87)
+    grid: dict[datetime, float] = {}
+    power: dict[datetime, float] = {}
+    hourly_grid: dict[datetime, list[float]] = {}
+    hourly_power: dict[datetime, list[float]] = {}
+    for bucket in buckets:
+        g, b = (bucket.import_kwh - bucket.export_kwh) * 4, bucket.battery_kwh * 4
+        for index in range(3):
+            grid[bucket.start + index * FIVE_MIN], power[bucket.start + index * FIVE_MIN] = g, b
+        hour = bucket.start.replace(minute=0)
+        hourly_grid.setdefault(hour, []).append(g)
+        hourly_power.setdefault(hour, []).append(b)
+    prices = _prices(data, day)
+    quarters, actual, loss_cost = rebuilt_quarters(start, end, grid, power, FIVE_MIN, prices, CAP_KW, loss)
+    _q, _a, hourly_loss = rebuilt_quarters(
+        start, end, {h: sum(v) / len(v) for h, v in hourly_grid.items()},
+        {h: sum(v) / len(v) for h, v in hourly_power.items()}, HOUR, prices, CAP_KW, loss,
+    )
+    assert 0 < hourly_loss <= loss_cost * 1.02 and hourly_loss == pytest.approx(loss_cost, rel=0.1)
+    after = _prices(data, day + timedelta(days=1))
+    made_by: dict[int, float] = {}
+    for missing in (0, 6):
+        kept = buckets[:40] + buckets[40 + missing:]
+        old = review_day(day, kept, battery, "Europe/Stockholm", end, (), "max_profit")
+        assert old is not None
+        made = rebuilt_review(old, quarters, actual, loss_cost, battery, after, end, next_end, 96, 15.0, end)
+        assert made is not None
+        made_by[missing] = (old.battery_saving or 0.0) - (made.battery_saving or 0.0)
+    assert made_by[6] == pytest.approx(loss_cost) and made_by[0] == pytest.approx(loss_cost)
+    # Far more quarter hours read than the review covered: not rebuilt.
+    half = review_day(day, buckets[:48], battery, "Europe/Stockholm", end, (), "max_profit")
+    assert half is not None
+    assert rebuilt_review(half, quarters, actual, loss_cost, battery, after, end, next_end, 96, 15.0, end) is None
