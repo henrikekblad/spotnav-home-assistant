@@ -290,7 +290,8 @@ against the same day with no battery. The rules that keep it fair:
   * A share is shown only where the perfect plan saves at least 5 kr a day (5 € on a euro site); below that it says
     "too small a difference to compare". A week or a month sums the savings over its whole days first and then
     divides, so a charge on one day and the discharge it pays for on the next even out.
-  * A way that cost more than no battery shows its loss ("loss 47 kr"), not a share. A share above 100 % is shown as
+  * A way that cost more than no battery shows its loss ("loss 47 kr"; in the headline "The battery's own control:
+    loss 47 kr against no battery"), not a share, and a day it did so says "loss" in the day table instead of "0 %". A share above 100 % is shown as
     100 % with a note: the model's battery has no ramps and an even loss, so it can now and then be beaten by a little.
 
 **Days counted before the AC side** (SpotNav 3.0 beta 6). On a battery read at the battery (Sigenergy, SolarEdge,
@@ -301,11 +302,13 @@ are counted again, once, in the background:
   * older days, up to the 30 kept, are rebuilt from Home Assistant's recorder: the grid's and the battery's power per
     five minutes where the recorder still has them (ten days by default), else per hour. The day with no battery,
     plain self-consumption and the perfect plan are worked out again; the battery's own control falls by the loss's
-    cost, and SpotNav's modes keep their saving (the loss was in their house and in the day with no battery alike), now
+    cost (the day with no battery counted with the battery as read less on the AC side, from the same statistics), and
+    SpotNav's modes keep their saving (the loss was in their house and in the day with no battery alike), now
     measured against the new perfect plan. An hourly day is a little less exact: an hour that both charged and
     discharged nets the two;
-  * a day that cannot be rebuilt (no recorder statistics of the grid or the battery, or no prices for it) keeps its
-    old figures.
+  * a day that cannot be rebuilt keeps its old figures: no recorder statistics of the grid or the battery, no prices
+    for it, statistics covering under 90 % or over 110 % of the quarter hours the review covered (a day cut short by a
+    restart), or no perfect plan that can be worked out. It is tried again after a restart.
 So the battery's own control's share and saving drop on those days, *The battery saved* under Money drops by the same
 loss, and SpotNav's modes against self-consumption stay as they were.
 

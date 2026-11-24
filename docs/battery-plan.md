@@ -96,13 +96,21 @@ learnt round trip is turned to the AC side: times (1 - the loss out) / (1 + the 
 learnt where the plant reports its own house load and sun (Sigenergy): each dark quarter hour's balance, grid plus sun
 less the battery less the plant's load, is fitted on the charge and the discharge power (about 3.5 % in and 6.5 % out
 on the owner's plant, so a DC round trip of 96.7 % is 87 % on the AC side). Elsewhere 3 % in and 5 % out is assumed.
+A fitted loss above 8 % either way is not believed (a cell heater on a cold night's charge, or the plant's meter a
+little off SpotNav's, would be fitted as loss too), and the plan's AC round trip stays at 80 % or more unless the
+battery is that lossy by its own counters. Only the part of a charge the grid gave crossed the inverter on the way in;
+the sun's charge over a hybrid's DC bus is counted at the way-out loss instead (without the battery it would have gone
+out through the inverter), so the midday house is not lowered by a loss it never had. The plan still prices every
+stored kWh with the AC round trip, so it values storing the sun a few percent below its real cost of about the DC round
+trip; with sell prices far under buy prices that rarely changes what it does.
 The same loss turns the battery's power to the AC side wherever SpotNav counts the house as the grid less the cars
 and the battery: the house load forecast, the night's review and the perfect plan (see the house card's *Share of
 perfect*). The diagnostics show it under `battery.plan.learned.conversion` (`power_dc`, `source`: `learned`,
 `assumed` or `ac`, the two losses and the quarter hours behind them). A battery read on the AC side (Enphase,
 sonnen) or whose side is not known is counted as read.
 
-The card's details show it: "Round-trip efficiency: 84 %, learnt" or "assumed 90 %". The diagnostics
+The card's details show it: "Round-trip efficiency: 84 %, learnt" or "assumed 90 %": the round trip the plan uses, on
+a battery read at the battery the AC one (its chart's windows turned the same way). The diagnostics
 (`battery.plan.learned.round_trip`) list every window taken, with its dates, energies and source, kept for two years,
 and the last ones thrown away and why.
 
