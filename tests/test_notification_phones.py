@@ -689,3 +689,29 @@ async def test_an_older_clients_stale_echo_never_undoes_an_administrators_phone_
     frame = await ws_call(ws, update_settings_message(entry.entry_id, again["settings"]["revision"], {**body, "amps": 12}))
     assert frame["result"]["ok"] is True
     assert phones.recipients("plan_stopped", charger=entry.entry_id) == (("mobile_app_pixel_8",), ())
+
+
+async def test_forgetting_a_split_apps_row_never_links_it_again(hass: HomeAssistant, hass_client_no_auth, hass_ws_client) -> None:
+    await _charger(hass)
+    _companion_phone(hass, "N6", "CPH2765")
+    client = await hass_client_no_auth()
+    phones = domain_data(hass).phones
+    body = {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    await _post(client, body)
+    (one,) = phones.phones
+    ws = await hass_ws_client(hass)
+
+    async def update(phone_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        message = {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": phone_id, "changes": changes}
+        return (await ws_call(ws, message))["result"]
+
+    assert (await update(one.id, {"unlink": True}))["ok"] is True
+    assert (await update(one.id, {"forget": True}))["ok"] is True
+    status, answer = await _post(client, body)
+    assert status == 200 and answer["phone"]["companion"] is None
+    assert sorted((phone.notify is None, phone.app is None) for phone in phones.listing()) == [(False, True), (True, False)]
+    # Linked by hand, it is one phone again.
+    app_row = phones.app_phone(app_key(APP_ID))
+    companion = next(phone for phone in phones.listing() if phone.notify == "mobile_app_n6")
+    assert app_row is not None and (await update(app_row.id, {"link": companion.id}))["ok"] is True
+    assert len(phones.listing()) == 1

@@ -33,7 +33,9 @@ both, they are one entry and SpotNav tells that phone through the SpotNav app on
 [Which app tells the phone](#which-app-tells-the-phone). When the SpotNav app is paired, it is joined to its Companion
 phone by itself: the one phone of the same name (also "Anna Pixel" and "Pixel"), else the one phone of the same
 model. Two phones of one model are never guessed. Otherwise open the phone and choose *Same phone as …* once. A phone
-split with *Split up* stays split.
+split with *Split up* stays split, also after the SpotNav app's row is forgotten. When joined, the phone keeps what
+both rows heard (on if either was on, the events and chargers of both). Two people whose phones have the same name
+or model may be joined by mistake: *Split up* parts them for good.
 
 **A new phone.** A phone that appears in the Companion app is listed but gets nothing until someone turns it on (a
 guest's phone stays quiet). A SpotNav app that is paired starts on, since pairing it is a choice of its own. Either

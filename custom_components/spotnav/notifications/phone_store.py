@@ -394,7 +394,7 @@ class PhoneStore:
         ]
         service = match_companion(name, model, devices)
         found = listed.get(service) if service is not None else None
-        return found if found is not None and found.app is None else None
+        return found if found is not None and found.app is None and not found.apart else None
 
     def _link_found(self, phone: Phone, name: str | None, model: str | None) -> Phone:
         """`phone` (the app's, stored, without a Companion service) linked to its Companion phone where one matches
@@ -540,8 +540,12 @@ class PhoneStore:
                 elif "unlink" in changes:
                     if changes["unlink"] is not True or phone.notify is None or phone.app is None:
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
-                    # Split for good: the app's phone is never linked again by itself.
+                    # Split for good: the app's phone is never linked again by itself, and its Companion phone (kept
+                    # as its own row, off as an untouched one) is never linked by itself again either, also to the
+                    # entry of a later call after the app's row was forgotten.
                     self._store_phone(replace(phone, notify=None, apart=True))
+                    companion = replace(self._untouched(phone.notify), id=new_phone_id(), apart=True)
+                    self._store_phone(companion)
                 elif "forget" in changes:
                     if changes["forget"] is not True or phone.id.startswith(UNTOUCHED_PREFIX):
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
