@@ -104,8 +104,8 @@ and refusals as the charger webhook below. It answers:
 * **The home's own actions**, bound to this home (a `site_id` in the body is never read), for a home with or without
   a charger: `get_site` (below); the actions of [the site over the webhook](#the-site-over-the-webhook) (`get_house`,
   `get_house_now`, `get_house_history`, `get_house_loads`, `get_heat`, `get_heat_history`, `get_plan`,
-  `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`), each answering exactly what a charger's
-  webhook of the same home answers; `update_site_settings` (as on a charger's webhook, for the home itself; load
+  `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`, `pool`, `spa`, `sauna`), each answering
+  exactly what a charger's webhook of the same home answers; `update_site_settings` (as on a charger's webhook, for the home itself; load
   balancing is `spotnav_not_permitted_over_webhook`, 403); `get_power_month` and `suggest_import_target` (as on a
   charger's webhook).
 * **Every charger action** of the charger webhook (`dashboard`, `start`, `stop`, `settings`, `sessions`,
@@ -211,9 +211,12 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `get_house_loads` | The pie behind House or Heat: `{"period", "date", "kind"}`, the answer of `spotnav/get_house_loads`. |
 | `get_heat` | The heat card's view of the site: `{}`, the answer of `spotnav/get_heat` as someone who is no administrator reads it. |
 | `get_heat_history` | One day, month or year of the heating: `{"period", "date"}`, the answer of `spotnav/get_heat_history`. |
-| `get_plan` | The house card's Plan tab for this charger's site: `{}`, or `{"date"}` / `{"start"}` to step back (since 3.0.0b4), the answer of `spotnav/get_plan`, each car's `does_not_fit` block in its lane, and the top-level `not_ready` (what will not be ready in time across the site's deadlines, the choices ranked by what they free; `null` when all fits). |
+| `get_plan` | The house card's Plan tab for this charger's site: `{}`, or `{"date"}` / `{"start"}` to step back (since 3.0.0b4), the answer of `spotnav/get_plan`, each car's `does_not_fit` block in its lane, and the top-level `not_ready` (what will not be ready in time across the site's deadlines, the choices ranked by what they free; `null` when all fits). An item's and a ranked choice's `load_id` is the charger's entry id for a car (`kind` `car`; the priority list names the same car `charger:<entry id>`), `spa` or `sauna` for a bath or a session, and `null` for the site's one `accept_peak`. |
 | `update_heat` | The dial, home or away, the away setback, the cooler night and each zone's and indoor sensor's offset: `{"changes": {"target_c", "mode", "away_until", "away_delta_c", "night", "zones", "indoor_offsets"}, "expected"}`, the envelope of `spotnav/update_heat`. Nothing else may be named. |
 | `heat_boost` | The heat card's **Hot water now** button: `{"boost_action": "start" \| "stop"}`, the answer of `spotnav/heat_boost` (see below). Any paired phone may press it, as anyone who sees the card may. |
+| `pool` | The heat card's Pool tab: `{"pool_action": "target" \| "season" \| "extra_filtering" \| "cancel_extra", "target_c"?, "open"?, "hours"?}`, the answer of `spotnav/pool` (`{"api_version", "ok", "error", "pool"}`, see [pool, spa and sauna over the webhook](#pool-spa-and-sauna-over-the-webhook)). Any paired phone may press it. |
+| `spa` | The heat card's Spa tab: `{"spa_action", "value"?}`, the answer of `spotnav/spa` (`{"api_version", "ok", "error", "spa"}`, see [pool, spa and sauna over the webhook](#pool-spa-and-sauna-over-the-webhook)). |
+| `sauna` | The heat card's Sauna tab: `{"sauna_action", "value"?}`, the answer of `spotnav/sauna` (`{"api_version", "ok", "error", "sauna"}`, see [pool, spa and sauna over the webhook](#pool-spa-and-sauna-over-the-webhook)). |
 | `battery_control` | The site's battery control status; with `{"changes": {"battery_mode"}}` the battery mode is written first. Nothing else may be named. |
 | `get_site_settings_view` | The settings' site block: `{}`, the answer of `spotnav/get_site_settings_view`. |
 
@@ -833,7 +836,9 @@ only. `spotnav/update_site_settings` takes `priority` in `changes`: exactly the 
 keep their places; the old `solar_priority` and each charger's `charger_priority` are dropped. The answer carries
 `priority` (as the view states it) beside `site`. Over the webhook it is `spotnav_not_permitted_over_webhook`. The
 `site` block's `solar_priority` stays, derived from the list: `battery_first` where the battery stands above every
-car (with no car, above the water heater), else `car_first`; a write of it moves the battery's row.
+car (with no car, above the water heater), else `car_first`; a write of it moves the battery's row. Example with
+every kind of row a site with two chargers, house heat, a water heater, a battery and a pool shows:
+`tests/fixtures/webhook/get_site_settings_view_priority.json`.
 
 **Where a meter belongs.** Since 3.0 `spotnav/update_site_settings` takes `meter_belongs` in `changes`: `{statistic
 id: "house" | "heat" | "car" | "none"}` for Energy dashboard individual devices, merged into the site's stored choices
@@ -883,10 +888,15 @@ own charger's: a `site_id` or `charger_id` in the body is not read. `api_version
 | `get_house_history` | `spotnav/get_house_history` | `period` (`day`, `month`, `year`), `date` (optional: today) | `get_house_history_success.json`, `get_house_history_invalid_date.json` |
 | `get_house_loads` | `spotnav/get_house_loads` | `period`, `date`, `kind` (`house`, `heat`), all optional | `get_house_loads_success.json` |
 | `get_heat` | `spotnav/get_heat` | | `get_heat_success.json` |
-| `get_heat_history` | `spotnav/get_heat_history` | `period`, `date` (optional) | `get_heat_history_success.json` |
+| `get_heat_history` | `spotnav/pool` | The heat card's Pool tab, for anyone who sees the card: `{"api_version": 1, "site_id" \| "charger_id", "action": "target" \| "season" \| "extra_filtering" \| "cancel_extra", "target_c"?, "open"?, "hours"?}`. Answers `{"api_version", "ok", "error", "pool"}`, `pool` as `get_heat`'s after the press. Over the webhook: `pool` (see [pool, spa and sauna over the webhook](#pool-spa-and-sauna-over-the-webhook)). |
+| `spotnav/spa`, `spotnav/sauna` | The heat card's Spa and Sauna tabs, for anyone who sees the card: `{"api_version": 1, "site_id" \| "charger_id", "action", "value"?}`. Answers `{"api_version", "ok", "error", "spa" \| "sauna"}`. Over the webhook: `spa` and `sauna`, with the actions and refusals listed there. |
+| `spotnav/get_heat_history` | `period`, `date` (optional) | `get_heat_history_success.json` |
 | `get_plan` | `spotnav/get_plan` | `date` or `start` (optional, since 3.0.0b4) | `get_plan_success.json`, `get_plan_does_not_fit.json` |
 | `update_heat` | `spotnav/update_heat` | `changes`, `expected` | `update_heat_success.json`, `update_heat_away.json`, `update_heat_away_delta.json`, `update_heat_night.json`, `update_heat_zone_offsets.json`, `update_heat_indoor_offsets.json`, `update_heat_indoor_offsets_not_permitted.json`, `update_heat_conflict.json`, `update_heat_invalid_value.json`, `update_heat_not_permitted.json`, `update_heat_zones_not_permitted.json` |
 | `heat_boost` | `spotnav/heat_boost` | `boost_action` (`start` or `stop`) | |
+| `pool` | `spotnav/pool` | `pool_action` (`target`, `season`, `extra_filtering`, `cancel_extra`), `target_c`, `open`, `hours` | `pool_success.json`, `pool_extra_filtering.json`, `pool_invalid_value.json`, `pool_not_supported.json` |
+| `spa` | `spotnav/spa` | `spa_action`, `value` | `spa_success.json`, `spa_baths.json`, `spa_bath_now_rate_limited.json`, `spa_no_later_bath.json`, `spa_not_supported.json` |
+| `sauna` | `spotnav/sauna` | `sauna_action`, `value` | `sauna_success.json`, `sauna_invalid_value.json`, `sauna_no_later_session.json` |
 | `battery_control` | `spotnav/battery_control` | `changes` (optional) | `battery_control_success.json`, `battery_control_mode.json`, `battery_control_invalid_value.json`, `battery_control_not_permitted.json` |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` | | `get_site_settings_view_success.json` |
 
@@ -1014,6 +1024,43 @@ dashboard's `grid_tariff.demand`. A client hides the import target row then, unl
 cleared). A Home Assistant before the key leaves it out: read it as available. `writable` is `true` for what the
 webhook's own writes change (`update_site_settings`, `choose_price_source`, `update_grid_tariff`); the price's
 fees (`price_settings.fees`) are shown but have no webhook write.
+
+#### Pool, spa and sauna over the webhook
+
+The heat card's Pool, Spa and Sauna tabs are household controls, like the dial: any paired phone may press them
+(see [Pool, spa and sauna](pool-spa.md)). Each is `spotnav/pool`, `spotnav/spa` or `spotnav/sauna` with the routing
+key in place of the command's `action`; the answer is the command's envelope with the `action` beside it. The block
+after the press is `get_heat`'s `pool`, `spa` or `sauna`, `null` where the site has none. Nothing here turns a load's
+control on or off: those switches stay with an administrator in Home Assistant.
+
+| Action | Routing key and value | Field |
+| ------ | --------------------- | ----- |
+| `pool` | `"pool_action": "target"` | `target_c`: the wanted water temperature, 18 to 40 in steps of 0.5. |
+| `pool` | `"pool_action": "season"` | `open`: `true` or `false`. Closed, SpotNav writes nothing to the pool and an extra filtering ends. |
+| `pool` | `"pool_action": "extra_filtering"` | `hours`: `2` or `4`, placed in the cheapest or sunniest hours of the next 24 (a second press replaces the first; refused while the season is closed or no circulation is chosen). |
+| `pool` | `"pool_action": "cancel_extra"` | Ends the extra filtering. |
+| `spa` | `"spa_action": "bath_c"` / `"idle_c"` | `value`: the bath temperature (20 to 40) or the temperature between baths (10 to 40), in steps of 0.5. |
+| `spa` | `"spa_action": "baths"` | `value`: up to four weekly bath times, `[{"weekdays": [1, …, 7], "time": "HH:MM"}]`, the weekdays numbered as a car's `departure_weekdays` (Monday 1 to Sunday 7, each once). `[]` or `null` clears them. |
+| `spa` | `"spa_action": "bath_once"` | `value`: one bath on a date, an ISO instant with its offset in the next 30 days, or `null` to clear it. |
+| `spa` | `"spa_action": "bath_now"` / `"cancel_now"` | Heat at once at any price (still under the fuse) until the bath temperature is reached and held two hours; once per ten minutes. |
+| `spa` | `"spa_action": "take_what_fits"` / `"later_bath"` / `"accept_peak"` | The answers to a bath that will not be ready (`get_heat`'s `spa.not_ready`, `get_plan`'s `not_ready`): heat as far as it can, move the bath to the earliest later hour that fits, or allow the peak (only when the import target or a power level holds it). |
+| `sauna` | `"sauna_action": "target_c"` | `value`: the session temperature, 40 to 110 in whole degrees. |
+| `sauna` | `"sauna_action": "sessions"` / `"session_once"` | As the spa's `baths` and `bath_once`. |
+| `sauna` | `"sauna_action": "session_now"` / `"cancel_now"` | As the spa's `bath_now` and `cancel_now`. |
+| `sauna` | `"sauna_action": "take_what_fits"` / `"later_session"` / `"accept_peak"` | As the spa's, for a session that will not be ready. |
+
+HTTP 200 written (or pressed); 400 `spotnav_invalid_value` (a value out of range, an unknown routing value, an answer
+to a bath or session that is not late); 429 `spotnav_rate_limited` (a second "now" within ten minutes); 409
+`spotnav_not_supported` (the site has no pool, spa or sauna), `spotnav_no_later_bath` (the spa) or
+`spotnav_no_later_session` (the sauna) when no later hour fits; 400
+`spotnav_unsupported_api_version` and `spotnav_no_site` as the reads'. A refusal still carries the block as it stands
+(`null` for `spotnav_not_supported`).
+
+```json
+{"version": 1, "action": "spa", "spa_action": "baths", "value": [{"weekdays": [5, 6], "time": "19:00"}]}
+→ {"api_version": 1, "ok": true, "error": null, "spa": {"baths": [{"weekdays": [5, 6], "time": "19:00"}], …},
+   "action": "spa"}
+```
 
 **`plug_in_saving` on `sessions`.** With `"reads": ["plug_in_saving"]` the webhook's `sessions` answer is the
 WebSocket's whole: every summary (`this_month`, `last_month`, `months`, `days`, `month_summary`, `month_days`) and
