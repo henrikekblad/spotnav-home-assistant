@@ -1108,6 +1108,56 @@ async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_sho
     assert any(row["kind"] == "restricted" for row in control.log) is (written != "13.2")
 
 
+async def test_a_live_grid_charge_and_the_plans_cap_never_pass_the_batterys_own_charge_power_entity(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # The plan asks 15 kW, the fuse would allow 13.2 kW, the plant's charge limit entity stops at 1.5 kW.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
+    _import_limit(hass, "7.5")
+    old = hass.states.get(CHARGE)
+    hass.states.async_set(CHARGE, old.state, {**old.attributes, "max": 1.5})
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    assert control.plan_grid_charge_cap(dt_util.now())[0] == 1.5
+    await _looks(control, dt_util.now(), 16)
+    assert hass.states.get(CHARGE).state == "1.5"
+    assert any(row["kind"] == "restricted" and row["rate_kw"] == 1.5 for row in control.log)
+    # A plant whose entity says nothing keeps the fuse's cap alone.
+    hass.states.async_set(CHARGE, hass.states.get(CHARGE).state, {
+        key: value for key, value in old.attributes.items() if key != "max"
+    })
+    assert control.plan_grid_charge_cap(dt_util.now())[0] != 1.5
+    await control.async_stop()
+
+
+async def test_a_venus_a_s_1500_w_set_charge_power_caps_a_marstek_grid_charge_at_1_5_kw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from custom_components.spotnav.battery.executor import Executor  # noqa: PLC0415
+
+    entities = {"set_charge_power": ("number.venus_set_charge_power", {"max": 1500, "min": 0})}
+    monkeypatch.setattr(
+        control_module, "plant_entity_id",
+        lambda _hass, _config, match: next(
+            (entity_id for key, (entity_id, _attrs) in entities.items() if match.matches("number", f"ab12_{key}")), None
+        ),
+    )
+    states = {entity_id: SimpleNamespace(attributes=attrs) for entity_id, attrs in entities.values()}
+    control = BatteryControl.__new__(BatteryControl)
+    control.hass = SimpleNamespace(states=SimpleNamespace(get=states.get))  # type: ignore[assignment]
+    control.site = SimpleNamespace(config={})  # type: ignore[assignment]
+    control.facts = SimpleNamespace(brand="marstek")  # type: ignore[assignment]
+    control.executor = None
+    assert control._charge_entity_max_kw(Executor(commands_module.MARSTEK_CONTROL)) == 1.5
+    assert control._within_charge_power(None) == 1.5 and control._within_charge_power(1.0) == 1.0
+    # A Venus E's 2500 W leaves the recipe's own 2.5 kW.
+    entities["set_charge_power"] = ("number.venus_set_charge_power", {"max": 2500})
+    states["number.venus_set_charge_power"] = SimpleNamespace(attributes={"max": 2500})
+    assert control._within_charge_power(4.0) == 2.5
+
+
 async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

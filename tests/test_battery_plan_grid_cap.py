@@ -173,6 +173,9 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
         def _fixed_charge_kw(self) -> None:
             return None
 
+        def _within_charge_power(self, cap: float | None) -> float | None:
+            return cap  # the plant's charge power entity says nothing here
+
     assert BatteryControl.plan_grid_charge_cap(Fake(), NOW) == (4.5, "conservative")  # type: ignore[arg-type]
     assert seen == {"phased": True}
 
@@ -254,6 +257,9 @@ def _control(
 
         def _fixed_charge_kw(self) -> float | None:
             return fixed
+
+        def _within_charge_power(self, cap: float | None) -> float | None:
+            return cap  # the plant's charge power entity says nothing here
 
     assert gate.MIN_RATE_KW == 0.5
     return Fake()

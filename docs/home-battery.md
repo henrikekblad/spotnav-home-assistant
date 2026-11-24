@@ -242,11 +242,11 @@ installation too, and the checklist says so. After a firmware update it waits fo
 * A **hold** sets *Max Discharge Power* to 0. The battery stays in its own self-consumption: it still stores a sun
   surplus and covers nothing. This is a limit that is safe if it is left standing. On a Venus A or D with its own
   solar input, a hold at 100 % may also stop its own panels (evcc issue 36206).
-* A **grid charge** turns *RS485 Control Mode* on, sets *Set Charge Power* (in steps of 50 W, at most 2500 W) and then
-  *Force Mode* to charge. The battery keeps a force charge until it is told otherwise: there is **no dead-man**, so if
-  Home Assistant stops, the charge goes on until the battery is full. SpotNav therefore caps a grid charge for that case,
-  counting all of it on the one phase the battery is plugged into (see the grid charge cap below). *Charge to SoC* is
-  never written.
+* A **grid charge** turns *RS485 Control Mode* on, sets *Set Charge Power* (in steps of 50 W, at most 2500 W, and
+  never more than the entity itself takes: 1500 W on a Venus A) and then *Force Mode* to charge. The battery keeps a
+  force charge until it is told otherwise: there is **no dead-man**, so if Home Assistant stops, the charge goes on
+  until the battery is full. SpotNav therefore caps a grid charge for that case, counting all of it on the one phase
+  the battery is plugged into (see the grid charge cap below). *Charge to SoC* is never written.
 * A **discharge for the house** is the battery's own self-consumption: nothing is written. Discharging to the grid and
   the battery's *Max Charge Power* are not used.
 * Every **hand-back** sets *Force Mode* back to standby, turns *RS485 Control Mode* off (the battery is then in its own
@@ -400,7 +400,8 @@ The cap answers one question: how much may the battery draw from the grid so tha
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
 house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
 Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
-plant not known to balance its charge, all of it on that one phase.
+plant not known to balance its charge, all of it on that one phase. A grid charge, planned or running, is also never
+more than the battery's own charge power entity takes (its maximum in Home Assistant).
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no

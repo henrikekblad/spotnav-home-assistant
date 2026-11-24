@@ -1442,11 +1442,26 @@ class BatteryControl:
         self.verification = None
         self._verify_key = None
 
+    def _within_charge_power(self, cap: float | None) -> float | None:
+        """A grid charge cap (`None`: none) lowered to what the plant's own charge power entity takes
+        (`_charge_entity_max_kw`), for a live charge and the plan alike; never raised."""
+        control = control_for(self.facts.brand)
+        if control is None:
+            return cap
+        executor = self.executor
+        if executor is None or executor.control.brand != control.brand:
+            executor = Executor(control)
+        entity_kw = self._charge_entity_max_kw(executor)
+        if entity_kw is None:
+            return cap
+        return entity_kw if cap is None else min(cap, entity_kw)
+
     def _charge_entity_max_kw(self, executor: Executor) -> float | None:
         """The largest grid charge the plant's own charge power entity takes (kW: its `max`, or its `min` for a power
         written negative, over the role's scale), `None` where none says. The recipe may allow more than a model
         takes (Marstek: 2500 W for the Venus E, where a Venus A's *Set Charge Power* stops at 1500 W and refuses a
-        write above it). The power roles are those whose value follows the rate."""
+        write above it). The power roles are those whose value follows the rate. It bounds the check's charge step,
+        a live grid charge and the plan's grid charge cap (`_within_charge_power`)."""
         control = executor.control
         build = control.states.get(ACTION_GRID_CHARGE)
         if build is None:
@@ -1901,6 +1916,7 @@ class BatteryControl:
         report = self.report()
         allowed = self._supported(gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge()))
         cap, caps = self._charge_limits(now, options)
+        cap = self._within_charge_power(cap)
         if caps is None and gate.charge_by_phases(report):
             # The charge was shown only per phase: the balanced one is never run on that.
             allowed = allowed - {ACTION_GRID_CHARGE}
@@ -2518,6 +2534,8 @@ class BatteryControl:
             phased = executor is not None and executor.control.phased
             cap, caps = self._charge_limits(now, options, phased=phased)
             rule = self._cap_rule(options, cap, False, self._learned(now))
+            # Never more than the plant's own charge power entity takes, as `_control_slot` (the rule stays the fuse's).
+            cap = self._within_charge_power(cap)
             # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
             if caps is None and gate.charge_by_phases(self.report()):
                 return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run
