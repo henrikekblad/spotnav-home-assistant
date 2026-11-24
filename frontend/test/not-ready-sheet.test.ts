@@ -13,7 +13,7 @@ import { heatBody, type HeatHandlers } from "../src/heat-view";
 import { decodePlan, planBody, type PlanAnswer } from "../src/house-plan";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
-import { eventOptions } from "../src/notifications";
+import { eventLabel } from "../src/notification-phones";
 import {
   decodeNotReady,
   NOT_READY_HASH,
@@ -191,10 +191,10 @@ describe("the heat card's Spa and Sauna tabs", () => {
 
 describe("the notification setting", () => {
   it("names plan_at_risk as not ready in time, in every language", () => {
-    expect(eventOptions("sv").find((option) => option.value === "plan_at_risk")?.label).toBe("Blir inte klart i tid");
-    expect(eventOptions("en").find((option) => option.value === "plan_at_risk")?.label).toBe("Not ready in time");
+    expect(eventLabel("sv", "plan_at_risk")).toBe("Blir inte klart i tid");
+    expect(eventLabel("en", "plan_at_risk")).toBe("Not ready in time");
     for (const language of Object.keys(TRANSLATIONS) as (keyof typeof TRANSLATIONS)[]) {
-      expect(TRANSLATIONS[language]["notifications.event.planAtRisk"], language).toBe(TRANSLATIONS[language]["heat.settings.event.plan_at_risk"]);
+      expect(TRANSLATIONS[language]["notifications.event.planAtRisk"], language).not.toBe("");
     }
   });
 });

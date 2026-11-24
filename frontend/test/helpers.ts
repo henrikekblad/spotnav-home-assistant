@@ -69,6 +69,13 @@ export class FakeHass implements HomeAssistantLike {
   readonly homeMessages: Record<string, unknown>[] = [];
   homeHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+  /**
+   * The phones' commands (`spotnav/notification_phones`, read when a Settings page shows its Notifications section, and
+   * `spotnav/update_notification_phone`), on their own line too; the default never answers.
+   */
+  readonly phonesMessages: Record<string, unknown>[] = [];
+  phonesHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
   }
@@ -110,6 +117,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/list_sites" || message["type"] === "spotnav/make_home" || message["type"] === "spotnav/disconnect_phones") {
       this.homeMessages.push(message);
       return (this.homeHandler === null ? new Promise<unknown>(() => undefined) : this.homeHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/notification_phones" || message["type"] === "spotnav/update_notification_phone") {
+      this.phonesMessages.push(message);
+      return (this.phonesHandler === null ? new Promise<unknown>(() => undefined) : this.phonesHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

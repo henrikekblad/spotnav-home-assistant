@@ -34,6 +34,8 @@ async def test_every_documented_action_has_a_handler() -> None:
         "answer_price_duplicate",
         "update_grid_tariff",
         "push_register",
+        # SpotNav 3.0: the app's own phone's notifications (`api/notification_phones.py`).
+        "phone_notifications",
         "identify_vehicle",
         "choose_vehicle_identification",
         "update_guest",

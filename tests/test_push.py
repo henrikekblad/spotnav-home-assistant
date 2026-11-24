@@ -30,7 +30,7 @@ from custom_components.spotnav.notifications.push import (
     WAKE_TIMEOUT_S,
 )
 from custom_components.spotnav.notifications.settings import DEFAULT_EVENTS, NOTIFICATION_EVENTS
-from custom_components.spotnav.runtime import charger_data
+from custom_components.spotnav.runtime import charger_data, domain_data
 
 from .test_notifications import _choose
 from .world import setup_charger
@@ -164,12 +164,13 @@ async def test_the_app_registers_and_clears_over_the_webhook_and_the_ref_is_kept
     assert status == 200 and answer == {"ok": True, "action": "push_register"}
     _pinned("push_register_success.json", answer)
     assert charger_data(hass, entry.entry_id).push.registration == PushRegistration(REF, ("charge_complete",))
-    assert hass_storage[f"spotnav.push.{entry.entry_id}"]["data"] == {
-        "push_ref": REF,
-        "events": ["charge_complete"],
-    }
+    # Kept with the phone (`notifications/phone_store.py`): one app phone, on, following this charger.
+    (stored,) = hass_storage["spotnav.notification_phones"]["data"]["phones"]
+    assert stored["app"]["push_ref"] == REF and stored["app"]["key"] is None and stored["on"] is True
+    assert stored["chargers"] is None, "the only charger: it follows them all"
+    assert f"spotnav.push.{entry.entry_id}" not in hass_storage
 
-    # A reload restores it from the charger's store.
+    # A reload keeps it.
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
     assert charger_data(hass, entry.entry_id).push.registration == PushRegistration(REF, ("charge_complete",))
@@ -177,7 +178,8 @@ async def test_the_app_registers_and_clears_over_the_webhook_and_the_ref_is_kept
     status, answer = await _post(client, {"action": "push_register", "push_ref": None})
     assert status == 200 and answer["ok"] is True
     assert charger_data(hass, entry.entry_id).push.registration is None
-    assert f"spotnav.push.{entry.entry_id}" not in hass_storage
+    (stored,) = hass_storage["spotnav.notification_phones"]["data"]["phones"]
+    assert stored["app"]["push_ref"] is None, "the phone stays, with nothing to wake"
 
 
 async def test_a_bad_body_is_refused_with_a_stable_code_and_nothing_changes(
@@ -199,11 +201,15 @@ async def test_a_removed_charger_forgets_its_registration(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
     entry = await _charger(hass)
+    # The registration the release before kept for the charger, read by the migration only.
+    hass_storage[f"spotnav.push.{entry.entry_id}"] = {"version": 1, "key": f"spotnav.push.{entry.entry_id}", "data": {"push_ref": REF}}
     await _register(hass, entry.entry_id)
-    assert f"spotnav.push.{entry.entry_id}" in hass_storage
     assert await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
     assert f"spotnav.push.{entry.entry_id}" not in hass_storage
+    (phone,) = domain_data(hass).phones.phones
+    assert phone.app is not None and entry.entry_id not in phone.app.via
+    assert phone.chargers is None or entry.entry_id not in phone.chargers
 
 
 # ------------------------------------------------------------------ waking the app
@@ -305,7 +311,8 @@ async def test_the_relay_forgetting_the_token_drops_the_ref_and_other_failures_k
     relay.status, relay.body = 404, {"error": "unknown_ref"}
     await _toggle(hass)
     assert push.registration is None
-    assert f"spotnav.push.{entry.entry_id}" not in hass_storage
+    (stored,) = hass_storage["spotnav.notification_phones"]["data"]["phones"]
+    assert stored["app"]["push_ref"] is None, "the phone falls to its Companion service, if it has one"
     assert push.diagnostics() == {
         "registered": False,
         "events": None,
@@ -401,7 +408,12 @@ async def test_the_question_wakes_only_an_app_that_chose_it_but_its_end_is_still
     await _register(hass, entry.entry_id)
     assert push.async_question_settled(now) is True, "registered meanwhile: the app's own check may have asked"
     await hass.async_block_till_done()
+    # An older app's registration that leaves the question out keeps it (it does so for a charger that does not
+    # identify cars); the phone's own choice takes it away.
     await _register(hass, entry.entry_id, events=("plan_stopped",))
+    (phone,) = domain_data(hass).phones.phones
+    assert "vehicle_identify" in phone.events
+    await domain_data(hass).phones.async_update(phone.id, {"events": ["plan_stopped"]})
     push.async_question(now)
     assert push.async_question_settled(now) is False
     await hass.async_block_till_done()

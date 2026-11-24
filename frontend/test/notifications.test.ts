@@ -1,15 +1,24 @@
-// Notifications: the record's `notifications` field decoded, the replacement a Save sends, and the
-// Settings section and dialog through the real card element.
+// Notifications: the settings record's `notifications` field as older clients read it, and the one section for the
+// whole site, per phone (`notification-phones.ts`): its decoder, its rows, the phone's editor and what a Save sends,
+// through the real card element.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LANGUAGES, translate } from "../src/i18n";
-import { noRecipientsHint, notificationsSummary } from "../src/notifications";
-import { decodeSettingsRecord, encodeBody, notificationsReplacement, NOTIFICATION_EVENTS } from "../src/settings";
-import { SETTINGS_API_VERSION, type NotificationsRecord, type SettingsRecord } from "../src/types";
+import { translate } from "../src/i18n";
+import {
+  decodePhonesAnswer,
+  eventGroups,
+  linkCandidates,
+  phoneChanges,
+  phoneSummary,
+  type PhoneLoads,
+  type PhoneRow,
+} from "../src/notification-phones";
+import { decodeSettingsRecord, encodeBody } from "../src/settings";
+import { NOTIFICATION_PHONES_API_VERSION, type NotificationsRecord, type SettingsRecord } from "../src/types";
 import { FakeHass, mountCard, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -51,11 +60,9 @@ function record(overrides: Partial<NotificationsRecord> = {}): SettingsRecord {
   return decodeSettingsRecord(wire(overrides));
 }
 
-describe("the notifications field", () => {
-  it("is decoded with the phones that can be chosen, and left out when the backend has none", () => {
-    expect(record({ targets: ["mobile_app_pixel_8"] }).notifications).toEqual(
-      notifications({ targets: ["mobile_app_pixel_8"] }),
-    );
+describe("the settings record's notifications field (older clients)", () => {
+  it("is decoded, and left out when the backend has none", () => {
+    expect(record({ targets: ["mobile_app_pixel_8"] }).notifications).toEqual(notifications({ targets: ["mobile_app_pixel_8"] }));
     const older = wire();
     delete older["notifications"];
     expect("notifications" in decodeSettingsRecord(older)).toBe(false);
@@ -68,45 +75,89 @@ describe("the notifications field", () => {
     expect(() => decodeSettingsRecord(extra)).toThrow();
   });
 
-  it("is never part of another editor's replacement, so those keep what is stored", () => {
+  it("is never part of this card's replacement, so a settings Save never moves the phones", () => {
     expect("notifications" in encodeBody(record({ targets: ["mobile_app_ipad"] }))).toBe(false);
   });
+});
 
-  it("is sent by a notifications Save, in the backend's event order, with the page a tap opens", () => {
-    const check = notificationsReplacement(record(), {
-      targets: ["mobile_app_pixel_8"],
-      events: ["unplugged", "plan_stopped"],
-      url: "/lovelace/ev",
-    });
-    expect(check).toMatchObject({
-      ok: true,
-      changed: true,
-      body: { notifications: { targets: ["mobile_app_pixel_8"], events: ["plan_stopped", "unplugged"], url: "/lovelace/ev" } },
-    });
-    const same = notificationsReplacement(record(), {
-      targets: [],
-      events: ["charge_complete", "plan_stopped", "plan_at_risk"],
-      url: null,
-    });
-    expect(same.ok && same.changed).toBe(false);
+// ------------------------------------------------------------------ the per-phone section, pure
+
+const LOADS: PhoneLoads = { chargers: 2, pool: true, spa: true, sauna: false };
+
+function phone(overrides: Partial<PhoneRow> = {}): PhoneRow {
+  return {
+    id: "ph_000000000001",
+    name: "Pixel 8",
+    on: true,
+    events: ["plan_stopped", "plan_at_risk", "charge_complete", "vehicle_identify", "pool_season"],
+    chargers: null,
+    companion: { service: "mobile_app_pixel_8", name: "Pixel 8", found: true },
+    app: null,
+    route: "companion",
+    ...overrides,
+  };
+}
+
+function answer(phones: PhoneRow[] = [phone()], loads: PhoneLoads = LOADS): Record<string, unknown> {
+  return {
+    api_version: NOTIFICATION_PHONES_API_VERSION,
+    ok: true,
+    error: null,
+    phones,
+    chargers: [
+      { id: "entry_a", name: "Garage" },
+      { id: "entry_b", name: "Carport" },
+    ].slice(0, loads.chargers),
+    loads,
+    events: [],
+  };
+}
+
+describe("the phones' listing", () => {
+  it("is decoded strictly, an event a later backend adds read past", () => {
+    const decoded = decodePhonesAnswer(answer([phone({ events: ["plan_stopped", "later_event" as never] })]));
+    expect(decoded).toMatchObject({ ok: true, value: { phones: [{ id: "ph_000000000001", events: ["plan_stopped"] }] } });
+    expect(decodePhonesAnswer({ ...answer(), phones: [{ id: "x" }] })).toBeNull();
+    expect(decodePhonesAnswer({ ...answer(), api_version: 2 })).toBeNull();
+    expect(decodePhonesAnswer({ api_version: 1, ok: false, error: "spotnav_not_admin" })).toEqual({ ok: false, code: "spotnav_not_admin" });
   });
 
-  it("cannot be saved to a backend that does not have it", () => {
-    const older = wire();
-    delete older["notifications"];
-    expect(notificationsReplacement(decodeSettingsRecord(older), { targets: [], events: [], url: null })).toEqual({
-      ok: false,
-      errorKey: "settings.error.version",
-    });
-  });
-
-  it("summarises the phones by name and the events as a count, a gone phone said as such", () => {
-    const rows = notificationsSummary("en", notifications({ targets: ["mobile_app_pixel_8", "mobile_app_old"] }));
-    expect(rows.map((row) => row.value)).toEqual([
-      `Pixel 8, ${translate("en", "notifications.missing", { name: "mobile_app_old" })}`,
-      `3 of ${NOTIFICATION_EVENTS.length} on`,
+  it("groups the events by what the site has, Not ready in time once", () => {
+    expect(eventGroups(LOADS).map((group) => [group.key, group.events.length])).toEqual([
+      ["charging", 8],
+      ["pool", 1],
     ]);
-    expect(notificationsSummary("sv", notifications())[0]!.value).toBe(translate("sv", "settings.value.none"));
+    expect(eventGroups({ chargers: 0, pool: false, spa: true, sauna: true })).toEqual([{ key: "spa", events: ["plan_at_risk"] }]);
+    expect(eventGroups({ chargers: 0, pool: false, spa: false, sauna: true })).toEqual([{ key: "sauna", events: ["plan_at_risk"] }]);
+    expect(eventGroups({ chargers: 0, pool: false, spa: false, sauna: false })).toEqual([]);
+  });
+
+  it("summarises a phone as off, or how many of the shown events are on", () => {
+    expect(phoneSummary("en", phone({ on: false }), LOADS)).toBe(translate("en", "settings.value.off"));
+    expect(phoneSummary("en", phone(), LOADS)).toBe("5 of 9 on");
+    expect(phoneSummary("en", phone(), { chargers: 0, pool: true, spa: true, sauna: false })).toBe("2 of 2 on");
+  });
+
+  it("offers to join a Companion phone only with an app that has none, and back", () => {
+    const companion = phone();
+    const app = phone({ id: "ph_000000000002", companion: null, app: { instant: true }, route: "app" });
+    const both = phone({ id: "ph_000000000003", app: { instant: false } });
+    expect(linkCandidates(companion, [companion, app, both])).toEqual([app]);
+    expect(linkCandidates(app, [companion, app, both])).toEqual([companion]);
+    expect(linkCandidates(both, [companion, app, both])).toEqual([]);
+  });
+
+  it("sends only what changed, keeps events not shown and sends every charger as null", () => {
+    const pixel = phone({ events: ["plan_stopped", "pool_season"] });
+    const noPool = { ...LOADS, pool: false };
+    expect(phoneChanges(pixel, noPool, ["entry_a", "entry_b"], { on: true, events: ["plan_stopped"], chargers: ["entry_a", "entry_b"] })).toBeNull();
+    expect(
+      phoneChanges(pixel, noPool, ["entry_a", "entry_b"], { on: false, events: ["plan_stopped", "plugged_in"], chargers: ["entry_b"] }),
+    ).toEqual({ on: false, events: ["plan_stopped", "plugged_in", "pool_season"], chargers: ["entry_b"] });
+    const one = phone({ chargers: ["entry_a"] });
+    expect(phoneChanges(one, LOADS, ["entry_a", "entry_b"], { on: true, events: one.events, chargers: ["entry_a", "entry_b"] })).toEqual({
+      chargers: null,
+    });
   });
 });
 
@@ -116,18 +167,14 @@ function fixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(DASHBOARD_DIR, `${name}.json`), "utf8")) as Record<string, unknown>;
 }
 
-function withNotifications(record: NotificationsRecord): Record<string, unknown> {
-  const payload = fixture("start_idle");
-  (payload["settings"] as Record<string, unknown>)["notifications"] = record;
-  return payload;
-}
-
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
-async function mounted(payload: Record<string, unknown>, admin = true) {
+async function mounted(admin = true, listing: Record<string, unknown> = answer()) {
   const hass = new FakeHass();
+  hass.phonesHandler = async (message) =>
+    message["type"] === "spotnav/notification_phones" ? listing : answer([phone({ on: false })]);
   const element = mountCard(CONFIG, hass);
   const snapshot = hass.snapshot("snapshot", "en");
   if (admin) {
@@ -135,7 +182,7 @@ async function mounted(payload: Record<string, unknown>, admin = true) {
   }
   element.hass = snapshot;
   await settle();
-  hass.resolveNext(payload);
+  hass.resolveNext(fixture("start_idle"));
   await settle();
   return { hass, element };
 }
@@ -158,109 +205,73 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const valueEditor = (element: Element): HTMLFormElement =>
-  openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='multi']")!;
-
 describe("the Notifications section", () => {
-  it("states the chosen phones and events, each opening its own choice with a box per phone or per event", async () => {
-    const { element } = await mounted(withNotifications(notifications({ targets: ["mobile_app_pixel_8"] })));
+  it("lists every phone with its summary and route, read for the whole site", async () => {
+    const app = phone({ id: "ph_000000000002", name: "Anna", companion: null, app: { instant: true }, route: "app" });
+    const guest = phone({ id: "notify:mobile_app_guest", name: "Guest", on: false });
+    const { hass, element } = await mounted(true, answer([phone(), app, guest]));
     openSettings(element);
+    await settle();
+    expect(hass.phonesMessages[0]).toEqual({ type: "spotnav/notification_phones", api_version: 1 });
     const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='notifications']")!;
-    expect(section.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("notifications");
-    expect(section.querySelector("[data-row='notification_targets']")?.textContent).toContain("Pixel 8");
-    section.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
+    expect(section.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.notifications"));
+    const rows = Array.from(section.querySelectorAll<HTMLElement>("[data-row]"));
+    expect(rows.map((row) => row.dataset["row"])).toEqual(["phone:ph_000000000001", "phone:ph_000000000002", "phone:notify:mobile_app_guest"]);
+    expect(rows[2]!.textContent).toContain(translate("en", "settings.value.off"));
+    expect(section.querySelector("[data-help='phone:ph_000000000002']")?.textContent).toBe(translate("en", "notifications.via.app"));
+    expect(section.querySelector("[data-help='phone:notify:mobile_app_guest']")).toBeNull();
+  });
+
+  it("edits one phone: its events by group, the chargers it follows, and saves only what changed with the page", async () => {
+    const app = phone({ id: "ph_000000000002", name: "Anna", companion: null, app: { instant: true }, route: "app" });
+    const { hass, element } = await mounted(true, answer([phone(), app]));
+    openSettings(element);
     await settle();
-    expect(openDialog(element)!.querySelector("h3")?.textContent).toBe(translate("en", "notifications.phones"));
-    const phones = Array.from(valueEditor(element).querySelectorAll<HTMLInputElement>("[data-value-option]"));
-    expect(phones.map((box) => [box.dataset["valueOption"], box.checked])).toEqual([
-      ["mobile_app_ipad", false],
-      ["mobile_app_pixel_8", true],
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='phone:ph_000000000001']")!.click();
+    await settle();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='notification-phone']")!;
+    expect(Array.from(form.querySelectorAll<HTMLElement>("[data-value-group]")).map((node) => node.dataset["valueGroup"])).toEqual([
+      "charging",
+      "pool",
+      "chargers",
     ]);
-    valueEditor(element).closest("[role='dialog']")!.querySelector<HTMLButtonElement>(".spotnav-settings-actions button[type='button']")!.click();
+    expect(form.querySelector("[data-phone-link]")).not.toBeNull();
+    expect(form.querySelector("[data-phone-action='forget']")).not.toBeNull();
+    form.querySelector<HTMLInputElement>("[data-phone-event='plugged_in']")!.click();
+    form.querySelector<HTMLInputElement>("[data-phone-charger='entry_b']")!.click();
+    form.requestSubmit();
     await settle();
-    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_events']")!.click();
-    await settle();
-    const events = Array.from(valueEditor(element).querySelectorAll<HTMLInputElement>("[data-value-option]"));
-    expect(events.map((box) => box.checked)).toEqual([true, true, true, false, false, false, false, false]);
-  });
-
-  it("saves a choice into a freshly read record under its revision, keeping the other half, and returns to Settings", async () => {
-    const { hass, element } = await mounted(withNotifications(notifications()));
-    openSettings(element);
-    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
-    await settle();
-    valueEditor(element).querySelector<HTMLInputElement>("[data-value-option='mobile_app_ipad']")!.click();
-    valueEditor(element).requestSubmit();
-    await settle();
-    const current = wire();
-    hass.resolveNext({ api_version: SETTINGS_API_VERSION, ok: true, error: null, settings: { ...current, revision: 9 }, pause: { choice: null, admitted_at: null, expires_at: null } });
-    await settle();
-    const update = hass.messages.find((message) => message.type === "spotnav/update_settings")!;
-    expect(update["expected_revision"]).toBe(9);
-    expect(update["settings"]).toMatchObject({
-      amps: 10,
-      notifications: {
-        targets: ["mobile_app_ipad"],
-        events: ["plan_stopped", "plan_at_risk", "charge_complete"],
-      },
+    const update = hass.phonesMessages.find((message) => message["type"] === "spotnav/update_notification_phone")!;
+    expect(update["phone"]).toBe("ph_000000000001");
+    expect(update["changes"]).toEqual({
+      events: ["plan_stopped", "plan_at_risk", "charge_complete", "plugged_in", "vehicle_identify", "pool_season"],
+      chargers: ["entry_a"],
     });
+    expect(typeof update["url"]).toBe("string");
   });
 
-  it("says when no phone has the app", async () => {
-    const { element } = await mounted(withNotifications(notifications({ available: [] })));
+  it("joins a Companion phone and its app as one", async () => {
+    const app = phone({ id: "ph_000000000002", name: "Anna", companion: null, app: { instant: true }, route: "app" });
+    const { hass, element } = await mounted(true, answer([phone(), app], { chargers: 1, pool: false, spa: false, sauna: false }));
     openSettings(element);
-    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
     await settle();
-    expect(openDialog(element)!.textContent).toContain(translate("en", "notifications.noPhones"));
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='phone:ph_000000000001']")!.click();
+    await settle();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='notification-phone']")!;
+    expect(form.querySelector("[data-value-group='chargers']")).toBeNull();
+    const select = form.querySelector<HTMLSelectElement>("[data-phone-link]")!;
+    select.value = "ph_000000000002";
+    form.requestSubmit();
+    await settle();
+    const update = hass.phonesMessages.find((message) => message["type"] === "spotnav/update_notification_phone")!;
+    expect(update["changes"]).toEqual({ link: "ph_000000000002" });
   });
 
-  it("cannot be changed by a reader who is not an administrator", async () => {
-    const { element } = await mounted(withNotifications(notifications()), false);
+  it("cannot be seen by a reader who is not an administrator", async () => {
+    const { hass, element } = await mounted(false);
     openSettings(element);
-    // Settings shows such a reader only what they may change: this device's Display.
     expect(shownSections(element)).toEqual(["display"]);
     expect(element.shadowRoot?.querySelector("[data-section='notifications']")).toBeNull();
-  });
-
-  it("is absent for a backend without notifications", async () => {
-    const payload = fixture("start_idle");
-    delete (payload["settings"] as Record<string, unknown>)["notifications"];
-    const { element } = await mounted(payload);
-    openSettings(element);
-    expect(openDialog(element)!.querySelector("[data-section='notifications']")).toBeNull();
-  });
-});
-
-describe("the hint for events on and no recipients", () => {
-  it("is given only when events are on and no phone is chosen", () => {
-    const text = translate("en", "notifications.noRecipients");
-    expect(text).toBe("No recipients chosen \u2013 this charger sends no notifications.");
-    expect(noRecipientsHint("en", notifications())).toBe(text);
-    expect(noRecipientsHint("en", notifications({ targets: ["mobile_app_ipad"] }))).toBeNull();
-    expect(noRecipientsHint("en", notifications({ events: [] }))).toBeNull();
-    expect(translate("sv", "notifications.noRecipients")).toBe(
-      "Inga mottagare valda \u2013 den h\u00e4r laddaren skickar inga notiser.",
-    );
-    for (const language of LANGUAGES) {
-      expect(translate(language, "notifications.noRecipients").length).toBeGreaterThan(10);
-    }
-  });
-
-  it("shows in the Notifications section, and not once a phone is chosen", async () => {
-    const hint = translate("en", "notifications.noRecipients");
-    const { element } = await mounted(withNotifications(notifications()));
-    openSettings(element);
-    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='notifications']")!;
-    expect(section.querySelector("[data-notice='notifications_no_targets']")?.textContent).toBe(hint);
-
-    const chosen = await mounted(withNotifications(notifications({ targets: ["mobile_app_pixel_8"] })));
-    openSettings(chosen.element);
-    expect(openDialog(chosen.element)!.querySelector("[data-notice='notifications_no_targets']")).toBeNull();
-  });
-
-  it("is not given when no event is on", async () => {
-    const { element } = await mounted(withNotifications(notifications({ events: [] })));
-    openSettings(element);
-    expect(openDialog(element)!.querySelector("[data-notice='notifications_no_targets']")).toBeNull();
+    expect(hass.phonesMessages).toEqual([]);
   });
 });

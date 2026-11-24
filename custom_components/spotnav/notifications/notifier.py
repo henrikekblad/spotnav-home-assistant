@@ -1,4 +1,4 @@
-"""One charger's notifier: what happened, sent to the chosen phones through `notify.<service>`.
+"""One charger's notifier: what happened, sent to the phones that follow it through `notify.<service>`.
 
 It watches what the charger's event entity watches (the controller and the Auto snapshot) with its own
 trackers, so a disabled event entity does not silence a phone:
@@ -95,8 +95,9 @@ it. The plan still shows in the
 card, under the paused line. Kept as they are: `charge_started`, `plugged_in`, `unplugged`, `charge_complete` and the
 question of which car is plugged in. Once the Stop ends (Start, Resume, or the unplug) the plan's notices come back.
 
-The paired app's instant notifications (`push.py`) hear about the same events, with their own choice
-of events and their own limits, whether or not any phone is chosen here.
+Who hears it is the phones' (`phone_store.py`): the phones that are on, want the event and follow this charger, each by
+one route. A phone whose SpotNav app can be woken and shows the event is woken (`push.py`, its own limits); the rest
+get it from their Companion service here. Never both.
 """
 
 from __future__ import annotations
@@ -131,6 +132,8 @@ from ..vehicles.guest import is_guest
 from ..const import DOMAIN
 from ..texts import language_of
 from .messages import compose, does_not_fit_choice_text, does_not_fit_text, EVENT_TEST, identify_text, Money
+from .phone_store import phone_store
+from .phones import ROUTE_COMPANION, route_of
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
@@ -883,8 +886,8 @@ class ChargerNotifier:
             # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
             if self._push.async_event(event, now):
                 self._remember_plan(fingerprint)
-        notifications = self._store.settings(self._entry_id).notifications
-        if not notifications.wants(event):
+        targets = self._companion(event)
+        if not targets:
             return
         # Giving up on a charger under a person's Stop is its own kind of trouble: a missed window told a
         # moment before does not silence it.
@@ -902,22 +905,30 @@ class ChargerNotifier:
         if len(self._sent_times) >= HOURLY_LIMIT:
             _LOGGER.debug("SpotNav charger %s: hourly notification limit reached", self._entry_id)
             return
-        targets = [
-            target
-            for target in notifications.targets
-            if self._hass.services.has_service(NOTIFY_DOMAIN, target)
-        ]
-        if not targets:
-            return
         self._last_sent[repeat_key] = now
         self._sent_times.append(now)
         self._remember_plan(fingerprint)
         title, message = compose(
             event, self._name(), self._facts_for(event, attributes), language_of(self._hass.config.language)
         )
-        payload = self._payload(event, title, message, notifications.url)
+        payload = self._payload(event, title, message, self._url())
         for target in targets:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+
+    def _companion(self, event: str) -> tuple[str, ...]:
+        """The Companion services of the phones that hear `event` from this charger by that route (`phone_store.py`):
+        a phone whose SpotNav app can show it is woken instead, never both."""
+        phones = phone_store(self._hass)
+        return () if phones is None else phones.recipients(event, charger=self._entry_id)[0]
+
+    def _has_service(self, service: str) -> bool:
+        return self._hass.services.has_service(NOTIFY_DOMAIN, service)
+
+    def _url(self) -> str | None:
+        """What a tap opens: the dashboard the charger's notifications were saved from, else the page the phones were
+        last saved from (`PhoneStore.url`)."""
+        phones = phone_store(self._hass)
+        return self._store.settings(self._entry_id).notifications.url or (None if phones is None else phones.url)
 
     def _payload(self, event: str, title: str, message: str, url: str | None) -> dict[str, Any]:
         url = url or DEFAULT_URL
@@ -972,10 +983,9 @@ class ChargerNotifier:
     def fit_targets(self, now: datetime) -> tuple[str, ...]:
         """The phones that hear this charger's `plan_at_risk`, as the "does not fit" notice reaches them (chosen, the
         service there, within the hourly limit)."""
-        notifications = self._store.settings(self._entry_id).notifications
-        if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
+        if not self._within_hourly_limit(now):
             return ()
-        return tuple(target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target))
+        return self._companion(EVENT_PLAN_AT_RISK)
 
     def fit_sent(self, now: datetime) -> None:
         """The site's combined notice went to this charger's phones: counted as its own would be."""
@@ -990,7 +1000,7 @@ class ChargerNotifier:
     @property
     def notifications_url(self) -> str:
         """What a tap opens: the dashboard chosen for this charger, else the default one."""
-        return self._store.settings(self._entry_id).notifications.url or DEFAULT_URL
+        return self._url() or DEFAULT_URL
 
     @property
     def name(self) -> str:
@@ -1046,12 +1056,7 @@ class ChargerNotifier:
     def _tell_fit(self, block: dict[str, Any], departure: datetime, now: datetime) -> bool:
         """Tell the "does not fit" notice to the paired app and the chosen phones; whether either heard it."""
         pushed = self._push is not None and self._push.async_event(EVENT_PLAN_AT_RISK, now)
-        notifications = self._store.settings(self._entry_id).notifications
-        targets: tuple[str, ...] = ()
-        if notifications.wants(EVENT_PLAN_AT_RISK) and self._within_hourly_limit(now):
-            targets = tuple(
-                target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
-            )
+        targets: tuple[str, ...] = self._companion(EVENT_PLAN_AT_RISK) if self._within_hourly_limit(now) else ()
         if not targets and not pushed:
             return False
         # Told for this departure from here on, whatever else happens to it.
@@ -1106,7 +1111,7 @@ class ChargerNotifier:
                     ),
                 }
             )
-        url = notifications.url or DEFAULT_URL
+        url = self._url() or DEFAULT_URL
         payload = {
             "title": title,
             "message": message,
@@ -1191,7 +1196,7 @@ class ChargerNotifier:
         return len(self._sent_times) < HOURLY_LIMIT
 
     def _identify_data(self, tag: str) -> dict[str, Any]:
-        url = self._store.settings(self._entry_id).notifications.url or DEFAULT_URL
+        url = self._url() or DEFAULT_URL
         return {"url": url, "clickAction": url, "tag": tag, "group": "spotnav", "channel": "SpotNav"}
 
     def ask_vehicle(self, tag: str, choices: list[tuple[str, str]], *, open_button: bool) -> tuple[str, ...]:
@@ -1204,16 +1209,11 @@ class ChargerNotifier:
         if self._push is not None:
             # Every new question wakes the paired app, which asks on its own (`ChargerPush.async_question`).
             self._push.async_question(now)
-        notifications = self._store.settings(self._entry_id).notifications
-        if not notifications.wants(EVENT_VEHICLE_IDENTIFY):
+        targets = self._companion(EVENT_VEHICLE_IDENTIFY)
+        if not targets:
             return ()
         if not self._within_hourly_limit(now):
             _LOGGER.debug("SpotNav charger %s: hourly notification limit reached", self._entry_id)
-            return ()
-        targets = tuple(
-            target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
-        )
-        if not targets:
             return ()
         self._sent_times.append(now)
         language = language_of(self._hass.config.language)
@@ -1255,18 +1255,26 @@ class ChargerNotifier:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
 
     async def async_send_test(self) -> list[str]:
-        """A test message to the chosen phones that exist now (`spotnav.send_test_notification`), outside
-        the limits: the services it went to."""
-        notifications = self._store.settings(self._entry_id).notifications
-        targets = [
-            target
-            for target in notifications.targets
-            if self._hass.services.has_service(NOTIFY_DOMAIN, target)
-        ]
+        """A test message to this charger's phones that are on and reached through the Companion app now
+        (`spotnav.send_test_notification`), outside the limits: the services it went to. A phone whose SpotNav app can
+        be woken gets the app's test instead (`ChargerPush.async_send_test`)."""
+        phones = phone_store(self._hass)
+        targets = (
+            []
+            if phones is None
+            else [
+                phone.notify
+                for phone in phones.phones
+                if phone.on
+                and phone.follows(self._entry_id)
+                and route_of(phone, (), self._has_service) == ROUTE_COMPANION
+                and phone.notify is not None
+            ]
+        )
         if not targets:
             return []
         title, message = compose(EVENT_TEST, self._name(), {}, language_of(self._hass.config.language))
-        payload = self._payload(EVENT_TEST, title, message, notifications.url)
+        payload = self._payload(EVENT_TEST, title, message, self._url())
         sent = []
         for target in targets:
             if await self._async_send(target, payload):

@@ -1,14 +1,12 @@
-// The site, solar and notification sections of the Settings page, "Make a home of this" and the load-balancing
+// The site and solar sections of the Settings page, "Make a home of this" and the load-balancing
 // switch. The switch's state lives outside the model: an answer repaints its block in place.
 
-import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } from "./notifications";
 import { translate } from "./i18n";
 import { type SiteFacts } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
 import { onOffEditor, sectionHeading } from "./value-editors";
 import { solarSectionBody as sharedSolarSection, type SectionHost } from "./price-section";
 import { makeHomeEditor } from "./phones";
-import { notificationsReplacement } from "./settings";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 import type { PageHelpers, SettingsPageState, ViewContext } from "./card-view-context";
@@ -19,7 +17,7 @@ export interface SiteSectionsDeps extends PageHelpers {
 
 export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageState, deps: SiteSectionsDeps) {
   const { input, model, doc, idPrefix } = ctx;
-  const { overviewRow, rowHelp, openValueEditor, editMulti, writeValue, sectionHost } = deps;
+  const { overviewRow, rowHelp, openValueEditor, writeValue, sectionHost } = deps;
 
   let homeOffered = false;
   let makeHomeSlot: HTMLElement | null = null;
@@ -98,54 +96,6 @@ export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageS
       },
       writeForecast: (forecast) => writeValue({ kind: "solar", forecast }),
     });
-  }
-
-  /**
-   * Notifications: the chosen phones and the events, each row its own editor (any phones, any events). Absent on
-   * a backend without notifications.
-   */
-  function notificationsSectionBody(): HTMLElement | null {
-    const record = model.dashboardSettings?.notifications;
-    if (record === undefined) {
-      return null;
-    }
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "notifications";
-    section.append(sectionHeading(doc, "notifications", translate(model.language, "settings.section.notifications")));
-    // A tap on a notification opens the page this card is on.
-    const page = doc.defaultView?.location?.pathname ?? null;
-    const url = page !== null && page.startsWith("/") ? page : null;
-    const [phones, events] = notificationsSummary(model.language, record);
-    const phonesLabel = translate(model.language, "notifications.phones");
-    const eventsLabel = translate(model.language, "notifications.events");
-    section.append(
-      overviewRow(phones?.key ?? "notification_targets", phonesLabel, phones?.value ?? "", () =>
-        editMulti(phonesLabel, phoneOptions(model.language, record), record.targets, (targets) =>
-          writeValue({
-            kind: "settings",
-            build: (fresh) =>
-              notificationsReplacement(fresh, { targets, events: fresh.notifications?.events ?? record.events, url }),
-          }),
-          {
-            intro: translate(model.language, record.available.length === 0 ? "notifications.noPhones" : "notifications.intro"),
-          },
-        ),
-      ),
-      overviewRow(events?.key ?? "notification_events", eventsLabel, events?.value ?? "", () =>
-        editMulti(eventsLabel, eventOptions(model.language), record.events, (chosen) =>
-          writeValue({
-            kind: "settings",
-            build: (fresh) =>
-              notificationsReplacement(fresh, { targets: fresh.notifications?.targets ?? record.targets, events: chosen, url }),
-          }),
-        ),
-      ),
-    );
-    const missing = noRecipientsNote(doc, model.language, record);
-    if (missing !== null) {
-      section.append(missing);
-    }
-    return section;
   }
 
   // The load-balancing switch's state lives outside `model`: an answer repaints this block in place,
@@ -227,7 +177,6 @@ export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageS
   return {
     siteSectionBody,
     solarSectionBody,
-    notificationsSectionBody,
     setActiveControlPending(pending: boolean): void {
       activePending = pending;
       paintActiveControl();

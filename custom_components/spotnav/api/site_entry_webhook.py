@@ -23,7 +23,8 @@ The price and the grid tariff are read-only here in the beta: `choose_price_sour
 `update_grid_tariff` without a `charger_id` are `spotnav_not_permitted_over_webhook` (403) and `get_site_settings_view`
 says `writable` false on its price blocks. With a `charger_id` they are that charger's own actions, answered as on
 its webhook (parity with the charger webhook). The control opt-ins stay refused as on the charger webhook. There is no
-`push_register` for the site itself: notifications are a charger's (with a `charger_id`, as on its webhook).
+`push_register` for the site itself (an older app's, with a `charger_id`, as on its webhook); `phone_notifications`
+(`api/notification_phones.py`) is answered here as on a charger's webhook: the phones are the installation's.
 
 `get_site` (`api_version` 1, optional in the body):
 
@@ -65,6 +66,7 @@ from .common import (
     lookup_charger,
     site_of_charger,
 )
+from .notification_phones import WEBHOOK_ACTION as NOTIFICATION_PHONES_ACTION, webhook_phone_notifications
 from .power_month import POWER_MONTH_API_VERSION, PowerMonthRefusal, power_month_answer
 from .site_settings import async_site_webhook_update_site_settings
 from .site_webhook import SiteHandler, site_handlers
@@ -164,6 +166,7 @@ type _SiteAction = Callable[[HomeAssistant, ConfigEntry, dict[str, Any]], Awaita
 #: The site's own actions on its webhook, bound to the site.
 SITE_ENTRY_ACTIONS: Final[dict[str, SiteHandler | _SiteAction]] = {
     "get_site": _get_site,
+    NOTIFICATION_PHONES_ACTION: webhook_phone_notifications,
     **site_handlers(price_writable=False),
     "update_site_settings": _update_site_settings,
     "get_power_month": _site_read("get_power_month", POWER_MONTH_API_VERSION, _power_month),

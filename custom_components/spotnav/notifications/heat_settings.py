@@ -1,5 +1,6 @@
-"""Which phones hear about the heat card's loads (the pool and the spa): the heat settings' `heat_notifications` field
-(`heat/config.py`), and its codec. Pure.
+"""Which phones heard about the heat card's loads (the pool and the spa) before the per-phone settings: the heat
+settings' `heat_notifications` field (`heat/config.py`), and its codec. Pure. Since SpotNav 3.0 the phones decide
+(`phones.py`): the field is read by the one-time migration, answered from the phones and a write applied to them.
 
     {targets: [notify services] (up to 10, none by default), events: ["plan_at_risk", "pool_season"] (both by default)}
 

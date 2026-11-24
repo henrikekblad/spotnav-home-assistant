@@ -109,12 +109,14 @@ from ..heat.view import (
     ZoneReading,
     heat_view,
 )
+from ..notifications.heat_settings import F_HEAT_NOTIFICATIONS
+from ..notifications.phones import PhoneError
 from ..notifications.targets import available_targets, encoded_available
 from ..pool.detect import Candidate, circulations, heat_pumps, read_seen, suggest, water_sensors
 from ..pricing.price_source import site_price_source
 from ..sauna.detect import SaunaCandidate, saunas
 from ..spa.detect import SpaCandidate, spas
-from ..runtime import site_controller_for
+from ..runtime import domain_data, site_controller_for
 from ..site.heat_meter import (
     HEAT_WORDS,
     KIND_POWER,
@@ -160,9 +162,14 @@ def stored_meter(entry: ConfigEntry) -> str | None:
     return entry.data.get(CONF_HEAT_METER_ENTITY) or None
 
 
-def config_block(entry: ConfigEntry) -> dict[str, Any]:
-    """The settings as answered: `HeatConfig.as_dict()` and the heat pump meter's setting."""
-    return {**stored_config(entry).as_dict(), F_METER: stored_meter(entry)}
+def config_block(entry: ConfigEntry, hass: HomeAssistant | None = None) -> dict[str, Any]:
+    """The settings as answered: `HeatConfig.as_dict()` and the heat pump meter's setting. With `hass`,
+    `heat_notifications` is read from the phones (`notifications/phone_store.py`), as a card before them shows it."""
+    block = {**stored_config(entry).as_dict(), F_METER: stored_meter(entry)}
+    phones = None if hass is None else domain_data(hass).phones
+    if phones is not None:
+        block[F_HEAT_NOTIFICATIONS] = phones.heat_view()
+    return block
 
 
 def is_temperature(hass: HomeAssistant, entity_id: str) -> bool | None:
@@ -298,7 +305,7 @@ def write_heat(
     elif not admin and set(changes) - USER_FIELDS:
         raise HeatWriteRefusal(ERROR_NOT_ADMIN)
 
-    current = config_block(site)
+    current = config_block(site, hass)
     for name, value in expected.items():
         if not _same(name, current.get(name), value):
             raise HeatWriteRefusal(ERROR_CONFLICT)
@@ -323,6 +330,9 @@ def write_heat(
     if errors:
         raise HeatWriteRefusal(ERROR_INVALID_VALUE, errors)
 
+    if F_HEAT_NOTIFICATIONS in heat_changes and (phones := domain_data(hass).phones) is not None:
+        # A card before the per-phone settings chose the heat card's phones: applied to the phones.
+        hass.async_create_task(_async_heat_phones(phones, heat_changes[F_HEAT_NOTIFICATIONS]), eager_start=True)
     data = dict(site.data)
     data[CONF_HEAT] = updated.as_dict()
     if meter is None:
@@ -355,13 +365,25 @@ def write_heat(
             part.request_look()
 
 
-def write_envelope(site: ConfigEntry | None, error: str | None = None, field_errors: list[FieldError] | None = None) -> dict[str, Any]:
+async def _async_heat_phones(phones: Any, raw: Any) -> None:
+    try:
+        await phones.async_heat_write(raw)
+    except PhoneError:
+        _LOGGER.debug("SpotNav heat: heat_notifications could not be applied to the phones")
+
+
+def write_envelope(
+    site: ConfigEntry | None,
+    error: str | None = None,
+    field_errors: list[FieldError] | None = None,
+    hass: HomeAssistant | None = None,
+) -> dict[str, Any]:
     return {
         "api_version": HEAT_API_VERSION,
         "ok": error is None,
         "error": error,
         "field_errors": [item.as_dict() for item in field_errors or []],
-        "config": None if site is None else config_block(site),
+        "config": None if site is None else config_block(site, hass),
     }
 
 
@@ -392,35 +414,35 @@ async def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.A
     if (choice := msg.get("offset_home")) is not None:
         # The person's answer to the stored offset's line: put the household's own value back, or keep what it reads.
         if not is_admin(connection):
-            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN))
+            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN, hass=hass))
             return
         controller = site_controller_for(hass, site.entry_id)
         control = getattr(controller, "heat_control", None)
         failed = "no_control" if control is None else await control.async_offset_home(choice)
         if failed is not None:
             _LOGGER.info("SpotNav heat control: the offset's answer %s was not carried out: %s", choice, failed)
-            connection.send_result(msg["id"], write_envelope(site, ERROR_OFFSET_HOME_FAILED))
+            connection.send_result(msg["id"], write_envelope(site, ERROR_OFFSET_HOME_FAILED, hass=hass))
             return
         if not msg.get("changes"):
-            connection.send_result(msg["id"], write_envelope(site))
+            connection.send_result(msg["id"], write_envelope(site, hass=hass))
             return
     if msg.get("enable_control_entities") is True:
         # The person's confirm of the opt-in's question: an administrator's only.
         if not is_admin(connection):
-            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN))
+            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN, hass=hass))
             return
         try:
             await heat_optin.async_enable(hass, stored_config(site))
         except Exception:  # noqa: BLE001 - the answer says so; nothing is written
             _LOGGER.exception("SpotNav heat control: enabling the control entities failed")
-            connection.send_result(msg["id"], write_envelope(site, ERROR_ENABLE_FAILED))
+            connection.send_result(msg["id"], write_envelope(site, ERROR_ENABLE_FAILED, hass=hass))
             return
     try:
         write_heat(hass, site, msg.get("changes"), msg.get("expected"), admin=is_admin(connection))
     except HeatWriteRefusal as refusal:
-        connection.send_result(msg["id"], write_envelope(site, refusal.code, refusal.field_errors))
+        connection.send_result(msg["id"], write_envelope(site, refusal.code, refusal.field_errors, hass=hass))
         return
-    connection.send_result(msg["id"], write_envelope(site))
+    connection.send_result(msg["id"], write_envelope(site, hass=hass))
 
 
 def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
@@ -1050,7 +1072,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             tz=tz,
             writable=writable,
             config=config,
-            config_block=config_block(site),
+            config_block=config_block(site, hass),
             indoor=rooms,
             outdoor=read_outdoor(hass, config, controller, pump),
             zones=zones,

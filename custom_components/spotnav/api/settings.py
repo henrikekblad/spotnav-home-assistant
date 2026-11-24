@@ -12,7 +12,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   `planning/calendar_departure.py`): left out, the stored value is kept. A plan field, as the departure is. So is
   `departure_calendar_only` (a boolean: the calendar alone decides, and a day without an event has no departure).
 * A third, `notifications` (which phones hear about which events, `notifications/settings.py`): left
-  out, the stored choice is kept. Its `available` list (the notify services that exist now, with the
+  out, the stored choice is kept. Since the per-phone settings (`notifications/phone_store.py`) it is read from the
+  phones and a write is applied to them as the change it makes (an administrator's; anyone else may only echo it);
+  the record itself keeps only `url`. Its `available` list (the notify services that exist now, with the
   phones' names) is read-only: a body may echo it and it is ignored.
 * A fourth, `fill_to_limit` ("Fill": the manual need is the battery's room at each calculation): left out, the
   stored choice is kept, unless the same body moves `requested_kwh` (a client that does not know the field chose
@@ -585,8 +587,13 @@ def replacement_mutator(
             kept["departure_calendar"] = current.departure_calendar
         if keep_departure_calendar_only:
             kept["departure_calendar_only"] = current.departure_calendar_only
-        if keep_notifications:
-            kept["notifications"] = current.notifications
+        # Which phones hear what is the phones' own (`notifications/phone_store.py`): the record keeps only where a tap
+        # opens (`url`); its phones and events stay as the release before left them (read again by a downgrade).
+        kept["notifications"] = (
+            current.notifications
+            if keep_notifications
+            else replace(current.notifications, url=replacement.notifications.url)
+        )
         if keep_fill_to_limit:
             # Kept only while the amount stays: a body that moves it chose an amount, which is not "fill".
             kept["fill_to_limit"] = current.fill_to_limit and replacement.requested_kwh == current.requested_kwh
@@ -697,6 +704,10 @@ def wire_settings(hass: HomeAssistant, entry_id: str, settings: AutoSettings) ->
     """The charger's record as the wire carries it: area and fees from its price source, and the `revision` that
     also moves with the price entry's writes (see the module)."""
     readable = effective_settings(hass, entry_id, settings)
+    phones = domain_data(hass).phones
+    if phones is not None:
+        # The phones that hear this charger, as a client before the per-phone settings reads them.
+        readable = replace(readable, notifications=phones.charger_view(entry_id, settings.notifications.url))
     return replace(readable, revision=wire_revision(hass, entry_id, settings.revision))
 
 
@@ -986,6 +997,13 @@ async def async_update_settings(
         raise SettingsRefusal(ERROR_NOT_ADMIN)
     revision = expected_revision_from(expected_revision)
     decoded = decode_settings(replacement)
+    phones = domain_data(hass).phones
+    writes_phones = isinstance(replacement, Mapping) and "notifications" in replacement and phones is not None
+    if writes_phones and plan_only and phones is not None:
+        # Which phones hear what is an administrator's: a body from anyone else may only echo it.
+        seen = phones.charger_view(entry_id, None)
+        if set(seen.targets) != set(decoded.notifications.targets) or set(seen.events) != set(decoded.notifications.events):
+            raise SettingsRefusal(ERROR_NOT_ADMIN)
     source = entry_source_for(hass, entry_id)
     route = None if source is None else PriceRoute(source, decoded)
     if route is not None and plan_only and route.overrides is not None:
@@ -1024,6 +1042,8 @@ async def async_update_settings(
             route.write(hass)
         else:
             await async_price_entry_from_settings(hass, entry_id, before, err.settings)
+        if writes_phones and not plan_only and phones is not None:
+            await phones.async_charger_write(entry_id, decoded.notifications)
         raise
     except Exception:
         raise SettingsNotCommitted(store.settings(entry_id)) from None
@@ -1034,6 +1054,10 @@ async def async_update_settings(
     else:
         # The area set while no electricity price exists makes the first one (`pricing/price_setup.py`).
         await async_price_entry_from_settings(hass, entry_id, before, store.settings(entry_id))
+    if writes_phones and not plan_only and phones is not None:
+        # A client before the per-phone settings chose this charger's phones: applied to the phones as the change it
+        # makes (`phones.apply_charger_write`).
+        await phones.async_charger_write(entry_id, decoded.notifications)
     return store.settings(entry_id)
 
 

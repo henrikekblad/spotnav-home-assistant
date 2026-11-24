@@ -66,7 +66,7 @@ async def test_the_phone_row_goes_once_a_phone_is_chosen(hass: HomeAssistant) ->
     # Asked for even with no phone at all: the notification settings say how to get one, through either app.
     assert "phone" in ids(hass, entry)
     async_mock_service(hass, "notify", "mobile_app_pixel")
-    await update(hass, entry.entry_id, notifications=NotificationSettings(targets=("mobile_app_pixel",)))
+    await domain_data(hass).phones.async_charger_write(entry.entry_id, NotificationSettings(targets=("mobile_app_pixel",)))
     assert "phone" not in ids(hass, entry)
 
 

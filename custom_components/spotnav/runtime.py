@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from .sessions.recorder import SessionRecorder
     from .sessions.store import SessionStore
     from .notifications.notifier import ChargerNotifier
+    from .notifications.phone_store import PhoneStore
     from .notifications.push import ChargerPush
     from .vehicles.identification import VehicleIdentifier
     from .vehicles.camera_identification import CameraIdentification
@@ -117,6 +118,8 @@ class SpotNavData:
     price_setup_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     decision_store: DiscoveryDecisionStore | None = None
     pairing: PairingRegister | None = None
+    #: The installation's phones and what each hears (`notifications/phone_store.py`).
+    phones: PhoneStore | None = None
     refresh_limiter: VehicleRefreshLimiter | None = None
     charge_limit_limiter: VehicleChargeLimitLimiter | None = None
     forecast_platforms: dict[str, Callable] | None = None

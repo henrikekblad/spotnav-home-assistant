@@ -1013,7 +1013,6 @@ class SiteCapacityController:
             entry_id,
             site=self,
             notifier_of=self._notifier_of,
-            heat_notifications=lambda: self.heat_shadow.config().heat_notifications,
             recheck=self._tell_target_risk,
         )
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;

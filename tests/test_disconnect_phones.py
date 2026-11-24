@@ -208,7 +208,7 @@ async def test_every_id_is_replaced_even_when_clearing_a_phones_notifications_fa
 ) -> None:
     """The ids first, then the rest, each on its own: a failed notification store never leaves an old id answering,
     and the answer says what was not cleared."""
-    from custom_components.spotnav.notifications.push import ChargerPush
+    from custom_components.spotnav.notifications.phone_store import PhoneStore
 
     charger, site, home = await _world(hass)
     second, _ = await setup_charger_and_site(hass, "entry_b", site=False)
@@ -216,10 +216,10 @@ async def test_every_id_is_replaced_even_when_clearing_a_phones_notifications_fa
     old = [entry.data[CONF_WEBHOOK_ID] for entry in (charger, second, site, home)]
     domain_data(hass).pairing.open("123456", "Pixel")
 
-    async def broken(self: Any, registration: Any) -> None:
+    async def broken(self: Any) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr(ChargerPush, "async_register", broken)
+    monkeypatch.setattr(PhoneStore, "async_clear_refs", broken)
     answer = await _disconnect(hass)
 
     assert answer["result"] == {

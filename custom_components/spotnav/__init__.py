@@ -26,6 +26,7 @@ from .api.dashboard import async_setup_dashboard_api
 from .entry_migration import async_migrate_entry  # noqa: F401 - Home Assistant's hook, found by name
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
+from .api.notification_phones import async_setup_notification_phones_api
 from .api.phones import async_setup_phones_api
 from .api.make_home import async_setup_make_home_api
 from .api.beta import async_setup_beta_api
@@ -137,6 +138,7 @@ from .runtime import (
 )
 from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
+from .notifications.phone_store import async_setup_phones
 from .notifications.push import ChargerPush
 from .execution.ownership_coverage import OwnershipCoverage
 from .vehicles.camera_identification import CameraIdentification
@@ -234,6 +236,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_auto_settings(hass)
     # The price entries' marker, duplicates and revision ledger, before any entry answers a settings record.
     await async_setup_price_store(hass)
+    # The installation's phones, migrated once from the chargers' and the heat card's choices, before any entry sends.
+    await async_setup_phones(hass)
     # A car's target is the car's at every charger (`vehicles/vehicle_target.py`).
     async_setup_vehicle_targets(hass)
     # The charge sessions' record, loaded before any charger entry starts recording into it.
@@ -276,6 +280,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_blueprints_api(hass)
     async_setup_site_view_api(hass)
     async_setup_phones_api(hass)
+    async_setup_notification_phones_api(hass)
     async_setup_make_home_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
@@ -1060,6 +1065,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)
+    if (phones := domain_data(hass).phones) is not None:
+        await phones.async_forget_charger(entry.entry_id)
     await VehicleIdentifier.async_remove_stored(hass, entry.entry_id)
     await ReferenceStore.async_remove_stored(hass, entry.entry_id)
     await ChargerNotifier.async_remove_stored(hass, entry.entry_id)

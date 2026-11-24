@@ -199,10 +199,10 @@ async def _update_heat(hass: HomeAssistant, site: ConfigEntry | None, payload: d
         write_heat(hass, site, payload.get("changes"), payload.get("expected"), admin=False, over_webhook=True)
     except HeatWriteRefusal as refusal:
         return web.json_response(
-            {**write_envelope(site, refusal.code, refusal.field_errors), "action": action},
+            {**write_envelope(site, refusal.code, refusal.field_errors, hass=hass), "action": action},
             status=_WRITE_STATUS.get(refusal.code, 400),
         )
-    return web.json_response({**write_envelope(site), "action": action})
+    return web.json_response({**write_envelope(site, hass=hass), "action": action})
 
 
 async def _heat_boost(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:

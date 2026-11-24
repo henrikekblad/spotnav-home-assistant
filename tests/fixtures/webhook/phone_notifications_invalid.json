@@ -1,0 +1,5 @@
+{
+  "action": "phone_notifications",
+  "error": "invalid_phone_notifications",
+  "ok": false
+}

@@ -89,6 +89,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN, GUEST_VEHICLE_ID
 from ..notifications.messages import identify_text
+from ..notifications.phone_store import phone_store
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
 from ..texts import language_of
 from .camera_rule import (
@@ -1589,7 +1590,8 @@ class VehicleIdentifier:
 
     def _clear_everywhere(self) -> None:
         if self._notifier is not None:
-            self._notifier.clear_vehicle_question(self.tag, tuple(self._settings().notifications.targets))
+            phones = phone_store(self._hass)
+            self._notifier.clear_vehicle_question(self.tag, () if phones is None else phones.companion_of(self._entry_id))
 
     @callback
     def _on_cleared(self, event: Event) -> None:

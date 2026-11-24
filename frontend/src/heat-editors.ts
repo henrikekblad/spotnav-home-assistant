@@ -5,7 +5,7 @@
 import { updateHeat, type SiteTarget } from "./api";
 import { decodeHeatWrite, isRelayPath, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { HEAT_EVENTS, instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
+import { instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
 import { onceFields, weekdayShort, type DeadlineKind } from "./spa-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
@@ -769,34 +769,6 @@ function loadEditor(input: HeatEditorInput, key: HeatSettingKey | "away", prefix
         ),
       };
     }
-    case "heatPhones": {
-      const chosen = config.heat_notifications.targets;
-      const options = [
-        ...choices.phones.map((phone) => ({ value: phone.service, label: phone.name })),
-        ...chosen.filter((service) => !choices.phones.some((phone) => phone.service === service)).map((service) => ({ value: service, label: service })),
-      ];
-      return {
-        title: t("heat.settings.phones"),
-        body: multiEditor(doc, language, { intro: t("heat.settings.phonesHelp"), options, checked: chosen }, (values) =>
-          input.write({ heat_notifications: { targets: values } }),
-        handlers),
-      };
-    }
-    case "heatEvents":
-      return {
-        title: t("heat.settings.events"),
-        body: multiEditor(
-          doc,
-          language,
-          {
-            intro: t("heat.settings.eventsHelp"),
-            options: HEAT_EVENTS.map((event) => ({ value: event, label: t(`heat.settings.event.${event}` as TranslationKey), help: t(`heat.settings.eventHelp.${event}` as TranslationKey) })),
-            checked: config.heat_notifications.events,
-          },
-          (values) => input.write({ heat_notifications: { events: values } }),
-          handlers,
-        ),
-      };
     default:
       return undefined;
   }

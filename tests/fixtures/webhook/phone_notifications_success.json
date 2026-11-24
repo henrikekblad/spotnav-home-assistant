@@ -1,0 +1,45 @@
+{
+  "action": "phone_notifications",
+  "api_version": 1,
+  "chargers": [
+    {
+      "id": "entry_a",
+      "name": "Garage"
+    }
+  ],
+  "events": [
+    "plan_stopped",
+    "plan_at_risk",
+    "charge_complete",
+    "charge_started",
+    "plugged_in",
+    "unplugged",
+    "plan_installed",
+    "vehicle_identify",
+    "pool_season"
+  ],
+  "loads": {
+    "chargers": 1,
+    "pool": false,
+    "sauna": false,
+    "spa": false
+  },
+  "ok": true,
+  "phone": {
+    "chargers": null,
+    "companion": {
+      "name": "Pixel 8"
+    },
+    "events": [
+      "plan_stopped",
+      "plan_at_risk",
+      "charge_complete",
+      "vehicle_identify",
+      "pool_season"
+    ],
+    "id": "ph_00000000a001",
+    "instant": false,
+    "name": "Pixel 8",
+    "on": true
+  }
+}

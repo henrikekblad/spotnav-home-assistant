@@ -1,4 +1,7 @@
-"""Which phones hear about which events: one charger's notification settings, and their codec.
+"""The notification events, and one charger's notification settings of the release before, and their codec.
+
+Since SpotNav 3.0 the phones decide who hears what (`phones.py`, `phone_store.py`); this record is what a client
+before them reads and writes (translated from and to the phones) and what the one-time migration reads.
 
 Pure: no Home Assistant imports. Stored with the charger's Auto settings (`AutoSettings.notifications`)
 and carried in the settings record as the additive `notifications` field.
