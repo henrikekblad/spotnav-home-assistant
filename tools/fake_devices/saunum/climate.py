@@ -4,16 +4,23 @@ from __future__ import annotations
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACAction, HVACMode
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_WHOLE, UnitOfTemperature
+from homeassistant.core import callback
 from homeassistant.exceptions import ServiceValidationError
 
 from .entity import FakeSaunaEntity
+
+#: Home Assistant 2026.11 renamed the climate's temperatures to `native_*` (a subclass still overriding the old
+#: properties has their value cached): the fake sets whichever attributes this version reads.
+_NATIVE = hasattr(ClimateEntity, "_attr_native_current_temperature")
+CURRENT_ATTR = "_attr_native_current_temperature" if _NATIVE else "_attr_current_temperature"
+TARGET_ATTR = "_attr_native_target_temperature" if _NATIVE else "_attr_target_temperature"
+UNIT_ATTR = "_attr_native_temperature_unit" if _NATIVE else "_attr_temperature_unit"
 
 
 class FakeSaunaClimate(FakeSaunaEntity, ClimateEntity):
     _attr_name = None
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1.0
     _attr_min_temp = 40.0
@@ -21,14 +28,18 @@ class FakeSaunaClimate(FakeSaunaEntity, ClimateEntity):
 
     def __init__(self, entry, sauna) -> None:
         super().__init__(entry, sauna, None)
+        setattr(self, UNIT_ATTR, UnitOfTemperature.CELSIUS)
+        self._set_temperatures()
 
-    @property
-    def current_temperature(self) -> float:
-        return round(self.sauna.air_c, 1)
+    def _set_temperatures(self) -> None:
+        setattr(self, CURRENT_ATTR, round(self.sauna.air_c, 1))
+        setattr(self, TARGET_ATTR, self.sauna.target_c)
 
-    @property
-    def target_temperature(self) -> float:
-        return self.sauna.target_c
+    @callback
+    def async_write_ha_state(self) -> None:
+        """Every redraw (the model's listener) carries the model's temperatures."""
+        self._set_temperatures()
+        super().async_write_ha_state()
 
     @property
     def hvac_mode(self) -> HVACMode:

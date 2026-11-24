@@ -4,6 +4,7 @@ controllable Balboa spa and a Saunum sauna with its door (`spa/detect.py`, `saun
 from __future__ import annotations
 
 import shutil
+import time
 from datetime import timedelta
 import sys
 from pathlib import Path
@@ -56,16 +57,19 @@ async def test_the_fakes_are_found_as_a_balboa_spa_and_a_saunum_sauna(hass: Home
     assert (sauna["family"], sauna["score"], sauna["lock_id"]) == ("saunum", 1.0, "binary_sensor.saunum_leil_fake_door")
 
 
-async def test_the_fakes_take_writes_at_once(hass: HomeAssistant, fake_devices) -> None:
+async def test_the_fakes_take_writes_at_once(hass: HomeAssistant, fake_devices, monkeypatch) -> None:
     hass.data.pop(loader.DATA_CUSTOM_COMPONENTS, None)
     for domain in DOMAINS:
         await _add(hass, domain)
 
-    # The models' ticks run on the event loop and redraw the states.
+    # The models' ticks run on the event loop and move the water (an hour later: +2 °C).
+    clock = time.monotonic()
+    monkeypatch.setattr(time, "monotonic", lambda: clock + 3600.0)
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
     await hass.async_block_till_done()
+    assert hass.states.get("climate.balboa_spa_fake").attributes["current_temperature"] == 32.0
     spa = hass.states.get("climate.balboa_spa_fake")
-    assert (spa.state, spa.attributes["preset_mode"], spa.attributes["current_temperature"]) == ("heat", "ready", 30.0)
+    assert (spa.state, spa.attributes["preset_mode"]) == ("heat", "ready")
     assert spa.attributes["hvac_action"] == "heating"
     await hass.services.async_call("climate", "set_preset_mode", {"entity_id": spa.entity_id, "preset_mode": "rest"}, blocking=True)
     spa = hass.states.get(spa.entity_id)
@@ -77,6 +81,11 @@ async def test_the_fakes_take_writes_at_once(hass: HomeAssistant, fake_devices) 
     await hass.services.async_call("climate", "set_hvac_mode", {"entity_id": sauna, "hvac_mode": "heat"}, blocking=True)
     state = hass.states.get(sauna)
     assert (state.state, state.attributes["temperature"], state.attributes["hvac_action"]) == ("heat", 85, "heating")
+    # Ten minutes into the session: +15 °C from the room's 20 °C.
+    monkeypatch.setattr(time, "monotonic", lambda: clock + 3600.0 + 600.0)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=2))
+    await hass.async_block_till_done()
+    assert hass.states.get(sauna).attributes["current_temperature"] == 35.0
     # Opening the fake door ends the session and refuses a new one.
     await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.saunum_leil_fake_door_open_fake_control"}, blocking=True)
     assert hass.states.get(sauna).state == "off"
