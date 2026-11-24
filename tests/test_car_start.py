@@ -107,6 +107,33 @@ def test_the_car_refuses_while_the_charger_offers_and_the_status_says_the_car_re
     assert _refused(watch, T0) == 0.0
     assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S)) == CAR_START_AFTER_S
     assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S + 30), offered_a=6.0) == 150.0
+    # An offer that cannot be read holds nothing back; only one read below the minimum does.
+    assert _refused(watch, T0 + timedelta(seconds=CAR_START_AFTER_S + 60), offered_a=None) == 180.0
+
+
+async def test_a_default_easee_reads_its_offer_from_what_spotnav_set(hass: HomeAssistant) -> None:
+    """The real Easee path with its dynamic-limit sensor disabled (as the integration ships it): the offer is the
+    limit SpotNav last set; with the sensor enabled, what the charger reports."""
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.spotnav.execution.chargers.base import WRITE_SESSION_START
+    from custom_components.spotnav.flows.charger_detection import detect_charger
+
+    from .charger_helpers import adapter_for, Clock, enable_easee_limit_sensor
+    from .charger_shapes import register_shape, SHAPES
+
+    ids = register_shape(hass, SHAPES["easee"])
+    adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]), clock=Clock())
+    async_mock_service(hass, "easee", "set_charger_dynamic_limit")
+    assert adapter.offered_current_a() is None, "nothing set and nothing read: no hold"
+    await adapter.async_set_current(16, reason=WRITE_SESSION_START)
+    assert adapter.offered_current_a() == 16.0
+    hass.states.async_set("sensor.easee_status", "completed")
+    assert adapter.car_refuses_offer() is True
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+    assert adapter.car_refuses_offer() is False
+    enable_easee_limit_sensor(hass, "4")
+    assert adapter.offered_current_a() == 4.0, "a value read below the minimum holds the start back"
 
 
 @pytest.mark.parametrize(
@@ -120,7 +147,6 @@ def test_the_car_refuses_while_the_charger_offers_and_the_status_says_the_car_re
         {"phase_switch_settling": True},
         {"refuses_offer": False},  # a status that is not a verified refusal of an offer
         {"offered_a": 5.0},  # below a charge's minimum
-        {"offered_a": None},  # the offer cannot be read
         {"drawing": True},
     ],
 )
@@ -485,13 +511,16 @@ async def test_a_car_not_confirmed_here_is_never_started_nor_told(
     assert controller.car_start_status is None and controller.car_refuses_notice is None
 
 
-@pytest.mark.parametrize("offered", [None, 5.0])
-async def test_a_charger_whose_offer_is_unread_or_below_six_amperes_starts_nothing(
-    hass: HomeAssistant, freezer: Any, offered: float | None
-) -> None:
-    controller, halo, _told, _car_id = await _refusing(hass, freezer, offered=offered)
+async def test_a_charger_whose_offer_reads_below_six_amperes_starts_nothing(hass: HomeAssistant, freezer: Any) -> None:
+    controller, halo, _told, _car_id = await _refusing(hass, freezer, offered=5.0)
     await _later(hass, freezer, 3 * CAR_START_AFTER_S)
     assert halo.car_calls == [] and controller.car_start_status is None
+
+
+async def test_an_offer_that_cannot_be_read_does_not_hold_the_start_back(hass: HomeAssistant, freezer: Any) -> None:
+    _controller, halo, _told, _car_id = await _refusing(hass, freezer, offered=None)
+    await _later(hass, freezer, CAR_START_AFTER_S + 30)
+    assert halo.car_calls == ["turn_on"]
 
 
 async def test_a_status_that_is_not_a_verified_refusal_starts_nothing(hass: HomeAssistant, freezer: Any) -> None:

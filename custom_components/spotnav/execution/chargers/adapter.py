@@ -643,13 +643,12 @@ class ChargerAdapter:
 
     def offered_current_a(self) -> float | None:
         """The current the charger offers now, as far as SpotNav can read it: its current path's offer
-        (`CurrentPath.offered_a`), capped by a circuit limit outside SpotNav's reach when one is read; `None` when it
-        cannot be read."""
+        (`CurrentPath.offered_a`), capped by a circuit limit outside SpotNav's reach when one is read; `None` when
+        neither can be read (nothing known, which does not hold a start back; a value read too low does)."""
         offered = self.current.offered_a()
-        if offered is None:
-            return None
         circuit = self.current.circuit_limit_a()
-        return float(offered) if circuit is None else min(float(offered), circuit)
+        known = [float(value) for value in (offered, circuit) if value is not None]
+        return min(known) if known else None
 
     def progress_status(self) -> str | None:
         """The status in the progress check's vocabulary: `Charging`, `SuspendedEV` (connected, the

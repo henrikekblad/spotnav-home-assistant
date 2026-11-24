@@ -10,7 +10,7 @@ The car refuses (`CarRefusalWatch`) when, for `CAR_START_AFTER_S` in a row:
   missed departure, the car's minimum level) and its charge control is on;
 * the charger offers current: not held by its own scheduler or load balancer, not paused by load balancing (nor its
   stop on its way), no phase switch settling, no Start unanswered, and the current it offers, where SpotNav can read
-  it, at least `CAR_START_MIN_OFFER_A` (read nothing: no offer known, so no start);
+  it, at least `CAR_START_MIN_OFFER_A` (a value that cannot be read holds nothing back; one read below it does);
 * the car draws nothing, and the charger's status says it offers and the car refuses: OCPP's `SuspendedEV`, or the
   profile's verified `car_refuses_values` (Easee's `ready_to_charge` and `completed`). Any other charger: never.
 
@@ -105,7 +105,8 @@ class CarRefusalWatch:
         """One look. The seconds the car has refused so far (0 at the first look), `None` while it does not.
 
         `refuses_offer`: the charger's status says it offers and the car refuses (verified values only);
-        `offered_a`: the current it offers as read, `None` when it cannot be read."""
+        `offered_a`: the current it offers as read, `None` when it cannot be read (no hold: only a value read below
+        `CAR_START_MIN_OFFER_A` is)."""
         refusing = (
             owned
             and control_on
@@ -115,8 +116,7 @@ class CarRefusalWatch:
             and not phase_switch_settling
             and drawing is not True
             and refuses_offer
-            and offered_a is not None
-            and offered_a >= CAR_START_MIN_OFFER_A
+            and (offered_a is None or offered_a >= CAR_START_MIN_OFFER_A)
         )
         if not refusing:
             self._since = None

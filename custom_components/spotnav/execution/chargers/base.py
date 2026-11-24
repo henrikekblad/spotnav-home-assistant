@@ -401,8 +401,9 @@ class CurrentPath(ABC):
         return None
 
     def offered_a(self) -> float | None:
-        """The current the charger offers the car, as far as it can be known (`setpoint_a`); `None` when it cannot.
-        A path that reads its limit back answers only from that reading."""
+        """The current the charger offers the car, as far as it can be known (`setpoint_a`: the limit read back where
+        the charger reports it, such as Easee's dynamic limit sensor when enabled, else what SpotNav last set);
+        `None` when it cannot be known."""
         return self.setpoint_a()
 
     def circuit_limit_a(self) -> float | None:
