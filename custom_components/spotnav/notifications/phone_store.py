@@ -193,6 +193,8 @@ class PhoneStore:
         async with self._lock:
             migrated = migrate(chargers, heats, names, every_charger(self._hass))
             self._phones = (*self._phones, *migrated)[:MAX_PHONES]
+            # What the chargers' views were before: an older client read the same from the charger's own settings.
+            self._saved_phones = self._phones
             self._migrated = True
             try:
                 await self._async_save()

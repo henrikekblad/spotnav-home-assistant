@@ -40,6 +40,7 @@ from pytest_homeassistant_custom_component.common import (
     setup_test_component_platform,
 )
 
+from custom_components.spotnav.pricing.price_source import wire_revision
 from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.vehicles.camera_rule import QUERY_TIMEOUT_S
 from custom_components.spotnav.vehicles.camera_media import _LENT
@@ -683,7 +684,8 @@ async def test_the_app_may_move_the_frame_but_never_choose_the_camera_or_the_ai_
         body["identify_camera"] = camera
         response = await client.post(
             "/api/webhook/webhook-a",
-            json={"version": 1, "action": "settings", "expected_revision": current.revision, "settings": body,
+            json={"version": 1, "action": "settings", "settings": body,
+                  "expected_revision": wire_revision(hass, garage.world.entry.entry_id, current.revision),
                   "reads": ["identify_camera"]},
         )
         return response.status, await response.json()
