@@ -17,6 +17,7 @@ from typing import Final
 from homeassistant.config_entries import ConfigEntryState, SOURCE_REAUTH
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.loader import async_get_loaded_integration, IntegrationNotLoaded
 
 from ..planning.status_compose import SocUnreadableFacts
 
@@ -32,15 +33,25 @@ PROBLEM_SETUP_ERROR: Final = "setup_error"
 _FAILED_STATES: Final = (ConfigEntryState.SETUP_ERROR, ConfigEntryState.MIGRATION_ERROR)
 
 
+def integration_name(hass: HomeAssistant, domain: str) -> str:
+    """The integration's own name (its manifest's, from the loader's cache: an entry with a flow or a failed setup has
+    it loaded), else its domain. Never the entry's title: a person's title can hold an e-mail address."""
+    try:
+        name = async_get_loaded_integration(hass, domain).name
+    except IntegrationNotLoaded:
+        return domain
+    return name if isinstance(name, str) and name else domain
+
+
 def integration_problem(hass: HomeAssistant, entity_id: str) -> tuple[str, str] | None:
-    """`(entry title, problem)` while the config entry `entity_id` belongs to needs a person, else `None`."""
+    """`(integration name, problem)` while the config entry `entity_id` belongs to needs a person, else `None`."""
     registry_entry = er.async_get(hass).async_get(entity_id)
     if registry_entry is None or registry_entry.config_entry_id is None:
         return None
     entry = hass.config_entries.async_get_entry(registry_entry.config_entry_id)
     if entry is None:
         return None
-    title = entry.title or entry.domain
+    title = integration_name(hass, entry.domain)
     if any(True for _flow in entry.async_get_active_flows(hass, {SOURCE_REAUTH})):
         return title, PROBLEM_REAUTH
     if entry.state in _FAILED_STATES:
