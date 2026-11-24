@@ -1475,6 +1475,7 @@ class BatteryPlanShadow:
                 # Learnt slowly (`round_trip.py`): a change is rare and worth a new plan.
                 facts.round_trip_efficiency,
                 facts.sun_round_trip_efficiency,
+                facts.discharge_loss,
                 tuple(windows),
                 self._cap(),
                 self._grid_cap_key(now),
@@ -1649,6 +1650,7 @@ class BatteryPlanShadow:
                 "min_soc_pct": params.min_soc_pct,
                 "round_trip_efficiency": params.round_trip_efficiency,
                 "sun_round_trip_efficiency": params.sun_round_trip_efficiency,
+                "discharge_loss": params.discharge_loss,
             },
             "price_area": area_id,
             "import_cap_kw": None if cap is None else round(cap, 3),

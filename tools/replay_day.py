@@ -117,6 +117,7 @@ def battery_of(record: dict[str, Any], model: Any) -> Any:
         round_trip_efficiency=float(battery["round_trip_efficiency"]),
         sun_round_trip_efficiency=None if battery.get("sun_round_trip_efficiency") is None
         else float(battery["sun_round_trip_efficiency"]),
+        discharge_loss=float(battery.get("discharge_loss") or 0.0),
     )
 
 

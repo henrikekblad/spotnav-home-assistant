@@ -56,6 +56,10 @@ DEFAULT_DISCHARGE_LOSS: Final = 0.05
 LOSS_RANGE: Final = (0.0, 0.08)
 #: The best round trip the sun's charge over the DC bus is planned with: a battery's own round trip at the cells.
 SUN_ROUND_TRIP_CAP: Final = 0.98
+#: The best before the battery's own counters have shown its round trip: a typical cell's, not the best one.
+SUN_ROUND_TRIP_UNLEARNT_CAP: Final = 0.97
+#: The plan's assumed AC round trip (`plan_model.DEFAULT_ROUND_TRIP_EFFICIENCY`; kept here so this module stays apart).
+_ASSUMED_AC_ROUND_TRIP: Final = 0.90
 #: A quarter hour with the sun below this (kW) is dark.
 DARK_KW: Final = 0.1
 #: A quarter hour charging or discharging at this mean power (kW) or more counts towards `MIN_ACTIVE`.
@@ -101,10 +105,15 @@ def ac_round_trip(dc_round_trip: float, loss: tuple[float, float]) -> float:
 def sun_round_trip(ac: float, loss: tuple[float, float], dc: float | None = None) -> float:
     """The round trip of the sun's charge over the DC bus, from the plan's AC round trip [ac]: the inverter's loss on
     the way in taken out again, and the way out's put back (the sun's AC value already lost it, `ac_kw`). Never above
-    the DC counters' own round trip [dc] (where learnt) nor `SUN_ROUND_TRIP_CAP`, never below [ac]."""
+    the DC counters' own round trip [dc] nor `SUN_ROUND_TRIP_CAP`; until [dc] is learnt never above the assumed AC
+    round trip turned the same way nor `SUN_ROUND_TRIP_UNLEARNT_CAP`; never below [ac]."""
     charge, discharge = loss
-    turned = ac * (1.0 + charge) / (1.0 - discharge) if discharge < 1.0 else ac
-    cap = SUN_ROUND_TRIP_CAP if dc is None else min(SUN_ROUND_TRIP_CAP, dc)
+    turn = (1.0 + charge) / (1.0 - discharge) if discharge < 1.0 else 1.0
+    turned = ac * turn
+    if dc is None:
+        cap = min(SUN_ROUND_TRIP_UNLEARNT_CAP, _ASSUMED_AC_ROUND_TRIP * turn)
+    else:
+        cap = min(SUN_ROUND_TRIP_CAP, dc)
     return max(ac, min(cap, turned))
 
 
