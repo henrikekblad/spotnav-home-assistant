@@ -1847,6 +1847,7 @@
   "battery.outsideClear.help": "Hast du die Modi der Batterie selbst geändert, etwa bei einem Test? Dann setze die Markierung zurück, und SpotNav steuert wieder.",
   "battery.need.aiTakeoverAck": "Bestätige, dass SpotNav den KI-Modus des Speichers ablöst.",
   "battery.need.strategyAck": "Bestätige, dass die Befehle von SpotNav Vorrang vor der Strategie haben, die der Speicher in seiner eigenen Cloud fährt.",
+  "battery.need.hardwareTestFirst": "Führe zuerst den Hardwaretest aus (Support, Hardwaretest): Bei diesem Speicher schreibt SpotNav nichts, bis der Test auf seiner aktuellen Firmware bestanden ist.",
   "battery.need.selfManaged": "Der Speicher läuft mit seiner eigenen Optimierung. Stelle in der App des Speichers auf Eigenverbrauch, wenn SpotNav ihn steuern soll.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" steht im Victron GX auf 0, daher entlädt sich die Batterie nie, und SpotNav kann keine Entladung ausführen. Stelle sie in den ESS-Einstellungen des GX auf -1 (keine Grenze) oder eine Leistung, wenn die Batterie das Haus versorgen soll.",
   "battery.need.gridSetpointSelling": "Der Netz-Sollwert (Grid setpoint) des Victron GX liegt weit unter 0, daher speist die Batterie weiter ins Netz ein, egal was SpotNav plant. Setze ihn in den ESS-Einstellungen wieder auf einen kleinen Wert (Standard des GX: 50 W), wenn du das nicht willst; SpotNav ändert ihn nicht.",

@@ -1847,6 +1847,7 @@
   "battery.outsideClear.help": "¿Cambiaste tú los modos de la batería, por ejemplo durante una prueba? Borra la marca y SpotNav vuelve a controlarla.",
   "battery.need.aiTakeoverAck": "Acepta que SpotNav tome el control del modo IA de la batería.",
   "battery.need.strategyAck": "Acepta que los comandos de SpotNav tengan prioridad sobre la estrategia que la batería sigue en su propia nube.",
+  "battery.need.hardwareTestFirst": "Ejecuta primero la prueba de hardware (Soporte, Prueba de hardware): con esta batería SpotNav no escribe nada hasta que la prueba se haya superado en el firmware que lleva.",
   "battery.need.selfManaged": "La batería usa su propio optimizador. Cámbiala a autoconsumo en su app si quieres que la controle SpotNav.",
   "battery.need.inverterPowerZero": "«Max inverter power» está en 0 en el GX de Victron, así que la batería nunca se descarga y SpotNav no puede ejecutar una descarga. Ajústalo a -1 (sin límite) o a una potencia en los ajustes ESS del GX si la batería debe cubrir la casa.",
   "battery.need.gridSetpointSelling": "El punto de ajuste de red (grid setpoint) del GX de Victron está muy por debajo de 0, así que la batería sigue vendiendo a la red, planifique lo que planifique SpotNav. Vuelve a ponerlo en un valor pequeño (el valor por defecto del GX es 50 W) en los ajustes ESS si no es lo que quieres; SpotNav no lo cambia.",
