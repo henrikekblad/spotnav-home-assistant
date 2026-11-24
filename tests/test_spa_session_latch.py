@@ -277,3 +277,12 @@ async def test_a_bath_day_keeps_the_writes_its_heat_up_needs(hass: HomeAssistant
     _seed_rate(sim, 1.5)
     await sim.run(at(0, 0), at(19, 0))
     assert sim.temp >= 37.5
+
+
+async def test_a_latched_session_never_takes_the_next_session_s_quarters(hass: HomeAssistant) -> None:
+    devices = _sauna_devices(hass)
+    sim = Sim(hass, _sauna(["16:00", "18:10", "20:20", "22:30"]), "sauna", SAUNA, 22.0, 1.0, 0.25)
+    await sim.run(at(14, 0), at(23, 59))
+    # Held through each session it serves, never switched on and off by the next session's plan.
+    writes = [call[2] for call in devices.writes()]
+    assert len(writes) <= 6 and writes == ["heat", "off"] * (len(writes) // 2)
