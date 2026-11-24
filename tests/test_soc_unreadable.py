@@ -114,6 +114,26 @@ async def test_an_unreadable_level_without_an_estimate_plans_from_the_last_readi
         assert status["soc_unreadable"]["read_at"] == "2026-09-22T06:00:00+00:00"
 
 
+async def test_a_last_reading_a_day_old_plans_a_full_charge_with_a_notice(hass: HomeAssistant, transport: Any) -> None:
+    with freeze_time(NOW) as frozen:
+        charger, _soc = await _car_read_then_lost(hass, transport, frozen)
+        hass.states.async_set(REGISTER, "unavailable", _ENERGY)
+        await hass.async_block_till_done()
+        # Just under a day: still the last reading.
+        frozen.move_to(datetime(2026, 9, 23, 5, 59, tzinfo=timezone.utc))
+        snapshot = await _replan(hass, charger)
+        assert snapshot.soc_basis == "last_known"
+        # A day old: the car may have been driven since, so a full charge.
+        frozen.move_to(datetime(2026, 9, 23, 6, 0, tzinfo=timezone.utc))
+        snapshot = await _replan(hass, charger)
+        assert snapshot.soc_basis == "full_charge" and snapshot.soc_basis_percent is None
+        assert snapshot.proposal is not None
+        assert snapshot.proposal.requested_kwh == pytest.approx(77.0 * 0.8 / 0.9, abs=0.05)
+        status = _status(hass, charger)
+        assert status["soc_unreadable"]["basis"] == "full_charge"
+        assert status["soc_unreadable"]["soc_percent"] is None
+
+
 async def test_a_car_never_read_plans_a_full_charge_with_a_notice(hass: HomeAssistant, transport: Any) -> None:
     serve_prices(transport)
     with freeze_time(NOW) as frozen:

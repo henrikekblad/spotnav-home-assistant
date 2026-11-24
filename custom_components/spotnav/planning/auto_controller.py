@@ -138,6 +138,9 @@ _FAILURE_CLOCK: Final = datetime(2000, 1, 1, tzinfo=timezone.utc)
 SOC_BASIS_ESTIMATE: Final = "estimate"
 SOC_BASIS_LAST_KNOWN: Final = "last_known"
 SOC_BASIS_FULL_CHARGE: Final = "full_charge"
+#: The last reading is planned from only while it is younger than this: a car read longer ago may have been driven
+#: since, so a full charge is planned instead.
+LAST_KNOWN_MAX_AGE: Final = timedelta(hours=24)
 
 #: A guest car with no departure is charged within this long of the calculation (`vehicles/guest.py`).
 GUEST_WITHIN: Final = timedelta(hours=12)
@@ -2536,8 +2539,8 @@ class AutoPlannerController:
 
         A level read now (or an estimate carried from one while the car's sensor still reads) plans as it is, with
         no basis. While the sensor reads nothing: the estimate from the last reading and the energy delivered since
-        (the one the target stop uses), else the last reading this charger holds, else a full charge from empty to
-        the target. A full charge is the most energy the target can ask for: the car is never left short by a level
+        (the one the target stop uses), else the last reading this charger holds while it is under
+        `LAST_KNOWN_MAX_AGE` old, else a full charge from empty to the target. A full charge is the most energy the target can ask for: the car is never left short by a level
         nobody could read, and it ends the charge itself when full. Never a refusal: nothing in Settings fixes an
         unreadable level (docs/target-soc.md).
         """
@@ -2549,7 +2552,11 @@ class AutoPlannerController:
             if facts.soc_age_s is not None:
                 read_at = now - timedelta(seconds=facts.soc_age_s)
             return live, (SOC_BASIS_ESTIMATE, read_at)
-        if facts.last_known_percent is not None:
+        if (
+            facts.last_known_percent is not None
+            and facts.last_known_at is not None
+            and now - facts.last_known_at < LAST_KNOWN_MAX_AGE
+        ):
             return facts.last_known_percent, (SOC_BASIS_LAST_KNOWN, facts.last_known_at)
         return 0.0, (SOC_BASIS_FULL_CHARGE, None)
 
