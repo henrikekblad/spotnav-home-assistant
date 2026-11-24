@@ -461,6 +461,31 @@ describe("the status line renders the block and nothing else", () => {
     }
   });
 
+  it("says SpotNav started the charge in a refusing car, and what to do when it still refuses", () => {
+    const started = block(statusLine("waiting_for_tomorrow", {}), statusLine("car_start_made", {}));
+    expect(statusText(started, format("sv"), NOW)).toContain("Bilen tog inte emot ström; SpotNav startade laddningen i bilen");
+    expect(issuesOf({ ...started, tone: "normal" }, "en")).toEqual([]);
+    const refuses = {
+      tone: "notice",
+      lines: [statusLine("car_refuses", { soc_percent: 65, target: 80 })],
+    } as unknown as Status;
+    const [issue] = issuesOf(refuses, "sv");
+    expect(issue?.code).toBe("car_refuses");
+    expect(issueText("sv", issue!)).toBe("Bilen tar inte emot ström vid 65 % fast målet är 80 %. Starta laddningen i bilens app.");
+    expect(issueText("en", issuesOf(refuses, "en")[0]!)).toBe(
+      "The car is not taking current at 65 % though the target is 80 %. Start the charge in the car's app.",
+    );
+    const unknown = { tone: "notice", lines: [statusLine("car_refuses", { soc_percent: null, target: 80 })] } as unknown as Status;
+    expect(issueText("en", issuesOf(unknown, "en")[0]!)).toBe(
+      "The car is not taking current though the target is not reached. Start the charge in the car's app.",
+    );
+    for (const language of ["da", "de", "es", "fi", "fr", "nb", "nl"] as const) {
+      const text = issueText(language, issuesOf(refuses, language)[0]!);
+      expect(text).toContain("65");
+      expect(text).not.toMatch(/\{\w+\}/u);
+    }
+  });
+
   it("says the car ended the charge at its level and the plan waits for the car's level", () => {
     const estimated = block(statusLine("car_ended_waiting", { soc_percent: 86.2, estimated: true }));
     expect(statusText(estimated, format("en"), NOW)).toMatch(

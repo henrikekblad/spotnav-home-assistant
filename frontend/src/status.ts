@@ -252,6 +252,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
+  car_start_made: "status.carStartMade",
+  car_refuses: "issue.carRefuses",
   charger_circuit_limited: "issue.circuitLimited",
   charger_disabled: "issue.chargerDisabled",
   charger_own_mode: "issue.ownMode",
@@ -298,6 +300,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "control.pausedManualStart",
   "control.pausedManualStartResume",
   "status.targetStoppedAge",
+  "issue.carRefusesNoLevel",
   "status.targetStoppedNow",
   "status.targetStoppedEstimate",
   "status.targetStoppedEstimateAge",
@@ -902,6 +905,8 @@ export function lineText(
         to: clock(format, end),
       });
     }
+    case "car_refuses":
+      return say(...carRefusesWording(language, p));
     case "car_ended_waiting": {
       // The car ended the plan's charge short of the target: at the level it ended at, "~" and "estimated" when that
       // came from the delivered energy, and the plan waits for the car's own level.
@@ -1112,6 +1117,22 @@ export function statusNeedsSiteSettings(status: Status | null): boolean {
   );
 }
 
+/**
+ * The car takes no current the charger offers below its target, and SpotNav could not start the charge in the car: the
+ * level and the target (capped by the car's own limit) as whole percents, or without them when either is not known.
+ */
+function carRefusesWording(
+  language: Language,
+  p: Readonly<Record<string, StatusParam>>,
+): [TranslationKey, Record<string, string>] {
+  const soc = num(p["soc_percent"]);
+  const target = num(p["target"]);
+  if (soc === null || target === null) {
+    return ["issue.carRefusesNoLevel", {}];
+  }
+  return ["issue.carRefuses", { soc: formatNumber(language, soc, 0), target: formatNumber(language, target, 0) }];
+}
+
 /** The suggestion note has its own muted line, never a part of the plan line. */
 const NOTE_CODE = "settings_suggested";
 
@@ -1300,6 +1321,11 @@ export function issuesOf(
         technical: null,
         fix: { entity: line.params["entity"], value: "on", labelKey: "issue.chargerDisabled.turnOn", labelParams: {} },
       });
+      continue;
+    }
+    if (line.code === "car_refuses") {
+      const [textKey, params] = carRefusesWording(language, line.params);
+      issues.push({ code: line.code, severity, textKey, params, technical: null });
       continue;
     }
     if (line.code === "charger_circuit_limited") {
