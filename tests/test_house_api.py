@@ -375,3 +375,20 @@ def test_action_now_is_the_action_the_battery_control_runs() -> None:
     # Handing back, blocked or idle: SpotNav runs nothing, whatever it ran last.
     for phase in ("idle", "restoring", "blocked"):
         assert _action_now(control(phase, "grid_charge")) is None
+
+
+def test_the_card_shows_the_round_trip_the_plan_uses() -> None:
+    """On a battery read at the battery the card says the AC round trip the plan runs on, not the counters' 97 %."""
+    from custom_components.spotnav.api.house import _on_ac_side, _plan_round_trip
+    from custom_components.spotnav.battery.facts import BatteryFacts
+    from custom_components.spotnav.battery.learned import LearnedBattery
+
+    learned = LearnedBattery()
+    dc = BatteryFacts(battery_entity_id="sensor.battery", power_dc=True)
+    ac = BatteryFacts(battery_entity_id="sensor.battery", power_dc=False)
+    assert _plan_round_trip(dc, learned) == 0.90  # assumed until learnt
+    learned.round_trip.efficiency = 0.97
+    assert _plan_round_trip(dc, learned) == round(0.97 * 0.95 / 1.03, 3)
+    assert _plan_round_trip(ac, learned) == 0.97
+    assert _on_ac_side(dc, learned, 0.97) == pytest.approx(0.97 * 0.95 / 1.03)
+    assert _on_ac_side(ac, learned, 0.97) == 0.97
