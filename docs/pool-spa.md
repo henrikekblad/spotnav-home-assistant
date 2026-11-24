@@ -84,7 +84,9 @@ says:
   the circulation's switch on, a heat pump that says when it heats (`hvac_action`) keeps the circulation on while it
   heats and for the run-on after; one that does not say is left to its own flow switch and the tab says so (turn on
   **Control the pool heat pump** too).
-* **The spa's frost floor** (10 °C, fixed): water at or below it is heated whatever else holds.
+* **The spa's frost floor** (10 °C, fixed): water at or below it is heated whatever else holds, to 12 °C, and then
+  rested; that heat and its rest are never held back by a budget, so the floor never leaves the spa heating to the
+  bath temperature.
 * **The sauna**: only for a session you booked or **Heat now**; never while its door or lock reads locked, or while a
   lock you chose cannot be read (a lock that turns locked or unreadable while it heats turns it off); never longer
   than its own longest run (Harvia's on time, Saunum's session length) and never longer than 3 hours, counted over the
