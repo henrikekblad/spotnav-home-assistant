@@ -36,7 +36,10 @@ The plan's round trip is the AC one (`ac_round_trip`): the DC round trip x (1 - 
   and the losses hold, else `None` (a negative one is the plant's meter reading off SpotNav's, not a use). The
   owner's Sigenergy plant (Oct-Nov 2026, 3 087 dark quarter hours forward-filled from the recorder): about 190 W
   standing, 3.5 % in and 4.3 % out; without the constant the fit puts the standing use into the losses (5.4 % and
-  8.0 %), which is why the constant is fitted at all.
+  8.0 %), which is why the constant is fitted at all. The way-out share is the least steady: 3.9 % in mid October,
+  5.2 % in mid November and 6.9 % over 15-24 November (the standby 160-200 W), as the nights got colder and the
+  battery gave more; the battery discharges at much the same power all night, so a short span tells the standby and
+  the way-out loss apart poorly, and the half-life keeps the fit long.
 * **Assumed** otherwise: `DEFAULT_CHARGE_LOSS` and `DEFAULT_DISCHARGE_LOSS`, a typical hybrid's 96-97 % each way
   (the owner's Sigenergy plant measured 3.5 % and 4.3 %). The standing use is not assumed: without the plant's own
   load nothing tells it from the house's, so it stays `None` (counted as 0 where a figure is wanted) rather than an
