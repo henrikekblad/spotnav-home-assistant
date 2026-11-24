@@ -89,6 +89,16 @@ moved, never dropped: the need is still met before its deadline), the spa's heat
 temperature), and further up a booked bath and a sauna session. A watched or cloud load only shows the step it would
 take.
 
+## A bath or a session that will not be ready
+
+Bath and session times are booked like a car's departures: weekly times on their weekdays, and one date. When the
+time left, the import target, a power level or the main fuse keeps a bath or a session from reaching its temperature
+in time, the tab says why and how warm it gets, and offers **Take what fits** (heat as far as it can), a later time
+(the earliest whole hour where it all fits; left out when none does) and, under the import target or a power level,
+**Allow the peak** (never past the main fuse). The house card's Plan tab and one notice per phone gather every load
+that will not be ready across the site, cars included ([notifications](notifications.md#not-ready-in-time-across-the-site)).
+Unanswered, the site's [priority list](site-and-load-balancing.md#the-priority-list) decides.
+
 ## What the tabs say
 
 Under each load: **Controlled by SpotNav** (with what it waits for: the circulation, the run-on, the spa's lowest
