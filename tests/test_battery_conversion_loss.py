@@ -38,12 +38,15 @@ def test_the_loss_is_assumed_until_learnt_and_none_on_the_ac_side() -> None:
     assert learner.loss(False) == (0.0, 0.0) and learner.source(False) == "ac"
 
 
-def _feed(learner: ConversionLoss, quarters: list[tuple[float, float]], charge: float, discharge: float) -> None:
-    """Quarter hours of `(battery DC kW, sun kW)`, a reading a minute; the plant's load leaves the loss out."""
+def _feed(
+    learner: ConversionLoss, quarters: list[tuple[float, float]], charge: float, discharge: float, idle: float = 0.15
+) -> None:
+    """Quarter hours of `(battery DC kW, sun kW)`, a reading a minute; the plant's load leaves the loss and the
+    inverter's standing use [idle] (kW) out."""
     house = 1.0
     for index, (battery, sun) in enumerate(quarters):
         loss = charge * max(0.0, battery) + discharge * max(0.0, -battery)
-        grid = house + battery + loss + 0.15 - sun
+        grid = house + battery + loss + idle - sun
         for minute in range(15):
             learner.observe(T0 + timedelta(minutes=15 * index + minute), battery, grid, sun, house)
     learner.observe(T0 + timedelta(minutes=15 * len(quarters)), None, None, None, None)
@@ -56,6 +59,35 @@ def test_the_loss_is_learnt_from_dark_quarter_hours() -> None:
     assert learner.source(True) == "learned"
     charge, discharge = learner.loss(True)
     assert charge == pytest.approx(0.04, abs=0.002) and discharge == pytest.approx(0.07, abs=0.002)
+    # The fit's constant is the inverter's standing use, apart from the losses.
+    assert learner.idle(True) == pytest.approx(0.15, abs=0.005)
+    assert learner.view(True)["idle_w"] == pytest.approx(150, abs=5)
+    assert learner.idle(False) is None
+
+
+def test_the_standing_use_is_never_assumed_and_kept_only_where_believable() -> None:
+    learner = ConversionLoss()
+    assert learner.idle(True) is None and learner.view(True)["idle_w"] is None
+    pattern = [(5.0, 0.0)] * 4 + [(-3.0, 0.0)] * 6 + [(0.0, 0.0)] * 2
+    # A plant meter reading below SpotNav's: a negative constant is no use; the losses still hold.
+    _feed(learner, pattern * 16, 0.04, 0.07, idle=-0.2)
+    assert learner.source(True) == "learned" and learner.idle(True) is None
+    high = ConversionLoss()
+    _feed(high, pattern * 16, 0.04, 0.07, idle=0.5)
+    assert high.source(True) == "learned" and high.idle(True) is None
+
+
+def test_the_standing_use_is_kept_across_a_restart() -> None:
+    learner = ConversionLoss()
+    pattern = [(5.0, 0.0)] * 4 + [(-3.0, 0.0)] * 6 + [(0.0, 0.0)] * 2
+    _feed(learner, pattern * 16, 0.035, 0.043, idle=0.19)
+    again = ConversionLoss.from_dict(learner.as_dict())
+    assert again.idle(True) == learner.idle(True) == pytest.approx(0.19, abs=0.005)
+    assert again.loss(True) == learner.loss(True)
+    # One out of range (an edited store) is dropped; without the losses it is not kept either.
+    raw = learner.as_dict()
+    assert ConversionLoss.from_dict({**raw, "idle_kw": 0.9}).idle(True) is None
+    assert ConversionLoss.from_dict({**raw, "charge_loss": None}).idle(True) is None
 
 
 def test_too_few_quarter_hours_teach_nothing() -> None:

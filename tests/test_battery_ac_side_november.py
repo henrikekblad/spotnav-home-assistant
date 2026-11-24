@@ -146,9 +146,11 @@ def test_the_loss_is_learnt_from_the_plants_own_load(data: dict) -> None:
     assert learner.source(True) == "learned"
     assert charge == pytest.approx(0.036, abs=0.01)
     assert discharge == pytest.approx(0.066, abs=0.015)
+    # The fit's constant: the inverter's standby, about 180 W on these nights.
+    assert learner.idle(True) == pytest.approx(0.18, abs=0.04)
     assert learner.loss(False) == (0.0, 0.0)
     again = ConversionLoss.from_dict(json.loads(json.dumps(learner.as_dict())))
-    assert again.loss(True) == learner.loss(True)
+    assert again.loss(True) == learner.loss(True) and again.idle(True) == learner.idle(True)
 
 
 def test_counted_as_read_the_battery_beats_its_perfect_plan(data: dict) -> None:

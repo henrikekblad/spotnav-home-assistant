@@ -8,7 +8,7 @@ import type { NotReadyPress } from "./not-ready-sheet";
 import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, percentWhole, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
-import { MODES, type BatteryMode, type EnergyFlow, type HouseAnswer, type HouseHour } from "./house-model";
+import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { BatteryFlow, HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
@@ -603,22 +603,6 @@ function pctOf(language: Language, part: number, whole: number): string {
   return whole > 0 ? percentWhole(language, (part / whole) * 100) : "–";
 }
 
-/** The smallest inverter's loss (kWh) said under the energy flow. */
-export const INVERTER_LOSS_MIN_KWH = 0.1;
-
-/** One plain line under the energy flow: the inverter's loss the battery's AC side took out of the house
- * (`site/energy_flow.py`), today's or the period's; `null` for a battery read on the AC side or below
- * `INVERTER_LOSS_MIN_KWH`. */
-function inverterLossLine(doc: Document, language: Language, flow: EnergyFlow, today: boolean): HTMLElement | null {
-  const loss = flow.inverter_loss_kwh;
-  if (loss === null || loss < INVERTER_LOSS_MIN_KWH) {
-    return null;
-  }
-  const line = element(doc, "p", `${C.muted} ${H.note}`, translate(language, today ? "house.flow.inverterLoss" : "house.flow.inverterLossPeriod", { kwh: kwhText(language, loss) }));
-  line.dataset["line"] = "inverter-loss";
-  return line;
-}
-
 /** The day's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. Today before
  * anything can be drawn (its first minutes), a short line says it is on its way. */
 function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement | null {
@@ -647,10 +631,6 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })));
   }
   section.append(diagram);
-  const loss = inverterLossLine(doc, language, flow, !past);
-  if (loss !== null) {
-    section.append(loss);
-  }
   if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
     const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap")));
@@ -937,11 +917,6 @@ function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
   }
   section.append(diagram);
   panel.append(section);
-  // Under the diagram in a box too: the box measures the tab with it (`house-card.ts` `fit`).
-  const loss = inverterLossLine(doc, language, flow, isToday);
-  if (loss !== null) {
-    panel.append(loss);
-  }
   // The diagram carries the figures; in a box of fixed height it takes the room, elsewhere the hint follows it.
   if (boxed(input)) {
     return;

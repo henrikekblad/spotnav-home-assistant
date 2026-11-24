@@ -251,8 +251,11 @@ async def loads_answer(
     figure = None
     through = None
     five = False
+    inverter = None
     if flow is not None:
         figure = next((float(node["kwh"]) for node in flow["nodes"] if node["role"] == role), 0.0)
+        # The inverter's own slice of the house pie (`site/energy_flow.inverter_use`), where the flow counts it.
+        inverter = flow.get("inverter_kwh") if kind == KIND_HOUSE else None
         through = datetime.fromisoformat(flow["through"])
         five = int(flow.get("step_min") or 60) < 60
     belongs = stored_belongs(site.data, CONF_METER_BELONGS)
@@ -283,7 +286,7 @@ async def loads_answer(
     cache: dict[tuple[Any, ...], tuple[Any, dict[str, Any]]] = hass.data.setdefault(_CACHE, {})
     key = (site.entry_id, kind, period.kind, period.first)
     part_mark = tuple((part.part, part.entity_id, round(sum(part.quarters.values()), 4)) for part in parts)
-    mark = (through, figure, tuple(meters), tuple(moved), zones.signature(), meter.entity_id, tuple(sorted(belongs.items())), part_mark)
+    mark = (through, figure, inverter, tuple(meters), tuple(moved), zones.signature(), meter.entity_id, tuple(sorted(belongs.items())), part_mark)
     held = cache.get(key)
     if held is not None and held[0] == mark:
         return held[1]
@@ -315,6 +318,7 @@ async def loads_answer(
         moved=moved,
         belongs=belongs,
         implausible=reads,
+        inverter_kwh=inverter,
     )
     cache.pop(key, None)
     cache[key] = (mark, answer)

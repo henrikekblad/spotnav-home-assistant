@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
 from custom_components.spotnav.site.energy_flow import (
     FLOW_KEYS,
     LINK_KEYS,
@@ -13,7 +15,8 @@ from custom_components.spotnav.site.energy_flow import (
     allocate_hour,
     energy_flow,
     energy_hours,
-    on_ac_side,
+    inverter_kwh,
+    inverter_use,
 )
 from custom_components.spotnav.site.energy_statistics import FlowIds, energy_flow_ids
 
@@ -329,35 +332,36 @@ def _house(flow: dict) -> float:
     return next(node["kwh"] for node in flow["nodes"] if node["role"] == "house")
 
 
-def test_a_battery_read_at_the_battery_is_turned_to_the_ac_side_and_its_loss_said() -> None:
-    loss = (0.0366, 0.065)
-    # A night: 10 kWh charged from a 13 kWh import, a later hour 10 kWh given to the house.
+def test_the_inverter_on_a_battery_read_at_the_battery_stays_in_the_house_and_is_said_apart() -> None:
+    loss = (0.0346, 0.0431)
+    # A night: 10 kWh charged from a 13 kWh import, a later hour 10 kWh given to the house; 0.19 kW standing.
     night = [hour(0, grid_in=13.0, battery_in=10.0), hour(1, grid_in=0.2, battery_out=10.0)]
     as_read = energy_flow(night, day=DAY, has_solar=True, has_battery=True)
-    turned = on_ac_side(night, loss)
-    assert turned[0].battery_in == 10.0 * 1.0366 and turned[1].battery_out == 10.0 * 0.935
-    flow = energy_flow(turned, day=DAY, has_solar=True, has_battery=True)
+    counted = inverter_use(night, loss, 0.19)
+    # The battery's figures stay what its own counters say.
+    assert [(p.battery_in, p.battery_out) for p in counted] == [(p.battery_in, p.battery_out) for p in night]
+    assert counted[0].inverter == pytest.approx(10.0 * 0.0346 + 0.19)
+    assert counted[1].inverter == pytest.approx(10.0 * 0.0431 + 0.19)
+    flow = energy_flow(counted, day=DAY, has_solar=True, has_battery=True)
     assert flow is not None and as_read is not None
-    assert flow["inverter_loss_kwh"] == round(0.366 + 0.65, 2)
-    # The loss leaves the house: 3 + 0.2 + 10 kWh as read, 1.02 less on the AC side.
-    assert _house(as_read) == 13.2 and _house(flow) == round(13.2 - 0.366 - 0.65, 2)
-    assert as_read["inverter_loss_kwh"] is None
-    # Every node still balances.
-    sources = sum(node["kwh"] for node in flow["nodes"] if node["side"] == "source")
-    uses = sum(node["kwh"] for node in flow["nodes"] if node["side"] == "use")
-    assert abs(sources - uses) < 0.02
+    assert flow["inverter_kwh"] == round(0.346 + 0.431 + 0.38, 3)
+    # The house holds it: the same house as read.
+    assert _house(as_read) == _house(flow) == 13.2
+    assert as_read["inverter_kwh"] is None
+    # Without a learnt standing use only the losses count.
+    assert inverter_use(night, loss, None)[0].inverter == pytest.approx(0.346)
+    # Up to an instant: the periods that ended by it.
+    assert inverter_kwh(counted, through=counted[0].end) == round(0.346 + 0.19, 3)
 
 
-def test_the_suns_charge_over_the_dc_bus_takes_the_way_out_loss_and_the_import_caps_the_grids_share() -> None:
+def test_the_suns_charge_over_the_dc_bus_costs_the_inverter_nothing_and_the_import_caps_the_grids_share() -> None:
     loss = (0.03, 0.05)
     # 4 kWh charged with 1 kWh imported: about 0.97 kWh of it from the grid (with its loss, at most the import).
-    period = on_ac_side([hour(0, solar=5.0, grid_in=1.0, battery_in=4.0)], loss)[0]
-    from_grid = 1.0 / 1.03
-    assert abs(period.battery_in - (from_grid * 1.03 + (4.0 - from_grid) * 0.95)) < 1e-9
-    assert period.inverter_loss is not None and period.inverter_loss < 0
-    # A sunny day's net may be below zero: never a negative line.
-    flow = energy_flow([period], day=DAY, has_solar=True, has_battery=True)
-    assert flow is not None and flow["inverter_loss_kwh"] == 0.0
+    period = inverter_use([hour(0, solar=5.0, grid_in=1.0, battery_in=4.0)], loss, None)[0]
+    assert period.inverter == pytest.approx(1.0 / 1.03 * 0.03)
+    # A quarter hour counts a quarter of the standing use.
+    quarter = EnergyHour(start=H0, grid_in=0.5, grid_out=0.0, battery_in=0.0, battery_out=0.0, minutes=15)
+    assert inverter_use([quarter], loss, 0.2)[0].inverter == pytest.approx(0.05)
     # A period without the battery's figures is kept as it is.
     bare = hour(1, battery_in=None, battery_out=None)
-    assert on_ac_side([bare], loss) == [bare]
+    assert inverter_use([bare], loss, 0.2) == [bare]

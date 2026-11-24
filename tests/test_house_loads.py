@@ -237,6 +237,24 @@ def test_ovrigt_is_the_house_less_the_meters() -> None:
     assert (answer["meters_kwh"], answer["other_kwh"], answer["over_kwh"]) == (2.05, 7.95, 0.0)
 
 
+def test_the_inverter_has_its_own_slice_taken_out_of_the_unknown() -> None:
+    def answer(house: float, inverter: float | None, kind: str = "house") -> dict[str, Any]:
+        return house_loads(
+            site_id="site", period="day", first="2026-11-17", end="2026-11-18",
+            through=datetime(2026, 11, 17, 12, tzinfo=UTC), house_kwh=house, loads=[(DISH, 1.25)],
+            inverter_kwh=inverter, kind=kind,
+        )
+
+    pie = answer(10.0, 2.4)
+    # Ovrigt keeps its meaning (a client before it shows the inverter inside it); the unknown is what is left.
+    assert (pie["other_kwh"], pie["inverter_kwh"], pie["unknown_kwh"]) == (8.75, 2.4, 6.35)
+    # Never more than no meter explains.
+    assert (answer(3.0, 2.4)["inverter_kwh"], answer(3.0, 2.4)["unknown_kwh"]) == (1.75, 0.0)
+    # Where SpotNav cannot count it, and in the heat pie: none, all of Ovrigt unknown.
+    assert (answer(10.0, None)["inverter_kwh"], answer(10.0, None)["unknown_kwh"]) == (None, 8.75)
+    assert answer(10.0, 2.4, kind=KIND_HEAT)["inverter_kwh"] is None
+
+
 def test_meters_over_the_house_clamp_ovrigt_at_zero() -> None:
     answer = house_loads(
         site_id="site", period="month", first="2026-11-01", end="2026-12-01",
@@ -542,6 +560,8 @@ def test_contract_fixtures() -> None:
                 (DashboardMeter("sensor.frys_energi", "Frys"), 0.21),
                 (DashboardMeter("sensor.router_energi", "Router"), 0.12),
             ],
+            # A hybrid's inverter: its losses on the battery's way in and out and its standing use.
+            inverter_kwh=1.83,
         ),
     )
     _fixture(

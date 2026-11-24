@@ -24,16 +24,19 @@ period without a part's quarters leaves it in the house. `heat_sources` is how m
 zone and each such part counted), so the card offers their split (`spotnav/get_house_loads` `kind: "heat"`) only
 when there is more than one.
 
-**The battery on the AC side**: a hybrid that reads its battery at the battery (the DC side, `adapters`:
-`dc_power`; its Energy dashboard meters are the battery's own counters) leaves the inverter's loss out of them, and
-the balance would put it in the house (1-3 kWh a day on the owner's plant). Where the battery is read so, each period's
-charge and discharge are turned to the AC side before the flow is allocated (`on_ac_side`, the battery plan's learnt
-loss, else the assumed one, `battery/conversion_loss.py`): the part of a charge the grid's import can have given at
-the way-in loss, the rest (the sun's, over the DC bus) and the discharge at the way-out loss. So the battery's nodes
-and flows are on the AC side and the house is right; what was taken out of the house is `inverter_loss_kwh` (each
-period's `EnergyHour.inverter_loss`, summed), which the card says in one line under the diagram. `null` where the
-battery is read on the AC side or the site has none. A past day is turned with the loss known now, as the review is
-(`battery/review_rebuild.py`). The sun stays as read (no adapter marks its solar power as DC).
+**The inverter** (2026-11-25): a hybrid that reads its battery at the battery (the DC side, `adapters`: `dc_power`;
+its Energy dashboard meters are the battery's own counters) leaves the inverter's loss out of them, and the inverter's
+standing use (its standby) is on no meter at all: the balance puts both in the house, and there they stay. The
+inverter uses that energy behind the grid's meter like an appliance, so the house holds it, and the battery's nodes
+are what its own counters (and its own app) say. What the inverter used is said apart (`inverter_use`, each period's
+`EnergyHour.inverter`, summed into `inverter_kwh`), for the house pie's own slice (`site/house_loads.py`): the way-in
+loss on the part of a charge the period's import can have given, the way-out loss on the discharge (the battery
+plan's learnt loss, else the assumed one, `battery/conversion_loss.py`) and the standing use over the period where it
+is learnt (never assumed). The sun's charge over the DC bus never crosses the inverter and costs it nothing here.
+`null` where the battery is read on the AC side or the site has none (a battery read on the AC side has the
+inverter's loss in its own meters). A past day is counted with the loss known now, as the review is
+(`battery/review_rebuild.py`). The review, the perfect plan and the plan count the battery on the AC side instead
+(`battery/conversion_loss.py`): there the loss is the battery's, not the house's, so a way that cycles more pays for it.
 
 **What is not measured** is which source fed which use: no meter says whether the sun or the grid charged the
 battery. The flows are allocated by one rule, period by period (quarter hour or hour) so a sunny midday quarter and a
@@ -90,7 +93,7 @@ FLOW_KEYS: Final = (
     "nodes",
     "links",
     "step_min",
-    "inverter_loss_kwh",
+    "inverter_kwh",
 )
 
 #: Each source's uses in the order it fills them (see the module); the sources are taken in this order. A car that
@@ -118,8 +121,8 @@ class EnergyHour:
     """One period (kWh): a completed local hour, a quarter hour, or the running quarter's finished 5-minute rows
     (`minutes`). `solar` / `battery_*` are `None` on a site without that statistic; `car` is `None` when the cars'
     energy could not be read for the period (it is then in the house), and so is `heat` (the heat pump's meter)
-    without its figure. `inverter_loss`: what turning the battery to the AC side (`on_ac_side`) took out of the house,
-    `None` where it is not turned."""
+    without its figure. `inverter`: what the inverter used of the house in the period (its loss and standing use,
+    `inverter_use`), `None` where it is not counted."""
 
     start: datetime
     grid_in: float
@@ -130,7 +133,7 @@ class EnergyHour:
     car: float | None = None
     heat: float | None = None
     minutes: int = 60
-    inverter_loss: float | None = None
+    inverter: float | None = None
 
     @property
     def end(self) -> datetime:
@@ -161,19 +164,20 @@ def with_heat_parts(periods: Sequence[EnergyHour], parts: Sequence[Mapping[datet
                 car=period.car,
                 heat=(period.heat or 0.0) + added,
                 minutes=period.minutes,
-                inverter_loss=period.inverter_loss,
+                inverter=period.inverter,
             )
         )
     return out
 
 
-def on_ac_side(periods: Sequence[EnergyHour], loss: tuple[float, float]) -> list[EnergyHour]:
-    """The periods with the battery's charge and discharge turned from the battery's own counters (DC) to the AC side
-    with the inverter's `(charge, discharge)` loss (see the module): of a charge, what the period's import can have
-    given (with its loss, at most the import) at the way-in loss and the rest at the way-out loss; a discharge at the
-    way-out loss. Each period keeps what that took out of the house (`inverter_loss`); one without the battery's
-    figures is kept as it is."""
+def inverter_use(periods: Sequence[EnergyHour], loss: tuple[float, float], idle_kw: float | None) -> list[EnergyHour]:
+    """The periods, each with what the inverter used of its house (`inverter`, kWh, see the module): with the
+    `(charge, discharge)` loss, the way-in loss on what the period's import can have given of the battery's charge
+    (counted at the battery, so at most the import less the loss) and the way-out loss on its discharge, plus the
+    standing use [idle_kw] over the period (`None`: not learnt, none counted). The battery's own figures stay as they
+    are; a period without them is kept as it is."""
     charge, discharge = loss
+    idle = max(0.0, idle_kw or 0.0)
     out: list[EnergyHour] = []
     for period in periods:
         if period.battery_in is None or period.battery_out is None:
@@ -182,16 +186,8 @@ def on_ac_side(periods: Sequence[EnergyHour], loss: tuple[float, float]) -> list
         charged = max(0.0, period.battery_in)
         given = max(0.0, period.battery_out)
         from_grid = min(charged, max(0.0, period.grid_in) / (1.0 + charge))
-        charged_ac = from_grid * (1.0 + charge) + (charged - from_grid) * (1.0 - discharge)
-        given_ac = given * (1.0 - discharge)
-        out.append(
-            replace(
-                period,
-                battery_in=charged_ac,
-                battery_out=given_ac,
-                inverter_loss=(charged_ac - charged) + (given - given_ac),
-            )
-        )
+        used = from_grid * charge + given * discharge + idle * period.minutes / 60.0
+        out.append(replace(period, inverter=used))
     return out
 
 
@@ -247,8 +243,8 @@ def energy_flow(
     since: datetime | None = None,
 ) -> dict[str, Any] | None:
     """The `energy_flow` block (`FLOW_KEYS`) for the day's periods; without any, `None`, or the empty flow from
-    `since` on (today's first minutes, see the module). `inverter_loss_kwh` is the periods' `inverter_loss` summed
-    where any of them has one (never below 0), else `None`."""
+    `since` on (today's first minutes, see the module). `inverter_kwh` is the periods' `inverter` summed where any of
+    them has one, else `None` (`inverter_kwh`)."""
     if not hours and since is None:
         return None
     totals: dict[tuple[str, str], float] = {}
@@ -292,14 +288,19 @@ def energy_flow(
         "nodes": nodes,
         "links": links,
         "step_min": step_min,
-        "inverter_loss_kwh": inverter_loss_kwh(hours),
+        "inverter_kwh": inverter_kwh(hours),
     }
 
 
-def inverter_loss_kwh(periods: Sequence[EnergyHour]) -> float | None:
-    """What turning the battery to the AC side took out of the house over the periods (kWh, see the module)."""
-    losses = [period.inverter_loss for period in periods if period.inverter_loss is not None]
-    return round(max(0.0, sum(losses)), 2) if losses else None
+def inverter_kwh(periods: Sequence[EnergyHour], through: datetime | None = None) -> float | None:
+    """What the inverter used of the house over the periods (kWh, see the module; those that ended by [through]
+    where given), `None` where no period counts it."""
+    used = [
+        period.inverter
+        for period in periods
+        if period.inverter is not None and (through is None or period.end <= through)
+    ]
+    return round(max(0.0, sum(used)), 3) if used else None
 
 
 def energy_hours(

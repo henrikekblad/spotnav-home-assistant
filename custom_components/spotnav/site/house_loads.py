@@ -8,6 +8,7 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
     {api_version: 1, site_id, kind: "house" | "heat", period: "day" | "month" | "year", date (the period's first
      day), end (the first day after it), through (the end of the energy flow's last period) | null,
      house_kwh (the block's figure: the house, or the heat) | null, meters_kwh, other_kwh | null, over_kwh,
+     inverter_kwh | null, unknown_kwh | null,
      loads: [{statistic_id, name, kwh, source: "meter" | "heat_pump" | "zone" | "pool_heat" | "pool_circulation" | "spa"
               | "sauna", changed}],
      moved: [{statistic_id, name, belongs}], belongs: {statistic_id: "heat" | "car" | "none"},
@@ -50,6 +51,12 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
 * **Övrigt** (`other_kwh`): the house block less the meters, never below 0; `over_kwh` is how much the meters
   exceed the house (a device meter that also measures the car or the heat, or meters that disagree with the
   grid's), 0 when they do not. `house_kwh` and `other_kwh` are `null` without an energy flow (no grid meter on the dashboard).
+* **The inverter** (`inverter_kwh`, added 2026-11-25 within API version 1): what a hybrid inverter used of the house
+  over the same span, its loss on the battery's way in and out and its standing use where learnt (the energy flow's
+  `inverter_kwh`, `site/energy_flow.inverter_use`), at most `other_kwh`: the house pie's own slice, taken out of what
+  no meter explains. `unknown_kwh` is `other_kwh` less it, what is left unknown. `inverter_kwh` is `null` (and
+  `unknown_kwh` equals `other_kwh`) where SpotNav cannot count it (a battery read on the AC side, none, a heat pie);
+  `other_kwh` keeps its meaning, so a client before it shows the inverter inside its Unknown.
 """
 
 from __future__ import annotations
@@ -83,6 +90,8 @@ LOADS_KEYS: Final = (
     "meters_kwh",
     "other_kwh",
     "over_kwh",
+    "inverter_kwh",
+    "unknown_kwh",
     "loads",
     "moved",
     "belongs",
@@ -245,8 +254,10 @@ def house_loads(
     moved: Iterable[tuple[DashboardMeter, str]] = (),
     belongs: Mapping[str, str] | None = None,
     implausible: Iterable[tuple[DashboardMeter, MeterRead]] = (),
+    inverter_kwh: float | None = None,
 ) -> dict[str, Any]:
-    """The whole answer (`LOADS_KEYS`). A meter of `implausible` with no plausible hour is left out of `loads`."""
+    """The whole answer (`LOADS_KEYS`). A meter of `implausible` with no plausible hour is left out of `loads`;
+    [inverter_kwh] is the inverter's use (see the module), only in a house pie."""
     belongs = dict(belongs or {})
     flagged = [(meter, read) for meter, read in implausible if read.dropped > 0]
     gone = {meter.statistic_id for meter, read in flagged if read.left_out}
@@ -267,6 +278,10 @@ def house_loads(
     meters = round(sum(row["kwh"] for row in rows), 3)
     other = None if house_kwh is None else round(max(0.0, house_kwh - meters), 3)
     over = 0.0 if house_kwh is None else meters - house_kwh
+    inverter = None
+    if kind == KIND_HOUSE and other is not None and inverter_kwh is not None:
+        inverter = round(min(other, max(0.0, inverter_kwh)), 3)
+    unknown = None if other is None else round(other - (inverter or 0.0), 3)
     return {
         "api_version": HOUSE_LOADS_API_VERSION,
         "site_id": site_id,
@@ -279,6 +294,8 @@ def house_loads(
         "meters_kwh": meters,
         "other_kwh": other,
         "over_kwh": round(over, 3) if over > OVER_TOLERANCE_KWH else 0.0,
+        "inverter_kwh": inverter,
+        "unknown_kwh": unknown,
         "loads": rows,
         "moved": sorted(
             (
