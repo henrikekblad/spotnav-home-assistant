@@ -70,6 +70,7 @@ from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import (
     CONNECTED,
     CONNECTION_STATES,
+    DISCONNECTED as CONNECTION_DISCONNECTED,
     FINISHED as CONNECTION_FINISHED,
     UNKNOWN as CONNECTION_UNKNOWN,
 )
@@ -95,6 +96,7 @@ from ..planning.auto_settings import (
     DEFAULT_CONSUMPTION_KWH_PER_10KM,
     IF_NOT_READY_ASK,
     FiscalOverride,
+    DRIVER_TARGET_SOC,
     PauseIntent,
     STRATEGY_CHEAPEST,
 )
@@ -115,6 +117,7 @@ from ..planning.status_compose import (
     PlanningFacts,
     ProposalFacts,
     SocFacts,
+    SocUnreadableFacts,
     SiteMeasurementFacts,
     SolarFacts,
     StatusFacts,
@@ -150,6 +153,7 @@ from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY
 from ..vehicles.identification_sources import sources_block
+from ..vehicles.level_problem import unreadable_facts
 from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, one_vehicle_scan, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
@@ -505,6 +509,8 @@ class CapturedDashboard:
         )
     )
     soc: CapturedSoc | None = None
+    #: The car's level cannot be read now and the status says so (`capture_soc_unreadable`), else `None`.
+    soc_unreadable: SocUnreadableFacts | None = None
     vehicles: tuple[CapturedVehicle, ...] = ()
     target_vehicle_id: str | None = None
     #: The phases a charge uses and what limits them (`planning/phases.py`).
@@ -804,6 +810,31 @@ def capture_soc(
         room_kwh=battery_room_kwh(soc_percent=value, capacity_kwh=capacity, vehicle_max_percent=max_percent),
         efficiency=efficiency_for(learned, capacity),
     )
+
+
+def capture_soc_unreadable(
+    hass: HomeAssistant,
+    entry_id: str,
+    settings: AutoSettings | None,
+    controller: ChargingController | None,
+    now: datetime,
+) -> SocUnreadableFacts | None:
+    """The car a target is for has a level entity that reads nothing now (`level_problem.py`), and the charger does
+    not say it is unplugged: an away car's level is nobody's concern until it is back. `None` otherwise, and once the
+    level reads again."""
+    if settings is None or settings.driver != DRIVER_TARGET_SOC or controller is None:
+        return None
+    if controller.connection()[0] == CONNECTION_DISCONNECTED:
+        return None
+    data = charger_data(hass, entry_id)
+    reader = None if data is None else data.soc_reader
+    if reader is None:
+        return None
+    vehicle_id, _ = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
+    if vehicle_id is None:
+        return None
+    entity_id = reader.unreadable_entity(vehicle_id)
+    return None if entity_id is None else unreadable_facts(hass, entity_id, now)
 
 
 def capture_vehicles(
@@ -1230,6 +1261,7 @@ def _capture_dashboard(
     vehicles, target_vehicle_id = capture_vehicles(hass, entry_id, settings)
     site = capture_site(hass, entry_id, forecast_domains=forecast_domains)
     soc = capture_soc(hass, entry_id, settings)
+    soc_unreadable = capture_soc_unreadable(hass, entry_id, settings, controller, now)
     notify_available = available_targets(hass)
     starting_up = startup_state(
         now=now,
@@ -1294,6 +1326,7 @@ def _capture_dashboard(
             else controller.current_range()
         ),
         soc=soc,
+        soc_unreadable=soc_unreadable,
         vehicles=vehicles,
         target_vehicle_id=target_vehicle_id,
         charging_phases=charging_phases(hass, entry_id, vehicle_id=target_vehicle_id),
@@ -2570,6 +2603,9 @@ def planning_facts(snapshot: AutoSnapshot) -> PlanningFacts:
         learned_capacity_kwh=finite_number(snapshot.learned_capacity_kwh),
         departure_at=_utc(snapshot.departure_at),
         expected_soc_percent=finite_number(snapshot.expected_soc_percent),
+        soc_basis=snapshot.soc_basis,
+        soc_basis_percent=finite_number(snapshot.soc_basis_percent),
+        soc_basis_read_at=_utc(snapshot.soc_basis_read_at),
     )
 
 
@@ -2701,6 +2737,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
         balancing_cause=None if site is None else site.balancing_cause,
         charge_started=capture.session is not None,
+        soc_unreadable=capture.soc_unreadable,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

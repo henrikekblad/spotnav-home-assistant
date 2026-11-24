@@ -78,6 +78,10 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      target_unverifiable{reason: no_source|reading_unusable} while a plan with a target is
      enforced and no usable reading exists (no record then); tone notice, the target cannot be
      checked (the window still ends the charge). The record wins if both were ever present.
+     soc_unreadable{basis, soc_percent, read_at, integration, problem} follows them while the car's level entity
+     reads nothing and the car is not known to be away (tone notice): what the target was planned from, and the
+     car integration's own login or start-up problem when a person can fix it. It takes target_unverifiable's
+     place for an unusable reading. Never a blocking or settings line: nothing in Settings fixes it.
    HA always enforces a target; "this Home Assistant version won't stop at the target" is the
    app's own capability check, never said here.
    need_limited_by_room{kwh} (a manual need capped at the room left in the battery) and
@@ -303,6 +307,13 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "settings_suggested": (TONE_NORMAL, ("fields",)),
     "target_reached": (TONE_NORMAL, ("soc_percent", "basis", "reading_age_s", "stopped_at")),
     "target_unverifiable": (TONE_NOTICE, ("reason",)),
+    # The car's level entity reads nothing now and the car is not known to be away: a target is planned from
+    # `basis` (`estimate`: the last reading carried by the energy delivered since; `last_known`: the last reading,
+    # made at `read_at`; `full_charge`: from empty to the target; null when no plan was made from it), `soc_percent`
+    # the level it planned from (null for `full_charge` and with no basis). `problem` is `reauth` when the car's
+    # integration (`integration`, its entry's title) waits for a new login, `setup_error` when it failed to start
+    # (both something a person can fix in Devices & services), else null with `integration`.
+    "soc_unreadable": (TONE_NOTICE, ("basis", "soc_percent", "read_at", "integration", "problem")),
     "price_data_stale": (TONE_NOTICE, ("reason",)),
     "price_data_degraded": (TONE_NOTICE, ("reason",)),
     "unpriced": (TONE_NOTICE, ()),
@@ -424,6 +435,11 @@ class PlanningFacts:
     #: The departure the plan is for, and a target plan short of it: the state of charge it reaches.
     departure_at: datetime | None = None
     expected_soc_percent: float | None = None
+    #: A target planned while the car's level cannot be read: `estimate`, `last_known` or `full_charge`, the level it
+    #: planned from and when that level was read (`AutoSnapshot.soc_basis`).
+    soc_basis: str | None = None
+    soc_basis_percent: float | None = None
+    soc_basis_read_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -507,6 +523,16 @@ class OwnModeFacts:
 @dataclass(frozen=True, slots=True)
 class SocFacts:
     missing: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SocUnreadableFacts:
+    """The car's level entity reads nothing now, the car is not known to be away, and it has been so long enough to
+    say (or its integration needs a person at once): `integration` is the car integration's entry title and `problem`
+    `reauth` or `setup_error` while that entry needs a person, else both `None`."""
+
+    integration: str | None = None
+    problem: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -672,6 +698,8 @@ class StatusFacts:
     #: A charge session is open (the charger was seen charging in it): a plan's saving against charging now is
     #: then not said.
     charge_started: bool = False
+    #: The car's level cannot be read now and it is worth saying (`soc_unreadable`), else `None`.
+    soc_unreadable: SocUnreadableFacts | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -1286,8 +1314,33 @@ def _target_lines(facts: StatusFacts, *, charging_told: bool) -> list[dict[str, 
             )
         ]
     if target.unverifiable_reason is not None:
+        if target.unverifiable_reason == "reading_unusable" and facts.soc_unreadable is not None:
+            # `soc_unreadable` says it, with what the plan was made from.
+            return []
         return [_line("target_unverifiable", reason=target.unverifiable_reason)]
     return []
+
+
+def _soc_unreadable_lines(facts: StatusFacts) -> list[dict[str, Any]]:
+    """The car's level cannot be read: what the target was planned from, and the car integration's own problem when a
+    person can fix it. Nothing while the level reads or the car is away (the capture decides)."""
+    unreadable = facts.soc_unreadable
+    if unreadable is None:
+        return []
+    planning = facts.planning
+    basis = None if planning is None else planning.soc_basis
+    percent = None if planning is None or basis is None else planning.soc_basis_percent
+    read_at = None if planning is None or basis is None else planning.soc_basis_read_at
+    return [
+        _line(
+            "soc_unreadable",
+            basis=basis,
+            soc_percent=None if percent is None else round(percent, 1),
+            read_at=aware_iso(read_at) if basis == "last_known" else None,
+            integration=unreadable.integration if unreadable.problem is not None else None,
+            problem=unreadable.problem,
+        )
+    ]
 
 
 def _pending_proposal(facts: StatusFacts) -> bool:
@@ -1396,6 +1449,7 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
     if _pending_proposal(facts) and not any(line["code"] == "proposal_pending" for line in lines):
         lines.append(_pending_line(facts))
     lines.extend(_target_lines(facts, charging_told=any(line["code"] in CHARGING_HEADLINES for line in lines)))
+    lines.extend(_soc_unreadable_lines(facts))
     lines.extend(_vehicle_limit_lines(facts))
     lines.extend(_notices(facts))
     if facts.suggested:

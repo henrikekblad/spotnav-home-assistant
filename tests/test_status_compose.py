@@ -18,6 +18,7 @@ from custom_components.spotnav.planning.status_compose import (
     ProposalFacts,
     SiteMeasurementFacts,
     SocFacts,
+    SocUnreadableFacts,
     SolarFacts,
     StatusFacts,
     TargetFacts,
@@ -1151,6 +1152,67 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         base(relation_applied=True, proposal=proposal(), target=TargetFacts(unverifiable_reason="reading_unusable")),
         "notice",
         [*PLANNED, {"code": "target_unverifiable", "params": {"reason": "reading_unusable"}}],
+    ),
+    (
+        "an unreadable level planned from the estimate is a calm notice, never a settings line",
+        base(
+            relation_applied=True,
+            proposal=proposal(),
+            planning=planning(soc_basis="estimate", soc_basis_percent=88.04, soc_basis_read_at=at(-11)),
+            soc_unreadable=SocUnreadableFacts(),
+            target=TargetFacts(unverifiable_reason="reading_unusable"),
+        ),
+        "notice",
+        [
+            *PLANNED,
+            {
+                "code": "soc_unreadable",
+                "params": {"basis": "estimate", "soc_percent": 88.0, "read_at": None, "integration": None, "problem": None},
+            },
+        ],
+    ),
+    (
+        "an unreadable level planned from the last reading names when it was read",
+        base(
+            relation_applied=True,
+            proposal=proposal(),
+            planning=planning(soc_basis="last_known", soc_basis_percent=88.0, soc_basis_read_at=at(-11)),
+            soc_unreadable=SocUnreadableFacts(),
+        ),
+        "notice",
+        [
+            *PLANNED,
+            {
+                "code": "soc_unreadable",
+                "params": {"basis": "last_known", "soc_percent": 88.0, "read_at": iso(-11), "integration": None, "problem": None},
+            },
+        ],
+    ),
+    (
+        "an expired login of the car's integration is named, with a full charge planned",
+        base(
+            relation_applied=True,
+            proposal=proposal(),
+            planning=planning(soc_basis="full_charge"),
+            soc_unreadable=SocUnreadableFacts(integration="Kia Connect", problem="reauth"),
+        ),
+        "notice",
+        [
+            *PLANNED,
+            {
+                "code": "soc_unreadable",
+                "params": {
+                    "basis": "full_charge", "soc_percent": None, "read_at": None, "integration": "Kia Connect",
+                    "problem": "reauth",
+                },
+            },
+        ],
+    ),
+    (
+        "a plan from the estimate says nothing while the level is not worth telling (the capture decides)",
+        base(relation_applied=True, proposal=proposal(), planning=planning(soc_basis="estimate", soc_basis_percent=88.0)),
+        "normal",
+        PLANNED,
     ),
     (
         "a stop record wins over an unverifiable reason",
