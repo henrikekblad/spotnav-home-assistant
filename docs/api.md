@@ -1040,9 +1040,12 @@ The answer is the command's envelope with the `action`: `{"api_version": 1, "ok"
 **`battery_control`** answers `{"api_version": 1, "ok", "error", "status", "action": "battery_control"}`, `status`
 the control's state, its one line, the options, what it needs and its notes (see [home batteries](home-battery.md);
 `tests/fixtures/battery_control/` has a plant under control). `status.needs` is a list of codes; since 3.0.0b6 it
-may carry `hardware_test_first`: the plant's recipe runs only after the site's own hardware test passed on its
-firmware (`spotnav/beta`'s `start_test`), and until then the control only watches (`status.state` `shadow_only`,
-while `status.options` shows the switches as stored). With `changes` it writes first, and the only key the
+may carry `hardware_test_first`: the plant's recipe runs only after the site's own hardware test passed once with
+that brand (`spotnav/beta`'s `start_test`), and until then the control only watches (`status.state` `shadow_only`,
+while `status.options` shows the switches as stored). After that first pass a change of firmware, integration version
+or recipe revision is checked by the routine by itself; `hardware_test_again` says that check (or a later hardware
+test) failed on the key now, and the control only watches until a hardware test passes again. `recipe_blocked` says
+this release holds the brand's recipe back on the plant's firmware or the recipe's revision (only watching). With `changes` it writes first, and the only key the
 webhook takes is `battery_mode`: `self_consumption`, `balanced` or `max_profit`. HTTP 200 written (the plan is made
 again at once); 400 `spotnav_invalid_value` (another mode, an unknown key, no changes); 403
 `spotnav_not_permitted_over_webhook` for `battery_control_enabled` ("Styr batteriet") and the other

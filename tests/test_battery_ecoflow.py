@@ -429,12 +429,12 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     # The test itself is what it waits for: never refused for it. Sigenergy's has no dead-man step.
     assert control.hardware_test_refusal() is None and not control.hardware_test_deadman()
 
-    # A passed test on the firmware key now: control runs.
-    control.hardware_passed = {control.firmware_key()}
+    # The plant passed a hardware test with the brand once (and the routine passed on the key now): control runs.
+    control.hardware_brands = ["sigenergy"]
     assert not control.options().shadow_only and control.state() == "on"
     assert NEED_HARDWARE_TEST_FIRST not in control.status()["needs"]
-    # One on another key (an update since) does not count.
-    control.hardware_passed = {"other | sigen 1.0"}
+    # A later test that failed on this key holds it back again.
+    control.hardware_failed = [control.firmware_key()]
     assert control.state() == "shadow_only"
     # A field-tested recipe never waits.
     monkeypatch.setattr(

@@ -103,6 +103,7 @@ from .commands import (
     Phases,
     answered,
     control_for,
+    blocked,
     export_control_for,
     field_tested as recipe_field_tested,
     fixed_rate_kw,
@@ -384,6 +385,15 @@ def _accept_applies(control: BrandControl | None) -> bool:
 #: The checklist's step where the plant's recipe writes only after a person's hardware test passed on its firmware
 #: (`commands.BrandControl.hardware_test_first`): shadow only until then.
 NEED_HARDWARE_TEST_FIRST: Final = "hardware_test_first"
+#: The checklist's step where such a recipe passed a person's hardware test once on this plant, and the automatic
+#: check after a change of firmware, integration or recipe revision failed (or a later hardware test did): shadow
+#: only until a hardware test passes again on the key now.
+NEED_HARDWARE_TEST_AGAIN: Final = "hardware_test_again"
+#: The checklist's step where this SpotNav release holds the brand's recipe back on the plant's firmware or the
+#: recipe's revision (`commands.blocked`): shadow only, whatever was passed.
+NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
+#: The needs a hardware test is what answers (never a reason to refuse one).
+_HARDWARE_TEST_NEEDS: Final = frozenset({NEED_HARDWARE_TEST_FIRST, NEED_HARDWARE_TEST_AGAIN})
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
 RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
 #: The plan's cap rule where the battery's own charge power entity holds the charge below the fuse's cap
@@ -437,7 +447,13 @@ class BatteryControl:
         self.hardware_report: dict[str, Any] | None = None
         #: The firmware keys a person's hardware test passed on (hold and the hand-back passed, nothing failed): a
         #: recipe that writes only after one (`commands.BrandControl.hardware_test_first`) stays shadow only elsewhere.
-        self.hardware_passed: set[str] = set()
+        #: The brands a person's hardware test passed with on this plant (`commands.BrandControl.hardware_test_first`):
+        #: the first pass needs the person; after it, the routine checks each firmware, integration version and recipe
+        #: revision by itself, as for every brand.
+        self.hardware_brands: list[str] = []
+        #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
+        #: one passes again.
+        self.hardware_failed: list[str] = []
         #: The key and attempt the running verification counts for.
         self._verify_key: str | None = None
         self._verify_attempt = 0
@@ -593,8 +609,11 @@ class BatteryControl:
         self.took_from_ai = data.get("took_from_ai") is True
         notes = data.get("notes")
         self.notes = [dict(note) for note in notes if isinstance(note, dict)] if isinstance(notes, list) else []
-        passed = data.get("hardware_passed")
-        self.hardware_passed = {key for key in passed if isinstance(key, str)} if isinstance(passed, list) else set()
+        brands, failed = data.get("hardware_brands"), data.get("hardware_failed")
+        self.hardware_brands = [brand for brand in brands if isinstance(brand, str)] if isinstance(brands, list) else []
+        self.hardware_failed = (
+            [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
+        )
 
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
@@ -731,7 +750,7 @@ class BatteryControl:
         passed on this firmware (`hardware_test_due`), whatever is stored and on a beta site too; the test itself and
         every hand-back still run (`_writes_allowed_now`)."""
         options = self._stored_options()
-        if not options.shadow_only and self.hardware_test_due():
+        if not options.shadow_only and (self.hardware_test_due() is not None or self.recipe_blocked()):
             options = replace(options, shadow_only=True)
         return options
 
@@ -744,14 +763,27 @@ class BatteryControl:
             options = replace(options, accept_ha_down=False)
         return options
 
-    def hardware_test_due(self) -> bool:
-        """Whether the plant's recipe writes only after a person's hardware test (`BrandControl.hardware_test_first`,
-        not yet `field_tested`) and none passed on its firmware key now (`hardware_passed`; the checklist says
-        `hardware_test_first`). An update of the firmware or the integration asks for the test again."""
+    def hardware_test_due(self) -> str | None:
+        """What a recipe that writes only after a person's hardware test (`BrandControl.hardware_test_first`, not yet
+        `field_tested`) waits for now, `None` when nothing: `hardware_test_first` before its first pass on this plant;
+        after it, `hardware_test_again` once the routine's check on the key now failed (or gave up), or a later
+        hardware test failed on it. A change of firmware, integration version or recipe revision after the first
+        pass is checked by the routine by itself, and control goes on once that passed."""
         control = control_for(self.facts.brand)
         if control is None or not control.hardware_test_first or control.field_tested:
-            return False
-        return self.firmware_key() not in self.hardware_passed
+            return None
+        if control.brand not in self.hardware_brands:
+            return NEED_HARDWARE_TEST_FIRST
+        key = self.firmware_key()
+        if key in self.hardware_failed or gate.report_status(self.reports.get(key)) == "failed":
+            return NEED_HARDWARE_TEST_AGAIN
+        return None
+
+    def recipe_blocked(self) -> bool:
+        """Whether this SpotNav release holds the recipe back on the plant's firmware key or the recipe's revision
+        (`commands.blocked`): shadow only, whatever was passed."""
+        control = control_for(self.facts.brand)
+        return control is not None and blocked(control, self.firmware_key())
 
     def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
         return gate.ha_down_setup_state(data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP), self._main_fuse_a(), self.facts.brand)
@@ -818,7 +850,10 @@ class BatteryControl:
         ):
             # An integration not loaded (yet) is no change of version: the key read before is kept.
             self._key = gate.firmware_key(facts.firmware, facts.integration, version)
-        return self._key or gate.firmware_key(None, facts.integration, version)
+        key = self._key or gate.firmware_key(None, facts.integration, version)
+        control = control_for(facts.brand)
+        # A recipe changed since its first revision is checked again, as a firmware update is.
+        return key if control is None or control.recipe_rev <= 1 else f"{key} r{control.recipe_rev}"
 
     def firmware_known(self) -> bool:
         """Whether the plant's firmware was ever read (the last reading is kept while it blinks): without it a later
@@ -1427,7 +1462,7 @@ class BatteryControl:
             # The hardware test's report is its own; the routine's per firmware is untouched.
             self._hw_run = False
             self.hardware_report = {**verification.report(), "completed": verification.done}
-            self._keep_hardware_verdict(verification.done)
+            self._keep_hardware_verdict(verification.done, now)
             self._log([{"at": now.isoformat(), "kind": "hardware_test_done" if verification.done else
                         "hardware_test_stopped", "modes": {
                             result.mode: result.outcome for result in verification.results}}])
@@ -1479,17 +1514,24 @@ class BatteryControl:
         self._charge_bound = ((self._look_id, control.brand), found)
         return found
 
-    def _keep_hardware_verdict(self, done: bool) -> None:
-        """Record on the firmware key now whether a person's hardware test passed (`gate.hardware_test_passed`): a
-        finished test decides either way (a later one that fails takes a pass back), a stopped one only by a step that
-        failed."""
+    def _keep_hardware_verdict(self, done: bool, now: datetime) -> None:
+        """What a person's finished hardware test means for a recipe that writes only after one
+        (`gate.hardware_test_passed`): a pass is the plant's first pass with the brand (`hardware_brands`) and stands
+        as the routine's check on the key now, so control runs at once; a test that failed after the first pass holds
+        control in shadow only on that key (`hardware_failed`) until one passes again. A stopped test without a
+        failure changes nothing."""
         key = self.firmware_key()
-        if not gate.firmware_known(key):
+        control = control_for(self.facts.brand)
+        if control is None or not control.hardware_test_first or not gate.firmware_known(key):
             return
-        if done and gate.hardware_test_passed(self.hardware_report, self._supported_modes()):
-            self.hardware_passed.add(key)
-        elif done or gate.failed_mode(self.hardware_report) is not None:
-            self.hardware_passed.discard(key)
+        report = self.hardware_report or {}
+        if done and gate.hardware_test_passed(report, self._supported_modes()):
+            if control.brand not in self.hardware_brands:
+                self.hardware_brands.append(control.brand)
+            self.hardware_failed = [known for known in self.hardware_failed if known != key]
+            self._keep_report(key, gate.merge_report(None, report, key=key, attempts=1, now=now))
+        elif (done or gate.failed_mode(report) is not None) and control.brand in self.hardware_brands:
+            self.hardware_failed = [*(known for known in self.hardware_failed if known != key), key][-MAX_REPORTS:]
 
     async def _async_verify(self, now: datetime) -> StepResult | None:
         verification = self.verification
@@ -1614,7 +1656,7 @@ class BatteryControl:
         if not self.options().enabled:
             return "not_enabled"
         # The hardware test is what a recipe that writes only after one waits for: never its own refusal.
-        needs = [need for need in self._needs() if need != NEED_HARDWARE_TEST_FIRST]
+        needs = [need for need in self._needs() if need not in _HARDWARE_TEST_NEEDS]
         if needs:
             return f"needs:{needs[0]}"
         if self.trial is not None:
@@ -1770,9 +1812,12 @@ class BatteryControl:
             raise TrialRefused("starting")
         if not options.enabled:
             raise TrialRefused("not_enabled")
-        if self.hardware_test_due():
+        if self.recipe_blocked():
+            raise TrialRefused(NEED_RECIPE_BLOCKED)
+        due = self.hardware_test_due()
+        if due is not None:
             # A recipe that writes only after a person's hardware test: not even a forced test action before one.
-            raise TrialRefused("hardware_test_first")
+            raise TrialRefused(due)
         if options.shadow_only and not force:
             raise TrialRefused("shadow_only")
         if not force and gate.report_status(self.report()) != "passed":
@@ -1846,7 +1891,10 @@ class BatteryControl:
         """Whether a running test action may go on under these options: the opt-in on, and shadow only off unless
         the action was forced (`force_test` overrides shadow only and the verification, nothing else), and never
         while the recipe waits for a person's hardware test (`hardware_test_due`, a pass withdrawn ends it)."""
-        return options.enabled and (not options.shadow_only or trial.force) and not self.hardware_test_due()
+        return (
+            options.enabled and (not options.shadow_only or trial.force) and self.hardware_test_due() is None
+            and not self.recipe_blocked()
+        )
 
     # ---- shadow only
 
@@ -3175,7 +3223,8 @@ class BatteryControl:
         data: dict[str, Any] = {
             "reports": dict(self.reports),
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
-                     "notes": [dict(note) for note in self.notes], "hardware_passed": sorted(self.hardware_passed)},
+                     "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
+                     "hardware_failed": list(self.hardware_failed)},
         }
         if executor is not None:
             data |= {
@@ -3234,8 +3283,12 @@ class BatteryControl:
             needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
-        if self.hardware_test_due():
-            needs.append(NEED_HARDWARE_TEST_FIRST)
+        if self.recipe_blocked():
+            needs.append(NEED_RECIPE_BLOCKED)
+        else:
+            due = self.hardware_test_due()
+            if due is not None:
+                needs.append(due)
         return needs
 
     def _settings_device(self) -> str | None:

@@ -570,6 +570,10 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.strategyAck");
     case "hardware_test_first":
       return translate(language, "battery.need.hardwareTestFirst");
+    case "hardware_test_again":
+      return translate(language, "battery.need.hardwareTestAgain");
+    case "recipe_blocked":
+      return translate(language, "battery.need.recipeBlocked");
     case "self_managed":
       return translate(language, "battery.need.selfManaged");
     case "inverter_power_zero":

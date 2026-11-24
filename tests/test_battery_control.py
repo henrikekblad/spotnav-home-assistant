@@ -11,7 +11,7 @@ import json
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -2747,18 +2747,48 @@ async def test_a_refused_change_writes_nothing_to_the_plant_first(
     assert answer["error"] == "spotnav_invalid_value" and written == []
 
 
-async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only_until_one_passed_on_its_firmware(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
-) -> None:
+class _Run:
+    """A finished hardware test's verification with these outcomes."""
+
+    done = True
+    results: list[Any] = []
+
+    def __init__(self, **outcomes: str) -> None:
+        self.outcomes = outcomes
+
+    def report(self) -> dict[str, Any]:
+        return {"brand": "sigenergy", "started_at": dt_util.now().isoformat(), "modes": {
+            mode: {"mode": mode, "outcome": outcome} for mode, outcome in self.outcomes.items()
+        }}
+
+
+def _hardware_test_ends(control: BatteryControl, **outcomes: str) -> None:
+    control.verification, control._hw_run = _Run(**outcomes), True  # type: ignore[assignment]
+    control._end_verification(dt_util.now())
+
+
+_LIMITS_ONLY_PASS: Final = {"hold": "obeyed", "charge": "skipped", "discharge_house": "obeyed", "normal": "restored"}
+
+
+async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold):
+    """The owner's plant with a recipe that writes only after a hardware test and has no grid charge (FoxESS's limits
+    only: its hardware test skips the charge step), opted in with shadow only stored off and the routine passed."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    # A recipe without a grid charge (FoxESS's limits only): its hardware test skips the charge step.
     waiting = replace(commands_module.SIGENERGY_CONTROL, hardware_test_first=True)
     waiting = replace(waiting, states={
         action: build for action, build in waiting.states.items() if action != commands_module.ACTION_GRID_CHARGE
     })
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: waiting.with_hold(variant))
-    control = await _started(hass, site, controller, plan_source=_hold)
-    # Opted in, shadow only stored off, the routine passed: still shadow only, and the checklist says why.
+    recipe = {"control": waiting}
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
+    control = await _started(hass, site, controller, plan_source=plan_source)
+    return site, controller, plant, control, recipe
+
+
+async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only_until_the_plants_first_pass(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    # Still shadow only, and the checklist says why.
     assert control.options().shadow_only and control.state() == "shadow_only"
     assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
     # The hardware test itself is what it waits for: never refused for it.
@@ -2773,44 +2803,98 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
         await control.async_look(now + timedelta(seconds=10 * index))
     assert plant.calls == []
     assert any(row["kind"] == "would_do" for row in control.log)
-
-    class Run:
-        done = True
-        results: list[Any] = []
-
-        def __init__(self, **outcomes: str) -> None:
-            self.outcomes = outcomes
-
-        def report(self) -> dict[str, Any]:
-            return {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in self.outcomes.items()}}
-
     # A test that did not pass records nothing.
-    control.verification, control._hw_run = Run(hold="ignored", normal="restored"), True  # type: ignore[assignment]
-    control._end_verification(now)
-    assert control.hardware_test_due()
-    # One that passed (the charge step skipped by a recipe without one) lets control write on this firmware.
-    control.verification, control._hw_run = Run(  # type: ignore[assignment]
-        hold="obeyed", charge="skipped", discharge_house="obeyed", normal="restored"
-    ), True
-    control._end_verification(now)
-    assert not control.hardware_test_due() and control.state() == "on"
-    assert control.firmware_key() in control._data()["gate"]["hardware_passed"]
+    _hardware_test_ends(control, hold="ignored", normal="restored")
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
+    # One that passed is the plant's first pass and stands as the routine's check on this key: control runs.
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_test_due() is None and control.state() == "on"
+    assert control._data()["gate"]["hardware_brands"] == ["sigenergy"]
     assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
     # Now a forced test action runs ...
     await control.async_trial("hold", None, 5, force=True)
     assert control.trial is not None and control._trial_allowed(control.trial, control.options())
-    # ... until a later test on the same firmware fails, which takes the pass back and ends it.
-    control.verification, control._hw_run = Run(  # type: ignore[assignment]
-        hold="obeyed", charge="skipped", discharge_house="ignored", normal="restored"
-    ), True
-    control._end_verification(now)
-    assert control.hardware_test_due() and control.state() == "shadow_only"
-    assert not control._trial_allowed(control.trial, control.options())
+    # ... until a later test on the same firmware fails: shadow only on that key, the test asked for again.
+    _hardware_test_ends(control, **(_LIMITS_ONLY_PASS | {"discharge_house": "ignored"}))
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_AGAIN
+    assert control.state() == "shadow_only" and not control._trial_allowed(control.trial, control.options())
     await control.async_look(now + timedelta(seconds=60))
     assert control.trial is None
-    # Another firmware needs its own test.
-    control.hardware_passed = {"another | sigen 2.0.3"}
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "hardware_test_again"
+    # A test that passes again lets control run again.
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_test_due() is None and control.state() == "on"
+    await control.async_stop()
+
+
+@pytest.mark.parametrize("change", ["firmware", "integration", "recipe"])
+async def test_after_the_first_pass_a_change_is_checked_by_the_routine_and_only_its_failure_asks_for_the_test_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], change: str
+) -> None:
+    site, controller, plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    first = control.firmware_key()
+    assert control.state() == "on"
+    if change == "firmware":
+        hass.states.async_set(FIRMWARE, "V100R001C21SPC118")
+    elif change == "integration":
+        monkeypatch.setattr(BatteryControl, "_integration_version", lambda self, domain: "9.9.9")
+    else:
+        recipe["control"] = replace(recipe["control"], recipe_rev=2)
+    control.facts = control._read_facts()
+    assert control.firmware_key() != first
+    # No person needed: the routine checks the new key at the next suitable evening, writing as it does.
+    assert control.hardware_test_due() is None and not control.options().shadow_only
+    assert control.state() == "waiting"
+    assert not any(need.startswith("hardware_test") for need in control._needs())
+    evening = dt_util.as_local(dt_util.now()).replace(hour=19, minute=0)
+    await _looks(control, evening, 1)
+    assert control.state() == "verifying"
+    await control.async_stop()
+    # Its pass: control goes on.
+    control.verification = None
+    _passed(control, charge="skipped")
+    assert control.state() == "on" and control.hardware_test_due() is None
+    # Its failure: shadow only and one line asking for the hardware test again, however many looks.
+    _passed(control, hold="ignored", charge="skipped")
     assert control.state() == "shadow_only"
+    for index in range(5):
+        await control.async_look(evening + timedelta(hours=1, seconds=10 * index))
+    needs = control.status()["needs"]
+    assert needs.count(control_module.NEED_HARDWARE_TEST_AGAIN) == 1
+    assert not any(need == control_module.NEED_HARDWARE_TEST_FIRST for need in needs)
+    assert len(control.notes) == 0, "a checklist line that clears itself, never a note piling up"
+    # The hardware test run again and passed on the new key: control goes on.
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.state() == "on" and control_module.NEED_HARDWARE_TEST_AGAIN not in control.status()["needs"]
+    await control.async_stop()
+
+
+async def test_a_recipe_on_the_releases_block_list_is_shadow_only_whatever_was_passed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.state() == "on"
+    monkeypatch.setattr(control_module, "blocked", lambda control, key: commands_module.blocked(
+        control, key, (commands_module.Blocked("sigenergy", firmware="SPC117"),)
+    ))
+    assert control.recipe_blocked() and control.state() == "shadow_only"
+    assert control_module.NEED_RECIPE_BLOCKED in control._needs()
+    assert control.hardware_test_refusal() == "needs:recipe_blocked"
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "recipe_blocked"
+    # Another firmware, or a revision the entry does not name, is not held back.
+    entry = commands_module.Blocked("sigenergy", recipe_rev=2)
+    assert not commands_module.blocked(recipe["control"], control.firmware_key(), (entry,))
+    assert commands_module.blocked(replace(recipe["control"], recipe_rev=2), control.firmware_key(), (entry,))
+    assert commands_module.BLOCKED == ()
     await control.async_stop()
 
 

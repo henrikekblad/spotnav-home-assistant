@@ -193,8 +193,9 @@ Its control only lowers the battery's own current limits, read from the integrat
 What to know before you turn it on:
 
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
-  passed on the firmware the inverter runs; until then control only logs what it would do, whatever the test-mode
-  setting says, and the checklist says so. After a firmware update it waits for a new test.
+  passed once on this inverter; until then control only logs what it would do, whatever the test-mode setting says,
+  and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
+  if that check fails does the checklist ask for the hardware test again.
 * **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
   *Back-up*, *Peak Shaving* or the integration's *Force Charge* and *Force Discharge* it only watches.
 * **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home Assistant
@@ -235,9 +236,10 @@ reads.
 SpotNav's control for Marstek goes through the **Modbus integration only** (the local API has no limit to set, and its
 Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
 local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
-the other brands, but **nothing is written until a hardware test (below) has passed** on the firmware the battery
-runs: until then control only logs what it would do, whatever the test-mode setting says and on a beta tester's
-installation too, and the checklist says so. After a firmware update it waits for a new test.
+the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery: until
+then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
+too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
+only if that check fails does the checklist ask for the hardware test again.
 
 * A **hold** sets *Max Discharge Power* to 0. The battery stays in its own self-consumption: it still stores a sun
   surplus and covers nothing. This is a limit that is safe if it is left standing. On a Venus A or D with its own
@@ -774,8 +776,8 @@ Battery, which matters only if you select those modes yourself.
 
 **The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
-hardware test) has passed on the battery's present firmware and integration version; after an update it asks
-again. The checklist says so. Run it in the evening, with the house drawing and no sun: besides the usual steps
+hardware test) has passed once on the battery; after a firmware or integration update SpotNav checks the battery
+again by itself, and asks for the hardware test again only if that check fails. The checklist says so. Run it in the evening, with the house drawing and no sun: besides the usual steps
 (hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
 battery, turns Modbus Control off and nothing else, and watches how long the inverter keeps the hold before it
 covers the house by itself (a minute or so is expected); then it turns Modbus Control on again (the integration

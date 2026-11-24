@@ -989,6 +989,10 @@ class BrandControl:
     #: recipe never run on a device, whose first writes should be supervised. The checklist says so
     #: (`hardware_test_first`). The test itself and every hand-back still run. `False`: the routine alone.
     hardware_test_first: bool = False
+    #: The recipe's revision: bumped with any change to what the recipe writes or in which order. From 2 it is part
+    #: of the report key (`BatteryControl.firmware_key`), so the routine checks a changed recipe on each plant again
+    #: before control relies on it, as after a firmware update; `blocked` can hold one revision back.
+    recipe_rev: int = 1
     #: The role whose entity's own range bounds a grid charge (its `max`, over the role's scale): for a recipe whose
     #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
     #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
@@ -2308,6 +2312,32 @@ def field_tested(brand: str | None) -> bool:
     """Whether the brand's recipe (its battery control, else its export control) was tested on a real plant."""
     control = next((control for control in CONTROLS if control.brand == brand), None) or export_control_for(brand)
     return control is not None and control.field_tested
+
+
+@dataclass(frozen=True, slots=True)
+class Blocked:
+    """A recipe this release holds back (shadow only, whatever a site passed): the brand, and where given only on a
+    firmware key containing `firmware` or only at the recipe revision `recipe_rev`."""
+
+    brand: str
+    firmware: str | None = None
+    recipe_rev: int | None = None
+    #: Why, for the log and the release notes.
+    note: str = ""
+
+
+#: The release's block list (`blocked`): empty while no brand, firmware or revision is known to misbehave.
+BLOCKED: Final[tuple[Blocked, ...]] = ()
+
+
+def blocked(control: BrandControl, firmware_key: str, entries: tuple[Blocked, ...] | None = None) -> bool:
+    """Whether this release holds the recipe back on a plant with this firmware key (`BLOCKED`)."""
+    return any(
+        entry.brand == control.brand
+        and (entry.firmware is None or entry.firmware in firmware_key)
+        and (entry.recipe_rev is None or entry.recipe_rev == control.recipe_rev)
+        for entry in (BLOCKED if entries is None else entries)
+    )
 
 
 def hardware_test_first(brand: str | None) -> bool:
