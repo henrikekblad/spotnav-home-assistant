@@ -1669,6 +1669,7 @@
   "heat.loadControl.why.lock_unreadable": "låsen kan ikke læses, starter ikke",
   "heat.loadControl.why.pump_not_ours": "varmepumpen styres ikke af SpotNav og beskyttes af sin egen flowvagt; slå Styr poolens varmepumpe til, så cirkulationen følger den",
   "heat.loadControl.why.restore_waits": "din indstilling Varme skrives tilbage, når cirkulationen kører",
+  "heat.loadControl.why.stale_plan": "planen bliver ikke lavet lige nu, intet ændres",
   "heat.settings.tankSensor": "Tankføler",
   "heat.settings.tankSensorHelp": "Valgfri: en temperaturføler i tanken. SpotNav ser fuld opvarmning ved 60 °C og tænder beholderen straks under 40 °C.",
   "heat.settings.pool": "Pool",

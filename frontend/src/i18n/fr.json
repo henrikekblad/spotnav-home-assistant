@@ -1669,6 +1669,7 @@
   "heat.loadControl.why.lock_unreadable": "le verrou ne peut pas être lu, ne démarre pas",
   "heat.loadControl.why.pump_not_ours": "la pompe à chaleur n'est pas pilotée par SpotNav et son propre contrôleur de débit la protège ; activez Piloter la pompe à chaleur de la piscine pour que la circulation la suive",
   "heat.loadControl.why.restore_waits": "votre réglage Chauffage est réécrit dès que la circulation tourne",
+  "heat.loadControl.why.stale_plan": "le plan n'est pas établi en ce moment, rien n'est changé",
   "heat.settings.tankSensor": "Sonde du ballon",
   "heat.settings.tankSensorHelp": "Facultatif : une sonde de température dans le ballon. SpotNav voit la chauffe complète à 60 °C et rallume le chauffe-eau aussitôt sous 40 °C.",
   "heat.settings.pool": "Piscine",

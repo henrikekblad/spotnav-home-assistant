@@ -177,6 +177,7 @@ export const CONTROL_STATES: readonly string[] = ["controlled", "paused", "hande
 const CONTROL_WHY: readonly string[] = [
   "no_read_back", "write_cap", "starts_cap", "fault", "automation", "unavailable", "foreign_mode", "own_scheduler",
   "unsupported", "interlock", "run_on", "floor", "lock", "max_on", "lock_unreadable", "pump_not_ours", "restore_waits",
+  "stale_plan",
 ];
 
 /**
