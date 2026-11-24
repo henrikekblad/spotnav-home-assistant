@@ -510,6 +510,18 @@ battery energy the plan measures:
 * Not used: Growatt's `total_ac_charge` counts only what was charged from the grid (not from the panels), beside a
   discharge counter of everything, so its ratio is no round trip; Tesla and Ferroamp have none mapped.
 
+And the side the battery's power is read on (`dc_power`, 2026-11-24, `battery/conversion_loss.py`): a hybrid
+inverter's battery power read at the battery (DC) leaves out the inverter's own loss on the way in and out (on the
+owner's Sigenergy plant about 3.5 % of the charge and 6.5 % of the discharge). The review, the perfect plan and the
+house figures count the battery on the AC side, where the meter is, so a DC reading is turned into an AC one first.
+Marked DC: Sigenergy `plant_ess_power` (measured against the plant's own load, 2026-11-24), SolarEdge `b1_dc_power`
+and `_battery_<n>_dc_power` (named so), Victron `system_(dc_)battery_power` (the DC bus) and GoodWe `pbattery1` (the
+battery's voltage times its current). Read as they are (AC, or not known): every other brand, among them Enphase and
+sonnen (both measured on the AC side) and the hybrids whose side no source states (Huawei, SolaX, Sofar, Solinteg,
+FoxESS, Sungrow, Solis, Growatt, Fronius, Kostal, Deye). Where the adapter also knows the plant's own house load and
+solar power (`plant_load_power`, `plant_pv_power`: Sigenergy `plant_total_load_power` and
+`plant_photovoltaic_power`), the loss is learnt from them; else an assumed one stands.
+
 A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
 kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
 estimate (the voltage is the live one, not the nominal) and is named as one (`BatteryFacts.estimates`).
@@ -680,6 +692,11 @@ class Adapter:
     soc_packs: tuple[SocPack, ...] = ()
     #: The battery's own heater, where the integration has it (see the module).
     preheat: PreheatSpec | None = None
+    #: The battery power entity read at the battery (DC side), where the site's battery power is this adapter's; and the
+    #: plant's own house load and solar power, from which the inverter's conversion loss is learnt (see the module).
+    dc_power: Match | None = None
+    plant_load_power: Match | None = None
+    plant_pv_power: Match | None = None
     #: Set for a YAML package read through a platform other brands share: the adapter is chosen only for a battery
     #: entity whose unique id is the package's, and its entities are looked for by that scope (`PackageScope`).
     package: PackageScope | None = None
@@ -719,6 +736,9 @@ SIGENERGY: Final = Adapter(
     ),
     grid_status=(_key("plant_on_off_grid_status"), "on_grid"),
     plant_max=_key("plant_max_active_power"),
+    dc_power=_key("plant_ess_power"),
+    plant_load_power=_key("plant_total_load_power"),
+    plant_pv_power=_key("plant_photovoltaic_power"),
     plant_phase_power=(
         _key("plant_phase_a_active_power"), _key("plant_phase_b_active_power"), _key("plant_phase_c_active_power"),
     ),
@@ -826,6 +846,7 @@ SOLAREDGE: Final = Adapter(
         _key("storage_command_mode", "select"),
         note="Needs an AC charge policy that allows grid charging; ends after the command timeout.",
     ),
+    dc_power=_key("b1_dc_power"),
 )
 
 #: The two integrations that share the domain `solaredge_modbus`, read for the facts only. Not the `SOLAREDGE` adapter
@@ -852,6 +873,7 @@ SOLAREDGE_MODBUS: Final = Adapter(
             ("sensor",), re.compile(r"(?:_battery_.+_energy_exported|_battery\d_energy_discharged)$")
         ),
     },
+    dc_power=Match(("sensor",), re.compile(r"(?:(?:^|_)b1_dc_power|_battery_.+_dc_power)$")),
 )
 
 SOLAX: Final = Adapter(
@@ -976,6 +998,7 @@ VICTRON: Final = Adapter(
         unset_states=frozenset({"-1", "-1.0"}),
         note="/Settings/CGwacs/MaxDischargePower; -1 is no limit. A setting stored on the GX: write rarely.",
     ),
+    dc_power=Match(("sensor",), re.compile(r"(?:^|_)system_(?:dc_)?battery_power$")),
 )
 
 #: The community Modbus integration (sfstar/hass-victron): the same system, read through the GX's Modbus-TCP
@@ -1007,6 +1030,7 @@ VICTRON_MODBUS: Final = Adapter(
         ),
         ModeRule(_key("settings_dynamicess_mode", "select"), frozenset({"OFF"}), "Dynamic ESS", required=False),
     ),
+    dc_power=Match(("sensor",), re.compile(r"(?:^|_)system_battery_power$")),
 )
 
 GOODWE: Final = Adapter(
@@ -1034,6 +1058,7 @@ GOODWE: Final = Adapter(
         changes_mode=True,
         note="Eco charge is an operating mode; its power and SoC are not entities in core.",
     ),
+    dc_power=_goodwe("pbattery1"),
 )
 
 #: Tesla Powerwall through the cloud integrations of Home Assistant core, `tesla_fleet` and `teslemetry` (core

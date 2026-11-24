@@ -164,6 +164,13 @@ class BatteryFacts:
     #: their values are read live, with their age, by the one that uses them (`site/phase_peaks.py`).
     plant_phase_entities: tuple[str, str, str] | None = None
     plant_phase_sign: float = 1.0
+    #: Whether the battery's power (`power_kw`) is read at the battery, the DC side (`adapters.Adapter.dc_power`): the
+    #: review and the house figures then count it on the AC side (`conversion_loss.py`).
+    power_dc: bool = False
+    #: The plant's own house load and solar power now (kW), where the adapter reads them: the inverter's conversion
+    #: loss is learnt from them (`conversion_loss.py`).
+    plant_load_kw: float | None = None
+    plant_pv_kw: float | None = None
     #: The battery's lifetime energy counters now (kWh: into it and out of it, `adapters` says where each brand counts
     #: them), `None` where the brand has none or it reads none. The round trip is learnt from them (`round_trip.py`).
     charged_total_kwh: float | None = None
@@ -218,6 +225,9 @@ class BatteryFacts:
             "charged_total_kwh": self.charged_total_kwh,
             "discharged_total_kwh": self.discharged_total_kwh,
             "round_trip_efficiency": self.round_trip_efficiency,
+            "power_dc": self.power_dc,
+            "plant_load_kw": None if self.plant_load_kw is None else round(self.plant_load_kw, 3),
+            "plant_pv_kw": None if self.plant_pv_kw is None else round(self.plant_pv_kw, 3),
             "preheat": None if self.preheat is None else self.preheat.as_dict(),
             "management": {
                 "state": self.management.state,
@@ -679,6 +689,11 @@ def battery_facts(
         sources["reserve"] = ", ".join(reserve_read)
     charged = found.get("charged_total")
     discharged = found.get("discharged_total")
+    plant_load = None if adapter.plant_load_power is None else find_entity(adapter.plant_load_power, entities, battery)
+    plant_pv = None if adapter.plant_pv_power is None else find_entity(adapter.plant_pv_power, entities, battery)
+    for key, entity in (("plant_load", plant_load), ("plant_pv", plant_pv)):
+        if entity is not None and entity.available:
+            sources[key] = entity.entity_id
     on_grid: bool | None = None
     if adapter.grid_status is not None:
         status = find_entity(adapter.grid_status[0], entities, battery)
@@ -700,6 +715,9 @@ def battery_facts(
         firmware=_firmware(firmware_entity, sw_version, sources),
         on_grid=on_grid,
         plant_phase_entities=plant_phases,
+        power_dc=adapter.dc_power is not None and adapter.dc_power.matches(battery.domain, battery.unique_id),
+        plant_load_kw=None if plant_load is None or not plant_load.available else to_kw(plant_load.state, plant_load.unit),
+        plant_pv_kw=None if plant_pv is None or not plant_pv.available else to_kw(plant_pv.state, plant_pv.unit),
         plant_phase_sign=adapter.plant_phase_sign,
         charged_total_kwh=None if charged is None else to_kwh(charged.state, charged.unit),
         discharged_total_kwh=None if discharged is None else to_kwh(discharged.state, discharged.unit),
