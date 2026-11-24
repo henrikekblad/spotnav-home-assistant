@@ -670,13 +670,13 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
   const { doc, language } = input;
   const ownName = translate(language, "house.compare.own");
   const block = section(doc, translate(language, "perfect.headingPeriod"), "perfect");
-  const headline = perfectHeadline(language, perfect, ownName);
+  const headline = perfectHeadline(language, perfect, ownName, answer.money);
   if (headline !== null) {
     const line = element(doc, "p", H.perfectHead, headline);
     line.dataset["line"] = "perfect-headline";
     block.append(line);
   }
-  block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode));
+  block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode, answer.money));
   // The figures first, then every word about them together.
   const table = perfectTable(doc, language, perfect, answer.money, ownName);
   if (table !== null) {

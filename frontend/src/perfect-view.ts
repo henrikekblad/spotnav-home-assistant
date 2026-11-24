@@ -1,6 +1,7 @@
 // The days against their perfect plans in hindsight (`site/perfect_view.py`), in the house card's history: the
 // headline (each way's share of the perfect plan, the battery's own and the chosen mode first), the share rows with a
-// bar each, the plain notes (what "perfect" is, the energy left at midnight, a figure clamped), and one table of what
+// bar each (a way that lost money against no battery: "loss 47 kr", not "0 %"), the plain notes (what "perfect" is,
+// the energy left at midnight, a figure clamped at 100 %), and one table of what
 // each way saved and the battery's work, with the cells' temperature. Every figure is the
 // backend's; text is written with `textContent` only.
 
@@ -49,20 +50,33 @@ function order(mode: string | null): PerfectWay[] {
   return ["own", ...chosen, ...modes.filter((item) => item !== mode), "self_consumption"];
 }
 
-/** "Sigenergy AI 82 % of perfect · SpotNav Balanced 88 %"; `null` when neither has a share. */
-export function perfectHeadline(language: Language, perfect: PerfectFigures, ownName: string): string | null {
+/** Whether a way lost money against no battery: its share is then no share ("0 %") but a loss with its amount. */
+function lost(perfect: PerfectFigures, way: PerfectWay): boolean {
+  const saving = perfect.savings[way];
+  return saving !== null && saving < 0;
+}
+
+/** A way's figure beside its bar: its share, or "loss 47 kr" where it lost money against no battery. */
+function shareText(language: Language, perfect: PerfectFigures, way: PerfectWay, value: number, money_: Money): string {
+  return lost(perfect, way) ? translate(language, "perfect.loss", { amount: wholeMoney(language, Math.abs(perfect.savings[way]!), money_) }) : percentWhole(language, value);
+}
+
+/** "Sigenergy AI 82 % of perfect · SpotNav Balanced 88 %" (a way that lost money: "loss 47 kr"); `null` when neither
+ * has a share. */
+export function perfectHeadline(language: Language, perfect: PerfectFigures, ownName: string, money_: Money = null): string | null {
   const own = perfect.shares.own;
   const mode = PERFECT_WAYS.find((way) => way !== "own" && way === perfect.mode) ?? null;
   const plan = mode === null ? null : perfect.shares[mode];
   if (own !== null && mode !== null && plan !== null) {
-    return translate(language, "perfect.headline", { own: ownName, ownShare: percentWhole(language, own), plan: wayName(language, mode, ownName), planShare: percentWhole(language, plan) });
+    return translate(language, "perfect.headline", { own: ownName, ownShare: shareText(language, perfect, "own", own, money_), plan: wayName(language, mode, ownName), planShare: shareText(language, perfect, mode, plan, money_) });
   }
   const [way, value] = own !== null ? (["own", own] as const) : mode !== null && plan !== null ? ([mode, plan] as const) : [null, null];
-  return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: percentWhole(language, value!) });
+  return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: shareText(language, perfect, way, value!, money_) });
 }
 
-/** The share rows (a bar each, 0-100 %), the chosen mode marked; none over incomplete days alone. */
-export function perfectRows(doc: Document, language: Language, perfect: PerfectFigures, ownName: string, inForce: string | null): HTMLElement {
+/** The share rows (a bar each, 0-100 %; a way that lost money says so with its amount), the chosen mode marked; none
+ * over incomplete days alone. */
+export function perfectRows(doc: Document, language: Language, perfect: PerfectFigures, ownName: string, inForce: string | null, money_: Money = null): HTMLElement {
   const grid = element(doc, "div", H.compareGrid);
   if (onlyPartial(perfect)) {
     return grid;
@@ -84,7 +98,7 @@ export function perfectRows(doc: Document, language: Language, perfect: PerfectF
       fill.style.width = `${Math.round(Math.min(100, value))}%`;
       track.append(fill);
     }
-    const figure = value !== null ? percentWhole(language, value) : translate(language, ran ? "perfect.nothing" : "house.compare.none");
+    const figure = value !== null ? shareText(language, perfect, way, value, money_) : translate(language, ran ? "perfect.nothing" : "house.compare.none");
     const line = element(doc, "div", H.compareRow);
     line.dataset["row"] = way;
     if (way === inForce) {
@@ -131,7 +145,8 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
   if (perfect.partial > 0) {
     add("perfect-partial", translate(language, `perfect.partial.${pluralForm(language, perfect.partial)}`, { days: String(perfect.partial) }));
   }
-  const clamped = perfect.clamped.filter((way): way is PerfectWay => (PERFECT_WAYS as readonly string[]).includes(way));
+  // Clamped at 100 % only: a way clamped at 0 % lost money and says so with its amount in its row.
+  const clamped = perfect.clamped.filter((way): way is PerfectWay => (PERFECT_WAYS as readonly string[]).includes(way) && !lost(perfect, way as PerfectWay));
   if (clamped.length > 0) {
     add("perfect-clamped", translate(language, "perfect.clamped", { names: clamped.map((way) => wayName(language, way, ownName)).join(", ") }));
   }

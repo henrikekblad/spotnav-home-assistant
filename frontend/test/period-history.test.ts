@@ -246,8 +246,14 @@ describe("the house history", () => {
       "Det som fanns kvar vid midnatt räknas med dygnets eget pris för en av dygnen, tills nästa dygns priser finns.",
     );
     const clamped = shown({ clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } });
-    expect(clamped.querySelector("[data-line='perfect-clamped']")?.textContent).toBe("Batteriets egen styrning: utanför 0–100 %, visas vid närmaste gräns (en förlust som 0 %).");
+    expect(clamped.querySelector("[data-line='perfect-clamped']")?.textContent).toBe("Batteriets egen styrning: över 100 %, visas som 100 % (modellens batteri är idealt).");
     expect(clamped.querySelector("[data-row='max_profit'] .spotnav-house-compare-value")?.textContent).toBe("för liten skillnad att jämföra");
+    // A way that lost money against no battery says so with its amount, not "0 %", and is not in the clamp note.
+    const loss = shown({ clamped: ["own"], shares: { ...perfect.shares, own: 0 }, savings: { ...perfect.savings, own: -4700 } });
+    expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-value")?.textContent).toBe("förlust 47 kr");
+    expect(loss.querySelector("[data-row='own'] .spotnav-house-compare-fill")).toBeNull();
+    expect(loss.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning förlust 47 kr av perfekt · SpotNav Balanserad 74 %");
+    expect(loss.querySelector("[data-line='perfect-clamped']")).toBeNull();
     // A way that did not run on these days has no bar and no block; the battery's own figure not held, no note on it.
     const none = shown({ savings: { ...perfect.savings, max_profit: null, own: null }, shares: { ...perfect.shares, max_profit: null, own: null } });
     expect(none.querySelector("tbody[data-way='max_profit']")).toBeNull();
