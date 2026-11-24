@@ -505,6 +505,16 @@
       ],
       "tone": "notice"
     },
+    "soc_unreadable": {
+      "params": [
+        "basis",
+        "integration",
+        "problem",
+        "read_at",
+        "soc_percent"
+      ],
+      "tone": "notice"
+    },
     "solar_arming": {
       "params": [],
       "tone": "normal"

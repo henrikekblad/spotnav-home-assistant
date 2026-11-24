@@ -36,12 +36,13 @@ export interface Issue {
 /**
  * A charger's own setting set back by one press: the entity, the value the backend named, and the button's words.
  * With `action` `release_import_target` it is the import target set aside for this charge instead
- * (`spotnav/release_import_target`), offered to any user.
+ * (`spotnav/release_import_target`), offered to any user. With `action` `open_integrations` it opens Home
+ * Assistant's Devices & services (`value`, the path) for an administrator: a car integration's login to renew.
  */
 export interface IssueFix {
   entity: string;
   value: string;
-  action?: "release_import_target";
+  action?: "release_import_target" | "open_integrations";
   labelKey: TranslationKey;
   labelParams: Record<string, string>;
 }
@@ -228,6 +229,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   settings_suggested: "status.settingsSuggested",
   target_reached: "status.targetStopped",
   target_unverifiable: "issue.targetUnverifiable",
+  soc_unreadable: "status.socUnreadable",
   price_data_stale: "issue.priceStale",
   price_data_degraded: "issue.priceDegraded",
   unpriced: "issue.unpriced",
@@ -267,6 +269,16 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.missing.amps",
   "status.missing.vehicle",
   "status.missing.target_percent",
+  "status.missing.capacity",
+  "status.socUnreadable.cause",
+  "status.socUnreadable.reauth",
+  "status.socUnreadable.setupError",
+  "status.socUnreadable.estimate",
+  "status.socUnreadable.lastKnown",
+  "status.socUnreadable.lastKnownNoTime",
+  "status.socUnreadable.fullCharge",
+  "status.socUnreadable.plain",
+  "issue.socUnreadable.open",
   "control.pausedIndefinitely",
   "status.pausedShort",
   "control.pausedManualStop",
@@ -384,7 +396,68 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   amps: "status.missing.amps",
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent",
+  capacity: "status.missing.capacity",
 };
+
+/**
+ * The words of the settings a `settings_incomplete` line names. A key this card has no words for is left out of
+ * the text (and logged): a raw internal key is never shown.
+ */
+export function missingFieldKeys(missing: StatusParam | undefined): TranslationKey[] {
+  const fields = Array.isArray(missing) ? missing : [];
+  const keys: TranslationKey[] = [];
+  for (const field of fields) {
+    const key = typeof field === "string" ? MISSING_FIELD_KEYS[field] : undefined;
+    if (key === undefined) {
+      console.debug("SpotNav: no words for the missing setting", field);
+      continue;
+    }
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** Where Home Assistant lists its integrations, and the ones that need a person (a login, a failed start). */
+export const DEVICES_AND_SERVICES_PATH = "/config/integrations/dashboard";
+
+/**
+ * A `soc_unreadable` line in words: why the car's level cannot be read (its integration's login or failed start
+ * where a person can fix it), and what the target was planned from.
+ */
+export function socUnreadableText(
+  format: FormatContext,
+  params: Readonly<Record<string, StatusParam>>,
+  nowMs: number,
+): string {
+  const language = format.language;
+  const say = (key: TranslationKey, values: Record<string, string> = {}): string => translate(language, key, values);
+  const integration = typeof params["integration"] === "string" && params["integration"] !== "" ? params["integration"] : null;
+  const cause =
+    integration !== null && params["problem"] === "reauth"
+      ? say("status.socUnreadable.reauth", { integration })
+      : integration !== null && params["problem"] === "setup_error"
+        ? say("status.socUnreadable.setupError", { integration })
+        : say("status.socUnreadable.cause");
+  const soc = num(params["soc_percent"]);
+  const percent = soc === null ? null : formatNumber(language, soc, 0);
+  switch (params["basis"]) {
+    case "estimate":
+      return percent === null ? say("status.socUnreadable.plain", { cause }) : say("status.socUnreadable.estimate", { cause, soc: percent });
+    case "last_known": {
+      if (percent === null) {
+        return say("status.socUnreadable.plain", { cause });
+      }
+      const readAt = ms(params["read_at"]);
+      return readAt === null || !hasZone(format)
+        ? say("status.socUnreadable.lastKnownNoTime", { cause, soc: percent })
+        : say("status.socUnreadable.lastKnown", { cause, soc: percent, time: momentText(format, readAt, nowMs) });
+    }
+    case "full_charge":
+      return say("status.socUnreadable.fullCharge", { cause });
+    default:
+      return say("status.socUnreadable.plain", { cause });
+  }
+}
 
 /**
  * The button of a `charger_own_mode` line: a switch is turned off, anything else set to the value named, in Home
@@ -803,16 +876,17 @@ export function lineText(
         : say(loadBalancingLimitKey(p["cause"]), { limit: formatNumber(language, limit, 0) });
     }
     case "settings_incomplete": {
-      // Setup, not a fault: name what is still needed when the fields are known words.
-      const missing = Array.isArray(p["missing"]) ? p["missing"] : [];
-      const names = missing.map((field) => MISSING_FIELD_KEYS[field]).filter((key): key is TranslationKey => key !== undefined);
-      if (names.length === 0 || names.length !== missing.length) {
+      // Setup, not a fault: name what is still needed in words; a key with no words is left out, never shown raw.
+      const names = missingFieldKeys(p["missing"]);
+      if (names.length === 0) {
         return say("issue.incompleteSettings");
       }
-      return missing.length === 1 && missing[0] === "area"
+      return names.length === 1 && names[0] === "status.missing.area"
         ? say("status.finishSetupArea")
         : say("status.finishSetup", { fields: names.map((key) => say(key)).join(", ") });
     }
+    case "soc_unreadable":
+      return socUnreadableText(format, p, nowMs);
     case "target_reached": {
       // Told with the time of the stop. Without one (or without the market's zone) the age of the reading the
       // stop was made on, as before: an estimate says so; a reading under a minute old is "just now".
@@ -1020,6 +1094,31 @@ export function issuesOf(
       issues.push({ code: line.code, severity, textKey: need.key, params: need.params, technical: null });
       continue;
     }
+    if (line.code === "soc_unreadable") {
+      // Said with the place to fix it when the car's integration waits for a login or failed to start.
+      const problem = line.params["problem"];
+      const fixable = (problem === "reauth" || problem === "setup_error") && typeof line.params["integration"] === "string";
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: "status.socUnreadable.plain",
+        params: { cause: translate(language, "status.socUnreadable.cause") },
+        technical: null,
+        ...(format === undefined ? {} : { text: socUnreadableText(format, line.params, nowMs ?? Date.now()) }),
+        ...(fixable
+          ? {
+              fix: {
+                entity: "",
+                value: DEVICES_AND_SERVICES_PATH,
+                action: "open_integrations" as const,
+                labelKey: "issue.socUnreadable.open" as const,
+                labelParams: {},
+              },
+            }
+          : {}),
+      });
+      continue;
+    }
     if (line.code === "fill_room_unknown") {
       const kwh = formatNumber(language, num(line.params["kwh"]) ?? 0, 1);
       issues.push({ code: line.code, severity, textKey: "status.fillRoomUnknown", params: { kwh }, technical: null });
@@ -1093,13 +1192,14 @@ export function issuesOf(
       technical: reasonOf(line),
     });
     if (line.code === "settings_incomplete") {
-      const missing = line.params["missing"];
-      if (Array.isArray(missing) && missing.length > 0) {
+      // In words only: a key this card has no words for is left out (`missingFieldKeys`).
+      const names = missingFieldKeys(line.params["missing"]);
+      if (names.length > 0) {
         issues.push({
           code: "missing_settings",
           severity,
           textKey: "issue.missingSettings",
-          params: { fields: missing.join(", ") },
+          params: { fields: names.map((key) => translate(language, key)).join(", ") },
           technical: null,
         });
       }

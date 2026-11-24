@@ -1679,6 +1679,16 @@ export const STATUS_CODE_TABLE = {
     { soc_percent: "number", basis: "text", reading_age_s: "numberOrNull", stopped_at: "instantOrNull" },
   ],
   target_unverifiable: ["notice", { reason: "text" }],
+  soc_unreadable: [
+    "notice",
+    {
+      basis: "textOrNull",
+      soc_percent: "numberOrNull",
+      read_at: "instantOrNull",
+      integration: "textOrNull",
+      problem: "textOrNull",
+    },
+  ],
   price_data_stale: ["notice", { reason: "textOrNull" }],
   price_data_degraded: ["notice", { reason: "textOrNull" }],
   unpriced: ["notice", {}],

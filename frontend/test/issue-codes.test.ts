@@ -20,7 +20,7 @@ import {
   activeControlReasonText,
   buildModel,
 } from "../src/model";
-import { STATUS_VARIANT_KEYS, STATUS_WORDING, issuesOf, lineText } from "../src/status";
+import { STATUS_VARIANT_KEYS, STATUS_WORDING, issueText, issuesOf, lineText } from "../src/status";
 import { STATUS_CODE_TABLE, STATUS_TONES, decodeDashboard, type StatusCode, type StatusLine } from "../src/validate";
 import { rawDashboard, statusLine } from "./dashboard-fixtures";
 
@@ -277,6 +277,82 @@ describe("every status code the backend composes is decoded and worded", () => {
     expect(worded("en", ["phases", "amps"])).toBe("Finish setting up in Settings: phases, charging current.");
     expect(worded("en", [])).toBe("Finish setting up: some settings are still missing. Open Settings.");
     expect(worded("en", null)).toBe("Finish setting up: some settings are still missing. Open Settings.");
+  });
+
+  it("never shows a raw internal key for a missing setting", () => {
+    const line = (missing: string[]) =>
+      ({ code: "settings_incomplete", params: { reason: "target_soc_unknown", missing } }) as unknown as StatusLine;
+    // A key this card has words for is named; an unknown one is dropped from the text, never shown as is.
+    expect(lineText(line(["capacity"]), { ...FORMAT, language: "sv" }, NOW)).toBe(
+      "Slutför inställningen i Inställningar: batteristorlek.",
+    );
+    expect(lineText(line(["live_soc"]), { ...FORMAT, language: "en" }, NOW)).toBe(
+      "Finish setting up: some settings are still missing. Open Settings.",
+    );
+    expect(lineText(line(["live_soc", "amps"]), { ...FORMAT, language: "en" }, NOW)).toBe(
+      "Finish setting up in Settings: charging current.",
+    );
+    const issues = issuesOf({ tone: "notice", lines: [line(["live_soc", "vehicle"])] } as never, "sv");
+    const listed = issues.find((issue) => issue.code === "missing_settings");
+    expect(listed?.params).toEqual({ fields: "fordon" });
+    expect(issuesOf({ tone: "notice", lines: [line(["live_soc"])] } as never, "sv").map((issue) => issue.code)).toEqual([
+      "settings_incomplete",
+    ]);
+  });
+
+  it("words an unreadable level calmly, with what the plan was made from", () => {
+    const line = (params: Record<string, unknown>) =>
+      ({
+        code: "soc_unreadable",
+        params: { basis: null, soc_percent: null, read_at: null, integration: null, problem: null, ...params },
+      }) as unknown as StatusLine;
+    const sv = { ...FORMAT, language: "sv" as const };
+    expect(lineText(line({ basis: "estimate", soc_percent: 88 }), sv, NOW)).toBe(
+      "Bilens laddnivå kan inte läsas, planerar från uppskattningen 88 %.",
+    );
+    expect(lineText(line({ basis: "last_known", soc_percent: 88, read_at: "2026-09-22T05:30:00+00:00" }), sv, NOW)).toMatch(
+      /^Bilens laddnivå kan inte läsas, planerar från senast kända 88 % \(.*07[:.]30\)\.$/u,
+    );
+    expect(lineText(line({ basis: "full_charge" }), sv, NOW)).toBe(
+      "Bilens laddnivå kan inte läsas, planerar en full laddning till målet.",
+    );
+    expect(lineText(line({ basis: "estimate", soc_percent: 88, integration: "Kia Connect", problem: "reauth" }), sv, NOW)).toBe(
+      "Kia Connect behöver loggas in igen, så bilens laddnivå kan inte läsas, planerar från uppskattningen 88 %.",
+    );
+    expect(lineText(line({}), { ...FORMAT, language: "en" }, NOW)).toBe("The car's charge level can't be read.");
+    for (const language of LANGUAGES) {
+      for (const params of [
+        { basis: "estimate", soc_percent: 88 },
+        { basis: "last_known", soc_percent: 88, read_at: "2026-09-22T05:30:00+00:00" },
+        { basis: "full_charge", integration: "X", problem: "setup_error" },
+        { integration: "X", problem: "reauth" },
+      ]) {
+        const text = lineText(line(params), { ...FORMAT, language }, NOW);
+        expect(text, language).not.toMatch(/\{\w+\}/u);
+        expect(text, language).not.toContain("live_soc");
+      }
+    }
+  });
+
+  it("offers Devices & services for a login only, never a settings fix", () => {
+    const line = (problem: string | null) =>
+      ({
+        code: "soc_unreadable",
+        params: { basis: "estimate", soc_percent: 88, read_at: null, integration: problem === null ? null : "Kia Connect", problem },
+      }) as unknown as StatusLine;
+    const [reauth] = issuesOf({ tone: "notice", lines: [line("reauth")] } as never, "sv", undefined, { ...FORMAT, language: "sv" }, NOW);
+    expect(reauth?.severity).toBe("notice");
+    expect(reauth?.text).toContain("Kia Connect behöver loggas in igen");
+    expect(reauth?.fix).toEqual({
+      entity: "",
+      value: "/config/integrations/dashboard",
+      action: "open_integrations",
+      labelKey: "issue.socUnreadable.open",
+      labelParams: {},
+    });
+    const [plain] = issuesOf({ tone: "notice", lines: [line(null)] } as never, "sv");
+    expect(plain?.fix).toBeUndefined();
+    expect(plain === undefined ? "" : issueText("sv", plain)).toBe("Bilens laddnivå kan inte läsas.");
   });
 
   it("says once, neutrally, that the defaults came from Home Assistant", () => {
