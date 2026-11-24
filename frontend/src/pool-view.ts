@@ -42,6 +42,19 @@ export function poolWaterText(language: Language, pool: HeatPool): string {
     : translate(language, "heat.pool.water", { value: degrees(language, pool.water_c) });
 }
 
+/** Where the water used was read and when ("Från värmepumpen, 12:40"): a reading counts once the circulation has run
+ * a while and is then kept, so its time says how fresh it is; `null` while none has read. */
+export function poolSourceLine(language: Language, answer: HeatAnswer, pool: HeatPool): string | null {
+  if (pool.water_c === null || pool.water_at === null || (pool.water_source !== "heat_pump" && pool.water_source !== "sensor")) {
+    return null;
+  }
+  const at = Date.parse(pool.water_at);
+  if (Number.isNaN(at)) {
+    return null;
+  }
+  return translate(language, `heat.pool.source.${pool.water_source}` as TranslationKey, { time: whenLabel(language, answer, at) });
+}
+
 /** What the pool does now, as read: the season closed, the heat pump heating towards the target, the circulation
  * filtering, or standing still. */
 export function poolStatusLine(language: Language, pool: HeatPool): string {
@@ -211,6 +224,10 @@ export function poolPanel(input: LoadPanelInput, pool: HeatPool, panel: HTMLElem
   const would = poolWouldLine(language, answer, pool);
   if (would !== null) {
     lines.append(line(doc, X.status, would, "pool-would"));
+  }
+  const source = poolSourceLine(language, answer, pool);
+  if (source !== null && !boxed) {
+    lines.append(line(doc, `${H.note} ${C.muted}`, source, "pool-source"));
   }
   panel.append(lines);
   if (pool.season_hint) {

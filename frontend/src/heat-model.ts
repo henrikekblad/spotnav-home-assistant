@@ -301,6 +301,7 @@ const POOL = O({
   season_open: "boolean",
   water_c: N("number"),
   water_source: N("string"),
+  water_at: N("string"),
   target_c: "number",
   heat_pump: N(O({ on: N("boolean"), heating: N("boolean"), kw: N("number"), ...POOL_PART })),
   circulation: N(O({ on: N("boolean"), kw: N("number"), ...POOL_PART })),
@@ -729,10 +730,9 @@ export interface HeatRelay {
   effect: HeatEffect;
 }
 
-/** Whether anything heat-related was found: a heat pump, a meter, climate zones, a pool, spa or sauna (set up, or
- * detected for an administrator), or settings already made. The
- * heat card shows one line in place of its body without it; the settings popover collapses its heat section. */
-export function heatFound(answer: HeatAnswer): boolean {
+/** Whether the house's own heat was found: a heat pump, a meter, climate zones, a water heater or settings already
+ * made. The settings popover collapses its "Heating" section to one line without it. */
+export function houseHeatFound(answer: HeatAnswer): boolean {
   return (
     answer.pump !== null ||
     answer.meter?.entity_id != null ||
@@ -741,7 +741,16 @@ export function heatFound(answer: HeatAnswer): boolean {
     answer.config.control_path !== "none" ||
     answer.config.indoor_sensors.length > 0 ||
     answer.config.water_heater !== null ||
-    answer.config.heat_meter_entity !== null ||
+    answer.config.heat_meter_entity !== null
+  );
+}
+
+/** Whether anything heat-related was found: the house's heat (`houseHeatFound`), or a pool, spa or sauna (set up, or
+ * detected for an administrator). The heat card shows one line in place of its body without it; the settings popover
+ * leaves out the pool's, the spa's and the sauna's sections. */
+export function heatFound(answer: HeatAnswer): boolean {
+  return (
+    houseHeatFound(answer) ||
     answer.config.pool !== null ||
     answer.config.spa !== null ||
     answer.config.sauna !== null ||
@@ -1026,8 +1035,10 @@ export interface HeatPoolPart {
 export interface HeatPool {
   season_open: boolean;
   water_c: number | null;
-  /** "sensor" or "heat_pump" (its own reading once it has run), `null` while none reads. */
+  /** "heat_pump" (its own reading, first) or "sensor" (the standalone one), `null` while none has read. */
   water_source: string | null;
+  /** When the water used was read: a reading counts once the circulation has run a while, then it is kept. */
+  water_at: string | null;
   target_c: number;
   heat_pump: (HeatPoolPart & { heating: boolean | null }) | null;
   circulation: HeatPoolPart | null;

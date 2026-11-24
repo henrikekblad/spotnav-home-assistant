@@ -13,11 +13,11 @@ import type { HeatPart } from "../src/heat-history";
 import { partSeries, partWord } from "../src/heat-use";
 import { heatEditor, sessionsEditor } from "../src/heat-editors";
 import { decodeHeat, decodeLoadAnswer, heatFound, type HeatAnswer } from "../src/heat-model";
-import { heatBody, heatSettingsSection, heatTabsOf, loadFound, type HeatHandlers, type HeatUi } from "../src/heat-view";
+import { heatBody, heatSettingsSection, heatTabsOf, loadFound, loadSettingsSections, type HeatHandlers, type HeatUi } from "../src/heat-view";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard } from "../src/index";
-import { poolExtraLine, poolPlanLine, poolStatusLine, poolTodayLines, poolWouldLine } from "../src/pool-view";
+import { poolExtraLine, poolPlanLine, poolSourceLine, poolStatusLine, poolTodayLines, poolWouldLine } from "../src/pool-view";
 import { deadlineControlLine, deadlineStatusLine, deadlineWouldLine, loadControlLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -109,6 +109,11 @@ describe("the Pool tab", () => {
     ]);
     expect(poolPlanLine("sv", value, pool)).toBe("Filtrerar 22:00–02:00 · Värmer tis 17 nov. 12:00–14:00");
     expect(poolExtraLine("sv", value, pool)).toBeNull();
+    // Where the water was read and when: the heat pump's own first, a standalone sensor's otherwise; kept while the
+    // circulation stands still.
+    expect(poolSourceLine("sv", value, pool)).toBe("Från värmepumpen, 07:40");
+    expect(poolSourceLine("sv", value, { ...pool, water_source: "sensor", water_at: "2026-11-15T20:05:00+00:00" })).toBe("Från poolgivaren, sön 15 nov. 21:05");
+    expect(poolSourceLine("sv", value, { ...pool, water_c: null, water_source: null, water_at: null })).toBeNull();
   });
 
   it("draws the dial, the season, the extra filtering and the band, and sends each press", () => {
@@ -118,6 +123,7 @@ describe("the Pool tab", () => {
     const panel = card.querySelector<HTMLElement>("[role='tabpanel']")!;
     expect(panel.querySelector("svg[role='img']")!.getAttribute("aria-label")).toBe("Poolvattnets mål, 27,0 °C, 24,6 °C");
     expect(lineOf(panel, "band")).toBe("Vattnet 24,6 °C");
+    expect(lineOf(panel, "pool-source")).toBe("Från värmepumpen, 07:40");
     panel.querySelector<HTMLButtonElement>("button[data-step='up']")!.click();
     expect(onLoadStep).toHaveBeenCalledWith("pool", 0.5);
     expect(panel.querySelector("button[data-mode='season-open']")!.getAttribute("aria-pressed")).toBe("true");
@@ -271,14 +277,21 @@ describe("the Use tab", () => {
 
 describe("the settings rows and editors", () => {
   it("lists the pool's, the spa's and the sauna's settings and the heat card's phones, with what SpotNav would do", () => {
-    const section = heatSettingsSection(document, "sv", answer(), () => undefined);
-    const rows = [...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]);
-    const from = rows.indexOf("poolHeatPump");
-    expect(rows.slice(from, from + 17)).toEqual([
-      "poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw",
-      "poolCirculationControl", "poolHeatPumpControl", "spa", "spaFloor", "spaKw", "spaControl", "sauna", "saunaKw",
-      "saunaSafety", "heatPhones", "heatEvents",
+    // The house's heat keeps "Värme"; the pool, the spa and the sauna each have their own section, the phones last.
+    expect(heatSettingsSection(document, "sv", answer(), () => undefined).querySelector("[data-row^='pool'], [data-row='spa'], [data-row='heatPhones']")).toBeNull();
+    const sections = loadSettingsSections(document, "sv", answer(), () => undefined);
+    const rowsOf = (node: HTMLElement): (string | undefined)[] => [...node.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]);
+    expect(sections.map((node) => [node.dataset["section"], node.querySelector("h4")!.textContent, rowsOf(node)])).toEqual([
+      [
+        "pool", "Pool",
+        ["poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw", "poolCirculationControl", "poolHeatPumpControl"],
+      ],
+      ["spa", "Spa", ["spa", "spaFloor", "spaKw", "spaControl"]],
+      ["sauna", "Bastu", ["sauna", "saunaKw", "saunaSafety", "heatPhones", "heatEvents"]],
     ]);
+    const rows = sections.flatMap(rowsOf);
+    const section = document.createElement("div");
+    section.append(...sections);
     expect(section.querySelector("[data-row='poolCirculationControl']")!.textContent).toBe("Styr cirkulationenPå");
     expect(section.querySelector("[data-row='poolHeatPumpControl']")!.textContent).toBe("Styr poolens värmepumpAv");
     // A relay sauna without its declared safety has no opt-in row.
@@ -286,6 +299,14 @@ describe("the settings rows and editors", () => {
     expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Skulle stå still till 22:00");
     expect(section.querySelector("[data-row='poolFilterHours']")!.textContent).toBe("Filtrering per dygnEfter vattentemperaturen");
     expect(section.querySelector("[data-row='saunaSafety']")!.textContent).toBe("Aggregatets eget säkerhetsskyddNej, eller vet inte");
+  });
+
+  it("offers the heat pump's own reading first for the water, a standalone sensor as the second choice", () => {
+    const built = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: answer(), write: vi.fn(async () => null) }, "poolSensor", { onDone: vi.fn(), onCancel: vi.fn() })!;
+    const options = [...built.body.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((input) => input.value);
+    expect(options[0]).toBe("");
+    expect(built.body.textContent).toContain("Bara värmepumpens egen");
+    expect(built.body.textContent).toContain("Värmepumpens egen avläsning används först och en vald givare i andra hand.");
   });
 
   it("confirms a detected pool once as a group", async () => {
@@ -453,7 +474,7 @@ describe("SpotNav's control of the pool, the spa and the sauna", () => {
     const declared = answer((v) => {
       ((v["config"] as Record<string, unknown>)["sauna"] as Record<string, unknown>)["safety_declared"] = true;
     });
-    const rows = [...heatSettingsSection(document, "sv", declared, () => undefined).querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]);
+    const rows = loadSettingsSections(document, "sv", declared, () => undefined).flatMap((node) => [...node.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset["row"]));
     expect(rows).toContain("saunaControl");
     const sauna = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: declared, write }, "saunaControl", { onDone: vi.fn(), onCancel: vi.fn() })!;
     expect(sauna.body.textContent).toContain("aldrig när dörren eller låset säger nej");

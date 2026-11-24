@@ -4,7 +4,8 @@
 // and hot water, and the notes the household can act on. Plan: the day's chart (`heat-day-chart.ts`), today's or a
 // past day's, with the pool's, the spa's and the sauna's next hours under it. Use: the period's energy or cost by what
 // is measured (`heat-use.ts`). Pool, Spa and Sauna where the site has one (`pool-view.ts`, `spa-view.ts`). Below, the
-// "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
+// "Heating" settings section (`heatSettingsSection`) and the pool's, the spa's and the sauna's own
+// (`loadSettingsSections`), the rows the settings dialog shows. Built fresh for each state
 // with `textContent` only; every figure is the backend's.
 
 import type { NotReady, NotReadyPress } from "./not-ready-sheet";
@@ -31,7 +32,7 @@ import { usePanel } from "./heat-use";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
-import { sectionHeading, settingRow } from "./value-editors";
+import { sectionHeading, settingRow, type SectionIcon } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 import { poolPanel, poolPlanLine, poolStatusLine, poolWouldLine } from "./pool-view";
@@ -1715,39 +1716,76 @@ function kwOrNone(language: Language, kw: number | null): string {
   return kw === null ? translate(language, "heat.settings.kwNone") : kwText(language, kw);
 }
 
-/**
- * The pool's, the spa's and the sauna's rows in the "Heating" section, and the heat card's phones: a detected pool
- * not set up yet is one row that asks once; a set-up one has its heat pump, circulation, water sensor, filtering hours
- * and powers. The spa's and the sauna's entity, the spa's lowest temperature, the heaters' power, a relay sauna's
- * safety declaration; the phones and their events while any of them is set up. Each row says what SpotNav would do
- * under it where it has something to say (SpotNav only watches them).
- */
-function loadSettingRows(
+type SettingRowAdd = (key: HeatSettingKey, label: string, value: string, help?: string, editable?: boolean) => void;
+
+/** A settings section with its heading, and how to add a row to it (each editable row opens its editor, `onEdit`). */
+function settingsSection(
   doc: Document,
-  language: Language,
-  answer: HeatAnswer,
-  names: Map<string, string>,
-  none: string,
-  row: (key: HeatSettingKey, label: string, value: string, help?: string, editable?: boolean) => void,
-  section: HTMLElement,
-): void {
+  kind: SectionIcon,
+  title: string,
+  onEdit: (key: HeatSettingKey) => void,
+): { section: HTMLElement; row: SettingRowAdd } {
+  const section = element(doc, "section", `${C.settingsSection} ${X.section}`);
+  section.dataset["section"] = kind;
+  section.append(sectionHeading(doc, kind, title));
+  const row: SettingRowAdd = (key, label, value, help, editable = true) => {
+    section.append(
+      ...settingRow(doc, {
+        key,
+        label,
+        value,
+        ...(help === undefined ? {} : { help }),
+        ...(editable ? { onTap: () => onEdit(key), changeableText: `${label}, ${value}` } : {}),
+      }),
+    );
+  };
+  return { section, row };
+}
+
+/** The sections a load has where it is set up or detected: the pool's, the spa's and the sauna's (`loadSettingsSections`). */
+export function loadSectionsShown(answer: HeatAnswer): { pool: boolean; spa: boolean; sauna: boolean } {
   const config = answer.config;
   const choices = answer.choices;
+  return {
+    pool: config.pool !== null || choices?.pool?.suggested != null || (choices?.pool?.heat_pump.length ?? 0) > 0,
+    spa: config.spa !== null || (choices?.spa.length ?? 0) > 0,
+    sauna: config.sauna !== null || (choices?.sauna.length ?? 0) > 0,
+  };
+}
+
+/**
+ * The "Pool", "Spa" and "Bastu" sections of the settings dialog, each only where that load is set up or detected: a
+ * detected pool not set up yet is one row that asks once; a set-up one has its heat pump, circulation, water sensor,
+ * filtering hours and powers. The spa's and the sauna's entity, the spa's lowest temperature, the heaters' power, a
+ * relay sauna's safety declaration. The heat card's phones and their events (they hear about all three) close the last
+ * of them while any of them is set up. Each section says what SpotNav would do under it where it has something to say.
+ */
+export function loadSettingsSections(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement[] {
+  const config = answer.config;
+  const choices = answer.choices;
+  const shown = loadSectionsShown(answer);
+  const names = namesOf(answer);
+  const none = translate(language, "heat.settings.none");
   const t = (key: TranslationKey, params?: Record<string, string>): string => translate(language, key, params);
-  const pool = config.pool;
-  const poolChoices = choices?.pool ?? null;
-  const helpLine = (key: string, text: string | null): void => {
+  const sections: HTMLElement[] = [];
+  const helpLine = (section: HTMLElement, key: string, text: string | null): void => {
     if (text !== null) {
       const help = element(doc, "p", C.settingRowHelp, text);
       help.dataset["help"] = key;
       section.append(help);
     }
   };
-  if (pool === null && poolChoices?.suggested != null) {
-    // Detected, not set up: one row that asks once ("Är detta poolens värmepump?").
-    row("poolSuggested", t("heat.settings.pool"), t("heat.settings.poolFound", { name: nameOf(names, poolChoices.suggested.heat_pump.entity_id, none) }));
-  } else if (pool !== null || (poolChoices?.heat_pump.length ?? 0) > 0) {
-    row("poolHeatPump", t("heat.settings.poolHeatPump"), nameOf(names, pool?.heat_pump?.entity_id ?? null, none));
+  let last: SettingRowAdd | null = null;
+  const pool = config.pool;
+  const poolChoices = choices?.pool ?? null;
+  if (shown.pool) {
+    const { section, row } = settingsSection(doc, "pool", t("heat.settings.section.pool"), onEdit);
+    if (pool === null && poolChoices?.suggested != null) {
+      // Detected, not set up: one row that asks once ("Är detta poolens värmepump?").
+      row("poolSuggested", t("heat.settings.pool"), t("heat.settings.poolFound", { name: nameOf(names, poolChoices.suggested.heat_pump.entity_id, none) }));
+    } else {
+      row("poolHeatPump", t("heat.settings.poolHeatPump"), nameOf(names, pool?.heat_pump?.entity_id ?? null, none));
+    }
     if (pool !== null) {
       row("poolCirculation", t("heat.settings.poolCirculation"), nameOf(names, pool.circulation_id, none));
       row("poolSensor", t("heat.settings.poolSensor"), pool.water_sensor === null ? t("heat.settings.poolSensorPump") : nameOf(names, pool.water_sensor, none));
@@ -1767,11 +1805,14 @@ function loadSettingRows(
         // The interlock: the heat pump is only ever SpotNav's with a circulation pump chosen.
         row("poolHeatPumpControl", t("heat.settings.poolHeatPumpControl"), t(pool.control_heat_pump ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine("pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
+      helpLine(section, "pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
     }
+    sections.push(section);
+    last = row;
   }
   const spa = config.spa;
-  if (spa !== null || (choices?.spa.length ?? 0) > 0) {
+  if (shown.spa) {
+    const { section, row } = settingsSection(doc, "spa", t("heat.settings.section.spa"), onEdit);
     row("spa", t("heat.settings.spa"), nameOf(names, spa?.entity_id ?? null, none));
     if (spa !== null) {
       row("spaFloor", t("heat.settings.spaFloor"), degrees(language, spa.floor_c));
@@ -1779,11 +1820,14 @@ function loadSettingRows(
       if (SPA_CONTROLLABLE.includes(spa.family)) {
         row("spaControl", t("heat.settings.spaControl"), t(spa.control ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine("spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
+      helpLine(section, "spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
     }
+    sections.push(section);
+    last = row;
   }
   const sauna = config.sauna;
-  if (sauna !== null || (choices?.sauna.length ?? 0) > 0) {
+  if (shown.sauna) {
+    const { section, row } = settingsSection(doc, "sauna", t("heat.settings.section.sauna"), onEdit);
     row("sauna", t("heat.settings.sauna"), nameOf(names, sauna?.entity_id ?? null, none));
     if (sauna !== null) {
       row("saunaKw", t("heat.settings.saunaKw"), kwOrNone(language, sauna.heater_kw));
@@ -1793,23 +1837,26 @@ function loadSettingRows(
       if (saunaControllable(sauna)) {
         row("saunaControl", t("heat.settings.saunaControl"), t(sauna.control ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine("sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
+      helpLine(section, "sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
     }
+    sections.push(section);
+    last = row;
   }
-  if (pool !== null || spa !== null || sauna !== null) {
+  if (last !== null && (pool !== null || spa !== null || sauna !== null)) {
     const phones = config.heat_notifications.targets;
     const phoneNames = new Map((choices?.phones ?? []).map((phone) => [phone.service, phone.name]));
-    row(
+    last(
       "heatPhones",
       t("heat.settings.phones"),
       phones.length === 0 ? t("heat.settings.phonesNone") : phones.map((service) => phoneNames.get(service) ?? service).join(", "),
     );
-    row(
+    last(
       "heatEvents",
       t("heat.settings.events"),
       HEAT_EVENTS.filter((event) => config.heat_notifications.events.includes(event)).map((event) => t(`heat.settings.event.${event}` as TranslationKey)).join(", ") || t("heat.settings.eventsNone"),
     );
   }
+  return sections;
 }
 
 /** The spa families SpotNav can control (`spa/config.py` `CONTROLLABLE`). */
@@ -1862,7 +1909,8 @@ export type HeatSettingKey =
   | "heatPhones"
   | "heatEvents";
 
-/** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
+/** The "Heating" section of the settings dialog (the house's heat; the pool, the spa and the sauna have their own,
+ * `loadSettingsSections`): one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
   const section = element(doc, "section", `${C.settingsSection} ${X.section}`);
   section.append(sectionHeading(doc, "heat", translate(language, "heat.settings.title")));
@@ -1992,7 +2040,6 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     }
     row("tankSensor", translate(language, "heat.settings.tankSensor"), nameOf(names, heater.tank_sensor, none));
   }
-  loadSettingRows(doc, language, answer, names, none, row, section);
   if (!steers) {
     return section;
   }

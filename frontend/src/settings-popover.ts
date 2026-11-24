@@ -60,8 +60,8 @@ import { decodePriorityAnswer, priorityChange, priorityEditor, prioritySummary }
 import { formatFixed, formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
-import { decodeHeat, heatFound, type HeatAnswer, type HeatConfig } from "./heat-model";
-import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
+import { decodeHeat, heatFound, houseHeatFound, type HeatAnswer, type HeatConfig } from "./heat-model";
+import { heatSettingsSection, loadSettingsSections, type HeatSettingKey } from "./heat-view";
 import { daysLeft, numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   decodeMarketOptions,
@@ -123,7 +123,7 @@ const WEAR_MAX_FACTOR = 10;
 
 export const PLAN_DOCS_URL = "https://spotnav.sensnology.se/docs/home-assistant/battery-plan#the-wear-cost";
 
-export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
+export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "pool" | "spa" | "sauna" | "support";
 
 /**
  * What a house or heat card in the card picker shows first: the first charger's site, else the first site (a home
@@ -656,7 +656,7 @@ export class SiteSections {
     ]);
   }
 
-  /** Whether anything heat-related was found: a heat pump, a meter, climate zones, or settings already made. */
+  /** Whether anything heat-related was found: the house's heat, a pool, a spa or a sauna (`heat-model.heatFound`). */
   heatFound(): boolean {
     return this.heat !== null && heatFound(this.heat);
   }
@@ -1321,22 +1321,40 @@ export class SiteSections {
     });
   }
 
+  /** The "Heating" section, then the pool's, the spa's and the sauna's own where each is set up or detected. */
+  heatNodes(): HTMLElement[] {
+    const nodes = [this.heatNode()];
+    const answer = this.heat;
+    if (answer !== null && (this.heatFound() || this.heatExpanded)) {
+      for (const section of loadSettingsSections(this.input.doc, this.language, answer, (key) => this.openHeatEditor(key))) {
+        nodes.push(this.readOnlyUnlessAdmin(section, answer));
+      }
+    }
+    return nodes;
+  }
+
+  /** The section's rows open their editors only for an administrator on a writable answer. */
+  private readOnlyUnlessAdmin(section: HTMLElement, answer: HeatAnswer): HTMLElement {
+    if (!answer.writable || !this.input.isAdmin()) {
+      section.querySelectorAll<HTMLButtonElement>("button[data-edit]").forEach((button) => {
+        button.disabled = true;
+      });
+    }
+    return section;
+  }
+
+  /** The "Heating" section (the house's heat): whole once anything of the house's heat is found, else one line. */
   heatNode(): HTMLElement {
     const doc = this.input.doc;
     const language = this.language;
     const answer = this.heat;
-    if (answer !== null && (this.heatFound() || this.heatExpanded)) {
+    if (answer !== null && (houseHeatFound(answer) || this.heatExpanded)) {
       const section = heatSettingsSection(doc, language, answer, (key) => this.openHeatEditor(key));
       section.dataset["section"] = "heat";
-      if (!this.heatFound()) {
+      if (!houseHeatFound(answer)) {
         section.insertBefore(element(doc, "p", C.settingRowHelp, translate(language, "heat.none.help")), section.children[1] ?? null);
       }
-      if (!answer.writable || !this.input.isAdmin()) {
-        section.querySelectorAll<HTMLButtonElement>("button[data-edit]").forEach((button) => {
-          button.disabled = true;
-        });
-      }
-      return section;
+      return this.readOnlyUnlessAdmin(section, answer);
     }
     // Nothing heat-related found: one line that opens the section, so a relay-only water heater can be added.
     const section = element(doc, "section", C.settingsSection);
@@ -1473,7 +1491,7 @@ export class SettingsPopover {
   /** Open at `focus` (the whole page when `null`): drawn at once, then filled as the reads come back. */
   async open(focus: PopoverFocus | null = null): Promise<void> {
     this.focus = focus;
-    if (focus === "heat") {
+    if (focus === "heat" || focus === "pool" || focus === "spa" || focus === "sauna") {
       this.sections.heatExpanded = true;
     }
     if (!this.isOpen()) {
@@ -1633,7 +1651,7 @@ export class SettingsPopover {
     if (battery !== null) {
       body.append(battery);
     }
-    body.append(this.sections.heatNode(), this.supportNode());
+    body.append(...this.sections.heatNodes(), this.supportNode());
     return body;
   }
 

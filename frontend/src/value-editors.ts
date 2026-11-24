@@ -42,6 +42,13 @@ const ICON_PATHS = {
   display: { stroke: "M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM9 21h6M12 17v4" },
   battery: { stroke: "M8 5h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM10 2.5h4M9.5 13h5M12 10.5v5" },
   heat: { stroke: "M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0zM12 9v7" },
+  /* The pool, the spa and the sauna: their heat card tabs' icons. */
+  pool: {
+    stroke:
+      "M3 9c2 0 2-1.5 4.5-1.5S10 9 12 9s2-1.5 4.5-1.5S19 9 21 9M3 14c2 0 2-1.5 4.5-1.5S10 14 12 14s2-1.5 4.5-1.5S19 14 21 14M3 19c2 0 2-1.5 4.5-1.5S10 19 12 19s2-1.5 4.5-1.5S19 19 21 19",
+  },
+  spa: { stroke: "M3 12h18v3a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM8 9c-1-1.5 1-2.5 0-4M12 9c-1-1.5 1-2.5 0-4M16 9c-1-1.5 1-2.5 0-4" },
+  sauna: { stroke: "M3 20.5h18M5 20.5v-4h14v4M7 16.5v-4h10v4M9 9c-1-1.5 1-2.5 0-4M15 9c-1-1.5 1-2.5 0-4" },
 } as const;
 
 export type SectionIcon = keyof typeof ICON_PATHS;
