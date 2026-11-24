@@ -3177,6 +3177,9 @@ class BatteryControl:
         return {
             # Whether the site's battery facts name a battery: without one a client hides its battery card (additive).
             "battery_found": bool(self.facts.battery_entity_id),
+            # Whether the brand's control recipe was tested on a real plant (`commands.field_tested`): the card says a
+            # hardware test comes first while an untested one is in test mode (additive).
+            "recipe_tested": recipe_field_tested(self.facts.brand),
             "options": options.as_dict(),
             "state": self.state(options),
             "line": self._line(options),

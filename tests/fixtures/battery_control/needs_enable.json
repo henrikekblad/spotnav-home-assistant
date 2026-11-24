@@ -4,6 +4,7 @@
   "error": null,
   "status": {
     "battery_found": true,
+    "recipe_tested": false,
     "options": {
       "battery_control_enabled": false,
       "battery_control_shadow_only": false,

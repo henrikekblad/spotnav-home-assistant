@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Standaard",
   "battery.line.off": "Uit: SpotNav stuurt nog niets en laat alleen zien wat het zou doen.",
   "battery.line.shadowOnly": "Test: SpotNav stuurt nog niets en logt alleen wat het zou doen.",
+  "battery.line.hardwareTestFirst": "De sturing van dit batterijmerk is nog niet op een echte batterij geprobeerd: voer eerst Ondersteuning → Hardwaretest uit.",
   "battery.line.checking": "Controleert of de batterij gehoorzaamt (ongeveer 40 minuten).",
   "battery.line.checkingAfterUpdate": "Controleert de batterij opnieuw na een update.",
   "battery.line.on": "Aan: SpotNav stuurt de batterij aan.",

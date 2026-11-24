@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Standard",
   "battery.line.off": "Av: SpotNav styrer ingenting ennå og viser bare hva den ville gjort.",
   "battery.line.shadowOnly": "Test: SpotNav styrer ingenting ennå og logger bare hva den ville gjort.",
+  "battery.line.hardwareTestFirst": "Styringen av dette batterimerket er ikke prøvd på et ekte batteri ennå: kjør Støtte → Maskinvaretest først.",
   "battery.line.checking": "Sjekker at batteriet adlyder (omtrent 40 minutter).",
   "battery.line.checkingAfterUpdate": "Sjekker batteriet igjen etter en oppdatering.",
   "battery.line.on": "På: SpotNav styrer batteriet.",

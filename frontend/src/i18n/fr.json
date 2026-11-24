@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Par défaut",
   "battery.line.off": "Désactivé : SpotNav ne pilote encore rien et montre seulement ce qu’il ferait.",
   "battery.line.shadowOnly": "Test : SpotNav ne pilote encore rien et consigne seulement ce qu’il ferait.",
+  "battery.line.hardwareTestFirst": "Le pilotage de cette marque de batterie n’a pas encore été essayé sur une vraie batterie : lancez d’abord Assistance → Test matériel.",
   "battery.line.checking": "Vérifie que la batterie obéit (environ 40 minutes).",
   "battery.line.checkingAfterUpdate": "Vérifie à nouveau la batterie après une mise à jour.",
   "battery.line.on": "Activé : SpotNav pilote la batterie.",

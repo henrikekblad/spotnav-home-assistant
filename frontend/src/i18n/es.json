@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Por defecto",
   "battery.line.off": "Desactivado: SpotNav aún no controla nada y solo muestra lo que haría.",
   "battery.line.shadowOnly": "Prueba: SpotNav aún no controla nada y solo registra lo que haría.",
+  "battery.line.hardwareTestFirst": "El control de esta marca de batería aún no se ha probado en una batería real: ejecute primero Soporte → Prueba de hardware.",
   "battery.line.checking": "Comprobando que la batería obedece (unos 40 minutos).",
   "battery.line.checkingAfterUpdate": "Comprobando la batería de nuevo tras una actualización.",
   "battery.line.on": "Activado: SpotNav controla la batería.",

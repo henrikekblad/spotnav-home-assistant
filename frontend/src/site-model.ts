@@ -106,6 +106,9 @@ export interface BatteryOptions {
 export interface BatteryStatus {
   /** Whether the site's battery facts name a battery (`true` from a Home Assistant before the key). */
   battery_found: boolean;
+  /** Whether the brand's control recipe was tested on a real plant (`true` from a Home Assistant before the key): an
+   * untested one in test mode asks for the hardware test first. */
+  recipe_tested: boolean;
   options: BatteryOptions;
   state: string;
   line: string;
@@ -369,6 +372,7 @@ const PER_PHASE = O({
 
 const STATUS: Spec = O({
   battery_found: "boolean",
+  recipe_tested: "boolean",
   options: OPTIONS,
   state: "string",
   line: "string",
@@ -477,6 +481,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
  * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.enable_facts`, `status.battery_found` (`true`),
+ * `status.recipe_tested` (`true`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
  * `entity_id`, `status.grid_charge_cap.ha_down`, `status.options.battery_control_accept_ha_down` (`false`),
  * `status.options.battery_wear_minor_per_kwh` and `status.plan_costs.wear_default_minor_per_kwh` (`null`).
@@ -504,6 +509,7 @@ function withLaterBlocks(raw: unknown): unknown {
       preheat: block["preheat"] ?? null,
       enable_facts: block["enable_facts"] ?? null,
       battery_found: block["battery_found"] ?? true,
+      recipe_tested: block["recipe_tested"] ?? true,
     },
   };
 }

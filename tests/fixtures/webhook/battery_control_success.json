@@ -6,6 +6,7 @@
   "status": {
     "allowed_actions": [],
     "battery_found": false,
+    "recipe_tested": false,
     "device_id": null,
     "enable_entities": null,
     "enable_facts": null,

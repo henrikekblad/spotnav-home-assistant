@@ -431,6 +431,25 @@ describe("the popover from the house card", () => {
     expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "docs", "download_debug", "p", "send_debug", "disconnect_phones", "sponsor", "p"]);
   });
 
+  it("asks for the hardware test first under test mode while the brand's recipe is untested", async () => {
+    const base = (read("battery_control", "checking.json")["status"] as Record<string, unknown>);
+    for (const tested of [false, true]) {
+      const status = { ...base, state: "shadow_only", line: "shadow_only", verification: null, recipe_tested: tested };
+      const { root, element } = await mount({ battery: "checking.json", status });
+      const battery = (await open(root)).querySelector<HTMLElement>("[data-section='battery']")!;
+      const help = battery.querySelector("[data-help='battery_control_enabled']")!.textContent;
+      expect(help).toContain("Test: SpotNav styr inget än");
+      expect(help.includes("kör Support → Hårdvarutest först")).toBe(!tested);
+      element.remove();
+    }
+    // A Home Assistant before the key reads as tested: no line it cannot back.
+    const older = { ...read("battery_control", "checking.json") };
+    const status = { ...(older["status"] as Record<string, unknown>) };
+    delete status["recipe_tested"];
+    const decoded = decodeBatteryControl({ ...older, status });
+    expect(decoded.ok && decoded.value.status?.recipe_tested).toBe(true);
+  });
+
   it("shows the battery's line, checklist and report, and turns the switch off", async () => {
     const { root, messages } = await mount();
     const popover = await open(root);

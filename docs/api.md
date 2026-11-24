@@ -1065,6 +1065,11 @@ as `get_site_settings_view`'s `battery.found`). Without one the status is still 
 the switch off), so a client hides its battery card on `false`, and keeps the place where a battery is added. A Home
 Assistant before the key leaves it out: read it as `true`.
 
+`status.recipe_tested` (additive under version 1) is `true` where the battery brand's control recipe has been tested on
+a real plant, `false` for a recipe never run on one (and for a site without a recipe). While it is `false` and
+`status.line` is `shadow_only`, the card adds that the hardware test (Support → Hardware test) comes first. A Home
+Assistant before the key leaves it out: read it as `true`.
+
 `status.preheat` (additive under version 1) is the battery section's line about a cold battery's own heater, `null`
 when none shows: `{"code": "off" | "disabled", "cell_c": 2.4, "entity_id": "switch.…_ess_preheating_enable",
 "device_id": "…"}`. `off`: SpotNav runs the battery, its cells are below 5 °C and its preheating switch is off;

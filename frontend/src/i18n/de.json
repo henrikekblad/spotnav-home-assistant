@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Standard",
   "battery.line.off": "Aus: SpotNav steuert noch nichts und zeigt nur, was es tun würde.",
   "battery.line.shadowOnly": "Test: SpotNav steuert noch nichts und protokolliert nur, was es tun würde.",
+  "battery.line.hardwareTestFirst": "Die Steuerung dieser Speichermarke wurde noch an keinem echten Speicher erprobt: zuerst Support → Hardwaretest ausführen.",
   "battery.line.checking": "Prüft, ob der Speicher gehorcht (etwa 40 Minuten).",
   "battery.line.checkingAfterUpdate": "Prüft den Speicher nach einem Update erneut.",
   "battery.line.on": "An: SpotNav steuert den Speicher.",

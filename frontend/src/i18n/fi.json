@@ -1815,6 +1815,7 @@
   "battery.wear.default": "Oletus",
   "battery.line.off": "Pois: SpotNav ei vielä ohjaa mitään ja näyttää vain, mitä se tekisi.",
   "battery.line.shadowOnly": "Testi: SpotNav ei vielä ohjaa mitään ja kirjaa vain lokiin, mitä se tekisi.",
+  "battery.line.hardwareTestFirst": "Tämän akkumerkin ohjausta ei ole vielä kokeiltu oikealla akulla: aja ensin Tuki → Laitteistotesti.",
   "battery.line.checking": "Tarkistetaan, että akku tottelee (noin 40 minuuttia).",
   "battery.line.checkingAfterUpdate": "Tarkistetaan akku uudelleen päivityksen jälkeen.",
   "battery.line.on": "Päällä: SpotNav ohjaa akkua.",

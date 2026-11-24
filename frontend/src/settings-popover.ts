@@ -1183,7 +1183,8 @@ export class SiteSections {
         key: "battery_control_enabled",
         label: switchLabel,
         value: onText(options.battery_control_enabled),
-        help: batteryLine(language, status.line),
+        help: batteryLine(language, status.line)
+          + (status.line === "shadow_only" && !status.recipe_tested ? ` ${translate(language, "battery.line.hardwareTestFirst")}` : ""),
         ...(admin
           ? {
               onTap: () =>
