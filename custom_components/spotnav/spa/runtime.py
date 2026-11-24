@@ -57,6 +57,8 @@ REASON_CLOUD: Final = "cloud_slow"
 
 ERROR_RATE_LIMITED: Final = "spotnav_rate_limited"
 ERROR_NO_LATER: Final = "spotnav_no_later_bath"
+#: The sauna's refusal when no later session fits (the spa's is `ERROR_NO_LATER`).
+ERROR_NO_LATER_SESSION: Final = "spotnav_no_later_session"
 
 
 def _aware(value: Any) -> datetime | None:
@@ -266,7 +268,7 @@ class DeadlineShadow:
         plan = self.plan
         not_ready = None if plan is None else plan.not_ready
         if not_ready is None or not_ready.later is None:
-            return None, ERROR_NO_LATER
+            return None, ERROR_NO_LATER_SESSION if self.profile.kind == KIND_SAUNA else ERROR_NO_LATER
         original = next((first for first, moved in self.later.items() if moved == not_ready.at), not_ready.at)
         self.later[original] = not_ready.later
         return not_ready.later, None

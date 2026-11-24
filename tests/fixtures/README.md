@@ -33,6 +33,13 @@ Friday (a household member's answer, with the notes).
 (`tests/test_webhook_site_parity.py`); the richer shapes of the same documents are the directories above. The heat
 documents' `money` has the house documents' keys (`currency`, `major_unit`, `minor_unit`).
 `webhook/get_plan_success.json` is the webhook's `get_plan` on the same site (a car whose charge fits).
+`webhook/pool_*.json`, `spa_*.json` and `sauna_*.json` are the household's presses of the Pool, Spa and Sauna tabs
+over the webhook on the same site with a pool, a Balboa spa and a Harvia sauna added (`tests/test_webhook_site_parity.py`):
+a press that went through, a value refused, a second "now" within ten minutes, a bath or session that will not be ready
+with no later hour where it fits (`spotnav_no_later_bath`, `spotnav_no_later_session`) and a site without the load.
+The spa's weekly baths carry ISO weekdays (Monday 1 to Sunday 7), as a car's `departure_weekdays`.
+`webhook/get_site_settings_view_priority.json` is `get_site_settings_view` over the webhook on a site with two chargers,
+house heat, a water heater, a home battery and a pool: every row of its priority list (`tests/test_site_priority.py`).
 
 `webhook/get_plan_does_not_fit.json`, `dashboard_does_not_fit.json`, `get_plan_takes_what_fits.json`,
 `take_what_fits_*.json` and `later_departure_*.json` are a charge that does not fit under a 6 kW import target by its

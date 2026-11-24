@@ -459,7 +459,7 @@ The current and where it came from are in the charger's diagnostics (`switched_c
 
 ## The priority list
 
-One list per site, **Prioritet** in the house card's settings (gear → the site's section, administrators only): every
+One list per site, **Priority** in the cards' settings (gear → the site's section, administrators only): every
 load the site has, one row each, **the top gets energy first and gives way last**. Each charger is its own row; the
 other rows are house heat, a spa heating for a booked bath, a sauna, house cooling, the water heater, the home
 battery, a spa between baths, the pool's circulation beyond the day's filtering need and the pool's heat pump (a row

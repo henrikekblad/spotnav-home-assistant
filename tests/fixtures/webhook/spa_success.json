@@ -1,0 +1,46 @@
+{
+  "action": "spa",
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "spa": {
+    "bath_c": 39.0,
+    "bath_now": null,
+    "bath_once": null,
+    "baths": [
+      {
+        "time": "19:00",
+        "weekdays": [
+          5,
+          6
+        ]
+      }
+    ],
+    "control": {
+      "failures": 0,
+      "paused_until": null,
+      "reason": null,
+      "state": "watched"
+    },
+    "family": "balboa",
+    "floor_c": 10.0,
+    "heating": false,
+    "idle_c": 30.0,
+    "kw": null,
+    "live": false,
+    "next_bath": null,
+    "not_ready": null,
+    "notes": [],
+    "planned": [],
+    "rate_c_h": 1.5,
+    "rate_learned": false,
+    "ready_at": null,
+    "state": "idle",
+    "water_c": 36.0,
+    "would": {
+      "action": "idle",
+      "reason": "no_session",
+      "until": null
+    }
+  }
+}

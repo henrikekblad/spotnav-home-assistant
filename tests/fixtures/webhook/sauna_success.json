@@ -1,0 +1,39 @@
+{
+  "action": "sauna",
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "sauna": {
+    "control": {
+      "failures": 0,
+      "paused_until": null,
+      "reason": "cloud_slow",
+      "state": "watched"
+    },
+    "family": "harvia_sauna",
+    "heating": false,
+    "kw": null,
+    "live": false,
+    "lock_id": "binary_sensor.harvia_door",
+    "locked": false,
+    "next_session": null,
+    "not_ready": null,
+    "notes": [],
+    "planned": [],
+    "rate_c_h": 80.0,
+    "rate_learned": false,
+    "ready_at": null,
+    "safety_declared": null,
+    "session_now": null,
+    "session_once": null,
+    "sessions": [],
+    "state": "idle",
+    "target_c": 85.0,
+    "temp_c": 21.0,
+    "would": {
+      "action": "off",
+      "reason": "no_session",
+      "until": null
+    }
+  }
+}
