@@ -132,7 +132,7 @@ export interface HeatHandlers {
   /** A press in the spa's or the sauna's tab (`spotnav/spa`, `spotnav/sauna`): its action and value. */
   onDeadline?(kind: "spa" | "sauna", action: string, value?: unknown): void;
   /** The spa's or the sauna's times, or the spa's idle temperature, to change (an editor of their own). */
-  onLoadEdit?(kind: "spa" | "sauna", what: "times" | "idle"): void;
+  onLoadEdit?(kind: "spa" | "sauna", what: "times"): void;
   /** A choice on the sheet of what will not be ready in time across the site (`not-ready-sheet.ts`). */
   onNotReady?(press: NotReadyPress): void;
 }
@@ -1815,7 +1815,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
     const { section, row } = settingsSection(doc, "spa", t("heat.settings.section.spa"), onEdit);
     row("spa", t("heat.settings.spa"), nameOf(names, spa?.entity_id ?? null, none));
     if (spa !== null) {
-      row("spaFloor", t("heat.settings.spaFloor"), degrees(language, spa.floor_c));
+      row("spaIdle", t("heat.spa.idleLabel"), degrees(language, spa.idle_c));
       row("spaKw", t("heat.settings.spaKw"), kwOrNone(language, spa.heater_kw));
       if (SPA_CONTROLLABLE.includes(spa.family)) {
         row("spaControl", t("heat.settings.spaControl"), t(spa.control ? "settings.value.on" : "settings.value.off"));
@@ -1899,7 +1899,7 @@ export type HeatSettingKey =
   | "poolHeatPumpControl"
   | "poolCirculationControl"
   | "spa"
-  | "spaFloor"
+  | "spaIdle"
   | "spaKw"
   | "spaControl"
   | "sauna"

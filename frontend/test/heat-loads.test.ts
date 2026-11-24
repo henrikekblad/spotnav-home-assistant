@@ -55,6 +55,12 @@ function body(ui: Partial<HeatUi>, value: HeatAnswer = answer(), extra: Partial<
   });
 }
 
+function section_row(value: HeatAnswer, key: string): string | null {
+  const holder = document.createElement("div");
+  holder.append(...loadSettingsSections(document, "sv", value, () => undefined));
+  return holder.querySelector<HTMLElement>(`[data-row='${key}']`)?.textContent ?? null;
+}
+
 function lineOf(root: ParentNode, key: string): string | null {
   return root.querySelector<HTMLElement>(`[data-line='${key}']`)?.textContent ?? null;
 }
@@ -194,7 +200,7 @@ describe("the Spa and Sauna tabs", () => {
     expect(deadlineWouldLine("sv", value, "spa", value.spa!)).toBe("Skulle värma till 18:45: billiga timmar");
   });
 
-  it("draws the spa's dial, Bada nu, the bath times and the idle temperature, and sends each press", () => {
+  it("draws the spa's dial, Bada nu and the bath times, and sends each press; the idle temperature is not edited here", () => {
     const onDeadline = vi.fn();
     const onLoadEdit = vi.fn();
     const onLoadStep = vi.fn();
@@ -207,9 +213,18 @@ describe("the Spa and Sauna tabs", () => {
     expect(lineOf(panel, "spa-times")).toBe("Badtider: fre, lör 19:00Ändra");
     panel.querySelector<HTMLButtonElement>("button[data-action='spa-times-change']")!.click();
     expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "times");
-    panel.querySelector<HTMLButtonElement>("button[data-action='spa-idle-change']")!.click();
-    expect(onLoadEdit).toHaveBeenLastCalledWith("spa", "idle");
+    // The temperature between baths is an administrator's setting: no row to change it on the tab.
+    expect(panel.querySelector("[data-line='spa-idle'], button[data-action='spa-idle-change']")).toBeNull();
     expect(lineOf(panel, "spa-band")).toBe("Värms 17:20–18:45 · Hålls varmt till 21:00");
+  });
+
+  it("shows the temperature between baths read-only in the spa's status line", () => {
+    const resting = answer((v) => {
+      Object.assign(v["spa"] as Record<string, unknown>, { state: "idle", ready_at: null, next_bath: null, baths: [], bath_once: null });
+    });
+    const panel = body({ tab: "spa" }, resting).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(panel, "spa-status")).toBe("Vilar på 30,0 °C mellan baden, inget bad bokat");
+    expect(panel.querySelector("button[data-action='spa-idle-change']")).toBeNull();
   });
 
   it("offers a bath pressed now its end and a cancel", () => {
@@ -286,7 +301,7 @@ describe("the settings rows and editors", () => {
         "pool", "Pool",
         ["poolHeatPump", "poolCirculation", "poolSensor", "poolFilterHours", "poolHeatPumpKw", "poolCirculationKw", "poolCirculationControl", "poolHeatPumpControl"],
       ],
-      ["spa", "Spa", ["spa", "spaFloor", "spaKw", "spaControl"]],
+      ["spa", "Spa", ["spa", "spaIdle", "spaKw", "spaControl"]],
       ["sauna", "Bastu", ["sauna", "saunaKw", "saunaSafety", "heatPhones", "heatEvents"]],
     ]);
     const rows = sections.flatMap(rowsOf);
@@ -464,6 +479,16 @@ describe("SpotNav's control of the pool, the spa and the sauna", () => {
     built.body.querySelector<HTMLInputElement>("input[value='on']")!.click();
     built.body.dispatchEvent(new Event("submit", { cancelable: true }));
     await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ pool: { control_heat_pump: true } }));
+    // The temperature between baths is the administrator's, in the spa's settings (10 to 40 °C in half degrees).
+    expect(section_row(value, "spaIdle")).toBe("Mellan baden30,0 °C");
+    const idle = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: value, write }, "spaIdle", { onDone: vi.fn(), onCancel: vi.fn() })!;
+    expect(idle.title).toBe("Mellan baden");
+    document.body.append(idle.body);
+    const field = idle.body.querySelector<HTMLInputElement>("input")!;
+    field.value = "28,5";
+    field.dispatchEvent(new Event("input"));
+    idle.body.dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ spa: { idle_c: 28.5 } }));
     const spa = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: value, write }, "spaControl", { onDone: vi.fn(), onCancel: vi.fn() })!;
     expect(spa.title).toBe("Styr spat");
     document.body.append(spa.body);

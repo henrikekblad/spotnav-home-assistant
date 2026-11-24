@@ -342,15 +342,12 @@ export function deadlinePanel(input: LoadPanelInput, kind: DeadlineKind, load: D
     nowRow.append(pill(doc, translate(language, "heat.spa.cancelNow"), `${kind}-cancel-now`, busy, () => handlers.onDeadline?.(kind, "cancel_now")));
   }
   panel.append(nowRow);
-  const onEdit = handlers.onLoadEdit === undefined ? null : (what: "times" | "idle") => () => handlers.onLoadEdit?.(kind, what);
+  const onEdit = handlers.onLoadEdit === undefined ? null : (what: "times") => () => handlers.onLoadEdit?.(kind, what);
   const weekly = spa !== null ? spa.baths : sauna!.sessions;
   const once = spa !== null ? spa.bath_once : sauna!.session_once;
   panel.append(
     editRow(doc, language, translate(language, `heat.${kind}.times` as TranslationKey), sessionsText(language, answer, kind, weekly, once), `${kind}-times`, onEdit === null ? null : onEdit("times")),
   );
-  if (spa !== null) {
-    panel.append(editRow(doc, language, translate(language, "heat.spa.idleLabel"), degrees(language, spa.idle_c), "spa-idle", onEdit === null ? null : onEdit("idle")));
-  }
   panel.append(runBand(doc, language, answer, load.planned, deadlinePlanLine(language, answer, kind, load), `${kind}-band`));
   if (boxed) {
     return;
