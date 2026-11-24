@@ -48,6 +48,7 @@ from ..site.energy_flow import (
     energy_flow,
     energy_hours,
     hour_figures,
+    on_ac_side,
     quarter_hours,
 )
 from ..site.energy_statistics import (
@@ -547,6 +548,51 @@ def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSour
     return out
 
 
+def battery_loss(controller: Any) -> tuple[float, float] | None:
+    """The inverter's `(charge, discharge)` loss for a battery read at the battery (`battery/conversion_loss.py`: the
+    plan's learnt one, else the assumed one), `None` for one read on the AC side or without a battery."""
+    shadow = getattr(controller, "battery_shadow", None)
+    facts = getattr(shadow, "facts", None)
+    if facts is None or getattr(facts, "battery_entity_id", None) is None or not getattr(facts, "power_dc", False):
+        return None
+    learned = getattr(getattr(shadow, "plan", None), "learned", None)
+    if learned is None:
+        from ..battery.conversion_loss import ConversionLoss  # noqa: PLC0415 - kept beside its only use
+
+        return ConversionLoss().loss(True)
+    loss: tuple[float, float] = learned.conversion.loss(True)
+    return loss
+
+
+def flow_battery_loss(hass: HomeAssistant, controller: Any, ids: FlowIds) -> tuple[float, float] | None:
+    """`battery_loss` where the Energy dashboard's battery meters are the battery's own (every one an entity of the
+    battery's integration, so counted on the same side as its power): the energy flow turns them to the AC side
+    (`site/energy_flow.on_ac_side`); `None` otherwise."""
+    loss = battery_loss(controller)
+    meters = (*ids.battery_in, *ids.battery_out)
+    if loss is None or not meters:
+        return None
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    registry = er.async_get(hass)
+    platform = controller.battery_shadow.facts.integration
+    for meter in meters:
+        entry = registry.async_get(meter)
+        if entry is None or entry.platform != platform:
+            return None
+    return loss
+
+
+def with_ac_battery(hass: HomeAssistant, controller: Any, ids: FlowIds, periods: Sequence[EnergyHour]) -> list[EnergyHour]:
+    """The periods with a battery read at the battery on the AC side (`flow_battery_loss`), else as they are."""
+    try:
+        loss = flow_battery_loss(hass, controller, ids)
+    except Exception:  # noqa: BLE001 - without the loss the battery is counted as read
+        _LOGGER.debug("SpotNav house view: the battery's side could not be told", exc_info=True)
+        loss = None
+    return list(periods) if loss is None else on_ac_side(periods, loss)
+
+
 def _with_parts(hass: HomeAssistant, controller: Any, periods: Sequence[EnergyHour], meter: Any, zones: ZoneSources) -> tuple[list[EnergyHour], int]:
     """The periods with the pool's, the spa's and the sauna's energy in their heat, and how many parts that is."""
     try:
@@ -602,6 +648,7 @@ async def async_day_flow(
     else:
         periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter, zones)
     periods, parts = _with_parts(hass, controller, periods, meter, zones)
+    periods = with_ac_battery(hass, controller, ids, periods)
     has_battery = bool(ids.battery_in)
     soc = None
     if has_battery and day == today:

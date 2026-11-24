@@ -331,6 +331,7 @@
     "heat_hours": 16,
     "heat_sources": 1,
     "hours": 17,
+    "inverter_loss_kwh": null,
     "links": [
       {
         "from": "source.solar",

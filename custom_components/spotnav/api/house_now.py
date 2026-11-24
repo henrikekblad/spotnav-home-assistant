@@ -30,7 +30,7 @@ from ..site.energy_statistics import async_energy_prefs
 from ..site.heat_meter import KIND_POWER
 from ..site.house_now import FROM_POWER, FROM_RECENT, HOUSE_NOW_API_VERSION, HouseNowInputs, house_now, recent_kw
 from .common import send_unsupported_version
-from .house import async_cached_day_flow
+from .house import async_cached_day_flow, battery_loss
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,21 +103,6 @@ def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool |
                 reading = None
             soc = None if reading is None else reading.soc_percent
     return plugged, soc
-
-
-def battery_loss(controller: Any) -> tuple[float, float] | None:
-    """The inverter's `(charge, discharge)` loss for a battery read at the battery (the plan's learnt one, else the
-    assumed one), `None` for one read on the AC side."""
-    shadow = getattr(controller, "battery_shadow", None)
-    facts = getattr(shadow, "facts", None)
-    if facts is None or not getattr(facts, "power_dc", False):
-        return None
-    learned = getattr(getattr(shadow, "plan", None), "learned", None)
-    if learned is None:
-        from ..battery.conversion_loss import ConversionLoss  # noqa: PLC0415 - kept beside its only use
-
-        return ConversionLoss().loss(True)
-    return learned.conversion.loss(True)
 
 
 def _recent(periods: Sequence[Any], role: str, now: datetime) -> float | None:

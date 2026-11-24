@@ -13,6 +13,7 @@ from custom_components.spotnav.site.energy_flow import (
     allocate_hour,
     energy_flow,
     energy_hours,
+    on_ac_side,
 )
 from custom_components.spotnav.site.energy_statistics import FlowIds, energy_flow_ids
 
@@ -322,3 +323,41 @@ def test_the_pool_the_spa_and_the_sauna_move_from_the_house_into_heat_counted_on
     # By the quarter hour: each quarter its own.
     quarters = [EnergyHour(start=t0 + timedelta(minutes=15 * q), grid_in=2.5, grid_out=0.0, minutes=15) for q in range(4)]
     assert [period.heat for period in with_heat_parts(quarters, [sauna])] == [None, 2.25, 2.25, 2.25]
+
+
+def _house(flow: dict) -> float:
+    return next(node["kwh"] for node in flow["nodes"] if node["role"] == "house")
+
+
+def test_a_battery_read_at_the_battery_is_turned_to_the_ac_side_and_its_loss_said() -> None:
+    loss = (0.0366, 0.065)
+    # A night: 10 kWh charged from a 13 kWh import, a later hour 10 kWh given to the house.
+    night = [hour(0, grid_in=13.0, battery_in=10.0), hour(1, grid_in=0.2, battery_out=10.0)]
+    as_read = energy_flow(night, day=DAY, has_solar=True, has_battery=True)
+    turned = on_ac_side(night, loss)
+    assert turned[0].battery_in == 10.0 * 1.0366 and turned[1].battery_out == 10.0 * 0.935
+    flow = energy_flow(turned, day=DAY, has_solar=True, has_battery=True)
+    assert flow is not None and as_read is not None
+    assert flow["inverter_loss_kwh"] == round(0.366 + 0.65, 2)
+    # The loss leaves the house: 3 + 0.2 + 10 kWh as read, 1.02 less on the AC side.
+    assert _house(as_read) == 13.2 and _house(flow) == round(13.2 - 0.366 - 0.65, 2)
+    assert as_read["inverter_loss_kwh"] is None
+    # Every node still balances.
+    sources = sum(node["kwh"] for node in flow["nodes"] if node["side"] == "source")
+    uses = sum(node["kwh"] for node in flow["nodes"] if node["side"] == "use")
+    assert abs(sources - uses) < 0.02
+
+
+def test_the_suns_charge_over_the_dc_bus_takes_the_way_out_loss_and_the_import_caps_the_grids_share() -> None:
+    loss = (0.03, 0.05)
+    # 4 kWh charged with 1 kWh imported: about 0.97 kWh of it from the grid (with its loss, at most the import).
+    period = on_ac_side([hour(0, solar=5.0, grid_in=1.0, battery_in=4.0)], loss)[0]
+    from_grid = 1.0 / 1.03
+    assert abs(period.battery_in - (from_grid * 1.03 + (4.0 - from_grid) * 0.95)) < 1e-9
+    assert period.inverter_loss is not None and period.inverter_loss < 0
+    # A sunny day's net may be below zero: never a negative line.
+    flow = energy_flow([period], day=DAY, has_solar=True, has_battery=True)
+    assert flow is not None and flow["inverter_loss_kwh"] == 0.0
+    # A period without the battery's figures is kept as it is.
+    bare = hour(1, battery_in=None, battery_out=None)
+    assert on_ac_side([bare], loss) == [bare]
