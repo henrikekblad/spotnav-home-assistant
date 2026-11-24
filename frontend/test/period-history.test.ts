@@ -208,14 +208,15 @@ describe("the house history", () => {
     expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));
     expect(body.querySelector("[data-part='perfect-details']")).toBeNull();
     expect(part.querySelectorAll("table")).toHaveLength(1);
-    expect(Array.from(part.querySelectorAll("thead th")).map((cell) => cell.textContent)).toEqual(["Sparat", "Cykler", "Växlingar", "Från nätet", "Till nätet"]);
+    expect(Array.from(part.querySelectorAll("thead th")).map((cell) => cell.textContent)).toEqual(["", "Sparat", "Cykler", "Växlingar", "Från nätet", "Till nätet"]);
+    // The name twice: its own row (a phone) and the first cell of the figures (a wide dialog); CSS shows one.
     const ways = Array.from(part.querySelectorAll<HTMLElement>("table tbody")).map((group) => [group.dataset["way"], ...Array.from(group.querySelectorAll("th, td")).map((cell) => cell.textContent)]);
     expect(ways).toEqual([
-      ["own", "Batteriets egen styrning", "72 kr", "3,69", "36", "81,0", "3,6"],
-      ["balanced", "SpotNav Balanserad", "69 kr", "3,80", "18", "112,5", "0,0"],
-      ["max_profit", "SpotNav Max vinst", "64 kr", "4,91", "27", "135,0", "49,5"],
-      ["self_consumption", "SpotNav Egenförbrukning", "52 kr", "2,68", "9", "0,0", "0,0"],
-      ["perfect", "Perfekt", "94 kr", "4,02", "18", "126,0", "54,0"],
+      ["own", "Batteriets egen styrning", "Batteriets egen styrning", "72 kr", "3,69", "36", "81,0", "3,6"],
+      ["balanced", "SpotNav Balanserad", "SpotNav Balanserad", "69 kr", "3,80", "18", "112,5", "0,0"],
+      ["max_profit", "SpotNav Max vinst", "SpotNav Max vinst", "64 kr", "4,91", "27", "135,0", "49,5"],
+      ["self_consumption", "SpotNav Egenförbrukning", "SpotNav Egenförbrukning", "52 kr", "2,68", "9", "0,0", "0,0"],
+      ["perfect", "Perfekt", "Perfekt", "94 kr", "4,02", "18", "126,0", "54,0"],
     ]);
     // A share stands once, on its bar; the table does not repeat it.
     expect(Array.from(part.querySelectorAll(".spotnav-house-compare-value")).map((cell) => cell.textContent)).toEqual(["77 %", "74 %", "69 %", "55 %"]);

@@ -38,6 +38,8 @@ export const HOUSE_CLASSES = {
   heading: "spotnav-house-heading",
   table: "spotnav-house-table",
   wayTable: "spotnav-house-way-table",
+  wayName: "spotnav-house-way-name",
+  wayNameRow: "spotnav-house-way-name-row",
   facts: "spotnav-house-facts",
   note: "spotnav-house-note",
   priceBuy: "spotnav-house-price-buy",
@@ -454,9 +456,36 @@ export const HOUSE_STYLES = `
     font-weight: 600;
   }
   /* A way per block: its name on a line of its own, its figures under their headings, so five columns fit a phone. */
-  .${H.wayTable} thead th:first-child,
-  .${H.wayTable} td:first-child {
+  .${H.wayTable} thead th,
+  .${H.wayTable} td {
     text-align: end;
+  }
+  /* Narrow (a phone): the name on a row of its own. Wide: the name is the first cell and the figures take only the
+     room they need, so no heading wraps. */
+  section[data-part="perfect"] {
+    container-type: inline-size;
+  }
+  .${H.wayTable} .${H.wayName} {
+    display: none;
+  }
+  @container (min-width: 520px) {
+    .${H.wayTable} .${H.wayNameRow} {
+      display: none;
+    }
+    .${H.wayTable} .${H.wayName} {
+      display: table-cell;
+      text-align: start;
+      white-space: nowrap;
+      font-weight: 500;
+      padding-inline-end: 16px;
+    }
+    .${H.wayTable} thead th,
+    .${H.wayTable} td {
+      white-space: nowrap;
+    }
+    .${H.wayTable} tbody th.${H.wayName} {
+      padding: 4px 16px 4px 0;
+    }
   }
   .${H.wayTable} td:first-child {
     white-space: nowrap;
