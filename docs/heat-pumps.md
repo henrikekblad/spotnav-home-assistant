@@ -104,7 +104,8 @@ out until there is a path SpotNav steers.
     filtering hours done and planned against the day's need, and the heat pump's. When the water has stayed around
     10 °C for a few autumn days the tab asks whether it is time to close the season.
   * **Spa**: the dial for the bathing temperature, the status (**Ready 18:40, heating 2 °C/h** once the rate is
-    learnt), what SpotNav would do, **Bathe now**, the **bath times** like the car's departures (weekly times on their
+    learnt), what SpotNav would do (while it only watches the load, and only when that is not what the status
+    already says; a load SpotNav controls says so instead), **Bathe now**, the **bath times** like the car's departures (weekly times on their
     weekdays, and one date), the temperature **between baths** in the status (set in the gear's **Spa** section), and the heat-up and hold as a band. A bath that will not
     be ready says why and offers **Take what fits**, **Later bath time** and, under the import target or a power
     level, **Allow the peak**.

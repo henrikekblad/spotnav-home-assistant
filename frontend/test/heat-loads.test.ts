@@ -17,8 +17,8 @@ import { heatBody, heatSettingsSection, heatTabsOf, loadFound, loadSettingsSecti
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard } from "../src/index";
-import { poolExtraLine, poolPlanLine, poolSourceLine, poolStatusLine, poolTodayLines, poolWouldLine } from "../src/pool-view";
-import { deadlineControlLine, deadlineStatusLine, deadlineWouldLine, loadControlLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
+import { poolExtraLine, poolPlanLine, poolSourceLine, poolStatusLine, poolTodayLines, poolWouldLine, poolWouldShown } from "../src/pool-view";
+import { deadlineControlLine, deadlineStatusLine, deadlineWouldLine, deadlineWouldShown, loadControlLine, notReadyChoices, notReadyLine, sessionsText, weekdaysText } from "../src/spa-view";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
 /** The fixtures' moment: 16 November 2026, 17:20 in Stockholm. */
@@ -255,6 +255,48 @@ describe("the Spa and Sauna tabs", () => {
     expect(panel.querySelector("[data-action='sauna-now']")!.textContent).toBe("Värm nu");
   });
 
+  it("shows what SpotNav would do only while it watches, and never a repeat of the status", () => {
+    const watched = { state: "watched", reason: null, paused_until: null, failures: 0 };
+    // Controlled: "Styrs av SpotNav." says it; no would-line beside it, in the tab or in the settings' help.
+    const controlled = answer((v) => {
+      (v["spa"] as Record<string, unknown>)["control"] = { ...watched, state: "controlled" };
+    });
+    expect(lineOf(body({ tab: "spa" }, controlled).querySelector<HTMLElement>("[role='tabpanel']")!, "spa-would")).toBeNull();
+    expect(deadlineWouldShown("sv", controlled, "spa", controlled.spa!, false)).toBeNull();
+    const holder = document.createElement("div");
+    holder.append(...loadSettingsSections(document, "sv", controlled, () => undefined));
+    expect(holder.querySelector("[data-help='spa']")).toBeNull();
+    // Watched and off with nothing booked: the status says it, the would-line does not repeat it.
+    const off = answer((v) => {
+      Object.assign(v["sauna"] as Record<string, unknown>, { control: { ...watched } });
+    });
+    const sauna = body({ tab: "sauna" }, off).querySelector<HTMLElement>("[role='tabpanel']")!;
+    expect(lineOf(sauna, "sauna-status")).toBe("Av, inget bastupass bokat");
+    expect(lineOf(sauna, "sauna-would")).toBeNull();
+    // Watched and it would do something else: shown.
+    const heat = answer((v) => {
+      Object.assign(v["sauna"] as Record<string, unknown>, {
+        control: { ...watched },
+        would: { action: "heat", until: "2026-11-16T19:00:00+00:00", reason: "cheap" },
+      });
+    });
+    expect(lineOf(body({ tab: "sauna" }, heat).querySelector<HTMLElement>("[role='tabpanel']")!, "sauna-would")).toBe("Skulle värma till 20:00: billiga timmar");
+    // The pool: a controlled part hides it; watched and standing still, "would stand still" is not repeated.
+    const pool = answer();
+    expect(poolWouldShown("sv", pool, pool.pool!)).toBeNull();
+    const watchedPool = answer((v) => {
+      ((v["pool"] as Record<string, unknown>)["circulation"] as Record<string, unknown>)["state"] = "watched";
+    });
+    expect(poolStatusLine("sv", watchedPool.pool!)).toBe("Cirkulation och värmepump står still");
+    expect(lineOf(body({ tab: "pool" }, watchedPool).querySelector<HTMLElement>("[role='tabpanel']")!, "pool-would")).toBeNull();
+    const filtering = answer((v) => {
+      const raw = v["pool"] as Record<string, unknown>;
+      (raw["circulation"] as Record<string, unknown>)["state"] = "watched";
+      raw["would"] = { action: "filter", until: "2026-11-16T21:00:00+00:00", reason: "cheap" };
+    });
+    expect(poolWouldShown("sv", filtering, filtering.pool!)).toMatch(/^Skulle filtrera till 22:00/);
+  });
+
   it("says a locked sauna and one that must be started by hand plainly", () => {
     const locked = answer((v) => {
       const sauna = v["sauna"] as Record<string, unknown>;
@@ -311,7 +353,8 @@ describe("the settings rows and editors", () => {
     expect(section.querySelector("[data-row='poolHeatPumpControl']")!.textContent).toBe("Styr poolens värmepumpAv");
     // A relay sauna without its declared safety has no opt-in row.
     expect(rows).not.toContain("saunaControl");
-    expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Skulle stå still till 22:00");
+    // The circulation is SpotNav's: its help says what the pool does, not what SpotNav would do.
+    expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Cirkulation och värmepump står still");
     expect(section.querySelector("[data-row='poolFilterHours']")!.textContent).toBe("Filtrering per dygnEfter vattentemperaturen");
     expect(section.querySelector("[data-row='saunaSafety']")!.textContent).toBe("Aggregatets eget säkerhetsskyddNej, eller vet inte");
   });

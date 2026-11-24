@@ -146,6 +146,30 @@ export function deadlineWouldLine(language: Language, answer: HeatAnswer, kind: 
   }
 }
 
+/** What SpotNav would do does something beyond the status: heat, hold, the floor, a lock or a start by hand. */
+const WOULD_ACTIVE: readonly string[] = ["heat", "hold", "floor", "blocked", "start_by_hand"];
+
+/**
+ * The would-line where it adds something: only while SpotNav watches the load (a controlled, paused or handed-back one
+ * says what it does in its control line, "Styrs av SpotNav."), and never when it repeats the status line ("Skulle vara
+ * av" under "Av, inget bastupass bokat", "Skulle vila på 30 °C" under "Vilar på 30 °C mellan baden"). `withStatus`
+ * false where no status line is shown beside it (the settings' help line).
+ */
+export function deadlineWouldShown(language: Language, answer: HeatAnswer, kind: DeadlineKind, load: Deadline, withStatus = true): string | null {
+  if (CONTROL_STATES.includes(load.control.state)) {
+    return null;
+  }
+  const would = load.would;
+  if (withStatus && would !== null && !WOULD_ACTIVE.includes(would.action)) {
+    // The status says resting or off unless it reads ready or heating towards a ready time (`deadlineStatusLine`).
+    const statusActive = load.state === "ready" || (load.state === "heating" && load.ready_at !== null);
+    if (!statusActive) {
+      return null;
+    }
+  }
+  return deadlineWouldLine(language, answer, kind, load);
+}
+
 /** A session that will not be ready, in words ("Badet 19:00 blir inte klart i tid: når 36 °C, säkringen räcker inte"). */
 export function notReadyLine(language: Language, answer: HeatAnswer, kind: DeadlineKind, notReady: HeatNotReady): string {
   const causes = ["rate", "import_target", "power_level", "fuse"];
@@ -311,7 +335,7 @@ export function deadlinePanel(input: LoadPanelInput, kind: DeadlineKind, load: D
   if (sauna !== null && sauna.locked === true) {
     lines.append(line(doc, X.status, translate(language, "heat.sauna.locked"), "sauna-locked"));
   }
-  const would = deadlineWouldLine(language, answer, kind, load);
+  const would = deadlineWouldShown(language, answer, kind, load);
   if (would !== null) {
     lines.append(line(doc, X.status, would, `${kind}-would`));
   }

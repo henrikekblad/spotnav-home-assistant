@@ -35,8 +35,8 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import { sectionHeading, settingRow, type SectionIcon } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
-import { poolPanel, poolPlanLine, poolStatusLine, poolWouldLine } from "./pool-view";
-import { deadlinePanel, deadlinePlanLine, deadlineWouldLine } from "./spa-view";
+import { poolPanel, poolPlanLine, poolStatusLine, poolWouldShown } from "./pool-view";
+import { deadlinePanel, deadlinePlanLine, deadlineWouldShown } from "./spa-view";
 
 export const TARGET_MIN = 16;
 export const TARGET_MAX = 25;
@@ -1805,7 +1805,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
         // The interlock: the heat pump is only ever SpotNav's with a circulation pump chosen.
         row("poolHeatPumpControl", t("heat.settings.poolHeatPumpControl"), t(pool.control_heat_pump ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine(section, "pool", answer.pool === null ? null : poolWouldLine(language, answer, answer.pool) ?? poolStatusLine(language, answer.pool));
+      helpLine(section, "pool", answer.pool === null ? null : poolWouldShown(language, answer, answer.pool, false) ?? poolStatusLine(language, answer.pool));
     }
     sections.push(section);
     last = row;
@@ -1820,7 +1820,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       if (SPA_CONTROLLABLE.includes(spa.family)) {
         row("spaControl", t("heat.settings.spaControl"), t(spa.control ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine(section, "spa", answer.spa === null ? null : deadlineWouldLine(language, answer, "spa", answer.spa));
+      helpLine(section, "spa", answer.spa === null ? null : deadlineWouldShown(language, answer, "spa", answer.spa, false));
     }
     sections.push(section);
     last = row;
@@ -1837,7 +1837,7 @@ export function loadSettingsSections(doc: Document, language: Language, answer: 
       if (saunaControllable(sauna)) {
         row("saunaControl", t("heat.settings.saunaControl"), t(sauna.control ? "settings.value.on" : "settings.value.off"));
       }
-      helpLine(section, "sauna", answer.sauna === null ? null : deadlineWouldLine(language, answer, "sauna", answer.sauna));
+      helpLine(section, "sauna", answer.sauna === null ? null : deadlineWouldShown(language, answer, "sauna", answer.sauna, false));
     }
     sections.push(section);
     last = row;
