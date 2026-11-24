@@ -192,9 +192,9 @@ Its control only lowers the battery's own current limits, read from the integrat
 
 What to know before you turn it on:
 
-* **Run the hardware test first.** Nothing is written until a hardware test (Support, Hardware test) has passed on
-  the firmware the inverter runs; until then control only logs what it would do, whatever the test-mode setting says,
-  and the checklist says so. After a firmware update it waits for a new test.
+* **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
+  passed on the firmware the inverter runs; until then control only logs what it would do, whatever the test-mode
+  setting says, and the checklist says so. After a firmware update it waits for a new test.
 * **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
   *Back-up*, *Peak Shaving* or the integration's *Force Charge* and *Force Discharge* it only watches.
 * **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home Assistant
@@ -258,10 +258,10 @@ installation too, and the checklist says so. After a firmware update it waits fo
   Modbus client and its own controller, so the Modbus integration's entities do not exist. SpotNav reads the
   Omnibattery system and only watches it; it never writes to a battery Omnibattery runs.
 
-**The Marstek hardware test** (Support → Hardware test in the card, with battery control switched on and the four
-entities enabled; at most ten minutes, with you watching the Marstek app). Before you start, note *Max Discharge
-Power*, *User Work Mode* and that *RS485 Control Mode* is off and *Force Mode* is standby. The steps and what you should
-see:
+**The Marstek hardware test** (Settings → Support → Hardware test in the card, with battery control switched on and
+the four entities enabled; at most ten minutes, with you watching the Marstek app). Before you start, note *Max
+Discharge Power*, *User Work Mode* and that *RS485 Control Mode* is off and *Force Mode* is standby. The steps and what
+you should see:
 
 1. **Hold** (about a minute): *Max Discharge Power* reads 0 within some seconds; the battery stops discharging
    (*Battery Power* near 0, or positive if the sun charges it). *RS485 Control Mode* stays off.
