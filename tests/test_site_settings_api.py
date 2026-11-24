@@ -93,8 +93,9 @@ async def test_a_successful_write_is_re_read_after_the_site_reloads(
     # The write reached the config entry (not merely the in-memory reply)...
     reloaded = hass.config_entries.async_get_entry(site.entry_id)
     assert reloaded is not None
-    # The solar priority is the battery's place in the site's priority list: above the cars, the old key dropped.
-    assert CONF_SOLAR_PRIORITY not in reloaded.data
+    # The solar priority is the battery's place in the site's priority list: above the cars, the old key derived
+    # from it (for a downgrade).
+    assert reloaded.data[CONF_SOLAR_PRIORITY] == SOLAR_PRIORITY_BATTERY_FIRST
     assert reloaded.data["priority"][:3] == ["heat", "battery", f"charger:{charger.entry_id}"]
     assert reloaded.data[CONF_SOLAR_FORECAST_ENTRIES] == [roof.entry_id]
     # ...and the *running* site controller actually reloaded with it: a second, independent

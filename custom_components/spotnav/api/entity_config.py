@@ -320,8 +320,8 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
     if FIELD_CHARGER_PHASES in changes:
         updated[CONF_CHARGER_PHASES] = int(changes[FIELD_CHARGER_PHASES])
     if FIELD_CHARGER_PRIORITY in changes:
-        # No longer stored on the charger: an older app's write moves the charger in the site's priority list
-        # (`priority.with_charger_priority`), which also drops every member's old value.
+        # Not read from the charger once a list is stored: an older app's write moves the charger in the site's
+        # priority list (`priority.with_charger_priority`), which writes every member's old value derived from it.
         site = site_for_charger(hass, entry.entry_id)
         if site is not None:
             order = site_order(hass, site)
@@ -332,7 +332,11 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
                 # keeps [A, B], but B must now give way first): the list, and the classes the app reads back.
                 moved = with_charger_priority(order, entry.entry_id, value, shown)
                 store_order(hass, site, moved, {**shown, entry.entry_id: value})
-        updated.pop(CONF_CHARGER_PRIORITY, None)
+        # The old value the list stored (derived, for a downgrade) is kept; none without a site.
+        if site is not None and CONF_CHARGER_PRIORITY in entry.data:
+            updated[CONF_CHARGER_PRIORITY] = entry.data[CONF_CHARGER_PRIORITY]
+        else:
+            updated.pop(CONF_CHARGER_PRIORITY, None)
     if FIELD_PHASE_SWITCHING in changes:
         # Stored only while on, so a charger left alone keeps exactly its old data.
         if changes[FIELD_PHASE_SWITCHING]:
