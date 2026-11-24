@@ -416,6 +416,9 @@ describe("SpotNav's control of the pool, the spa and the sauna", () => {
     expect(loadControlLine("sv", value, control("handed_back", "foreign_change", tomorrow))).toMatch(/^Återlämnad till dig till .+: någon annan ändrade den/);
     expect(loadControlLine("sv", value, control("paused", "no_read_back", tomorrow, 2))).toMatch(/Ändringar som inte lästes tillbaka: 2\.$/);
     expect(loadControlLine("en", value, control("controlled", "floor"))).toBe("Controlled by SpotNav: below its lowest temperature, heating.");
+    expect(loadControlLine("sv", value, control("controlled", "lock_unreadable"))).toBe("Styrs av SpotNav: låset går inte att läsa, startar inte.");
+    expect(loadControlLine("sv", value, control("paused", "restore_waits"))).toBe("Pausad: din inställning Värme skrivs tillbaka när cirkulationen går.");
+    expect(loadControlLine("en", value, control("controlled", "pump_not_ours"))).toContain("turn on Control the pool heat pump");
   });
 
   it("says the spa's control in its tab in place of the watched note", () => {

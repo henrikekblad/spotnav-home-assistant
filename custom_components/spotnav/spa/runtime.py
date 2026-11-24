@@ -11,7 +11,7 @@ whose heater's own safety measure is not declared turns it into `start_by_hand` 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
@@ -19,7 +19,12 @@ from ..sauna.config import CLOUD as SAUNA_CLOUD, FAMILY_RELAY, SaunaConfig
 from .config import CLOUD as SPA_CLOUD, SpaConfig
 from .plan import (
     ACTION_HEAT,
+    ACTION_HOLD,
     HOLD,
+    READY_MARGIN_C,
+    STATE_HEATING,
+    STATE_LATE,
+    STATE_READY,
     KIND_SAUNA,
     QUARTER,
     REASON_BATH,
@@ -74,6 +79,8 @@ class Reading:
     locked: bool | None = None
     #: The device's own longest run, where it says (Harvia's on time).
     max_on: timedelta | None = None
+    #: A lock is chosen but cannot be read (it then counts as locked).
+    lock_unreadable: bool = False
 
 
 class DeadlineShadow:
@@ -90,6 +97,9 @@ class DeadlineShadow:
         self.plan: DeadlinePlan | None = None
         self.reading = Reading(None, None)
         self._run_start: tuple[datetime, float] | None = None
+        #: The session whose heat-up has started `(at, source)`: kept, heated and held to `at + HOLD` whatever the
+        #: plan made again from the temperature now says (`_latched`).
+        self.latch: tuple[datetime, str] | None = None
 
     # ---- the record
 
@@ -101,6 +111,7 @@ class DeadlineShadow:
             "took_what_fits": sorted(moment.isoformat() for moment in self.took_what_fits),
             "accept_peak": sorted(moment.isoformat() for moment in self.accept_peak),
             "later": {a.isoformat(): b.isoformat() for a, b in self.later.items()},
+            "latch": None if self.latch is None else [self.latch[0].isoformat(), self.latch[1]],
         }
 
     def restore(self, raw: Any) -> None:
@@ -115,6 +126,9 @@ class DeadlineShadow:
         self.now_pressed = _aware(raw.get("now_pressed"))
         self.took_what_fits = {m for m in (_aware(v) for v in raw.get("took_what_fits") or ()) if m is not None}
         self.accept_peak = {m for m in (_aware(v) for v in raw.get("accept_peak") or ()) if m is not None}
+        latch = raw.get("latch")
+        if isinstance(latch, list) and len(latch) == 2 and (at := _aware(latch[0])) is not None and isinstance(latch[1], str):
+            self.latch = (at, latch[1])
         later = raw.get("later")
         if isinstance(later, Mapping):
             self.later = {a: b for a, b in ((_aware(k), _aware(v)) for k, v in later.items()) if a is not None and b is not None}
@@ -156,7 +170,8 @@ class DeadlineShadow:
         else:
             target, weekly, once, hold, floor = config.target_c, config.sessions, config.session_once_at(), None, None
             kw = config.heater_kw
-        self.plan = plan_deadline(
+        sessions = sessions_ahead(weekly, once, now, tz)
+        plan = plan_deadline(
             DeadlineInputs(
                 now=now,
                 tz=tz,
@@ -165,7 +180,7 @@ class DeadlineShadow:
                 current_c=current,
                 rate_c_h=rate,
                 kw=kw or DEFAULT_KW[self.profile.kind],
-                sessions=sessions_ahead(weekly, once, now, tz),
+                sessions=sessions,
                 hours=hours,
                 now_until=self.now_until,
                 hold_c=hold,
@@ -176,7 +191,52 @@ class DeadlineShadow:
                 max_on=reading.max_on,
             )
         )
+        self.plan = self._latched(plan, now, target, current, sessions, [at for at, _source in sessions_ahead(weekly, once, now - HOLD, tz)])
         return self.plan
+
+    def _latched(
+        self,
+        plan: DeadlinePlan,
+        now: datetime,
+        target: float,
+        current: float | None,
+        sessions: list[tuple[datetime, str]],
+        booked: list[datetime],
+    ) -> DeadlinePlan:
+        """The plan with its session latched (review B1): once the heat-up for a booked session has started (the plan
+        heats for it, or it is due within the heat-up), the session is kept, heated and held at the target to its
+        end (`at + HOLD`): the device's own thermostat holds the target. Never dropped because the need shrank as the
+        water or the room warmed, nor at the session's time. A session no longer booked (or moved) ends the latch."""
+        nxt = plan.next_session
+        if self.latch is not None:
+            at, _source = self.latch
+            still_booked = at in booked or at in self.later.values()
+            if now >= at + HOLD or at in self.later or not still_booked:
+                self.latch = None
+        if self.latch is None and nxt is not None and nxt[1] != SOURCE_NOW:
+            at = nxt[0]
+            due = at - timedelta(hours=plan.need_h) - QUARTER
+            if plan.action == ACTION_HEAT or now >= due:
+                self.latch = (at, nxt[1])
+        if self.latch is None or (nxt is not None and nxt[1] == SOURCE_NOW):
+            return plan
+        at, source = self.latch
+        ready = current is not None and current >= target - READY_MARGIN_C
+        state = STATE_READY if ready else (STATE_LATE if now > at else STATE_HEATING)
+        action = ACTION_HOLD if ready else ACTION_HEAT
+        rate, _learnt = learnt_rate(self.runs, self.profile.seed_rate_c_h)
+        ready_at = now if ready or current is None else now + timedelta(hours=max(0.0, target - current) / max(0.1, rate))
+        return replace(
+            plan,
+            next_session=(at, source),
+            hold_until=at + HOLD,
+            state=state,
+            action=action,
+            reason=REASON_BATH if ready or now >= at else (plan.reason if plan.action == ACTION_HEAT else REASON_BATH),
+            until=at + HOLD,
+            ready_at=ready_at,
+            not_ready=plan.not_ready if plan.not_ready is not None and plan.not_ready.at == at else None,
+        )
 
     # ---- the household's presses
 
@@ -281,11 +341,11 @@ class DeadlineShadow:
             out.append({"start": max(hold[0], now).isoformat(), "end": hold[1].isoformat(), "what": "hold", "reason": why_held})
         return out
 
-    @staticmethod
-    def _hold(plan: DeadlinePlan) -> tuple[datetime, datetime] | None:
+    def _hold(self, plan: DeadlinePlan) -> tuple[datetime, datetime] | None:
         if plan.quarters and plan.hold_until is not None:
             return max(plan.quarters) + QUARTER, plan.hold_until
-        if plan.next_session is not None and plan.next_session[1] == SOURCE_NOW and plan.hold_until is not None:
+        latched = self.latch is not None and plan.next_session == self.latch
+        if plan.next_session is not None and (plan.next_session[1] == SOURCE_NOW or latched) and plan.hold_until is not None:
             return plan.made_at, plan.hold_until
         return None
 

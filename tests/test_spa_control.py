@@ -74,7 +74,8 @@ async def test_the_floor_comes_before_the_shed_and_the_budget(hass: HomeAssistan
         moment = await looks(control, moment, moment + MIN)
         moment += MIN
     presets = [call for call in devices.writes() if call[0] == "climate.set_preset_mode"]
-    assert len(presets) == 6 and control.spa.part.reason == "write_cap"
+    # The day's last write is never spent on Rest: the spa is left in Ready (review S7).
+    assert len(presets) == 5 and presets[-1][2] == "ready"
     shadow.spa.set("idle", current=9.5)
     await control.async_look(moment + MIN)
     assert devices.writes()[-1] == ("climate.set_preset_mode", SPA, "ready") and control.spa.part.reason == "floor"

@@ -25,9 +25,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from ..core.parse import finite_number, number_from_state
+from ..core.parse import aware_instant, finite_number, number_from_state
 from ..heat.automations import steering_automations
-from ..loads.hold import KIND_SETTING, KIND_SWITCH, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
+from ..loads.hold import KIND_SETTING, KIND_SWITCH, OBSERVED_FOREIGN, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
 from ..loads.hold_part import (
     REASON_AUTOMATION,
     REASON_CLOUD,
@@ -56,7 +56,7 @@ from .adapters import (
     setpoint_call,
 )
 from .config import FAMILY_MSPA, SpaConfig
-from .plan import ACTION_FLOOR, ACTION_HEAT, ACTION_HOLD, ACTION_IDLE
+from .plan import ACTION_FLOOR, ACTION_HEAT, ACTION_HOLD, ACTION_IDLE, SOURCE_NOW
 
 if TYPE_CHECKING:
     from ..pool.control import PoolSpaControl
@@ -68,10 +68,14 @@ IDLE_BAND_C: Final = 1.0
 FLOOR_MARGIN_C: Final = 2.0
 #: A sauna never runs longer than this where the device says nothing of its own (placeholder).
 SAUNA_MAX_ON: Final = timedelta(hours=3)
+#: A gap between two looks counted as on time at most this long (a restart's gap is not counted).
+LOOK_GAP: Final = timedelta(minutes=2)
 LOAD_SPA_IDLE: Final = "spa_idle"
 
 REASON_OWN_SCHEDULER: Final = "own_scheduler"
 REASON_LOCK: Final = "lock"
+#: The lock chosen cannot be read: it counts as locked.
+REASON_LOCK_UNREADABLE: Final = "lock_unreadable"
 REASON_MAX_ON: Final = "max_on"
 REASON_FLOOR: Final = "floor"
 REASON_UNSUPPORTED: Final = "unsupported"
@@ -96,19 +100,32 @@ class DeadlinePart:
         self.readable = False
         #: The spa's idle heat is on (on/off families: SpotNav keeps the idle temperature within `IDLE_BAND_C`).
         self.idle_heating = False
-        # The sauna: since when SpotNav has it on, and the session its longest run ended.
+        # The sauna: since when SpotNav has it on, the run (its session, or the "now" press) and its on time so far,
+        # and the run its longest run ended (kept).
         self.on_since: datetime | None = None
+        self.last_on_look: datetime | None = None
+        self.run_key: datetime | None = None
+        self.on_seconds = 0.0
         self.max_on_for: datetime | None = None
         # Kept: the dial last written (°C).
         self.dial_written: float | None = None
 
     def stored(self) -> dict[str, Any]:
-        return {**self.part.stored(), "dial_written": self.dial_written}
+        return {
+            **self.part.stored(),
+            "dial_written": self.dial_written,
+            "run_key": None if self.run_key is None else self.run_key.isoformat(),
+            "on_seconds": self.on_seconds,
+            "max_on_for": None if self.max_on_for is None else self.max_on_for.isoformat(),
+        }
 
     def restore(self, raw: Any) -> None:
         if isinstance(raw, dict):
             self.part.restore(raw)
             self.dial_written = finite_number(raw.get("dial_written"))
+            self.run_key = aware_instant(raw.get("run_key"))
+            self.on_seconds = finite_number(raw.get("on_seconds")) or 0.0
+            self.max_on_for = aware_instant(raw.get("max_on_for"))
 
     @property
     def shadow(self) -> Any:
@@ -138,7 +155,9 @@ class DeadlinePart:
         self._read(config)
         read_back = READ_BACK_CLOUD if self._cloud() else READ_BACK_LOCAL
         self.part.observe(KEY_HEAT, self.heat_read, now, read_back)
-        self.part.observe(KEY_SET, self.set_read, now, read_back)
+        if self.part.observe(KEY_SET, self.set_read, now, read_back) == OBSERVED_FOREIGN:
+            # The person's setpoint at the panel is theirs: only a change of the dial writes again (review S1).
+            self.dial_written = config.bath_c if isinstance(config, SpaConfig) else config.target_c
 
     def _own_scheduler(self, config: SpaConfig | SaunaConfig) -> bool:
         """MSpa's own heat schedule is set (its "Scheduled for" on the spa's device reads a time)."""
@@ -195,7 +214,8 @@ class DeadlinePart:
         route = self.route
         if not config.control:
             part.state, part.reason = STATE_OFF, None
-            await self.async_exit(now, config)
+            if await self.async_exit(now, config):
+                self.dial_written = None
             return
         if route is None:
             part.state, part.reason = STATE_PAUSED, REASON_UNSUPPORTED
@@ -275,22 +295,33 @@ class DeadlinePart:
         plan = shadow.plan
         would = shadow.would(config)
         action = None if would is None else would["action"]
-        session = None if plan is None or plan.next_session is None else plan.next_session[0]
+        nxt = None if plan is None else plan.next_session
+        session = None if nxt is None else nxt[0]
+        # One run per session: a "now" press is keyed on the press (its plan's session is "now" at every look), a
+        # booked one on its time; the on time adds up across starts of the same run (review B2).
+        key = None
+        if nxt is not None:
+            pressed = getattr(shadow, "now_pressed", None)
+            key = pressed if nxt[1] == SOURCE_NOW and pressed is not None else nxt[0]
         on = self.heat_read == route.on
         held = part.held(KEY_HEAT)
+        if key != self.run_key and key is not None:
+            self.run_key, self.on_seconds, self.max_on_for = key, 0.0, None
         if on and held.ours(self.heat_read):
             self.on_since = self.on_since or now
-        elif not on:
+            if self.last_on_look is not None and timedelta(0) < now - self.last_on_look <= LOOK_GAP:
+                self.on_seconds += (now - self.last_on_look).total_seconds()
+            self.last_on_look = now
+        else:
             self.on_since = None
-        if self.max_on_for is not None and self.max_on_for != session:
-            self.max_on_for = None
+            self.last_on_look = None
         want = action in (ACTION_HEAT, ACTION_HOLD) and session is not None
-        if shadow.reading.locked:
+        if shadow.reading.locked or (config.lock_id is not None and shadow.reading.locked is None):
             want = False
-            part.reason = REASON_LOCK
-        if self.on_since is not None and now - self.on_since >= self._device_max_on(config):
-            self.max_on_for = session
-        if self.max_on_for is not None:
+            part.reason = REASON_LOCK_UNREADABLE if shadow.reading.lock_unreadable or shadow.reading.locked is None else REASON_LOCK
+        if self.run_key is not None and self.on_seconds >= self._device_max_on(config).total_seconds():
+            self.max_on_for = self.run_key
+        if self.max_on_for is not None and self.max_on_for == self.run_key:
             want = False
             part.reason = REASON_MAX_ON
         if self.control.shed_until(LOAD_SAUNA, now) is not None:
@@ -312,6 +343,11 @@ class DeadlinePart:
             return
         kind = KIND_SETTING if route.heat == HEAT_PRESET or route.cloud else KIND_SWITCH
         limit = None if exempt else (SETPOINT_WRITES_DAY if kind == KIND_SETTING else ON_OFF_WRITES_DAY)
+        if limit is not None and value == route.off and part.budget.written(part.day(now), KEY_HEAT, kind) + 2 > limit:
+            # The day's last write is never spent on holding the heat off: the heater is left heating (its own
+            # thermostat holds it), never parked off below the plan (review S7).
+            part.reason = REASON_WRITE_CAP
+            return
         if not await part.async_write(KEY_HEAT, call, value, now, kind=kind, limit=limit):
             part.reason = REASON_WRITE_CAP
 
@@ -385,8 +421,7 @@ class DeadlinePart:
         done = await part.async_give_back(KEY_HEAT, self.heat_read, heat, now)
         done = await part.async_give_back(KEY_SET, self.set_read, setpoint, now) and done
         if done:
-            self.dial_written = None
-            self.on_since = None
+            self.on_since = self.last_on_look = None
         return done
 
     # ---- the shed order and the card
