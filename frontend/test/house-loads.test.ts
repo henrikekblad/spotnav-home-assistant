@@ -58,23 +58,36 @@ describe("the pie", () => {
   it("draws the meters over 1.5 %, puts the smaller ones into Other metered and the rest into Unknown", () => {
     const model = pieModel("en", loads());
     expect(model.whole).toBe(14.62);
-    expect(model.slices.map((slice) => slice.name)).toEqual(["Torktumlare", "Diskmaskin", "Tvättmaskin", "Other metered", "Unknown"]);
+    expect(model.slices.map((slice) => slice.name)).toEqual(["Torktumlare", "Diskmaskin", "Tvättmaskin", "Other metered", "The inverter (losses and standby)", "Unknown"]);
     expect(model.merged.map((load) => load.name)).toEqual(["Frys", "Router"]);
     expect(model.merged.every((load) => load.kwh / model.whole < SMALL_SHARE)).toBe(true);
-    // Other metered is the small meters; Unknown is the house less every meter.
-    expect(model.slices.at(-2)!.kwh).toBeCloseTo(0.21 + 0.12);
-    expect(model.slices.at(-1)!.kwh).toBeCloseTo(9.6);
+    // Other metered is the small meters; the inverter its own slice; Unknown the house less every meter and it.
+    expect(model.slices.at(-3)!.kwh).toBeCloseTo(0.21 + 0.12);
+    expect(model.slices.at(-2)!.kwh).toBeCloseTo(1.83);
+    expect(model.slices.at(-1)!.kwh).toBeCloseTo(9.6 - 1.83);
     expect(model.slices.reduce((sum, slice) => sum + slice.kwh, 0)).toBeCloseTo(14.62);
     // A meter's colour follows its statistic id, not its size.
     expect(model.slices[0]!.colour).toBe("var(--spotnav-pie-2)");
-    expect(model.slices.at(-2)!.colour).toBe("var(--spotnav-pie-other-metered)");
+    expect(model.slices.at(-3)!.colour).toBe("var(--spotnav-pie-other-metered)");
+    expect(model.slices.at(-2)!.colour).toBe("var(--spotnav-pie-inverter)");
     expect(model.slices.at(-1)!.colour).toBe("var(--spotnav-pie-unknown)");
+  });
+
+  it("names the inverter in every language and leaves it inside Unknown from a backend before it", () => {
+    expect(pieModel("sv", loads()).slices.map((slice) => slice.name)).toContain("Växelriktaren (förluster och tomgång)");
+    const { inverter_kwh: _inverter, unknown_kwh: _unknown, ...older } = read("house_loads", "villa_day.json");
+    const decoded = decodeHouseLoads(older);
+    expect(decoded.ok).toBe(true);
+    const model = pieModel("en", decoded.ok ? decoded.value : loads());
+    expect(model.slices.map((slice) => slice.key)).not.toContain("inverter");
+    expect(model.slices.at(-1)!.kwh).toBeCloseTo(9.6);
   });
 
   const meters = (kwhs: number[], house: number): HouseLoads => {
     const base = loads();
     const list = kwhs.map((kwh, index) => ({ changed: false, kwh, name: `M${index}`, source: "meter", statistic_id: `sensor.m${index}` }));
-    return { ...base, house_kwh: house, meters_kwh: kwhs.reduce((a, b) => a + b, 0), other_kwh: Math.max(0, house - kwhs.reduce((a, b) => a + b, 0)), loads: list } as HouseLoads;
+    const other = Math.max(0, house - kwhs.reduce((a, b) => a + b, 0));
+    return { ...base, house_kwh: house, meters_kwh: kwhs.reduce((a, b) => a + b, 0), other_kwh: other, inverter_kwh: null, unknown_kwh: other, loads: list } as HouseLoads;
   };
 
   it("puts the line at 1.5 % of the whole", () => {
@@ -97,15 +110,16 @@ describe("the pie", () => {
     const body = loadsBody(document, "en", TODAY, { kind: "ready", answer: loads() });
     const rows = [...body.querySelectorAll("li")].map((row) => row.textContent);
     expect(rows[0]).toBe("Torktumlare2.3 kWh · 16 %");
-    expect(rows.at(-2)).toBe("Other metered0.33 kWh · 2 %");
-    expect(rows.at(-1)).toBe("Unknown9.6 kWh · 66 %");
+    expect(rows.at(-3)).toBe("Other metered0.33 kWh · 2 %");
+    expect(rows.at(-2)).toBe("The inverter (losses and standby)1.8 kWh · 13 %");
+    expect(rows.at(-1)).toBe("Unknown7.8 kWh · 53 %");
     const pie = body.querySelector("svg[role='img']")!;
     expect(pie.getAttribute("aria-label")).toBe(
       translate("en", "house.loads.chart", {
-        list: "Torktumlare 2.3 kWh (16 %), Diskmaskin 1.4 kWh (10 %), Tvättmaskin 0.96 kWh (7 %), Other metered 0.33 kWh (2 %), Unknown 9.6 kWh (66 %)",
+        list: "Torktumlare 2.3 kWh (16 %), Diskmaskin 1.4 kWh (10 %), Tvättmaskin 0.96 kWh (7 %), Other metered 0.33 kWh (2 %), The inverter (losses and standby) 1.8 kWh (13 %), Unknown 7.8 kWh (53 %)",
       }),
     );
-    expect(pie.querySelectorAll("path")).toHaveLength(5);
+    expect(pie.querySelectorAll("path")).toHaveLength(6);
     expect(body.querySelector("[data-line='merged']")!.textContent).toBe(translate("en", "house.loads.otherHolds", { list: "Frys 0.21 kWh, Router 0.12 kWh" }));
     expect(body.querySelector("[data-line='apart']")!.textContent).toBe(translate("en", "house.loads.carHeat"));
     expect(body.querySelector(".spotnav-house-loads-caption")!.textContent).toBe(translate("en", "house.loads.today"));
@@ -380,7 +394,7 @@ describe("the house card", () => {
     expect(dialog.textContent).toContain(translate("en", "house.loads.reading"));
     hass.resolveNext(read("house_loads", "villa_day.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(dialog.querySelectorAll("li")).toHaveLength(5);
+    expect(dialog.querySelectorAll("li")).toHaveLength(6);
     expect(dialog.querySelector("svg[role='img']")).not.toBeNull();
     dialog.querySelector<HTMLButtonElement>("button[aria-label]")!.click();
     expect(root.activeElement).toBe(house);

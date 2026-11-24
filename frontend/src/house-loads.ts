@@ -80,6 +80,7 @@ export const LOADS_STYLES = `
     --spotnav-pie-8: var(--spotnav-pie-8-colour, #8aa02c);
     --spotnav-pie-other-metered: var(--spotnav-pie-other-metered-colour, #b9bdc4);
     --spotnav-pie-unknown: var(--spotnav-pie-unknown-colour, #747982);
+    --spotnav-pie-inverter: var(--spotnav-pie-inverter-colour, #3f7f7a);
     min-width: 0;
   }
   .${L.caption} {
@@ -259,6 +260,11 @@ export interface HouseLoads {
   meters_kwh: number;
   other_kwh: number | null;
   over_kwh: number;
+  /** What a hybrid's inverter used of the house (its losses and standby), taken out of what no meter explains;
+   * `null` where the backend cannot count it, or from a backend before it. */
+  inverter_kwh: number | null;
+  /** What no meter explains, the inverter left out: `other_kwh` from a backend before it. */
+  unknown_kwh: number | null;
   loads: HouseLoad[];
   moved: MovedLoad[];
   /** The stored choices, as read (the compare-and-set's `expected`). */
@@ -317,6 +323,8 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
         meters_kwh: number(source.meters_kwh),
         other_kwh: numberOrNull(source.other_kwh),
         over_kwh: number(source.over_kwh),
+        inverter_kwh: source.inverter_kwh === undefined ? null : numberOrNull(source.inverter_kwh),
+        unknown_kwh: source.unknown_kwh === undefined ? numberOrNull(source.other_kwh) : numberOrNull(source.unknown_kwh),
         loads: (source.loads as unknown[]).map((item) => {
           const load = record(item);
           return {
@@ -349,7 +357,8 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
 // ------------------------------------------------------------------------------------------------ the slices
 
 export interface PieSlice {
-  /** The meter's statistic id, or `other-metered` (the small meters) or `unknown` (no meter explains it). */
+  /** The meter's statistic id, or `other-metered` (the small meters), `inverter` (a hybrid's inverter, its losses and
+   * standby) or `unknown` (no meter explains it). */
   key: string;
   name: string;
   kwh: number;
@@ -368,7 +377,8 @@ export interface PieModel {
 }
 
 /** The pie: the meters at or over `SMALL_SHARE` of the whole (at most `SLOTS`, largest first), then Other metered with
- * the rest and Unknown (the house less every meter); an empty slice is left out. The heat pie shows every source with energy however small (a floor heating loop
+ * the rest, the inverter (what a hybrid's inverter used, where the backend counts it) and Unknown (the house less every
+ * meter and the inverter); an empty slice is left out. The heat pie shows every source with energy however small (a floor heating loop
  * is a few per cent of the heat pump), up to `SLOTS`. */
 export function pieModel(language: Language, answer: HouseLoads): PieModel {
   const whole = Math.max(answer.house_kwh ?? 0, answer.meters_kwh);
@@ -395,7 +405,8 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
     colour: own(load) ?? `var(--spotnav-pie-${byId.indexOf(load.statistic_id) + 1})`,
   }));
   const metered = merged.reduce((sum, load) => sum + load.kwh, 0);
-  const unknown = answer.other_kwh ?? 0;
+  const inverter = answer.kind === "house" ? Math.max(0, answer.inverter_kwh ?? 0) : 0;
+  const unknown = answer.unknown_kwh ?? answer.other_kwh ?? 0;
   if (metered > 0) {
     slices.push({
       key: "other-metered",
@@ -403,6 +414,15 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
       kwh: metered,
       share: whole > 0 ? metered / whole : 0,
       colour: "var(--spotnav-pie-other-metered)",
+    });
+  }
+  if (inverter > 0) {
+    slices.push({
+      key: "inverter",
+      name: translate(language, "house.loads.inverter"),
+      kwh: inverter,
+      share: whole > 0 ? inverter / whole : 0,
+      colour: "var(--spotnav-pie-inverter)",
     });
   }
   if (unknown > 0 || slices.length === 0) {

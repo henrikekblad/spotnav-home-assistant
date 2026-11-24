@@ -22,10 +22,9 @@
 //   anew only when a line changes its way or a part comes or goes, so the dots never jump back on a refresh. From a
 //   backend before it, or while it cannot be read, the schematic has the day's figures and the battery's own power
 //   from `spotnav/get_house`, and no other live kW.
-// * The battery's line carries the battery on the AC side (`battery_ac_kw`), where the grid's meter sees it, so the
-//   lines add up around the house: on a hybrid that reads the battery at the battery (DC) it is the reading with the
-//   inverter's loss (a little more while it charges, a little less while it gives), not the battery app's own figure.
-//   From a backend before it, the battery's power as read.
+// * The battery's line carries the battery's power as read (`battery_kw`, what its own app shows), and the house is
+//   the balance with it (`site/house_now.py`), so the lines add up around the house: on a hybrid that reads the
+//   battery at the battery (DC) the inverter's loss and standby are in the house, as in the energy flow.
 // * The sentence: from the battery plan's hours (`HouseHour.battery_action`), what the battery does now and until
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
@@ -46,8 +45,8 @@ export interface HouseNow {
   sun_kw: number | null;
   sun_from: string | null;
   battery_kw: number | null;
-  /** The battery on the AC side (`site/house_now.py`): what the schematic's line carries; `battery_kw` from a backend
-   * before it. */
+  /** The battery on the AC side, as the review and the plan count it (`site/house_now.py`); not drawn (the line is
+   * `battery_kw`, see the module); `battery_kw` from a backend before it. */
   battery_ac_kw: number | null;
   soc_pct: number | null;
   car_kw: number | null;
@@ -213,8 +212,7 @@ export function schematicLines(live: HouseNow | null, answer: HouseAnswer): Sche
   lines.push(line("grid", live?.grid_kw ?? null, true));
   if (has.battery) {
     // + charging: away from the house.
-    // On the AC side, so the lines add up (see the module).
-    lines.push(line("battery", live?.battery_ac_kw ?? answer.battery?.now?.power_kw ?? null, false));
+    lines.push(line("battery", live?.battery_kw ?? answer.battery?.now?.power_kw ?? null, false));
   }
   if (has.car && carPlugged(live)) {
     lines.push(line("car", live?.car_kw ?? null, false));
