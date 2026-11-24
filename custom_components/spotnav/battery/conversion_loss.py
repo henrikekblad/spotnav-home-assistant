@@ -13,9 +13,11 @@ turned into an AC one (`ac_kw`) before the review, the perfect plan and the hous
 
 The rest of a charge is the sun's over the DC bus of a hybrid: it never crossed the inverter, but without the battery it
 would have gone out through it and lost about the way-out share; so the AC side counts it at that, and the midday house
-is not lowered by a loss the sun's charge never had. The plan prices every stored kWh with the AC round trip, so it
-values storing the sun a few percent below what that costs (the sun's real penalty is about the DC round trip): with
-sell prices far under buy prices this rarely changes a decision.
+is not lowered by a loss the sun's charge never had. The plan prices the sun's charge the same way: a kWh of surplus
+stored and given back loses about the DC round trip, not the AC one (`sun_round_trip`: the AC round trip turned back
+with the loss, at most the DC counters' round trip and `SUN_ROUND_TRIP_CAP`), so on a sunny day the plan, the perfect
+plan and the modes value storing the sun at what it really costs (`plan_model.BatteryParams.sun_round_trip_efficiency`).
+A charge from the grid keeps the AC round trip.
 
 The SoC, the battery's size and its round trip learnt from its own counters stay on the DC side (they are the cells').
 The plan's round trip is the AC one (`ac_round_trip`): the DC round trip x (1 - discharge loss) / (1 + charge loss).
@@ -52,6 +54,12 @@ DEFAULT_CHARGE_LOSS: Final = 0.03
 DEFAULT_DISCHARGE_LOSS: Final = 0.05
 #: A believable loss (share), either way: a hybrid's inverter loses 2-7 % each way.
 LOSS_RANGE: Final = (0.0, 0.08)
+#: The best round trip the sun's charge over the DC bus is planned with: a battery's own round trip at the cells.
+SUN_ROUND_TRIP_CAP: Final = 0.98
+#: The best before the battery's own counters have shown its round trip: a typical cell's, not the best one.
+SUN_ROUND_TRIP_UNLEARNT_CAP: Final = 0.97
+#: The plan's assumed AC round trip (`plan_model.DEFAULT_ROUND_TRIP_EFFICIENCY`; kept here so this module stays apart).
+_ASSUMED_AC_ROUND_TRIP: Final = 0.90
 #: A quarter hour with the sun below this (kW) is dark.
 DARK_KW: Final = 0.1
 #: A quarter hour charging or discharging at this mean power (kW) or more counts towards `MIN_ACTIVE`.
@@ -92,6 +100,21 @@ def ac_round_trip(dc_round_trip: float, loss: tuple[float, float]) -> float:
     """The round trip on the AC side from one counted at the battery."""
     charge, discharge = loss
     return dc_round_trip * (1.0 - discharge) / (1.0 + charge)
+
+
+def sun_round_trip(ac: float, loss: tuple[float, float], dc: float | None = None) -> float:
+    """The round trip of the sun's charge over the DC bus, from the plan's AC round trip [ac]: the inverter's loss on
+    the way in taken out again, and the way out's put back (the sun's AC value already lost it, `ac_kw`). Never above
+    the DC counters' own round trip [dc] nor `SUN_ROUND_TRIP_CAP`; until [dc] is learnt never above the assumed AC
+    round trip turned the same way nor `SUN_ROUND_TRIP_UNLEARNT_CAP`; never below [ac]."""
+    charge, discharge = loss
+    turn = (1.0 + charge) / (1.0 - discharge) if discharge < 1.0 else 1.0
+    turned = ac * turn
+    if dc is None:
+        cap = min(SUN_ROUND_TRIP_UNLEARNT_CAP, _ASSUMED_AC_ROUND_TRIP * turn)
+    else:
+        cap = min(SUN_ROUND_TRIP_CAP, dc)
+    return max(ac, min(cap, turned))
 
 
 def _quarter_of(moment: datetime) -> datetime:

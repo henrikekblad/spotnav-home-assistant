@@ -19,6 +19,9 @@ the battery's energy and the SoC at the start and end of each) show it.
   the inverter's loss on the way in and out (`conversion_loss.py`, learnt here too where the plant reads its own
   load), at most `round_trip.PLAN_CAP` and at least `AC_ROUND_TRIP_FLOOR`, or what the assumed loss makes of it where
   that is lower: the floor guards against a loss fitted too high, never raises a battery that is lossy itself.
+  The sun's charge over the DC bus gets its own round trip beside it (`conversion_loss.sun_round_trip`): the AC one
+  turned back with the same loss, at most the DC counters' own and 0.98 (0.97 and the assumed round trip's until they
+  are learnt), and the loss on the way out, which splits the plan's stored energy as the cells do.
 
 Size and rating are estimates: SpotNav marks them (`capacity_learned`, `rated_learned`) and never lets one replace a value the
 integration reads. What this cannot tell: a battery that was never cycled 20 points, or never charged at its limit,
@@ -37,7 +40,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from .facts import BatteryFacts
 from .plan_model import DEFAULT_ROUND_TRIP_EFFICIENCY
-from .conversion_loss import DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS, ConversionLoss, ac_round_trip
+from .conversion_loss import DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS, ConversionLoss, ac_round_trip, sun_round_trip
 from .round_trip import PLAN_CAP, RoundTrip
 
 if TYPE_CHECKING:
@@ -296,6 +299,14 @@ def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
             )
         updates["round_trip_efficiency"] = efficiency
         sources["round_trip"] = SOURCE_LEARNED
+    if facts.power_dc and facts.sun_round_trip_efficiency is None:
+        # The sun's charge over the DC bus (see the module), from the round trip the plan uses.
+        planned = updates.get("round_trip_efficiency", facts.round_trip_efficiency)
+        if planned is None or not 0 < planned <= 1:
+            planned = DEFAULT_ROUND_TRIP_EFFICIENCY
+        loss = learned.conversion.loss(True)
+        updates["sun_round_trip_efficiency"] = round(sun_round_trip(planned, loss, learned.round_trip.efficiency), 3)
+        updates["discharge_loss"] = loss[1]
     if not updates:
         return facts
     return replace(facts, estimates=tuple(estimates), sources=sources, **updates)

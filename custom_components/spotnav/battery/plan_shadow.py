@@ -225,14 +225,29 @@ def battery_params(facts: BatteryFacts) -> tuple[BatteryParams | None, str | Non
     learned = facts.round_trip_efficiency if _finite(facts.round_trip_efficiency) else None
     if learned is not None and not 0 < learned <= 1:
         learned = None
+    sun = _sun_round_trip(facts)
     params = BatteryParams(
         usable_kwh=float(facts.capacity_kwh),  # type: ignore[arg-type]
         max_charge_kw=max(0.0, float(facts.rated_charge_kw)),  # type: ignore[arg-type]
         max_discharge_kw=max(0.0, float(facts.rated_discharge_kw)),  # type: ignore[arg-type]
         min_soc_pct=ASSUMED_MIN_SOC_PCT,
         round_trip_efficiency=DEFAULT_ROUND_TRIP_EFFICIENCY if learned is None else learned,
+        sun_round_trip_efficiency=sun,
+        discharge_loss=_discharge_loss(facts) if sun is not None else 0.0,
     )
     return params, None, (EST_MIN_SOC, EST_ROUND_TRIP) if learned is None else (EST_MIN_SOC,)
+
+
+def _sun_round_trip(facts: BatteryFacts) -> float | None:
+    """The sun's own round trip over a DC bus (`BatteryFacts.sun_round_trip_efficiency`), where it is a believable one."""
+    value = facts.sun_round_trip_efficiency
+    return float(value) if _finite(value) and 0 < value <= 1 else None  # type: ignore[operator]
+
+
+def _discharge_loss(facts: BatteryFacts) -> float:
+    """The inverter's loss on the battery's way out (`BatteryFacts.discharge_loss`), where it is a believable one."""
+    value = facts.discharge_loss
+    return float(value) if _finite(value) and 0 <= value < 0.5 else 0.0
 
 
 @dataclass(frozen=True, slots=True)

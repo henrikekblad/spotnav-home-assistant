@@ -100,9 +100,26 @@ A fitted loss above 8 % either way is not believed (a cell heater on a cold nigh
 little off SpotNav's, would be fitted as loss too), and the plan's AC round trip stays at 80 % or more unless the
 battery is that lossy by its own counters. Only the part of a charge the grid gave crossed the inverter on the way in;
 the sun's charge over a hybrid's DC bus is counted at the way-out loss instead (without the battery it would have gone
-out through the inverter), so the midday house is not lowered by a loss it never had. The plan still prices every
-stored kWh with the AC round trip, so it values storing the sun a few percent below its real cost of about the DC round
-trip; with sell prices far under buy prices that rarely changes what it does.
+out through the inverter), so the midday house is not lowered by a loss it never had.
+
+**The sun's own round trip.** On such a battery the plan prices the two parts of a charge apart. The part the grid
+gives pays the AC round trip. The part the sun's surplus gives never crosses the inverter on the way in, so a kWh of
+it stored and given back loses only about the battery's own round trip: the AC round trip turned back with the same
+loss, times (1 + the loss in) / (1 - the loss out), never above the round trip the battery's own counters show nor
+98 %, never below the AC one (about 96.7 % on the owner's plant against 87 %). Until the counters have shown it, it is
+held to 97 % and to the assumed 90 % turned the same way, so a battery not yet learnt is not planned on a best case.
+The plan counts the stored energy as the cells hold it: a stored kWh gives the house the cells' half of the battery's
+own round trip less the inverter's loss on the way out, a kWh from the grid stores the AC round trip over that, and a
+kWh of sun the sun's round trip over it (on the owner's plant 0.92, 0.95 and 1.05: a kWh of surplus is worth a little
+more in the cells than on the AC side, because its AC value already lost the way-out share). The battery's rating is
+read at the battery, so the sun's part of a charge is at most the rating less the way-out loss on the AC side.
+So on a sunny day the plan, the perfect plan in the review and every mode store the sun when giving it back in the
+evening beats selling it now, where the AC round trip alone would have sold it; a night with no surplus takes the same
+actions as before, and a battery read on the AC side has one round trip for every charge, split equally. The
+diagnostics show both beside the round trip (`sun_round_trip_efficiency`, `discharge_loss`). A site with panels on a
+separate inverter beside the hybrid gets their surplus priced as if it came over the DC bus too (about 8 % too
+cheap); the review counts it the same way. A kWh still stored when a plan or a day ends is valued at the buy price
+times the AC round trip, a little below what giving it back is worth, so neither leans on a battery left full.
 The same loss turns the battery's power to the AC side wherever SpotNav counts the house as the grid less the cars
 and the battery: the house load forecast, the night's review and the perfect plan (see the house card's *Share of
 perfect*). The diagnostics show it under `battery.plan.learned.conversion` (`power_dc`, `source`: `learned`,

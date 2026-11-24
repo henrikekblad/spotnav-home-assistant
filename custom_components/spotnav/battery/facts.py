@@ -178,6 +178,12 @@ class BatteryFacts:
     #: The battery's round trip (0-1) learnt from its own meters (`learned.with_learned`), `None` until it is known:
     #: the plan then assumes `plan_model.DEFAULT_ROUND_TRIP_EFFICIENCY`.
     round_trip_efficiency: float | None = None
+    #: Where the battery sits on a hybrid's DC bus (`power_dc`): the round trip of the sun's charge, which never crosses
+    #: the inverter (`conversion_loss.sun_round_trip`, `learned.with_learned`); `None` elsewhere (the AC one counts).
+    sun_round_trip_efficiency: float | None = None
+    #: With it, the inverter's loss on the battery's way out (`conversion_loss.py`): the plan's discharge share and the
+    #: sun's charge cap (`plan_model.BatteryParams`); 0 elsewhere.
+    discharge_loss: float = 0.0
     #: The battery's average cell temperature entity (`adapters.Adapter.cell_temperature`), found and enabled, else
     #: `None`. Its day is read from the recorder's statistics by the nightly review, never live.
     cell_temperature_entity: str | None = None
@@ -225,6 +231,8 @@ class BatteryFacts:
             "charged_total_kwh": self.charged_total_kwh,
             "discharged_total_kwh": self.discharged_total_kwh,
             "round_trip_efficiency": self.round_trip_efficiency,
+            "sun_round_trip_efficiency": self.sun_round_trip_efficiency,
+            "discharge_loss": self.discharge_loss,
             "power_dc": self.power_dc,
             "plant_load_kw": None if self.plant_load_kw is None else round(self.plant_load_kw, 3),
             "plant_pv_kw": None if self.plant_pv_kw is None else round(self.plant_pv_kw, 3),

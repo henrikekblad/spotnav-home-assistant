@@ -356,6 +356,8 @@ def settings_part(hass: HomeAssistant, entry: ConfigEntry, controller: Any, sour
             "min_soc_pct": params.min_soc_pct,
             "max_soc_pct": params.max_soc_pct,
             "round_trip_efficiency": params.round_trip_efficiency,
+            "sun_round_trip_efficiency": params.sun_round_trip_efficiency,
+            "discharge_loss": params.discharge_loss,
             "estimates": list(estimates),
         },
         "battery_reason": reason,

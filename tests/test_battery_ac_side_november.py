@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.spotnav.battery.conversion_loss import ConversionLoss, ac_kw, ac_round_trip
+from custom_components.spotnav.battery.conversion_loss import ConversionLoss, ac_kw, ac_round_trip, sun_round_trip
 from custom_components.spotnav.battery.hindsight import OWN, end_value_next_day, facit_day
 from custom_components.spotnav.battery.plan_model import BatteryParams
 from custom_components.spotnav.battery.plan_shadow import Bucket, PriceSlot
@@ -101,9 +101,19 @@ def _prices(data: dict, day: date) -> list[PriceSlot]:
     return out
 
 
-def _month(data: dict, loss: tuple[float, float], round_trip: float) -> dict[date, tuple[float, float]]:
+def _month(
+    data: dict, loss: tuple[float, float], round_trip: float, sun_round_trip: float | None = None
+) -> dict[date, tuple[float, float]]:
     """Per day `(own's saving, the yardstick's)` against no battery (minor units)."""
-    battery = BatteryParams(USABLE_KWH, POWER_KW, POWER_KW, min_soc_pct=0.0, round_trip_efficiency=round_trip)
+    battery = BatteryParams(
+        USABLE_KWH,
+        POWER_KW,
+        POWER_KW,
+        min_soc_pct=0.0,
+        round_trip_efficiency=round_trip,
+        sun_round_trip_efficiency=sun_round_trip,
+        discharge_loss=0.0 if sun_round_trip is None else loss[1],
+    )
     out = {}
     for day in DAYS:
         buckets, socs = _day(data, day, loss)
@@ -263,3 +273,21 @@ def test_the_rebuilt_loss_does_not_hang_on_the_quarter_hours_the_review_covered(
     half = review_day(day, buckets[:48], battery, "Europe/Stockholm", end, (), "max_profit")
     assert half is not None
     assert rebuilt_review(half, quarters, actual, loss_cost, battery, after, end, next_end, 96, 15.0, end) is None
+
+
+def test_the_suns_own_round_trip_barely_moves_a_november(data: dict) -> None:
+    """November's sun seldom leaves a surplus: pricing the sun's charge at its own round trip (about the DC one) leaves
+    the battery's own way where it was against its perfect plan."""
+    loss = _learnt(data).loss(True)
+    round_trip = ac_round_trip(DC_ROUND_TRIP, loss)
+    sun = sun_round_trip(round_trip, loss, DC_ROUND_TRIP)
+    assert sun == pytest.approx(DC_ROUND_TRIP, abs=0.005)
+    before = _month(data, loss, round_trip)
+    after = _month(data, loss, round_trip, sun)
+    share = sum(v[0] for v in after.values()) / sum(v[1] for v in after.values())
+    share_before = sum(v[0] for v in before.values()) / sum(v[1] for v in before.values())
+    assert 0.77 <= share <= 0.92
+    assert share == pytest.approx(share_before, abs=0.02)
+    # The perfect plan moves by the cells' frame (a battery counted as its cells hold, `plan_model.BatteryParams`), a
+    # kronor or so a day either way, not by the sun.
+    assert all(abs(after[day][1] - before[day][1]) < 150 for day in DAYS)
