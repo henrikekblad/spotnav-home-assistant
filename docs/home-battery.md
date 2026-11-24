@@ -263,6 +263,10 @@ reads about it, never writes it). If the headroom is not back within 30 seconds 
 change between SpotNav's commands the charge and discharge limits are lowered before the mode changes and raised
 only after it, so the plant never runs a Command mode on the previous command's limit.
 
+Storing the sun during a hold (the charge limit following the measured surplus, never above the grid charge's
+Home-Assistant-down cap) is built but switched off until it has been tested on a sunny day; until then the hold
+exports a sun surplus.
+
 The hold is judged on what the battery does while the house draws: it must not discharge and must stand idle. If it
 charges more than 0.5 kW for a minute, the plant did not take the limit and the hold is handed back at once, in the
 check and in control alike (judged on the battery's own power, so it works without a grid reading). The check then

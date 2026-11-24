@@ -2644,3 +2644,20 @@ async def test_a_refused_change_writes_nothing_to_the_plant_first(
     )
     assert answer["error"] == "spotnav_invalid_value" and written == []
 
+
+async def test_a_hold_that_follows_the_sun_is_given_the_ha_down_cap_and_the_shipping_hold_none(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    now = dt_util.now()
+    shipping = commands_module.SIGENERGY_CONTROL
+    assert control.inputs(now, shipping, slot=("hold", 0.0, None)).hold_charge_cap_kw == 0.0
+    variant = replace(commands_module.SIGENERGY_HOLDS[0], surplus=commands_module.SIGENERGY_HOLD_SURPLUS)
+    following = replace(shipping, hold_variants=(variant,))
+    # The balanced grid charge's HA-down cap, or no bound where the plant's import limit guards the fuse.
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (2.5, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == 2.5
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (None, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == math.inf
+    assert control.inputs(now, following, slot=("grid_charge", 2.0, None)).hold_charge_cap_kw == 0.0

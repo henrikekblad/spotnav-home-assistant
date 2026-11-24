@@ -533,6 +533,22 @@ class Want:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldSurplus:
+    """A hold whose charge limit follows the sun's measured surplus (`executor`'s surplus follow), so the sun is
+    stored while the hold still takes nothing from the grid; the hold's own build writes the limit at 0. Data only.
+
+    The new limit is the surplus now (the house's net load, `executor.house_net_kw`, below zero), in `step_kw`, and
+    0 under `deadband_kw`. It is written when it differs from the limit standing by at least `deadband_kw` or is 0,
+    a raise no sooner than `raise_gap_s` after the last one; a fall at once, so the grid takes at most about the
+    deadband while the sun fades."""
+
+    role: str
+    deadband_kw: float = 0.4
+    step_kw: float = 0.1
+    raise_gap_s: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
 class HoldVariant:
     """One way a brand can hold (no discharge): its writes and the roles that let the battery cover a peak again.
     The verification tries a brand's variants in order and control uses the first that passed."""
@@ -544,6 +560,8 @@ class HoldVariant:
     #: The battery stands idle (it stores no sun either): a battery that charges under it did not take the hold
     #: (`monitor.judge`, `executor.HOLD_CHARGE_S`). `False`: the sun is still stored.
     idle: bool = False
+    #: The charge limit follows a sun surplus (`HoldSurplus`); the hold then stores the sun and is no longer idle.
+    surplus: HoldSurplus | None = None
 
 
 #: A power per phase in the order of the site's meter: L1, L2, L3 (kW).
@@ -940,8 +958,16 @@ class BrandControl:
         return tuple(variant.name for variant in self.hold_variants)
 
     def hold_idle(self) -> bool:
-        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`)."""
-        return any(variant.idle for variant in self.hold_variants if variant.name == self.variant)
+        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`); a hold that follows a sun
+        surplus (`hold_surplus`) is not."""
+        return any(
+            variant.idle and variant.surplus is None for variant in self.hold_variants if variant.name == self.variant
+        )
+
+    @property
+    def hold_surplus(self) -> HoldSurplus | None:
+        """How this control's hold follows a sun surplus (`HoldVariant.surplus`); `None`: its hold writes are fixed."""
+        return next((variant.surplus for variant in self.hold_variants if variant.name == self.variant), None)
 
     def with_hold(self, name: str | None) -> BrandControl:
         """This control with the hold variant `name` (its writes and its peak cover); itself for `None`, for a name
@@ -1244,19 +1270,32 @@ def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int
     return build
 
 
+#: Whether Sigenergy's hold follows a sun surplus with its charge limit (`SIGENERGY_HOLD_SURPLUS`). Off until the
+#: owner's on-site `pv_first_surplus` step (`tools/sigen_hold_peak_test.py`) has passed in sunshine (at least
+#: 0.5 kW of surplus for 5 minutes); until then the hold keeps the charge limit at 0, the proven hold, and a sun
+#: surplus is exported. One line; the recipe and the executor need nothing else.
+SIGENERGY_SURPLUS_TRACKING: Final = False
+#: The surplus follow of Sigenergy's hold (owner decision 2026-11-23, variant B): mode 4 charges at its charge limit
+#: from the sun first, so a limit at the sun's surplus stores it and takes nothing from the grid. A limit left
+#: standing when Home Assistant stops and the sun goes grid-charges at that limit (on site 2026-11-23,
+#: `pv_first_stale_charge`: 1.0 kW, as written), and the import limit (40040) still takes the plant down to it (it
+#: discharged and held 0.20 kW a phase at 0.6 kW): that costs money, never the fuse.
+SIGENERGY_HOLD_SURPLUS: Final = HoldSurplus("charge_limit", deadband_kw=0.4, step_kw=0.1, raise_gap_s=60.0)
+
 #: Sigenergy's hold: mode 4, "Command Charging (PV First)", with the charge limit at 0 (owner decision 2026-11-23,
-#: variant B, the only hold). Nothing charges or discharges, a sun surplus is exported. It keeps to both protocol
-#: generations: the charge limit acts in mode 4 under V2.7 and V2.9. It also keeps the plant's own peak cover with
-#: Home Assistant down: on site 2026-11-23 (SPC117, sigen 2.0.3, no sun, house ~2.1 kW) the import limit (40040)
-#: lowered to 0.6 kW made the plant discharge 1.5-3.2 kW within ~25-30 s and hold the grid at 0.60 kW, 0.20 kW on
-#: every phase, also through a 1.6 kW step on B. The hold it replaced, Maximum Self Consumption with the discharge
-#: limit at 0 (`msc_no_discharge`), failed that test: the discharge limit won over the import limit and the grid took
-#: the whole house. While Home Assistant runs, the peak cover writes the mode back to Maximum Self Consumption, where
-#: the plant balances each phase itself.
+#: variant B, the only hold). Nothing charges or discharges, a sun surplus is exported (stored once the surplus follow
+#: is on, `SIGENERGY_SURPLUS_TRACKING`). It keeps to both protocol generations: the charge limit acts in mode 4 under
+#: V2.7 and V2.9. It also keeps the plant's own peak cover with Home Assistant down: on site 2026-11-23 (SPC117, sigen
+#: 2.0.3, no sun, house ~2.1 kW) the import limit (40040) lowered to 0.6 kW made the plant discharge 1.5-3.2 kW within
+#: ~25-30 s and hold the grid at 0.60 kW, 0.20 kW on every phase, also through a 1.6 kW step on B. The hold it replaced,
+#: Maximum Self Consumption with the discharge limit at 0 (`msc_no_discharge`), failed that test: the discharge limit
+#: won over the import limit and the grid took the whole house. While Home Assistant runs, the peak cover writes the
+#: mode back to Maximum Self Consumption, where the plant balances each phase itself.
 SIGENERGY_HOLDS: Final = (
     HoldVariant(
         "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: 0.0), ("control_mode",),
         "Command Charging (PV First) with the charge limit at 0", idle=True,
+        surplus=SIGENERGY_HOLD_SURPLUS if SIGENERGY_SURPLUS_TRACKING else None,
     ),
 )
 

@@ -87,7 +87,15 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has that guard only where its
   recipe asks for it (`BrandControl.hold_grid_guard`: a hold that is a floor at the SoC, which the plant may reach
   from the grid), judged on the lesser of the battery's charge and the site's import, so the sun it stores does not
-  count.
+  count. A hold that follows a sun surplus has that guard too.
+* **A hold that follows a sun surplus** (`HoldVariant.surplus`, `commands.HoldSurplus`): its charge limit is set
+  to the sun's surplus now (`house_net_kw` below zero), so the sun is stored and nothing is taken from the grid
+  (`_follow_surplus`). A new limit is written past the deadband or at 0, a raise no sooner than the recipe's gap
+  after the last one, a fall at once; only once the hold's own writes are in, never under a peak cover, while
+  priming or in the expiry test. A limit left standing grid-charges once the sun goes, so it never exceeds the
+  HA-down grid charge cap the shell gives (`ExecInputs.hold_charge_cap_kw`; unbounded only where the plant's import
+  limit guards the fuse). Without the house's load the limit goes to 0, and once the day's setting writes reach the
+  grid charge's reserve it goes to 0 and stays there. Each write is a counted setting write.
 * **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
@@ -204,6 +212,7 @@ from .commands import (
     answered,
     fixed_rate_kw,
     forbidden_read,
+    native,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -428,6 +437,10 @@ class ExecInputs:
     #: that runs targets per phase (`BrandControl.phased`) charges each phase on its own; `None`: the brand's own
     #: balanced charge.
     phase_caps_kw: Phases | None = None
+    #: The most a hold that follows a sun surplus (`BrandControl.hold_surplus`) may leave its charge limit at (kW):
+    #: the HA-down grid charge cap, since a limit left standing grid-charges once the sun goes; `math.inf` where the
+    #: plant's own import limit guards the fuse instead. 0 (no follow) unless the shell gives it.
+    hold_charge_cap_kw: float = 0.0
     #: Each phase's headroom now (A), `None` when one is unknown.
     phase_headroom_a: Phases | None = None
     #: The plant's own power on each phase now (kW, + output; the adapter's `plant_phase_power`), `None` when it is
@@ -1187,6 +1200,8 @@ class Executor:
         self.expired: tuple[str, ...] = ()
         self.diverged: tuple[str, ...] = ()
         self._absent: frozenset[str] = frozenset()
+        #: When a hold's surplus follow last raised its limit (`_follow_surplus`); not stored.
+        self._surplus_raised_at: datetime | None = None
 
     def _sense(self, inputs: ExecInputs) -> None:
         facts = inputs.facts
@@ -1821,7 +1836,8 @@ class Executor:
         power = inputs.facts.power_kw
         grid = inputs.grid_import_kw if inputs.measurement_ok else None
         from_grid = (
-            self.control.hold_grid_guard and power is not None and grid is not None and math.isfinite(grid)
+            (self.control.hold_grid_guard or self.control.hold_surplus is not None)
+            and power is not None and grid is not None and math.isfinite(grid)
             and min(power, grid) > HOLD_CHARGE_KW
         )
         charging = (
@@ -2481,6 +2497,7 @@ class Executor:
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
+        events += self._follow_surplus(inputs)
         events += self._renew_block(inputs)
         state = self.state
         if not self._fast_renewal():
@@ -2506,6 +2523,46 @@ class Executor:
             self.state = replace(state, renew=renewed, watchdog_at=now)
             events.append(_event(now, "renew", ",".join(renewed)))
         return events
+
+    def _follow_surplus(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A running hold that follows a sun surplus (`BrandControl.hold_surplus`): its charge limit set to the
+        surplus now, past the deadband (see the module)."""
+        follow = self.control.hold_surplus
+        state = self.state
+        if (
+            follow is None or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD
+            or state.covered_at is not None or state.priming
+            # Only once the hold's own writes are in: its limit at 0 first, then Remote EMS and the mode.
+            or state.pending is not None or self._next_role(state, inputs) is not None
+        ):
+            return []
+        standing = state.target.get(follow.role)
+        if not isinstance(standing, int | float) or isinstance(standing, bool):
+            return []
+        now = inputs.now
+        net = house_net_kw(inputs) if inputs.measurement_ok else None
+        surplus = 0.0 if net is None else max(-net, 0.0)
+        rated = inputs.facts.max_charge_kw
+        if rated is not None and math.isfinite(rated):
+            surplus = min(surplus, rated)
+        surplus = min(surplus, max(inputs.hold_charge_cap_kw, 0.0))
+        new = math.floor(surplus / follow.step_kw + 1e-9) * follow.step_kw
+        if new < follow.deadband_kw or _writes_today(state, inputs) >= self._daily_cap - self._charge_reserve:
+            # Too little to follow, or the day's writes are nearly spent: the limit back at 0 and kept there.
+            new = 0.0
+        new = native(self.control.role(follow.role), new)
+        if new == standing or (new != 0.0 and abs(new - standing) < follow.deadband_kw):
+            return []
+        raised = self._surplus_raised_at
+        if new > standing and raised is not None and (now - raised).total_seconds() < follow.raise_gap_s:
+            return []
+        if new > standing:
+            self._surplus_raised_at = now
+        self.state = replace(
+            state, target={**state.target, follow.role: new},
+            sent=tuple(name for name in state.sent if name != follow.role),
+        )
+        return [_event(now, "surplus", ACTION_HOLD, role=follow.role, kw=new, was_kw=standing)]
 
     def _renew_block(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A grid charge commanded in blocks (`BrandControl.charge_block_s`): once a block has run, its ceiling is

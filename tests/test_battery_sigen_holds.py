@@ -1,21 +1,24 @@
 """Sigenergy's hold against the Modbus protocol's two generations: which limit each action writes in which Remote EMS
 control mode, the mode-4 hold (`pv_first`, the only one since 2026-11-23) and its peak cover, the order of the limits
-around a change of mode, a hold that charges from the grid, the verification trying a brand's hold variants in order
-(on a fixture with two), and the hand-back."""
+around a change of mode, a hold that charges from the grid, its surplus follow (off until tested on site), the
+verification trying a brand's hold variants in order (on a fixture with two), and the hand-back."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
+import math
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 
 import pytest
 
 from custom_components.spotnav.battery import gate
 from custom_components.spotnav.battery.commands import (
     SIGENERGY_CONTROL,
+    SIGENERGY_HOLD_SURPLUS,
     SIGENERGY_HOLDS,
     SIGENERGY_LIMIT_MODES,
     SIGENERGY_OUT_OF_SCOPE_V27,
+    SIGENERGY_SURPLUS_TRACKING,
     control_for,
     table,
 )
@@ -632,3 +635,149 @@ def test_a_hand_back_that_read_its_mode_back_primes_nothing() -> None:
     assert written(results) == [("charge_limit", 0.0), ("remote_ems", True), ("control_mode", PV_FIRST)]
     assert not events(results, "primed") and battery.states["control_mode"] == PV_FIRST
 
+
+# --- the surplus follow (variant B; off until tested on site) ---------------------------------------------------
+
+_FOLLOWING = replace(SIGENERGY_HOLDS[0], surplus=SIGENERGY_HOLD_SURPLUS)
+#: The shipping recipe with its surplus follow switched on (`SIGENERGY_SURPLUS_TRACKING`).
+SURPLUS_CONTROL = replace(SIGENERGY_CONTROL, hold_variants=(_FOLLOWING,))
+
+
+@dataclass
+class SunPlant(FakeBattery):
+    """Mode 4 in sunshine: the battery charges at its charge limit, from the sun first, the grid for the rest."""
+
+    pv_kw: float = 0.0
+    house_kw: float = 1.0
+
+    def charge_kw(self) -> float:
+        if self.states.get("remote_ems") == "on" and self.states.get("control_mode") == PV_FIRST:
+            limit = self.states.get("charge_limit")
+            return 0.0 if limit in ("unknown", None) else float(limit)
+        return 0.0
+
+    def grid_kw(self) -> float:
+        return self.house_kw + self.charge_kw() - self.pv_kw
+
+
+def _sun(executor: Executor, plant: SunPlant, start, looks: int, *, cap: float = math.inf, **overrides):
+    now, results, failed = start, [], ()
+    for _ in range(looks):
+        look = inputs(plant, now, "hold", power_kw=plant.charge_kw(), grid_import_kw=plant.grid_kw(),
+                      hold_charge_cap_kw=cap, failed=failed, **overrides)
+        result = executor.step(look)
+        results.append(result)
+        failed = tuple(op.role for op in result.ops if not plant.apply(op))
+        now += TICK
+    return now, results
+
+
+def _limits(results) -> list[float]:
+    return [value for role, value in written(results) if role == "charge_limit"]
+
+
+def test_the_surplus_follow_is_off_until_its_on_site_test_passed_and_the_hold_exports_the_sun() -> None:
+    assert SIGENERGY_SURPLUS_TRACKING is False
+    assert SIGENERGY_CONTROL.hold_surplus is None and SIGENERGY_CONTROL.hold_idle()
+    assert SURPLUS_CONTROL.hold_surplus == SIGENERGY_HOLD_SURPLUS and not SURPLUS_CONTROL.hold_idle()
+    executor = Executor(SIGENERGY_CONTROL)
+    plant = SunPlant(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    _now, results = _sun(executor, plant, T0, 30)
+    assert _limits(results) == [0.0] and not events(results, "surplus")
+    assert plant.grid_kw() == -3.0, "the sun is exported"
+    assert executor.state.phase == "active"
+
+
+def test_with_the_follow_on_the_hold_stores_the_surplus_and_takes_nothing_from_the_grid() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    _now, results = _sun(executor, plant, T0, _looks(4 * HOLD_CHARGE_S))
+    assert _limits(results) == [0.0, 3.0]
+    assert events(results, "surplus")[0]["kw"] == 3.0
+    assert plant.grid_kw() == 0.0 and plant.charge_kw() == 3.0
+    assert not events(results, "hand_back") and executor.state.phase == "active"
+
+
+def test_the_follow_keeps_its_deadband_raises_at_most_once_a_minute_and_falls_at_once() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    now, _results = _sun(executor, plant, T0, 8)
+    assert plant.states["charge_limit"] == "3"
+    # 0.3 kW more: inside the deadband.
+    plant.pv_kw = 4.3
+    now, results = _sun(executor, plant, now, 12)
+    assert _limits(results) == []
+    # A cloud: the limit falls to the surplus at the next look.
+    plant.pv_kw = 2.0
+    now, results = _sun(executor, plant, now, 1)
+    assert _limits(results) == [1.0], "a fall is written at once"
+    plant.pv_kw = 4.0
+    now, results = _sun(executor, plant, now, 12)
+    assert _limits(results) == [3.0]
+    # The sun goes: under the deadband the limit is 0, at once.
+    plant.pv_kw = 1.2
+    _now, results = _sun(executor, plant, now, 2)
+    assert _limits(results) == [0.0] and plant.grid_kw() == pytest.approx(-0.2)
+    assert SIGENERGY_HOLD_SURPLUS.deadband_kw == 0.4
+
+
+def test_a_raise_waits_for_the_gap_after_the_last_raise() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=2.0)
+    now, results = _sun(executor, plant, T0, 8)
+    assert _limits(results) == [0.0, 1.0]
+    first = datetime.fromisoformat(events(results, "surplus")[0]["at"])
+    plant.pv_kw = 4.0
+    _now, results = _sun(executor, plant, now, 12)
+    second = datetime.fromisoformat(events(results, "surplus")[0]["at"])
+    assert SIGENERGY_HOLD_SURPLUS.raise_gap_s == 60.0
+    assert (second - first).total_seconds() >= SIGENERGY_HOLD_SURPLUS.raise_gap_s > (now - first).total_seconds()
+
+
+def test_the_follow_never_leaves_more_than_the_ha_down_cap_standing() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    _now, results = _sun(executor, plant, T0, 12, cap=1.5)
+    assert _limits(results) == [0.0, 1.5]
+    # No cap given (the shell's default): no follow at all.
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    _now, results = _sun(executor, plant, T0, 12, cap=0.0)
+    assert _limits(results) == [0.0]
+
+
+def test_the_follow_goes_to_0_without_the_grid_reading_and_once_the_days_writes_run_low() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    now, _results = _sun(executor, plant, T0, 8)
+    assert plant.states["charge_limit"] == "3"
+    look = inputs(plant, now, "hold", power_kw=3.0, grid_import_kw=None, hold_charge_cap_kw=math.inf)
+    result = executor.step(look)
+    assert [(op.role, op.value) for op in result.ops] == [("charge_limit", 0.0)]
+    plant.apply(result.ops[0])
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    now, _results = _sun(executor, plant, T0, 8)
+    executor.state = replace(executor.state, writes_today=executor._daily_cap - executor._charge_reserve)
+    _now, results = _sun(executor, plant, now, 4)
+    assert _limits(results) == [0.0]
+
+
+def test_no_follow_under_a_peak_cover() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=1.0)
+    now, _results = _sun(executor, plant, T0, 8)
+    now, results = _sun(executor, plant, now, 2, headroom_a=1.2)
+    assert events(results, "peak_cover") and executor.state.covered_at is not None
+    plant.pv_kw = 5.0
+    _now, results = _sun(executor, plant, now, 2, headroom_a=1.2)
+    assert not events(results, "surplus")
+
+
+def test_a_following_hold_that_charges_from_the_grid_is_still_handed_back() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    battery = FakeBattery(SURPLUS_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 6, "hold", hold_charge_cap_kw=math.inf, grid_import_kw=0.5)
+    _now, results = run(executor, battery, now, _looks(HOLD_CHARGE_S) + 4, "hold", hold_charge_cap_kw=math.inf,
+                        power_kw=2.0, grid_import_kw=2.0)
+    assert events(results, "hand_back")[0]["reason"] == "not_obeyed:hold:charging"

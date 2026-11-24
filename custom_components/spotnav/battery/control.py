@@ -2778,6 +2778,12 @@ class BatteryControl:
             slot = self._control_slot(now, options)
         car_first, car_held = self._shedding(now, config)
         phase_caps: Phases | None = None
+        hold_cap = 0.0
+        if slot is not None and slot[0] == ACTION_HOLD and control.hold_surplus is not None:
+            # A hold that follows the sun leaves a charge limit standing, a grid charge once the sun goes: the
+            # balanced grid charge's HA-down cap bounds it (none where the plant's import limit guards the fuse).
+            cap, _caps = self._charge_limits(now, options, phased=False)
+            hold_cap = math.inf if cap is None else cap
         if slot is not None and slot[0] == ACTION_GRID_CHARGE:
             # The cap of the control that will run it, again: a slot capped for a charge per phase is never run as
             # the balanced one above the balanced cap (the control changes only while it holds nothing).
@@ -2801,6 +2807,7 @@ class BatteryControl:
             facts=facts,
             reads=self._reads(control),
             phase_caps_kw=phase_caps,
+            hold_charge_cap_kw=hold_cap,
             phase_headroom_a=self._phase_headroom_a(),
             plant_phase_kw=plant_phase_kw,
             plant_phases_mapped=self._phases_mapped(),
