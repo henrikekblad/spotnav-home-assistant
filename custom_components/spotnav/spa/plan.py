@@ -107,7 +107,7 @@ def sessions_ahead(
     for offset in range(0, math.ceil(horizon / timedelta(days=1)) + 2):
         day: date = local_now.date() + timedelta(days=offset)
         for bath in weekly:
-            if day.weekday() not in bath.weekdays:
+            if day.isoweekday() not in bath.weekdays:
                 continue
             minutes = bath.minute_of_day()
             moment = datetime.combine(day, time(minutes // 60, minutes % 60), zone)

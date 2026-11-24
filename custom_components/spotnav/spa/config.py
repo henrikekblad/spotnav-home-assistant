@@ -5,7 +5,7 @@ Stored shape (every key optional but `entity_id`; a missing or broken one reads 
     {entity_id: climate / water_heater id, family: one of `FAMILIES`,
      bath_c: 20..40 in 0.5 steps (38), idle_c: 10..40 in 0.5 steps (the spa's setpoint found at setup, else 30),
      floor_c: 5..30 in 0.5 steps (10: well above the controllers' own freeze protection),
-     baths: [{weekdays: [0..6] (Monday 0), time: "HH:MM"}] (up to 4), bath_once: ISO instant with offset | null,
+     baths: [{weekdays: [1..7] (Monday 1, as a car's departures), time: "HH:MM"}] (up to 4), bath_once: ISO instant with offset | null,
      heater_kw: 0.5..12 | null (entered where no power sensor is found), control: bool (false)}
 
 `family` says which integration the spa is read through (`spa/detect.py`) and so how it would be steered; `generic`,
@@ -93,7 +93,7 @@ EntityCheck = Callable[[str, str], bool | None]
 
 @dataclass(frozen=True, slots=True)
 class Bath:
-    """A weekly bath: on `weekdays` (Monday 0) at the local `time`."""
+    """A weekly bath: on `weekdays` (ISO numbers, Monday 1 to Sunday 7) at the local `time`."""
 
     weekdays: tuple[int, ...]
     time: str
@@ -172,14 +172,22 @@ def _number_in(value: Any, low: float, high: float, *, step: bool = True) -> flo
     return number
 
 
-def _bath(raw: Any) -> Bath | None:
-    """A weekly bath, `None` when it is not one."""
+def _bath(raw: Any, *, stored: bool = False) -> Bath | None:
+    """A weekly bath, `None` when it is not one.
+
+    `stored` reads a block from storage: a list holding a 0 was written in the first builds' numbering (Monday 0 to
+    Sunday 6) and is moved up by one; the next write stores ISO numbers. A write accepts ISO numbers only.
+    """
     if not isinstance(raw, Mapping) or set(raw) != {"weekdays", "time"}:
         return None
     days, time = raw["weekdays"], raw["time"]
     if not isinstance(time, str) or not _CLOCK.match(time) or not isinstance(days, list) or not days:
         return None
-    if any(isinstance(day, bool) or not isinstance(day, int) or not 0 <= day <= 6 for day in days):
+    if any(isinstance(day, bool) or not isinstance(day, int) for day in days):
+        return None
+    if stored and 0 in days and all(0 <= day <= 6 for day in days):
+        days = [day + 1 for day in days]
+    if any(not 1 <= day <= 7 for day in days):
         return None
     if len(set(days)) != len(days):
         return None
@@ -198,7 +206,7 @@ def read_spa(raw: Any) -> SpaConfig | None:
     idle = _number_in(raw.get("idle_c"), IDLE_MIN_C, IDLE_MAX_C)
     floor = _number_in(raw.get("floor_c"), FLOOR_MIN_C, FLOOR_MAX_C)
     stored = raw.get("baths")
-    baths = tuple(b for b in (_bath(item) for item in stored[:MAX_BATHS]) if b is not None) if isinstance(stored, list) else ()
+    baths = tuple(b for b in (_bath(item, stored=True) for item in stored[:MAX_BATHS]) if b is not None) if isinstance(stored, list) else ()
     return SpaConfig(
         entity_id=entity_id,
         family=family,

@@ -5,7 +5,7 @@ for a session the person booked. Stored shape (every key optional but `entity_id
 
     {entity_id: climate id (an integration's) | switch / input_boolean id (a relay or contactor),
      family: one of `FAMILIES`,
-     target_c: 40..110 in whole degrees (80), sessions: [{weekdays: [0..6], time: "HH:MM"}] (up to 4),
+     target_c: 40..110 in whole degrees (80), sessions: [{weekdays: [1..7] (Monday 1), time: "HH:MM"}] (up to 4),
      session_once: ISO instant with offset | null, heater_kw: 2..15 | null (entered where no power sensor is found),
      lock_id: binary sensor id | null (the door or safety switch SpotNav respects; detected on the device),
      safety_declared: bool (false: a relay's person says the heater has its own safety measure for a remote start),
@@ -138,7 +138,7 @@ def read_sauna(raw: Any) -> SaunaConfig | None:
     target = _whole_in(raw.get("target_c"), TARGET_MIN_C, TARGET_MAX_C)
     kw = finite_number(raw.get("heater_kw"))
     stored = raw.get("sessions")
-    sessions = tuple(b for b in (_bath(item) for item in stored[:MAX_BATHS]) if b is not None) if isinstance(stored, list) else ()
+    sessions = tuple(b for b in (_bath(item, stored=True) for item in stored[:MAX_BATHS]) if b is not None) if isinstance(stored, list) else ()
     config = SaunaConfig(
         entity_id=entity_id,
         family=family,

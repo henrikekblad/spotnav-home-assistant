@@ -138,7 +138,7 @@ async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant)
     assert again.energy_hours("pool") == {moment: round(kwh, 4) for moment, kwh in hours.items()}
 
 
-SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [0, 1, 2, 3, 4, 5, 6], "time": "19:00"}]}
+SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1, 2, 3, 4, 5, 6, 7], "time": "19:00"}]}
 SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
 
 

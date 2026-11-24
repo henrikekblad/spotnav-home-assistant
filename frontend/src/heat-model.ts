@@ -625,7 +625,7 @@ export interface HeatSpaConfig {
   bath_c: number;
   idle_c: number;
   floor_c: number;
-  /** Weekly bath times: weekdays (Monday 0) and the local time. */
+  /** Weekly bath times: weekdays (Monday 1 to Sunday 7, as departures) and the local time. */
   baths: { weekdays: number[]; time: string }[];
   bath_once: string | null;
   heater_kw: number | null;

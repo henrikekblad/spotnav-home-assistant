@@ -856,7 +856,7 @@ export function sessionsEditor(
     const dayRow = doc.createElement("div");
     dayRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px";
     const days: HTMLInputElement[] = [];
-    for (let day = 0; day < 7; day += 1) {
+    for (let day = 1; day <= 7; day += 1) {
       const check = doc.createElement("input");
       check.type = "checkbox";
       check.checked = item.weekdays.includes(day);
@@ -886,7 +886,7 @@ export function sessionsEditor(
   for (const item of current.weekly) {
     addRow(item);
   }
-  add.addEventListener("click", () => addRow({ weekdays: [0, 1, 2, 3, 4, 5, 6], time: kind === "spa" ? "19:00" : "18:00" }));
+  add.addEventListener("click", () => addRow({ weekdays: [1, 2, 3, 4, 5, 6, 7], time: kind === "spa" ? "19:00" : "18:00" }));
   paintAdd();
   // The one-off: a date and a time, or none.
   const fields = onceFields(answer, current.once);

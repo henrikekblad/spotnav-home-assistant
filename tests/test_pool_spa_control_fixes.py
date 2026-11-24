@@ -66,7 +66,7 @@ async def test_b1_the_sauna_heats_and_holds_its_session_without_toggling_or_stop
     devices = Devices(hass)
     devices.add(SAUNA, "off", temperature=80, current_temperature=22, min_temp=40, max_temp=110, hvac_modes=["off", "heat"])
     heat = {"sauna": {"entity_id": SAUNA, "family": "saunum", "target_c": 80, "heater_kw": 9.0, "control": True,
-                      "sessions": [{"weekdays": [SESSION.weekday()], "time": "19:00"}]}}
+                      "sessions": [{"weekdays": [SESSION.isoweekday()], "time": "19:00"}]}}
     # Heats 2 °C a minute, faster than the 45-minute seed: the need shrinks as it warms.
     await _session(hass, heat, "sauna", SAUNA, 22.0, 1.0, 0.25, SESSION - 60 * MIN, SESSION + 30 * MIN)
     # One start, no off at 19:00 nor before: the heater's own thermostat holds the target to the session's end.
@@ -78,7 +78,7 @@ async def test_b1_the_balboa_spa_stays_ready_through_its_heat_up_and_bath(hass: 
     devices = Devices(hass)
     devices.add(SPA, "off", preset_mode="rest", temperature=38.0, current_temperature=36.0, min_temp=26.5, max_temp=40.0)
     heat = {"spa": {"entity_id": SPA, "family": "balboa", "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heater_kw": 3.0,
-                    "control": True, "baths": [{"weekdays": [SESSION.weekday()], "time": "19:00"}]}}
+                    "control": True, "baths": [{"weekdays": [SESSION.isoweekday()], "time": "19:00"}]}}
     await _session(hass, heat, "spa", SPA, 36.0, 0.02, 0.003, SESSION - 180 * MIN, SESSION + 30 * MIN)
     presets = [call for call in devices.writes() if call[0] == "climate.set_preset_mode"]
     assert presets == [("climate.set_preset_mode", SPA, "ready")]

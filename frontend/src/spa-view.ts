@@ -26,19 +26,19 @@ export const SAUNA_TARGET_MAX = 110;
 export type DeadlineKind = "spa" | "sauna";
 type Deadline = HeatSpa | HeatSauna;
 
-/** A weekday's short name, Monday 0 to Sunday 6, in the card's language. */
+/** A weekday's short name, Monday (1) to Sunday (7), as a car's departures, in the card's language. */
 export function weekdayShort(language: Language, day: number): string {
   try {
     // 2024-01-01 was a Monday.
-    return new Intl.DateTimeFormat(language, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 1 + day)));
+    return new Intl.DateTimeFormat(language, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, day)));
   } catch {
-    return String(day + 1);
+    return String(day);
   }
 }
 
 /** Weekdays in words, runs of three or more joined ("mån–fre", "lör, sön"); every day is "varje dag". */
 export function weekdaysText(language: Language, days: readonly number[]): string {
-  const sorted = [...new Set(days)].filter((day) => day >= 0 && day <= 6).sort((a, b) => a - b);
+  const sorted = [...new Set(days)].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b);
   if (sorted.length === 7) {
     return translate(language, "heat.spa.everyDay");
   }

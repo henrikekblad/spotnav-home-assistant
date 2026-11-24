@@ -59,7 +59,7 @@ POOL = PoolConfig(
     heat_pump_kw=1.6,
     control_circulation=True,
 )
-SPA = SpaConfig("climate.spa", "balboa", baths=(Bath((4, 5), "19:00"),), heater_kw=3.0)
+SPA = SpaConfig("climate.spa", "balboa", baths=(Bath((5, 6), "19:00"),), heater_kw=3.0)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "heat_card"
 ZONE = ZoneInfo("Europe/Stockholm")
@@ -467,7 +467,7 @@ def controlled_answer() -> dict[str, Any]:
         "family": "balboa", "water_c": 36.5, "bath_c": 38.0, "idle_c": 30.0, "floor_c": 10.0, "heating": True, "kw": 3.0,
         "rate_c_h": 2.0, "rate_learned": True, "state": "heating", "ready_at": (MIDNIGHT + timedelta(hours=18, minutes=40)).isoformat(),
         "next_bath": {"at": (MIDNIGHT + timedelta(hours=19)).isoformat(), "source": "weekly"},
-        "baths": [{"weekdays": [4, 5], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
+        "baths": [{"weekdays": [5, 6], "time": "19:00"}], "bath_once": None, "bath_now": None, "live": False,
         "control": {"state": "watched", "reason": None, "paused_until": None, "failures": 0},
         "would": {"action": "heat", "until": (MIDNIGHT + timedelta(hours=18, minutes=45)).isoformat(), "reason": "cheap"},
         "not_ready": None,

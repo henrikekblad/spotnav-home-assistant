@@ -178,12 +178,13 @@ def test_the_spa_ranges_baths_and_one_off_bath() -> None:
         ({"idle_c": 30.2}, ("spa.idle_c", "not_a_step")),
         ({"floor_c": 4}, ("spa.floor_c", "out_of_range")),
         ({"heater_kw": 0.1}, ("spa.heater_kw", "out_of_range")),
-        ({"baths": [{"weekdays": [7], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
+        ({"baths": [{"weekdays": [8], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
+        ({"baths": [{"weekdays": [0], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
         ({"baths": [{"weekdays": [1], "time": "25:00"}]}, ("spa.baths", "invalid_value")),
         ({"baths": [{"weekdays": [], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
         ({"baths": [{"weekdays": [1, 1], "time": "19:00"}]}, ("spa.baths", "invalid_value")),
         ({"baths": [{"weekdays": [1], "time": "19:00"}] * 2}, ("spa.baths", "duplicate")),
-        ({"baths": [{"weekdays": [d], "time": "19:00"} for d in range(5)]}, ("spa.baths", "too_many")),
+        ({"baths": [{"weekdays": [d], "time": "19:00"} for d in range(1, 6)]}, ("spa.baths", "too_many")),
         ({"bath_once": (NOW - timedelta(hours=1)).isoformat()}, ("spa.bath_once", "bath_in_past")),
         ({"bath_once": (NOW + timedelta(days=31)).isoformat()}, ("spa.bath_once", "bath_too_far")),
         ({"bath_once": "tomorrow"}, ("spa.bath_once", "invalid_value")),
@@ -195,10 +196,10 @@ def test_the_spa_ranges_baths_and_one_off_bath() -> None:
         assert config == base
     once = (NOW + timedelta(days=1, hours=7)).isoformat()
     config, errors = write(
-        {"spa": {"baths": [{"weekdays": [5, 4], "time": "19:00"}], "bath_once": once, "bath_c": 38.5, "idle_c": 32}}, base
+        {"spa": {"baths": [{"weekdays": [6, 5], "time": "19:00"}], "bath_once": once, "bath_c": 38.5, "idle_c": 32}}, base
     )
     assert errors == []
-    assert config.spa.baths == (Bath((4, 5), "19:00"),) and config.spa.bath_once == once
+    assert config.spa.baths == (Bath((5, 6), "19:00"),) and config.spa.bath_once == once
     assert (config.spa.bath_c, config.spa.idle_c) == (38.5, 32.0)
 
 
@@ -217,6 +218,14 @@ def test_a_broken_stored_spa_reads_as_its_defaults() -> None:
         {"entity_id": "climate.spa", "family": "generic", "control": True, "bath_c": 50, "baths": [{"weekdays": [9], "time": "x"}]}
     )
     assert spa == SpaConfig("climate.spa")
+
+
+def test_stored_weekdays_in_the_first_numbering_read_as_iso_numbers() -> None:
+    # The first builds stored Monday 0 to Sunday 6: a list holding a 0 is moved up by one, an ISO list is kept.
+    spa = read_spa({"entity_id": "climate.spa", "baths": [{"weekdays": [0, 6], "time": "19:00"}, {"weekdays": [5, 7], "time": "08:00"}]})
+    assert spa is not None and spa.baths == (Bath((1, 7), "19:00"), Bath((5, 7), "08:00"))
+    sauna = read_sauna({"entity_id": "climate.huum", "family": "huum", "sessions": [{"weekdays": [0, 4], "time": "17:00"}]})
+    assert sauna is not None and sauna.sessions == (Bath((1, 5), "17:00"),)
 
 
 # ---- the phones and who may write
@@ -273,13 +282,13 @@ def test_a_sauna_from_an_integration_and_its_ranges() -> None:
 
     config, errors = apply_changes(
         HeatConfig(),
-        {"sauna": {"entity_id": "climate.huum", "family": "huum", "sessions": [{"weekdays": [5], "time": "17:00"}], "lock_id": "binary_sensor.bastu_door"}},
+        {"sauna": {"entity_id": "climate.huum", "family": "huum", "sessions": [{"weekdays": [6], "time": "17:00"}], "lock_id": "binary_sensor.bastu_door"}},
         now=NOW,
         check=sauna_check,
     )
     assert errors == []
     assert config.sauna == SaunaConfig(
-        "climate.huum", "huum", sessions=(Bath((5,), "17:00"),), lock_id="binary_sensor.bastu_door"
+        "climate.huum", "huum", sessions=(Bath((6,), "17:00"),), lock_id="binary_sensor.bastu_door"
     )
     assert config.sauna.target_c == 80.0 and config.sauna.controllable
     assert read_config(config.as_dict()) == config

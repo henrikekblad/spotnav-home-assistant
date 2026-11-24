@@ -174,11 +174,11 @@ describe("the Pool tab", () => {
 
 describe("the Spa and Sauna tabs", () => {
   it("words weekdays and times like departures", () => {
-    expect(weekdaysText("sv", [0, 1, 2, 3, 4])).toBe("mån–fre");
-    expect(weekdaysText("sv", [4, 5])).toBe("fre, lör");
-    expect(weekdaysText("sv", [0, 1, 2, 3, 4, 5, 6])).toBe("varje dag");
+    expect(weekdaysText("sv", [1, 2, 3, 4, 5])).toBe("mån–fre");
+    expect(weekdaysText("sv", [5, 6])).toBe("fre, lör");
+    expect(weekdaysText("sv", [1, 2, 3, 4, 5, 6, 7])).toBe("varje dag");
     const value = answer();
-    expect(sessionsText("sv", value, "spa", [{ weekdays: [4, 5], time: "19:00" }], "2026-11-17T17:00:00+00:00")).toBe("fre, lör 19:00 · en gång tis 17 nov. 18:00");
+    expect(sessionsText("sv", value, "spa", [{ weekdays: [5, 6], time: "19:00" }], "2026-11-17T17:00:00+00:00")).toBe("fre, lör 19:00 · en gång tis 17 nov. 18:00");
     expect(sessionsText("sv", value, "sauna", [], null)).toBe("Inga bastupass");
   });
 
@@ -318,7 +318,7 @@ describe("the settings rows and editors", () => {
     const form = sessionsEditor(document, "sv", value, "spa", { weekly: value.spa!.baths, once: null }, save, { onDone: vi.fn(), onCancel: vi.fn() });
     document.body.append(form);
     const days = [...form.querySelectorAll<HTMLInputElement>("input[data-weekday]")];
-    expect(days.filter((day) => day.checked).map((day) => day.dataset["weekday"])).toEqual(["4", "5"]);
+    expect(days.filter((day) => day.checked).map((day) => day.dataset["weekday"])).toEqual(["5", "6"]);
     days[6]!.click();
     form.querySelector<HTMLButtonElement>("button[data-action='add-time']")!.click();
     expect(form.querySelectorAll("[data-part='weekly-time']")).toHaveLength(2);
@@ -326,8 +326,8 @@ describe("the settings rows and editors", () => {
     await vi.waitFor(() => expect(save).toHaveBeenCalled());
     expect(save).toHaveBeenCalledWith({
       weekly: [
-        { weekdays: [4, 5, 6], time: "19:00" },
-        { weekdays: [0, 1, 2, 3, 4, 5, 6], time: "19:00" },
+        { weekdays: [5, 6, 7], time: "19:00" },
+        { weekdays: [1, 2, 3, 4, 5, 6, 7], time: "19:00" },
       ],
       once: null,
     });
