@@ -32,13 +32,23 @@ The plan's round trip is the AC one (`ac_round_trip`): the DC round trip x (1 - 
   only while both losses lie in `LOSS_RANGE`; else the assumed ones stand (a fit outside it is logged, never shown:
   a cell heater on a cold night's charge, or the plant's meter reading a little off SpotNav's, is fitted as loss too).
   The half-life counts dark quarter hours, not days, so in summer the fit moves more slowly.
+  The fit's constant is the inverter's standing use (`idle_kw`, its standby): kept where it lies in `IDLE_RANGE_KW`
+  and the losses hold, else `None` (a negative one is the plant's meter reading off SpotNav's, not a use). The
+  owner's Sigenergy plant (Oct-Nov 2026, 3 087 dark quarter hours forward-filled from the recorder): about 190 W
+  standing, 3.5 % in and 4.3 % out; without the constant the fit puts the standing use into the losses (5.4 % and
+  8.0 %), which is why the constant is fitted at all.
 * **Assumed** otherwise: `DEFAULT_CHARGE_LOSS` and `DEFAULT_DISCHARGE_LOSS`, a typical hybrid's 96-97 % each way
-  (the owner's Sigenergy plant measured 3.5 % and 6.5 %).
+  (the owner's Sigenergy plant measured 3.5 % and 4.3 %). The standing use is not assumed: without the plant's own
+  load nothing tells it from the house's, so it stays `None` (counted as 0 where a figure is wanted) rather than an
+  invented number.
 * **Read as they are** where the battery's power is not marked DC (an AC-coupled battery, or a brand whose side is not
-  known): no loss.
+  known): no loss, no standing use.
 
-Whatever the constant is (the inverter's standing use) stays in the house: a house with a hybrid and no battery would
-have most of it too.
+The standing use stays in the house wherever the house is the grid's balance (the review's and the plan's house rows,
+the energy flow, the Now tab): it is a fixed load like the fridge, so the house forecast made from those rows already
+holds it and the plan adds nothing for it (a house with a hybrid and no battery would have most of it too). Only the
+per-kWh losses are in the round trips. The house card's pie names it beside the losses, as the inverter's slice
+(`site/energy_flow.inverter_use`).
 """
 
 from __future__ import annotations
@@ -54,6 +64,8 @@ DEFAULT_CHARGE_LOSS: Final = 0.03
 DEFAULT_DISCHARGE_LOSS: Final = 0.05
 #: A believable loss (share), either way: a hybrid's inverter loses 2-7 % each way.
 LOSS_RANGE: Final = (0.0, 0.08)
+#: A believable standing use of a hybrid inverter (kW): its standby, tens to a couple of hundred watts.
+IDLE_RANGE_KW: Final = (0.0, 0.3)
 #: The best round trip the sun's charge over the DC bus is planned with: a battery's own round trip at the cells.
 SUN_ROUND_TRIP_CAP: Final = 0.98
 #: The best before the battery's own counters have shown its round trip: a typical cell's, not the best one.
@@ -147,6 +159,9 @@ class ConversionLoss:
     #: The losses learnt, `None` until the fit holds.
     charge_loss: float | None = None
     discharge_loss: float | None = None
+    #: The inverter's standing use learnt (kW, the fit's constant), `None` until the fit holds or where it is not
+    #: believable (see the module).
+    idle_kw: float | None = None
     running: _Running | None = None
     #: The last reading: `(when, battery DC kW, grid kW, sun kW, load kW)`.
     last: tuple[datetime, float, float, float, float] | None = None
@@ -165,6 +180,12 @@ class ConversionLoss:
         if not power_dc:
             return SOURCE_AC
         return SOURCE_ASSUMED if self.charge_loss is None else SOURCE_LEARNED
+
+    def idle(self, power_dc: bool) -> float | None:
+        """The inverter's standing use (kW) where it is learnt, `None` otherwise (never assumed, see the module)."""
+        if not power_dc or self.charge_loss is None:
+            return None
+        return self.idle_kw
 
     # ---- learning
 
@@ -223,15 +244,20 @@ class ConversionLoss:
         solved = _solve([self.xtx[i * _TERMS:(i + 1) * _TERMS] for i in range(_TERMS)], list(self.xty))
         if solved is None:
             return False
-        _constant, charge, discharge = solved
+        constant, charge, discharge = solved
         low, high = LOSS_RANGE
         if not (low <= charge <= high and low <= discharge <= high):
             _LOGGER.debug("SpotNav battery: a conversion loss of %.3f in, %.3f out is not believed", charge, discharge)
             return False
+        idle_low, idle_high = IDLE_RANGE_KW
+        idle: float | None = round(constant, 3)
+        if not idle_low <= constant <= idle_high:
+            _LOGGER.debug("SpotNav battery: an inverter standing use of %.3f kW is not believed", constant)
+            idle = None
         charge, discharge = round(charge, 4), round(discharge, 4)
-        if (charge, discharge) == (self.charge_loss, self.discharge_loss):
+        if (charge, discharge, idle) == (self.charge_loss, self.discharge_loss, self.idle_kw):
             return False
-        self.charge_loss, self.discharge_loss = charge, discharge
+        self.charge_loss, self.discharge_loss, self.idle_kw = charge, discharge, idle
         return True
 
     # ---- persistence and diagnostics
@@ -244,16 +270,20 @@ class ConversionLoss:
             "discharged_n": round(self.discharged_n, 4),
             "charge_loss": self.charge_loss,
             "discharge_loss": self.discharge_loss,
+            "idle_kw": self.idle_kw,
         }
 
     def view(self, power_dc: bool) -> dict[str, Any]:
         """For the diagnostics: the losses counted, where they come from and what the fit rests on."""
         charge, discharge = self.loss(power_dc)
+        idle = self.idle(power_dc)
         return {
             "power_dc": power_dc,
             "source": self.source(power_dc),
             "charge_loss": charge,
             "discharge_loss": discharge,
+            # The standing use in watts, `None` where it is not learnt (never assumed).
+            "idle_w": None if idle is None else round(idle * 1000.0),
             "charged_quarters": round(self.charged_n, 1),
             "discharged_quarters": round(self.discharged_n, 1),
         }
@@ -280,6 +310,9 @@ class ConversionLoss:
         low, high = LOSS_RANGE
         if _finite(charge) and _finite(discharge) and low <= charge <= high and low <= discharge <= high:
             made.charge_loss, made.discharge_loss = float(charge), float(discharge)
+            idle = raw.get("idle_kw")
+            if _finite(idle) and IDLE_RANGE_KW[0] <= idle <= IDLE_RANGE_KW[1]:
+                made.idle_kw = float(idle)
         return made
 
 
