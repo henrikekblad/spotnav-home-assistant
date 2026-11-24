@@ -111,7 +111,7 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    unread for less than half an hour, nor `rebased`, one that reads again),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), car_start_made (the car took no
    current the charger offered and SpotNav started the charge in the car, `execution/car_start.py`; tone normal),
-   car_refuses{soc_percent, target} (the car still takes none, or has no charge switch SpotNav knows: the person starts
+   car_refuses{soc_percent, target, since} (the car still takes none, or has no charge switch SpotNav knows: the person starts
    the charge in the car's app; until the car draws or is unplugged), charger_circuit_limited{limit_a}
    (while it charges, a limit outside SpotNav's reach caps it below the current SpotNav set: Easee's circuit dynamic
    limit, read only), charger_disabled
@@ -371,7 +371,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The car takes no current the charger offers at `soc_percent` though its target (capped by the car's own limit)
     # is `target`, and SpotNav could not start the charge in the car (or it did not help): the person starts it in the
     # car's app. Said until the car draws or is unplugged; told once per plug-in as `plan_stopped` (`car_refuses`).
-    "car_refuses": (TONE_NOTICE, ("soc_percent", "target")),
+    # `since`: when it was told, kept across a restart (an app tells it once by it); null when not known.
+    "car_refuses": (TONE_NOTICE, ("soc_percent", "target", "since")),
     # The charger draws under a limit outside SpotNav's reach, below the current SpotNav set: Easee's circuit
     # dynamic limit (`limit_a`), shared by the circuit's chargers and set by Easee's Equalizer, its app or an
     # automation. SpotNav reads it and never writes it.
@@ -689,6 +690,7 @@ class StatusFacts:
     car_start_state: str | None = None
     car_start_soc_percent: float | None = None
     car_start_target: float | None = None
+    car_start_since: datetime | None = None
     #: Whether the charger says when a car is plugged in, so an unplug ends a person's manual pause.
     reports_plug_in: bool = True
     #: Under a person's Stop nothing can see the unplug (`ChargingController.stop_unplug_unseen`).
@@ -1240,6 +1242,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                 "car_refuses",
                 soc_percent=None if facts.car_start_soc_percent is None else round(facts.car_start_soc_percent, 1),
                 target=None if facts.car_start_target is None else round(facts.car_start_target, 1),
+                since=None if facts.car_start_since is None else aware_iso(facts.car_start_since),
             )
         )
     if facts.circuit_limit_a is not None and facts.charging:

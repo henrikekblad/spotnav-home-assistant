@@ -2919,6 +2919,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         car_start_state=None if capture.live.car_start is None else capture.live.car_start.get("state"),
         car_start_soc_percent=None if capture.live.car_start is None else capture.live.car_start.get("soc_percent"),
         car_start_target=None if capture.live.car_start is None else capture.live.car_start.get("target"),
+        car_start_since=None if capture.live.car_start is None else capture.live.car_start.get("since"),
         reports_plug_in=capture.live.reports_plug_in,
         stop_unplug_unseen=capture.live.stop_unplug_unseen,
         vehicle_limit_percent=(

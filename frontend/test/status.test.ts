@@ -467,7 +467,7 @@ describe("the status line renders the block and nothing else", () => {
     expect(issuesOf({ ...started, tone: "normal" }, "en")).toEqual([]);
     const refuses = {
       tone: "notice",
-      lines: [statusLine("car_refuses", { soc_percent: 65, target: 80 })],
+      lines: [statusLine("car_refuses", { soc_percent: 65, target: 80, since: "2026-11-24T03:07:00+00:00" })],
     } as unknown as Status;
     const [issue] = issuesOf(refuses, "sv");
     expect(issue?.code).toBe("car_refuses");
@@ -475,7 +475,7 @@ describe("the status line renders the block and nothing else", () => {
     expect(issueText("en", issuesOf(refuses, "en")[0]!)).toBe(
       "The car is not taking current at 65 % though the target is 80 %. Start the charge in the car's app.",
     );
-    const unknown = { tone: "notice", lines: [statusLine("car_refuses", { soc_percent: null, target: 80 })] } as unknown as Status;
+    const unknown = { tone: "notice", lines: [statusLine("car_refuses", { soc_percent: null, target: 80, since: null })] } as unknown as Status;
     expect(issueText("en", issuesOf(unknown, "en")[0]!)).toBe(
       "The car is not taking current though the target is not reached. Start the charge in the car's app.",
     );

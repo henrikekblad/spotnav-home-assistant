@@ -891,11 +891,17 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
     ),
     (
         "a car that still takes no current below its target is a notice with its level and target",
-        base(car_start_state="refuses", car_start_soc_percent=65.04, car_start_target=80.0, waiting_for_tomorrow=True),
+        base(
+            car_start_state="refuses", car_start_soc_percent=65.04, car_start_target=80.0,
+            car_start_since=datetime(2026, 11, 24, 3, 7, tzinfo=timezone.utc), waiting_for_tomorrow=True,
+        ),
         "notice",
         [
             {"code": "waiting_for_tomorrow", "params": {}},
-            {"code": "car_refuses", "params": {"soc_percent": 65.0, "target": 80.0}},
+            {
+                "code": "car_refuses",
+                "params": {"soc_percent": 65.0, "target": 80.0, "since": "2026-11-24T03:07:00+00:00"},
+            },
         ],
     ),
     (
