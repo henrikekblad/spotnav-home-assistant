@@ -13,7 +13,7 @@ import type { HeatPart } from "../src/heat-history";
 import { partSeries, partWord } from "../src/heat-use";
 import { heatEditor, sessionsEditor } from "../src/heat-editors";
 import { decodeHeat, decodeLoadAnswer, heatFound, type HeatAnswer } from "../src/heat-model";
-import { heatBody, heatSettingsSection, heatTabsOf, loadFound, loadSettingsSections, type HeatHandlers, type HeatUi } from "../src/heat-view";
+import { heatBody, heatSettingsSection, heatTabsOf, loadFound, loadSettingsSections, powerWords, type HeatHandlers, type HeatUi } from "../src/heat-view";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard } from "../src/index";
@@ -299,6 +299,16 @@ describe("the settings rows and editors", () => {
     expect(section.querySelector("[data-help='pool']")!.textContent).toBe("Skulle stå still till 22:00");
     expect(section.querySelector("[data-row='poolFilterHours']")!.textContent).toBe("Filtrering per dygnEfter vattentemperaturen");
     expect(section.querySelector("[data-row='saunaSafety']")!.textContent).toBe("Aggregatets eget säkerhetsskyddNej, eller vet inte");
+    // Each power says where it comes from: entered, or learned from the load's own switching.
+    expect(section.querySelector("[data-row='poolHeatPumpKw']")!.textContent).toMatch(/1,6\s*kW, angiven$/);
+    expect(section.querySelector("[data-row='poolCirculationKw']")!.textContent).toMatch(/0,4\s*kW, inlärd$/);
+  });
+
+  it("words a load's power as entered, learned or typical until learned", () => {
+    expect(powerWords("sv", 8.7, { kw: 8.7, kw_source: "entered" })).toMatch(/^8,7\s*kW, angiven$/);
+    expect(powerWords("sv", null, { kw: 8.7, kw_source: "learned" })).toMatch(/^8,7\s*kW, inlärd$/);
+    expect(powerWords("sv", null, { kw: 9, kw_source: "typical" })).toMatch(/kW, vanligt värde tills den är inlärd$/);
+    expect(powerWords("en", null, null)).toBe("Not given");
   });
 
   it("offers the heat pump's own reading first for the water, a standalone sensor as the second choice", () => {

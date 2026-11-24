@@ -38,7 +38,8 @@
     "floor_c": 10.0,
     "heating": false,
     "idle_c": 30.0,
-    "kw": null,
+    "kw": 3.0,
+    "kw_source": "typical",
     "live": false,
     "next_bath": {
       "at": "2026-09-22T00:00:00-07:00",

@@ -31,6 +31,7 @@ import asyncio
 import copy
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -45,6 +46,14 @@ from ..battery.shadow import PART_POOL, ShadowBook, ShadowEntry
 from ..const import DOMAIN
 from ..core.parse import number_from_state
 from ..heat.config import HeatConfig
+from ..loads.learned_kw import (
+    LOAD_POOL_CIRCULATION as POWER_POOL_CIRCULATION,
+    LOAD_POOL_HEAT as POWER_POOL_HEAT,
+    LOAD_SAUNA as POWER_SAUNA,
+    LOAD_SPA as POWER_SPA,
+    Look,
+    PowerLearner,
+)
 from ..loads.switch_load import RunHistory
 from ..planning.demand_charge import hour_start
 from ..sauna.config import FAMILY_HARVIA, FAMILY_RELAY, FAMILY_TYLO, SaunaConfig
@@ -166,6 +175,10 @@ class PoolSpaShadow:
         # ---- the spa and the sauna
         self.spa = new_spa()
         self.sauna = new_sauna()
+        #: Each load's real power, learned from its device's sensor or the site's meter step (`loads/learned_kw.py`).
+        self.power = PowerLearner()
+        #: Each load's device power sensor, by its entity (looked up once).
+        self._power_sensors: dict[str, str | None] = {}
         self._flow_since: datetime | None = None
         #: The heat pump's own water sensor (core `tuya`'s `temp_current`), by its switch.
         self._pump_water_ids: dict[str, str | None] = {}
@@ -239,6 +252,7 @@ class PoolSpaShadow:
                 self.fall_samples.append((float(row[0]), float(row[1]), float(row[2])))
         self.spa.restore(self.book.section("spa"))
         self.sauna.restore(self.book.section("sauna"))
+        self.power.restore(self.book.section("power"))
         energy = self.book.section("energy")
         for kind in ENERGY_KINDS:
             rows = energy.get(kind)
@@ -304,13 +318,103 @@ class PoolSpaShadow:
         )
         self.book.set_section("spa", self.spa.as_dict())
         self.book.set_section("sauna", self.sauna.as_dict())
+        self.book.set_section("power", self.power.as_dict())
         self.book.set_section("energy", {kind: {key: round(kwh, 4) for key, kwh in rows.items()} for kind, rows in self.energy.items()})
         return self.book.as_dict()
 
     # ---- reads
 
     def config(self) -> HeatConfig:
-        return self.site.heat_shadow.config()
+        """The heat settings with each load's power as it counts (`effective`): the planners, the energy, the shed
+        order's offers, the Plan tab and the controls read this one."""
+        return self.effective(self.site.heat_shadow.config())
+
+    def effective(self, config: HeatConfig) -> HeatConfig:
+        """`config` with each load's kW the entered one, else the learned one (`loads/learned_kw.py`); left unset
+        until learned, so the typical figure stands in where it did."""
+        changes: dict[str, Any] = {}
+        pool = config.pool
+        if pool is not None:
+            pump_kw = self.power.effective_kw(POWER_POOL_HEAT, pool.heat_pump_kw)[0] if pool.heat_pump is not None else pool.heat_pump_kw
+            circ_kw = self.power.effective_kw(POWER_POOL_CIRCULATION, pool.circulation_kw)[0] if pool.circulation_id is not None else pool.circulation_kw
+            if (pump_kw, circ_kw) != (pool.heat_pump_kw, pool.circulation_kw):
+                changes["pool"] = replace(pool, heat_pump_kw=pump_kw, circulation_kw=circ_kw)
+        for name, load in (("spa", POWER_SPA), ("sauna", POWER_SAUNA)):
+            block = getattr(config, name)
+            if block is not None:
+                kw = self.power.effective_kw(load, block.heater_kw)[0]
+                if kw != block.heater_kw:
+                    changes[name] = replace(block, heater_kw=kw)
+        return replace(config, **changes) if changes else config
+
+    def power_of(self, load: str, entered: float | None, typical: float) -> dict[str, Any]:
+        """A load's power as the settings row shows it: `{kw, kw_source}` (`entered`, `learned` or `typical`)."""
+        kw, source = self.power.effective_kw(load, entered)
+        return {"kw": typical if kw is None else kw, "kw_source": source}
+
+    def _power_sensor(self, entity_id: str | None) -> str | None:
+        """The power sensor on a load's device (`heat_zones.pick_power_sensor`), looked up once per entity."""
+        if entity_id is None:
+            return None
+        if entity_id not in self._power_sensors:
+            from ..site.heat_zones import device_sensors, pick_power_sensor  # noqa: PLC0415
+
+            try:
+                _device, sensors = device_sensors(self.hass, entity_id)
+                self._power_sensors[entity_id] = pick_power_sensor(sensors)
+            except Exception:  # noqa: BLE001 - without it the meter step learns
+                self._power_sensors[entity_id] = None
+        return self._power_sensors[entity_id]
+
+    def _house_w(self) -> float | None:
+        """The site's house figure now (W): the grid less the cars and the battery's charge (its discharge added);
+        `None` where a part of it does not read."""
+        from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports the site
+
+        grid_w = site_net_grid_w(self.site)
+        if grid_w is None:
+            return None
+        car_w = site_car_w(self.hass, self.site, idle_unread_as_zero=True)
+        if car_w is None:
+            return None
+        facts = self.site.battery_shadow.facts
+        battery_kw = 0.0
+        if facts.battery_entity_id is not None:
+            if facts.power_kw is None:
+                return None
+            battery_kw = facts.power_kw
+        return grid_w - car_w - battery_kw * 1000.0
+
+    def _learn_power(self, now: datetime, config: HeatConfig) -> None:
+        """One look at each load's switching, its device's sensor and the site's house figure."""
+        from ..site.heat_zones import read_power_w  # noqa: PLC0415
+
+        try:
+            house_w = self._house_w()
+        except Exception:  # noqa: BLE001 - without it only a device sensor learns
+            house_w = None
+        looks: dict[str, Look] = {}
+
+        def look(load: str, entity_id: str | None, on: bool | None) -> None:
+            sensor = self._power_sensor(entity_id)
+            looks[load] = Look(on, sensor, None if sensor is None else read_power_w(self.hass, sensor, now), house_w)
+
+        pool = config.pool
+        if pool is not None and pool.season_open:
+            if pool.heat_pump is not None:
+                pump = pool.heat_pump
+                look(POWER_POOL_HEAT, pump.switch_id or pump.entity_id, self._pump_state(pool)[1])
+            if pool.circulation_id is not None:
+                look(POWER_POOL_CIRCULATION, pool.circulation_id, self._switch_on(pool.circulation_id))
+        for load, part, block in ((POWER_SPA, self.spa, config.spa), (POWER_SAUNA, self.sauna, config.sauna)):
+            if block is not None:
+                look(load, block.entity_id, part.reading.heating)
+        # One sensor on two loads' devices (the pool's heat pump and its circulation on one plug) is neither's.
+        shared = [item.sensor for item in looks.values() if item.sensor is not None]
+        for load, found in list(looks.items()):
+            if found.sensor is not None and shared.count(found.sensor) > 1:
+                looks[load] = replace(found, sensor=None, device_w=None)
+        self.power.observe(now, looks)
 
     @property
     def tz(self) -> str:
@@ -508,6 +612,10 @@ class PoolSpaShadow:
         if failed:
             self._look_failed()
         self._tell_not_ready(config)
+        try:
+            self._learn_power(now, config)
+        except Exception:  # noqa: BLE001 - the learning is tried again at the next look
+            _LOGGER.debug("SpotNav pool and spa: the power could not be learned", exc_info=True)
         self._account_energy(now, config)
         self._save()
 
@@ -832,7 +940,10 @@ class PoolSpaShadow:
         from ..loads.switch_load import deadlines  # noqa: PLC0415
 
         steps = deadlines(self.history, dt_util.now(), plan.need_h)
+        pool = self.config().pool
         return {
+            "heat_pump_kw": None if pool is None else pool.heat_pump_kw,
+            "circulation_kw": None if pool is None else pool.circulation_kw,
             "need_h": plan.need_h,
             "extra_h": float(plan.extra.hours) if plan.extra is not None else 0.0,
             "by": steps[-1][0] if steps else None,
@@ -852,6 +963,7 @@ class PoolSpaShadow:
         if spa is None:
             return None
         common = self.spa.common(spa, now)
+        common["power"] = self.power_of(POWER_SPA, spa.heater_kw, DEFAULT_KW["spa"])
         self._controlled(common, "spa", now, spa)
         current = self.spa.reading.current_c
         return {
@@ -861,7 +973,7 @@ class PoolSpaShadow:
             "idle_c": spa.idle_c,
             "floor_c": spa.floor_c,
             "heating": common["heating"],
-            "kw": common["kw"],
+            **common["power"],
             "rate_c_h": common["rate_c_h"],
             "rate_learned": common["rate_learned"],
             "state": common["state"],
@@ -884,6 +996,7 @@ class PoolSpaShadow:
         if sauna is None:
             return None
         common = self.sauna.common(sauna, now)
+        common["power"] = self.power_of(POWER_SAUNA, sauna.heater_kw, DEFAULT_KW["sauna"])
         self._controlled(common, "sauna", now, sauna)
         current = self.sauna.reading.current_c
         return {
@@ -891,7 +1004,7 @@ class PoolSpaShadow:
             "temp_c": None if current is None else round(current, 1),
             "target_c": sauna.target_c,
             "heating": common["heating"],
-            "kw": common["kw"],
+            **common["power"],
             "rate_c_h": common["rate_c_h"],
             "rate_learned": common["rate_learned"],
             "state": common["state"],
@@ -1018,7 +1131,10 @@ class PoolSpaShadow:
         done_h = round(self.history.on_seconds(day_start_utc, now) / 3600.0, 2)
         planned_h = 0.0 if plan is None else self._hours_in(dict(plan.circulation_hours), hour, day_end)
         heat_h = 0.0 if plan is None else self._hours_in(dict(plan.heat_hours), hour, day_end)
-        circ_kw, pump_kw = pool.circulation_kw, pool.heat_pump_kw
+        counted = self.effective(config).pool or pool
+        circ_kw, pump_kw = counted.circulation_kw, counted.heat_pump_kw
+        pump_power = self.power_of(POWER_POOL_HEAT, pool.heat_pump_kw, DEFAULT_HEAT_PUMP_KW)
+        circ_power = self.power_of(POWER_POOL_CIRCULATION, pool.circulation_kw, DEFAULT_CIRCULATION_KW)
         kwh = None
         if circ_kw is not None and (pump_kw is not None or pool.heat_pump is None):
             kwh = round((done_h + planned_h) * circ_kw + heat_h * (pump_kw or 0.0), 2)
@@ -1062,7 +1178,7 @@ class PoolSpaShadow:
             else {
                 "on": on,
                 "heating": heating,
-                "kw": pump_kw,
+                **pump_power,
                 **part_control(hp_control),
                 "reason": None
                 if not pool.season_open
@@ -1074,7 +1190,7 @@ class PoolSpaShadow:
             if pool.circulation_id is None
             else {
                 "on": self._switch_on(pool.circulation_id),
-                "kw": circ_kw,
+                **circ_power,
                 **part_control(circ_control),
                 "reason": None
                 if not pool.season_open
@@ -1106,8 +1222,8 @@ class PoolSpaShadow:
         return {
             "circulation": None if pool.circulation_id is None else dict(plan.circulation_hours),
             "heat": None if pool.heat_pump is None else dict(plan.heat_hours),
-            "circulation_kw": pool.circulation_kw,
-            "heat_pump_kw": pool.heat_pump_kw,
+            "circulation_kw": pool.circulation_kw or DEFAULT_CIRCULATION_KW,
+            "heat_pump_kw": pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW,
             "need_h": plan.need_h,
             "heat_h": plan.heat_h,
             "circulation_name": None if pool.circulation_id is None else pool.circulation_id,
@@ -1132,6 +1248,7 @@ class PoolSpaShadow:
             "surplus_hours": len(self._surplus),
             "spa": None if self.spa.plan is None else self.spa.plan.as_dict(),
             "sauna": None if self.sauna.plan is None else self.sauna.plan.as_dict(),
+            "power": self.power.diagnostics(),
             "log": [entry.as_dict() for entry in self.book.entries],
             "control": None if getattr(self.site, "pool_spa_control", None) is None else self.site.pool_spa_control.diagnostics(),
         }

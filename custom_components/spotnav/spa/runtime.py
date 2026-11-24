@@ -518,7 +518,7 @@ class DeadlineShadow:
             "kind": self.profile.kind,
             "quarters": dict(plan.quarters),
             "hold": hold,
-            "kw": config.heater_kw,
+            "kw": config.heater_kw or DEFAULT_KW[self.profile.kind],
             "target_c": config.bath_c if isinstance(config, SpaConfig) else config.target_c,
             "ready_at": plan.ready_at,
             "next": None if plan.next_session is None else plan.next_session[0],
