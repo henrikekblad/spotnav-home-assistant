@@ -47,12 +47,13 @@ def test_weekly_and_one_off_sessions_ahead() -> None:
     assert sessions_ahead((Bath((1,), "19:00"),), None, NOW, TZ) == []
 
 
-def test_the_rate_is_learnt_without_the_first_half_degree() -> None:
+def test_the_rate_is_learnt_from_each_run_s_first_step() -> None:
+    # Each run is kept from the look where it had risen the first half degree (`spa/runtime.py`): rise over time.
     start = NOW
     runs = [
-        (start, start + timedelta(hours=2), 30.0, 34.5),  # (4.5 - 0.5) / 2 = 2.0
+        (start, start + timedelta(hours=2), 30.0, 34.0),  # 4 / 2 = 2.0
         (start, start + timedelta(hours=1), 30.0, 30.6),  # under a degree: not counted
-        (start, start + timedelta(hours=1), 30.0, 32.5),  # 2.0
+        (start, start + timedelta(hours=1), 30.0, 32.0),  # 2.0
     ]
     assert learnt_rate(runs, 1.5) == (2.0, True)
     assert learnt_rate([], 1.5) == (1.5, False)
@@ -61,9 +62,11 @@ def test_the_rate_is_learnt_without_the_first_half_degree() -> None:
 def test_the_spa_heats_in_the_cheapest_quarters_of_a_bounded_window_and_is_ready_by_the_bath() -> None:
     # 3 °C at 1.5 °C/h: 2 h; the window opens 5 h before the bath (2·need + 1 h): 14:00 local, not the cheaper morning.
     plan = plan_deadline(spa(hours=hours({1: 1.0, 2: 1.0, 4: 10.0, 5: 12.0, 7: 5.0})))
-    assert plan.need_h == 2.0 and len(plan.quarters) == 8
+    # Two hours' heat, and what the water loses idle between the blocks and the bath (0.3 °C/h over the 2.75 h it
+    # does not heat from 13:00: three quarters more, at the next cheapest price).
+    assert plan.need_h == 2.0 and len(plan.quarters) == 11
     chosen = {moment.replace(minute=0) for moment in plan.quarters}
-    assert chosen == {NOW + timedelta(hours=h) for h in (4, 7)}
+    assert {NOW + timedelta(hours=h) for h in (4, 7)} <= chosen
     assert all(moment < BATH for moment in plan.quarters)
     assert plan.ready_at == NOW + timedelta(hours=8)
     assert plan.not_ready is None and plan.action == "idle" and plan.reason == "waiting"

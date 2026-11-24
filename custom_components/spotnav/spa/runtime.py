@@ -18,6 +18,8 @@ from typing import Any, Final
 from ..sauna.config import CLOUD as SAUNA_CLOUD, FAMILY_RELAY, SaunaConfig
 from .config import CLOUD as SPA_CLOUD, SpaConfig
 from .plan import (
+    FIRST_STEP_C,
+    IDLE_DRIFT_C_H,
     ACTION_HEAT,
     ACTION_HOLD,
     ACTION_IDLE,
@@ -111,6 +113,8 @@ class DeadlineShadow:
         self.plan: DeadlinePlan | None = None
         self.reading = Reading(None, None)
         self._run_start: tuple[datetime, float] | None = None
+        #: The look where the running heat-up's reading had risen `FIRST_STEP_C`: the run is counted from there.
+        self._run_from: tuple[datetime, float] | None = None
         #: The session whose heat-up has started `(at, source)`: kept, heated and held to `at + HOLD` whatever the
         #: plan made again from the temperature now says (`_latched`).
         self.latch: tuple[datetime, str] | None = None
@@ -127,6 +131,8 @@ class DeadlineShadow:
     def as_dict(self) -> dict[str, Any]:
         return {
             "runs": [[a.isoformat(), b.isoformat(), low, high] for a, b, low, high in self.runs],
+            #: The runs are counted from their first step (older records counted from the heater's start: dropped).
+            "runs_from_step": True,
             "now_until": None if self.now_until is None else self.now_until.isoformat(),
             "now_pressed": None if self.now_pressed is None else self.now_pressed.isoformat(),
             "took_what_fits": sorted(moment.isoformat() for moment in self.took_what_fits),
@@ -140,7 +146,7 @@ class DeadlineShadow:
     def restore(self, raw: Any) -> None:
         if not isinstance(raw, Mapping):
             return
-        for row in raw.get("runs") or ():
+        for row in (raw.get("runs") or ()) if raw.get("runs_from_step") is True else ():
             if isinstance(row, list) and len(row) == 4:
                 start, end = _aware(row[0]), _aware(row[1])
                 if start and end and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in row[2:]):
@@ -189,11 +195,16 @@ class DeadlineShadow:
         current = reading.current_c
         if reading.heating and self._run_start is None and current is not None:
             self._run_start = (now, current)
+            self._run_from = None
+        elif reading.heating and self._run_start is not None and self._run_from is None and current is not None:
+            # The run is counted from the look its reading has risen the first step (final check: the learner).
+            if current >= self._run_start[1] + FIRST_STEP_C:
+                self._run_from = (now, current)
         elif not reading.heating and self._run_start is not None:
-            start, low = self._run_start
-            self._run_start = None
-            if current is not None:
-                self.runs = [*self.runs, (start, now, low, current)][-LEARN_KEPT:]
+            counted = self._run_from
+            self._run_start = self._run_from = None
+            if counted is not None and current is not None:
+                self.runs = [*self.runs, (counted[0], now, counted[1], current)][-LEARN_KEPT:]
         rate, _learnt = learnt_rate(self.runs, self.profile.seed_rate_c_h)
         if isinstance(config, SpaConfig):
             target, weekly, once, hold, floor = config.bath_c, config.baths, config.bath_once_at(), config.hold_c, config.floor_c
@@ -234,16 +245,34 @@ class DeadlineShadow:
         return self.plan
 
     @staticmethod
-    def _hours_seen(hours: list[HeatHour]) -> dict[datetime, tuple[Any, ...]]:
-        return {hour.start: (hour.buy, hour.sell, hour.surplus_kw, hour.room_kw, hour.ceiling) for hour in hours}
+    def _hours_seen(hours: list[HeatHour], kw: float, peak: bool) -> dict[datetime, tuple[Any, ...]]:
+        """What the placing reads of each hour (final check): its price, whether it has room for the load and
+        whether the sun covers it; a forecast's last decimal moving changes none of them."""
+        return {
+            hour.start: (
+                round(hour.buy, 4),
+                round(hour.sell, 4),
+                _usable(hour, kw, peak=peak)[0],
+                hour.surplus_kw is not None and hour.surplus_kw >= kw,
+            )
+            for hour in hours
+        }
 
     def _replace_quarters(
-        self, plan: DeadlinePlan, now: datetime, hours: list[HeatHour], answers: tuple[Any, ...], short: bool = False
+        self,
+        plan: DeadlinePlan,
+        now: datetime,
+        hours: list[HeatHour],
+        answers: tuple[Any, ...],
+        short: bool = False,
+        *,
+        kw: float,
+        peak: bool,
     ) -> None:
         """The latched quarters placed again only on a change of the prices, the room or the sun ahead, or of an
         answer (take what fits, allow the peak), or where those left no longer cover the heat-up at the rate learnt
-        since (`short`), never because the water warmed; the running quarter is kept."""
-        seen = self._hours_seen(hours)
+        since (`short`), never because the water warmed; the block running is kept to its end."""
+        seen = self._hours_seen(hours, kw, peak)
         if self._latch_answers == ("restored",):
             # After a restart: the quarters kept are taken as placed on the hours and answers as they stand now.
             self._latch_hours, self._latch_answers = seen, answers
@@ -255,10 +284,21 @@ class DeadlineShadow:
             old.get(start) != value for start, value in seen.items() if first <= start < until
         )
         if changed:
-            running = _quarter(now)
-            kept = {running: self.latch_quarters[running]} if running in self.latch_quarters else {}
+            kept: dict[datetime, str] = {}
+            moment = _quarter(now)
+            while moment in self.latch_quarters:
+                kept[moment] = self.latch_quarters[moment]
+                moment += QUARTER
             self.latch_quarters = {**dict(plan.quarters), **kept}
             self._latch_hours, self._latch_answers = seen, answers
+
+    def _drift(self, now: datetime, at: datetime, left: int) -> float:
+        """What a spa loses between its blocks until the bath (°C): the idle drift over the hours it does not heat
+        (spec section 5.2, a placeholder rate); a sauna starts from the room, so nothing."""
+        if not self.profile.idles:
+            return 0.0
+        idle_h = max(0.0, (at - now).total_seconds() / 3600.0 - left / 4.0)
+        return IDLE_DRIFT_C_H * idle_h
 
     def _latched(
         self,
@@ -289,7 +329,7 @@ class DeadlineShadow:
             if plan.action == ACTION_HEAT or (not plan.quarters and now >= at - QUARTER):
                 self.latch = (at, nxt[1])
                 self.latch_quarters = dict(plan.quarters)
-                self._latch_hours = self._hours_seen(hours)
+                self._latch_hours = self._hours_seen(hours, kw, at in self.accept_peak)
                 self._latch_answers = (at in self.took_what_fits, at in self.accept_peak)
         if self.latch is None or (nxt is not None and nxt[1] == SOURCE_NOW):
             return plan
@@ -297,19 +337,29 @@ class DeadlineShadow:
         ready = current is not None and current >= target - READY_MARGIN_C
         running = _quarter(now)
         left = sum(1 for q in self.latch_quarters if q >= running)
+        # The plan made now speaks of the latched session only while it is the next one (once its time has passed,
+        # the plan's quarters are the next session's): only then may they replace the kept ones.
+        same_session = plan.next_session == self.latch
         short = (
-            not ready
+            same_session
+            and not ready
             and current is not None
             and bool(plan.quarters)
-            and left / 4.0 * max(0.1, rate) < target - READY_MARGIN_C - current
+            and left / 4.0 * max(0.1, rate) < target - READY_MARGIN_C - current + self._drift(now, at, left)
         )
-        self._replace_quarters(plan, now, hours, (at in self.took_what_fits, at in self.accept_peak), short)
+        if same_session:
+            self._replace_quarters(
+                plan, now, hours, (at in self.took_what_fits, at in self.accept_peak), short, kw=kw, peak=at in self.accept_peak
+            )
         quarters = self.latch_quarters
         last_end = max(quarters) + QUARTER if quarters else None
         need = timedelta(hours=max(0.0, target - (current if current is not None else target)) / max(0.1, rate))
         room, _why = _usable(_hour_of(hours, now), kw, peak=at in self.accept_peak)
         # Behind: the heat-up itself is all the time left, and the quarters kept no longer cover it.
-        covered = sum(1 for q in quarters if q >= running) / 4.0 * max(0.1, rate) >= target - READY_MARGIN_C - (current if current is not None else target)
+        kept_left = sum(1 for q in quarters if q >= running)
+        covered = kept_left / 4.0 * max(0.1, rate) >= target - READY_MARGIN_C - (
+            current if current is not None else target
+        ) + self._drift(now, at, kept_left)
         behind = now >= at - need - QUARTER and not covered and at not in self.took_what_fits
         if behind and not ready:
             # Once behind, straight through to the target (never on and off at the edge of "behind").

@@ -47,9 +47,10 @@ class Sim:
     def heating(self) -> bool:
         state = self.hass.states.get(self.entity)
         assert state is not None
-        if self.kind == "spa":
-            return state.attributes.get("preset_mode") == "ready"
-        return state.state == "heat"
+        # The heater draws while on and under the target (its own thermostat stops it there).
+        top = 80.0 if self.kind == "sauna" else 38.0
+        on = state.attributes.get("preset_mode") == "ready" if self.kind == "spa" else state.state == "heat"
+        return on and self.temp < top
 
     def restart(self) -> None:
         kept_shadow = copy.deepcopy(self.real.as_dict())
@@ -74,7 +75,9 @@ class Sim:
             if look:
                 self.real.look(moment, TZ, config, Reading(self.temp, heating, None, None), self.hours)
             await self.control.async_look(moment)
-            self.log.append((moment, "on" if self.heating() else "off"))
+            state = self.hass.states.get(self.entity)
+            on = state is not None and (state.attributes.get("preset_mode") == "ready" if self.kind == "spa" else state.state == "heat")
+            self.log.append((moment, "on" if on else "off"))
             moment += 30 * S
 
     def on_minutes(self, start: datetime, end: datetime) -> float:
@@ -111,10 +114,10 @@ def _hours(price: Callable[[int], float], room: Callable[[int], float | None] = 
 
 
 def _seed_rate(sim: Sim, rate_c_h: float) -> None:
-    """Ten learnt heat-up runs at `rate_c_h` (the first half degree is not counted), so the model's rate is known."""
+    """Ten learnt heat-up runs at `rate_c_h` (each counted from its first step), so the model's rate is known."""
     for index in range(10):
         start = at(0) - timedelta(days=index + 1)
-        sim.real.runs.append((start, start + timedelta(hours=2), 30.0, 30.0 + 0.5 + 2 * rate_c_h))
+        sim.real.runs.append((start, start + timedelta(hours=2), 30.0, 30.0 + 2 * rate_c_h))
 
 
 async def test_r1_a_moved_session_whose_booking_is_removed_is_not_heated_again_after_a_restart(hass: HomeAssistant) -> None:
@@ -210,3 +213,76 @@ async def test_a_stale_plan_turns_the_sauna_off_and_leaves_the_spa(hass: HomeAss
     await spa.run(at(17, 30) + 30 * S, at(18, 0), look=False)
     assert len(spa_devices.calls) == count and spa.control.spa.part.reason == "stale_plan"
     _ = MIN
+
+
+# ---- the final check (W1, the learner, the forecast's decimals)
+
+
+async def test_w1_idle_cycles_never_heat_past_the_idle_temperature_when_the_day_s_writes_run_out(hass: HomeAssistant) -> None:
+    devices = _spa_devices(hass)
+    sim = Sim(hass, _spa([]), "spa", SPA, 30.5, 0.0125, 0.3 / 120, _hours(lambda _h: 1.0))
+    temps: list[float] = []
+    moment = at(0)
+    while moment < at(23, 59) + timedelta(days=1):
+        await sim.run(moment, moment + 29 * MIN)
+        temps.append(sim.temp)
+        moment += 30 * MIN
+    # Each idle cycle is Ready then Rest; one whose Rest would not fit the day's six writes is not started.
+    assert max(temps) <= 30.0 + 0.5
+    presets = [call[2] for call in devices.writes() if call[0] == "climate.set_preset_mode"]
+    assert presets and presets[-1] == "rest" and presets.count("ready") == presets.count("rest")
+
+
+async def test_the_learner_counts_a_block_from_its_first_step(hass: HomeAssistant) -> None:
+    _spa_devices(hass)
+
+    def price(hour: int) -> float:
+        return 0.2 if hour == 10 else 3.0 if 11 <= hour < 15 else 0.5 if 15 <= hour < 19 else 1.0
+
+    # The first bath ever: no history. The one-hour block at 10 teaches the true 1.5 °C/h, so the evening's quarters
+    # still suffice and nothing is heated in the expensive afternoon.
+    sim = Sim(hass, _spa(["19:00"]), "spa", SPA, 32.0, 0.0125, 0.0025, _hours(price))
+    await sim.run(at(9, 0), at(21, 30))
+    assert sim.on_minutes(at(11, 0), at(15, 0)) == 0.0 and sim.temp >= 37.5
+    from custom_components.spotnav.spa.plan import learnt_rate  # noqa: PLC0415
+
+    rate, learnt = learnt_rate(sim.real.runs, 1.5)
+    assert learnt and abs(rate - 1.5) < 0.1
+
+
+async def test_a_forecast_s_last_decimal_never_places_the_quarters_again(hass: HomeAssistant) -> None:
+    devices = _spa_devices(hass)
+    flat = _hours(lambda _h: 1.0, lambda _h: 10.0)
+    # Heats faster than learnt (2.0 against 1.5 °C/h): placed again on every jitter, this opened gaps.
+    sim = Sim(hass, _spa(["19:00"]), "spa", SPA, 32.0, 2.0 / 120, 0.0025, flat)
+    _seed_rate(sim, 1.5)
+    moment, step = at(9, 0), 0
+    while moment <= at(21, 0):
+        sim.hours = _hours(lambda _h: 1.0, lambda _h, j=step: 10.0 + 0.001 * (j % 3))
+        await sim.run(moment, moment + 9 * MIN + 30 * S)
+        moment += 10 * MIN
+        step += 1
+    presets = [call[2] for call in devices.writes() if call[0] == "climate.set_preset_mode"]
+    assert presets == ["ready", "rest"] and sim.temp >= 37.5
+
+
+async def test_a_bath_day_keeps_the_writes_its_heat_up_needs(hass: HomeAssistant) -> None:
+    _spa_devices(hass)
+
+    def price(hour: int) -> float:
+        return 0.2 if hour == 10 else 3.0 if 11 <= hour < 15 else 0.5 if 15 <= hour < 19 else 1.0
+
+    # Idle cycles through the night and morning, then the bath's two blocks: the bath is ready.
+    sim = Sim(hass, _spa(["19:00"]), "spa", SPA, 30.5, 0.0125, 0.3 / 120, _hours(price))
+    _seed_rate(sim, 1.5)
+    await sim.run(at(0, 0), at(19, 0))
+    assert sim.temp >= 37.5
+
+
+async def test_a_latched_session_never_takes_the_next_session_s_quarters(hass: HomeAssistant) -> None:
+    devices = _sauna_devices(hass)
+    sim = Sim(hass, _sauna(["16:00", "18:10", "20:20", "22:30"]), "sauna", SAUNA, 22.0, 1.0, 0.25)
+    await sim.run(at(14, 0), at(23, 59))
+    # Held through each session it serves, never switched on and off by the next session's plan.
+    writes = [call[2] for call in devices.writes()]
+    assert len(writes) <= 6 and writes == ["heat", "off"] * (len(writes) // 2)

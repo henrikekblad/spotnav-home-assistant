@@ -38,8 +38,10 @@ through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Ev
 Once the heat-up for a bath or a session has started, SpotNav keeps it and the quarter hours it planned for it: it
 heats in them (the cheapest, sunniest ones with room under the ceiling), waits between them, and from the last one
 on the device's own thermostat holds the temperature until two hours after the booked time. The quarters are placed
-again only when the prices, the room or your answer change, or when the rate learnt since says they no longer reach
-the temperature; only when the heat-up itself is all the time left does it go straight through. A bath or a session
+again only when a price, the room under the ceiling, the sun or your answer change (not when a forecast's last decimal
+moves), or when the rate learnt since says they no longer reach the temperature; the heat-up counts what the water
+loses idle between its blocks and the bath. The rate is learnt from each heat-up from the moment its reading has
+risen half a degree, so a short block teaches the true rate; only when the heat-up itself is all the time left does it go straight through. A bath or a session
 moved by **Later** is heated for its new time, also once the old time has passed, and only while the original
 booking stands.
 
@@ -80,7 +82,9 @@ says:
 * **Budgets** per day: at most 6 setpoint or preset writes and 12 on/off writes per entity, at most 6 starts of the
   heat pump and 8 of the circulation (2 an hour). Only the writes the budget limits count against it; the day's last
   write is never spent on turning the spa's heat off, so a spent budget leaves it heating, never parked in Rest. A shed
-step's write is never held back by the budget. The heat pump runs at least 30 minutes and rests 10; the circulation
+step's write is never held back by the budget. Between baths SpotNav only starts an idle cycle (Ready, then Rest
+at the idle temperature) where its Rest still fits the day's writes, and on a bath day it keeps four of them for the
+bath, so a spent budget never leaves an idle spa heating to the bath temperature. The heat pump runs at least 30 minutes and rests 10; the circulation
   runs 30 and rests 15. A write a hard rule needs (the heat pump off, the circulation on for the run-on, the spa's
   lowest temperature) is never held back by a budget.
 * **Through a cloud** (core Tuya, Aquatemp, WarmLink, Fairland, iAquaLink, SmartTub, MSpa, Bestway, Huum, Harvia):

@@ -5,6 +5,7 @@ written to a device."""
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -142,7 +143,13 @@ SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1
 SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
 
 
-async def _deadline_site(hass: HomeAssistant):
+#: A fixed morning for the spa's and the sauna's tests: a bath every day at 19:00 is then hours ahead (on the real
+#: clock the 19:00 bath was "not ready" for two hours a day and the answers' refusals changed).
+DEADLINE_MORNING = "2026-07-01T08:00:00-07:00"
+
+
+async def _deadline_site(hass: HomeAssistant, freezer: Any):
+    freezer.move_to(DEADLINE_MORNING)
     charger, site, controller = await _site(hass, heat={"spa": SPA, "sauna": SAUNA})
     hass.states.async_set("climate.spa", "heat", {"current_temperature": 36.0, "temperature": 30.0, "hvac_action": "idle"})
     hass.states.async_set("climate.harvia", "off", {"current_temperature": 21.0, "hvac_action": "off"})
@@ -151,8 +158,8 @@ async def _deadline_site(hass: HomeAssistant):
     return charger, site, controller
 
 
-async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant) -> None:
-    _charger, site, _controller = await _deadline_site(hass)
+async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant, freezer: Any) -> None:
+    _charger, site, _controller = await _deadline_site(hass, freezer)
     answer = await heat_answer(hass, site, writable=False)
     spa, sauna = answer["spa"], answer["sauna"]
     assert spa["family"] == "balboa" and spa["water_c"] == 36.0 and spa["bath_c"] == 38.0
@@ -168,10 +175,10 @@ async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant)
     assert sauna["control"]["reason"] == "cloud_slow"
 
 
-async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant) -> None:
+async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant, freezer: Any) -> None:
     from custom_components.spotnav.api.pool_spa import deadline_answer
 
-    _charger, site, controller = await _deadline_site(hass)
+    _charger, site, controller = await _deadline_site(hass, freezer)
     assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 39})["spa"]["bath_c"] == 39.0
     assert deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 45})["error"] == "spotnav_invalid_value"
     now = deadline_answer(hass, site, "spa", {"action": "bath_now"})
@@ -197,10 +204,10 @@ async def test_the_spas_and_the_saunas_controls(hass: HomeAssistant) -> None:
     assert deadline_answer(hass, site, "sauna", {"action": "idle_c", "value": 30})["error"] == "spotnav_invalid_value"
 
 
-async def test_the_spa_and_sauna_webhook_twins(hass: HomeAssistant) -> None:
+async def test_the_spa_and_sauna_webhook_twins(hass: HomeAssistant, freezer: Any) -> None:
     import json
 
-    charger, _site_entry, _controller = await _deadline_site(hass)
+    charger, _site_entry, _controller = await _deadline_site(hass, freezer)
     response = await SITE_ACTIONS["spa"](hass, charger, {"spa_action": "idle_c", "value": 32})
     assert response.status == 200 and json.loads(response.body)["spa"]["idle_c"] == 32.0
     response = await SITE_ACTIONS["sauna"](hass, charger, {"sauna_action": "target_c", "value": 85})
