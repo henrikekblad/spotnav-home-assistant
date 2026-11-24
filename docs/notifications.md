@@ -30,8 +30,10 @@ Only an administrator changes the phones in the card. In the SpotNav app a perso
 
 **One phone, one entry.** A phone can reach Home Assistant through the Companion app, the SpotNav app, or both. With
 both, they are one entry and SpotNav tells that phone through the SpotNav app only, never twice; see
-[Which app tells the phone](#which-app-tells-the-phone). When the SpotNav app is paired, it is joined to the Companion
-phone of the same name by itself. Otherwise open the phone and choose *Same phone as …* once.
+[Which app tells the phone](#which-app-tells-the-phone). When the SpotNav app is paired, it is joined to its Companion
+phone by itself: the one phone of the same name (also "Anna Pixel" and "Pixel"), else the one phone of the same
+model. Two phones of one model are never guessed. Otherwise open the phone and choose *Same phone as …* once. A phone
+split with *Split up* stays split.
 
 **A new phone.** A phone that appears in the Companion app is listed but gets nothing until someone turns it on (a
 guest's phone stays quiet). A SpotNav app that is paired starts on, since pairing it is a choice of its own. Either

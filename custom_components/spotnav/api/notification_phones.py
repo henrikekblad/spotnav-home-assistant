@@ -16,11 +16,14 @@ is where a tap on a notification opens for a charger that has no dashboard of it
 
 The webhook action, on a charger's webhook and on a site's:
 
-    {action: "phone_notifications", api_version?: 1, app_id, name?, push_ref?, shows?, set?: {on?, events?, chargers?}}
+    {action: "phone_notifications", api_version?: 1, app_id, name?, model?, push_ref?, shows?,
+     set?: {on?, events?, chargers?}}
 
 answers `{ok, action, api_version: 1, phone: {id, name, on, events, chargers, companion: {name} | null, instant},
 chargers, loads, events}`. It reads and writes the caller's own phone only, the one whose app sent this `app_id` (made
-on the first call, see `PhoneStore.async_app_call`); 400 `invalid_phone_notifications` for a body that cannot be
+on the first call, see `PhoneStore.async_app_call`). `name` is the phone's own name, `model` its model: while the
+app's phone has no Companion service and no administrator split them, each call links it to the one Companion phone
+of that name or model; 400 `invalid_phone_notifications` for a body that cannot be
 stored, nothing written. The `app_id` is a secret: never logged, kept hashed only, never answered.
 """
 
@@ -203,6 +206,7 @@ async def async_phone_notifications(hass: HomeAssistant, payload: dict[str, Any]
             push_ref=payload["push_ref"] if "push_ref" in payload else ...,
             shows=payload["shows"] if "shows" in payload else ...,
             changes=payload.get("set"),
+            model=payload.get("model"),
         )
     except (PhoneError, PhoneRefusal) as refusal:
         # Never the body: it carries the app's secret id and maybe its wake-up reference.

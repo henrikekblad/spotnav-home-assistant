@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.util import slugify
 
 from .settings import MOBILE_APP_PREFIX, NOTIFY_DOMAIN
@@ -33,3 +36,38 @@ def available_targets(hass: HomeAssistant) -> tuple[tuple[str, str], ...]:
 
 def encoded_available(available: tuple[tuple[str, str], ...]) -> list[dict[str, str]]:
     return [{"service": service, "name": name} for service, name in available]
+
+
+@dataclass(frozen=True, slots=True)
+class CompanionDevice:
+    """A Companion phone as the device registry knows it: what an app phone is matched by (`phones.match_companion`)."""
+
+    service: str
+    #: The device's name and the name a person gave it, where set.
+    names: tuple[str, ...]
+    model: str | None = None
+
+
+def companion_devices(hass: HomeAssistant) -> tuple[CompanionDevice, ...]:
+    """Every Companion phone whose `notify.mobile_app_*` service exists now, with its names and model."""
+    registry = dr.async_get(hass)
+    found: dict[str, CompanionDevice] = {}
+    for entry in hass.config_entries.async_entries(MOBILE_APP_DOMAIN):
+        device_name = entry.data.get("device_name")
+        if not isinstance(device_name, str) or not device_name:
+            continue
+        service = f"{MOBILE_APP_PREFIX}{slugify(device_name)}"
+        if service in found or not hass.services.has_service(NOTIFY_DOMAIN, service):
+            continue
+        names = [device_name]
+        model = entry.data.get("model")
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+            names.extend(name for name in (device.name, device.name_by_user) if isinstance(name, str) and name)
+            if isinstance(device.model, str) and device.model:
+                model = device.model
+        found[service] = CompanionDevice(
+            service=service,
+            names=tuple(dict.fromkeys(names)),
+            model=model if isinstance(model, str) and model else None,
+        )
+    return tuple(found.values())

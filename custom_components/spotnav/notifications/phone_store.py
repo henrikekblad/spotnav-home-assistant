@@ -18,10 +18,10 @@ from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.util import slugify
 
 from ..const import DOMAIN
 from .phones import (
+    APP_NAME,
     APP_SHOWS,
     AppLink,
     LegacyCharger,
@@ -39,15 +39,15 @@ from .phones import (
     clean_name,
     heat_view,
     judge_changes,
+    match_companion,
     migrate,
-    name_key,
     new_phone_id,
     read_phones,
     route_of,
     valid_ref,
 )
 from .settings import _PATH, NOTIFY_DOMAIN, NotificationSettings
-from .targets import available_targets
+from .targets import available_targets, companion_devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -320,19 +320,33 @@ class PhoneStore:
 
     # ------------------------------------------------------------------ the app's own phone
 
-    def _match_companion(self, name: str, exclude: str | None = None) -> Phone | None:
-        """The one Companion phone (stored without an app, or untouched) whose name is `name`, else `None`."""
-        wanted = name_key(name)
-        slug = slugify(name)
-        found = [
-            phone
-            for phone in self.listing()
-            if phone.notify is not None
-            and phone.app is None
-            and phone.id != exclude
-            and (name_key(phone.name) == wanted or phone.notify == f"mobile_app_{slug}")
+    def _match_companion(self, name: str | None, model: str | None) -> Phone | None:
+        """The one Companion phone not linked to an app (stored or untouched) that this app's phone is
+        (`phones.match_companion` over every Companion phone, linked or not), else `None`."""
+        if name == APP_NAME:
+            name = None  # the name of an app that gave none: never a phone's
+        listed = {phone.notify: phone for phone in self.listing() if phone.notify is not None}
+        devices = [
+            (device.service, (*device.names, listed[device.service].name) if device.service in listed else device.names,
+             device.model)
+            for device in companion_devices(self._hass)
         ]
-        return found[0] if len(found) == 1 else None
+        service = match_companion(name, model, devices)
+        found = listed.get(service) if service is not None else None
+        return found if found is not None and found.app is None else None
+
+    def _link_found(self, phone: Phone, name: str | None, model: str | None) -> Phone:
+        """`phone` (the app's, stored, without a Companion service) linked to its Companion phone where one matches
+        and no administrator split them: its own choices kept, the Companion phone's name and service taken."""
+        if phone.notify is not None or phone.apart or phone.app is None:
+            return phone
+        match = self._match_companion(name, model)
+        if match is None:
+            return phone
+        linked = replace(phone, notify=match.notify, name=match.name)
+        self._phones = tuple(item for item in self._phones if item.id != match.id)
+        self._store_phone(linked)
+        return linked
 
     def _store_phone(self, phone: Phone, *, replacing: str | None = None) -> None:
         kept = [item for item in self._phones if item.id not in (phone.id, replacing)]
@@ -346,13 +360,14 @@ class PhoneStore:
             out[index] = phone
             self._phones = tuple(item for i, item in enumerate(out) if i == index or item.id not in (phone.id, replacing))
 
-    def _attach_app(self, key: str, name: str, ref: str | None) -> Phone:
+    def _attach_app(self, key: str, name: str, ref: str | None, model: str | None = None) -> Phone:
         """The app's own entry, made now if it has none: one from before this release with the same reference is
-        adopted; else a Companion phone of the same name is linked (turned on, its choices kept); else a new one, on,
-        the defaults. Not saved."""
+        adopted; else the Companion phone it is (`_match_companion`) is linked (turned on, its choices kept); else a
+        new one, on, the defaults. An entry without a Companion service is linked whenever its phone is found, unless
+        an administrator split them. Not saved."""
         found = self.app_phone(key)
         if found is not None:
-            return found
+            return self._link_found(found, name, model)
         if ref is not None:
             legacy = next(
                 (p for p in self._phones if p.app is not None and p.app.key is None and p.app.push_ref == ref), None
@@ -360,8 +375,8 @@ class PhoneStore:
             if legacy is not None:
                 phone = replace(legacy, app=replace(legacy.app or AppLink(), key=key, via=()), name=name)
                 self._store_phone(phone)
-                return phone
-        match = self._match_companion(name)
+                return self._link_found(phone, name, model)
+        match = self._match_companion(name, model)
         if match is not None:
             phone = replace(match, id=new_phone_id() if match.id.startswith(UNTOUCHED_PREFIX) else match.id,
                             app=AppLink(key=key), on=True)
@@ -371,18 +386,18 @@ class PhoneStore:
         self._store_phone(phone)
         return phone
 
-    async def async_paired(self, key: str, device: str) -> None:
-        """A pairing of an app from this release was approved: its entry, linked by name where one phone matches."""
+    async def async_paired(self, key: str, device: str, model: str | None = None) -> None:
+        """A pairing of an app from this release was approved: its entry, linked where one Companion phone matches."""
         async with self._lock:
             try:
-                self._attach_app(key, clean_name(device, "SpotNav app"), None)
+                self._attach_app(key, clean_name(device, "SpotNav app"), None, _model(model))
             except PhoneRefusal:
                 _LOGGER.warning("SpotNav: no room for another phone's notification settings")
                 return
             await self._async_save()
 
     async def async_app_call(
-        self, key: str, *, name: Any, push_ref: Any = ..., shows: Any = ..., changes: Any = None
+        self, key: str, *, name: Any, push_ref: Any = ..., shows: Any = ..., changes: Any = None, model: Any = None
     ) -> Phone:
         """The app's `phone_notifications`: its own entry (made if none), with the reference, what it shows and its
         changes applied. Raises `PhoneError` (nothing written) for a value that cannot be stored."""
@@ -395,7 +410,9 @@ class PhoneStore:
         async with self._lock:
             before = self._phones
             try:
-                phone = self._attach_app(key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref)
+                phone = self._attach_app(
+                    key, clean_name(name, "SpotNav app"), None if push_ref is ... else push_ref, _model(model)
+                )
                 app = phone.app or AppLink(key=key)
                 if push_ref is not ...:
                     app = replace(app, push_ref=push_ref)
@@ -437,7 +454,8 @@ class PhoneStore:
                 elif "unlink" in changes:
                     if changes["unlink"] is not True or phone.notify is None or phone.app is None:
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
-                    self._store_phone(replace(phone, notify=None))
+                    # Split for good: the app's phone is never linked again by itself.
+                    self._store_phone(replace(phone, notify=None, apart=True))
                 elif "forget" in changes:
                     if changes["forget"] is not True or phone.id.startswith(UNTOUCHED_PREFIX):
                         raise PhoneRefusal(ERROR_INVALID_VALUE)
@@ -468,10 +486,17 @@ class PhoneStore:
             merged = replace(phone, app=other.app)
         else:
             raise PhoneRefusal(ERROR_INVALID_VALUE)
+        merged = replace(merged, apart=False)
         if merged.id.startswith(UNTOUCHED_PREFIX):
             merged = replace(merged, id=new_phone_id())
         self._phones = tuple(item for item in self._phones if item.id != other.id)
         self._store_phone(merged, replacing=phone.id)
+
+
+def _model(raw: Any) -> str | None:
+    """The app's phone model as it sent it, or `None`."""
+    text = clean_name(raw, "")
+    return text or None
 
 
 def _auto_store(hass: HomeAssistant) -> Any:

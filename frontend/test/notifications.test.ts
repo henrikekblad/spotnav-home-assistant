@@ -219,7 +219,16 @@ describe("the Notifications section", () => {
     expect(rows.map((row) => row.dataset["row"])).toEqual(["phone:ph_000000000001", "phone:ph_000000000002", "phone:notify:mobile_app_guest"]);
     expect(rows[2]!.textContent).toContain(translate("en", "settings.value.off"));
     expect(section.querySelector("[data-help='phone:ph_000000000002']")?.textContent).toBe(translate("en", "notifications.via.app"));
-    expect(section.querySelector("[data-help='phone:notify:mobile_app_guest']")).toBeNull();
+    // A Companion-only phone says which app reaches it, also while it is off.
+    expect(section.querySelector("[data-help='phone:notify:mobile_app_guest']")?.textContent).toBe(
+      translate("en", "notifications.via.companion"),
+    );
+    const silent = phone({ id: "ph_000000000003", companion: null, app: { instant: false }, route: "none", on: false });
+    const { element: other } = await mounted(true, answer([silent]));
+    openSettings(other);
+    await settle();
+    const quiet = openDialog(other)!.querySelector<HTMLElement>("[data-section='notifications']")!;
+    expect(quiet.querySelector("[data-help='phone:ph_000000000003']")).toBeNull();
   });
 
   it("edits one phone: its events by group, the chargers it follows, and saves only what changed with the page", async () => {

@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
 
 from custom_components.spotnav.api.pairing import PAIRING_WEBHOOK_ID, PairingRegister
@@ -32,6 +33,7 @@ from custom_components.spotnav.notifications.phones import (
     apply_push_register,
     charger_view,
     judge_changes,
+    match_companion,
     migrate,
     route_of,
 )
@@ -382,3 +384,125 @@ async def test_a_pairing_with_an_app_id_makes_its_phone_linked_by_name(hass: Hom
     (phone,) = domain_data(hass).phones.phones
     assert phone.notify == "mobile_app_pixel_8" and phone.app is not None and phone.app.key == app_key(APP_ID)
     assert phone.on is True, "a pairing is an explicit act"
+
+
+# ------------------------------------------------------------------ the app's phone found among the Companion phones
+
+
+def test_the_app_finds_its_companion_phone_by_name_word_or_model_and_never_guesses() -> None:
+    n6 = ("mobile_app_n6", ["N6"], "CPH2765")
+    pixel = ("mobile_app_pixel_8", ["Pixel 8", "Anna's Pixel"], "Pixel 8")
+    # The owner's phone: Android calls it "Henrik N6", Home Assistant "N6", the model is CPH2765.
+    assert match_companion("Henrik N6", "CPH2765", [n6, pixel]) == "mobile_app_n6"
+    assert match_companion("Henrik N6", None, [n6, pixel]) == "mobile_app_n6", "ends with the other as a word"
+    assert match_companion("CPH2765", None, [n6, pixel]) == "mobile_app_n6", "an older app sends its model as its name"
+    assert match_companion(" anna's  PIXEL ", None, [n6, pixel]) == "mobile_app_pixel_8", "a name a person gave it"
+    assert match_companion("Kitchen tablet", "SM-X200", [n6, pixel]) is None
+    assert match_companion("Henrik N16", None, [n6]) is None, "a word, not any ending"
+    # Two phones of one model: no guess, unless one of them has the app's name.
+    twins = [n6, ("mobile_app_anna_n6", ["Anna N6"], "CPH2765")]
+    assert match_companion("Phone", "CPH2765", twins) is None
+    assert match_companion("Anna N6", "CPH2765", twins) == "mobile_app_anna_n6"
+    assert match_companion("Henrik N6", "CPH2765", [n6, ("mobile_app_henrik_n6_2", ["Henrik N6 2"], None)]) == "mobile_app_n6"
+    assert match_companion(None, None, [n6]) is None
+
+
+def _companion_phone(hass: HomeAssistant, device_name: str, model: str, *, name_by_user: str | None = None) -> None:
+    entry = MockConfigEntry(domain="mobile_app", data={"device_name": device_name, "model": model, "manufacturer": "OPPO"})
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    device = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("mobile_app", entry.entry_id)},
+        name=device_name,
+        model=model,
+        manufacturer="OPPO",
+    )
+    if name_by_user is not None:
+        registry.async_update_device(device.id, name_by_user=name_by_user)
+    async_mock_service(hass, "notify", f"mobile_app_{device_name.lower().replace(' ', '_')}")
+
+
+async def test_the_owners_phone_links_on_a_later_call_and_a_split_stays_split(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
+) -> None:
+    await _charger(hass)
+    client = await hass_client_no_auth()
+    # An app from before: its model as its name, while the Companion phone was not there yet.
+    status, answer = await _post(client, {"action": "phone_notifications", "app_id": APP_ID, "name": "CPH2765"})
+    assert status == 200 and answer["phone"]["companion"] is None
+    _companion_phone(hass, "N6", "CPH2765")
+    ws = await hass_ws_client(hass)
+    listing = (await ws_call(ws, {"type": "spotnav/notification_phones", "api_version": 1}))["result"]["phones"]
+    assert [phone["name"] for phone in listing] == ["CPH2765", "N6"], "two rows for one phone: what the owner saw"
+
+    status, answer = await _post(
+        client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+    )
+    assert status == 200 and answer["phone"]["companion"] == {"name": "N6"}
+    (phone,) = domain_data(hass).phones.listing()
+    assert phone.notify == "mobile_app_n6" and phone.name == "N6" and phone.on is True
+    assert phone.app is not None and phone.app.key == app_key(APP_ID)
+
+    # "Split up" sticks: no later call links them again.
+    result = (
+        await ws_call(
+            ws, {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": phone.id, "changes": {"unlink": True}}
+        )
+    )["result"]
+    assert result["ok"] is True and len(result["phones"]) == 2
+    for _ in range(2):
+        status, answer = await _post(
+            client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Henrik N6", "model": "CPH2765"}
+        )
+        assert status == 200 and answer["phone"]["companion"] is None
+    assert len(domain_data(hass).phones.listing()) == 2
+    split = domain_data(hass).phones.app_phone(app_key(APP_ID))
+    assert split is not None and split.apart is True and split.notify is None
+    # Linked again by hand: one entry again.
+    untouched = next(item for item in domain_data(hass).phones.listing() if item.notify == "mobile_app_n6")
+    result = (
+        await ws_call(
+            ws,
+            {"type": "spotnav/update_notification_phone", "api_version": 1, "phone": split.id,
+             "changes": {"link": untouched.id}},
+        )
+    )["result"]
+    assert result["ok"] is True and len(result["phones"]) == 1
+
+
+async def test_two_companion_phones_of_one_model_link_neither(hass: HomeAssistant, hass_client_no_auth) -> None:
+    await _charger(hass)
+    _companion_phone(hass, "N6", "CPH2765")
+    _companion_phone(hass, "Kids", "CPH2765")
+    client = await hass_client_no_auth()
+    status, answer = await _post(
+        client, {"action": "phone_notifications", "app_id": APP_ID, "name": "Phone", "model": "CPH2765"}
+    )
+    assert status == 200 and answer["phone"]["companion"] is None
+    assert len(domain_data(hass).phones.listing()) == 3
+
+
+async def test_a_pairing_links_by_the_name_a_person_gave_the_companion_phone(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    await _charger(hass)
+    hass.config.external_url = "https://ha.example.com"
+    domain_data(hass).pairing = PairingRegister(remote_interval_s=0.0)
+    _companion_phone(hass, "N6", "CPH2765", name_by_user="Henrik N6")
+    _companion_phone(hass, "Kids", "CPH2765")
+    client = await hass_client_no_auth()
+    response = await client.post(
+        f"/api/webhook/{PAIRING_WEBHOOK_ID}",
+        json={"version": 1, "action": "request", "code": "123456", "device": "Henrik N6", "model": "CPH2765",
+              "app_id": APP_ID},
+    )
+    request_id = (await response.json())["request_id"]
+    assert domain_data(hass).pairing.approve(request_id)
+    response = await client.post(
+        f"/api/webhook/{PAIRING_WEBHOOK_ID}", json={"version": 1, "action": "poll", "request_id": request_id}
+    )
+    assert (await response.json())["status"] == "approved"
+    await hass.async_block_till_done()
+    (phone,) = domain_data(hass).phones.phones
+    assert phone.notify == "mobile_app_n6" and phone.app is not None and phone.app.key == app_key(APP_ID)
