@@ -2736,6 +2736,11 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
     # The hardware test itself is what it waits for: never refused for it.
     assert control.hardware_test_refusal() is None
+    # A forced test action (the owner's service) is refused too: the gate is not shadow only's to override.
+    for action in ("hold", "discharge_house"):
+        with pytest.raises(TrialRefused) as refused:
+            await control.async_trial(action, None, 5, force=True)
+        assert refused.value.code == "hardware_test_first"
     now = dt_util.now()
     for index in range(3):
         await control.async_look(now + timedelta(seconds=10 * index))
@@ -2764,12 +2769,18 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     assert not control.hardware_test_due() and control.state() == "on"
     assert control.firmware_key() in control._data()["gate"]["hardware_passed"]
     assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
-    # A later test on the same firmware that fails takes the pass back.
+    # Now a forced test action runs ...
+    await control.async_trial("hold", None, 5, force=True)
+    assert control.trial is not None and control._trial_allowed(control.trial, control.options())
+    # ... until a later test on the same firmware fails, which takes the pass back and ends it.
     control.verification, control._hw_run = Run(  # type: ignore[assignment]
         hold="obeyed", charge="skipped", discharge_house="ignored", normal="restored"
     ), True
     control._end_verification(now)
     assert control.hardware_test_due() and control.state() == "shadow_only"
+    assert not control._trial_allowed(control.trial, control.options())
+    await control.async_look(now + timedelta(seconds=60))
+    assert control.trial is None
     # Another firmware needs its own test.
     control.hardware_passed = {"another | sigen 2.0.3"}
     assert control.state() == "shadow_only"

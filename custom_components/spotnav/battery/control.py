@@ -1782,6 +1782,9 @@ class BatteryControl:
             raise TrialRefused("starting")
         if not options.enabled:
             raise TrialRefused("not_enabled")
+        if self.hardware_test_due():
+            # A recipe that writes only after a person's hardware test: not even a forced test action before one.
+            raise TrialRefused("hardware_test_first")
         if options.shadow_only and not force:
             raise TrialRefused("shadow_only")
         if not force and gate.report_status(self.report()) != "passed":
@@ -1808,7 +1811,7 @@ class BatteryControl:
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
                 rate = self._bounded_rate(action, abs(power_kw) if power_kw is not None else TEST_CHARGE_KW)
             if action == ACTION_GRID_CHARGE:
-                cap = self._charge_limits(now, options)[0]
+                cap = self._within_charge_power(self._charge_limits(now, options)[0])
                 if cap is not None and cap < gate.MIN_RATE_KW:
                     raise TrialRefused("grid_charge_cap")
                 rate = rate if cap is None else min(rate, cap)
@@ -1840,7 +1843,7 @@ class BatteryControl:
         self-consumption while the cap leaves no grid charge."""
         rate = self._bounded_rate(trial.action, trial.rate_kw)
         if trial.action == ACTION_GRID_CHARGE:
-            cap = self._charge_limits(now, options)[0]
+            cap = self._within_charge_power(self._charge_limits(now, options)[0])
             if cap is not None and cap < gate.MIN_RATE_KW:
                 return (ACTION_SELF_CONSUME, 0.0, trial.until)
             rate = rate if cap is None else min(rate, cap)
@@ -1851,11 +1854,11 @@ class BatteryControl:
             rate = min(rate, cap)
         return (trial.action, round(rate, 3), trial.until)
 
-    @staticmethod
-    def _trial_allowed(trial: Trial, options: gate.Options) -> bool:
+    def _trial_allowed(self, trial: Trial, options: gate.Options) -> bool:
         """Whether a running test action may go on under these options: the opt-in on, and shadow only off unless
-        the action was forced (`force_test` overrides shadow only and the verification, nothing else)."""
-        return options.enabled and (not options.shadow_only or trial.force)
+        the action was forced (`force_test` overrides shadow only and the verification, nothing else), and never
+        while the recipe waits for a person's hardware test (`hardware_test_due`, a pass withdrawn ends it)."""
+        return options.enabled and (not options.shadow_only or trial.force) and not self.hardware_test_due()
 
     # ---- shadow only
 
