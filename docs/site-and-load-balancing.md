@@ -492,8 +492,15 @@ full heat and legionella rules, a spa's lowest temperature, the heat control's l
 *car or home battery first* and each charger's *Charger priority* (First, Normal, Last; chargers with the same
 priority in the order they joined the site). The list starts from them: the cars in that order, the battery above
 them under *battery first*. Saving the list stores it and drops the old settings; an app that still shows them reads
-them from the list (the top car *First*, the bottom one *Last*, a car alone *Normal*), and its change of them moves the
-row. A charger that joins later goes below the last car; one that leaves is dropped.
+them from the list (the top car *First*, the bottom one *Last*, a car alone *Normal*). An app's change of a charger's
+priority moves its row (*First* to the top of the cars, *Last* to their bottom, *Normal* among the others by their
+priorities) and stores the list, and the app reads back what it set, until the list itself is saved again. A charger
+that joins later goes below the last car; one that leaves is dropped.
+
+**Saving the list decides who is cut first among chargers that were all *Normal*.** Before, chargers of one
+priority shared a class: in an overload the one that joined the site first was cut first. Once the list is saved
+(in the card, or by an app's change of *car or home battery first* or of a charger's priority) every charger has its
+own place, and the lowest one is cut first. Put the charger that should keep its current at the top.
 
 ## Solar and forecast settings
 
