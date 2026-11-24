@@ -548,6 +548,11 @@ class ExecState:
     #: Roles that go idle with the switch (`Role.idle_when`) whose hand-back write was never read back (a fuse
     #: hand-back writes the switch off at once): the plant may still hold the command. The next enter primes first.
     unsure: tuple[str, ...] = ()
+    #: A silence SpotNav wrote (`Expiry.silence`, EcoFlow's Modbus Control off) still stands, or is not yet undone
+    #: and read back: every hand-back first takes the plant back as the inverter's own self-consumption (the
+    #: discharge to the house, the integration renewing again) and only then hands back, so a dead-man that did not act
+    #: leaves no command standing. Stored: a restart in the silence takes the plant back too.
+    retake: bool = False
     #: An enter that writes the brand's `prime` values first, until every role reads its target; not stored (a
     #: restart hands back, and `unsure` primes the next enter again).
     priming: bool = False
@@ -624,6 +629,7 @@ class ExecState:
             "writes_today": self.writes_today,
             "variant": self.variant,
             "unsure": list(self.unsure),
+            "retake": self.retake,
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
@@ -731,6 +737,7 @@ class ExecState:
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
             variant=text("variant"),
             unsure=names("unsure"),
+            retake=data.get("retake") is True,
             phased=data.get("phased") is True,
             phase_kw=phase_kw,
             setpoint_writes_today=(
@@ -1300,7 +1307,8 @@ class Executor:
         probing = self._probing(inputs)
         if not probing:
             self.expired = self.diverged = ()
-            if self.silenced:
+            if self.silenced or (self.state.retake and self._silence_in_target()):
+                # Also after a restart in the silence (`ExecState.retake` is stored, `silenced` is not).
                 self._unsilence()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
@@ -1327,6 +1335,7 @@ class Executor:
         ):
             events += self._begin_restore(now, "restore_again")
         events += self._settle(inputs)
+        self._retaken(inputs)
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -1891,15 +1900,7 @@ class Executor:
         if state.phase == "restoring" or (state.phase != "active" and not state.holds_snapshot):
             return []
         self.monitor.stop(now)
-        target: dict[str, Native] = {}
-        normal = NORMAL.get(self.control.brand, {})
-        for role in self.control.roles:
-            if role.name in state.given_up:
-                continue
-            if role.restored and role.name in state.restore_values:
-                target[role.name] = state.restore_values[role.name]
-            elif role.name in normal and role.name in state.entities:
-                target[role.name] = normal[role.name]
+        target = self._retake_target(state) if state.retake else self._restore_target(state)
         blocked = reason if _blocking(reason) else state.blocked
         if reason in _FUSE_REASONS and state.pending is not None:
             # A write still awaiting its read-back (the peak cover's lift) does not hold the rest back.
@@ -1911,6 +1912,48 @@ class Executor:
         )
         self._release_unset()
         return [_event(now, "hand_back", reason)]
+
+    def _restore_target(self, state: ExecState) -> dict[str, Native]:
+        """What a hand-back writes: each role's value as found, or the brand's normal one for a role without one."""
+        target: dict[str, Native] = {}
+        normal = NORMAL.get(self.control.brand, {})
+        for role in self.control.roles:
+            if role.name in state.given_up:
+                continue
+            if role.restored and role.name in state.restore_values:
+                target[role.name] = state.restore_values[role.name]
+            elif role.name in normal and role.name in state.entities:
+                target[role.name] = normal[role.name]
+        return target
+
+    def _silence_in_target(self) -> bool:
+        """Whether the target still holds a silence's values (`Expiry.silence`)."""
+        target = self.state.target
+        return any(name in target and target[name] == value for name, value in self.control.expiry.silence)
+
+    def _can_retake(self) -> bool:
+        """Whether a silence of this control can be undone by its own discharge to the house (`retake`)."""
+        return bool(self.control.expiry.silence) and self.control.supports(ACTION_DISCHARGE_HOUSE)
+
+    def _retake_target(self, state: ExecState) -> dict[str, Native]:
+        """A hand-back's first stage after a silence (`ExecState.retake`): the discharge to the house, written in the
+        enter order (EcoFlow: Modbus Control on, then Automatic), with no role idle counted as done."""
+        wanted = self._wanted(ACTION_DISCHARGE_HOUSE, 0.0, state.restore_values)
+        return {name: value for name, value in wanted.items() if name not in state.given_up}
+
+    def _retaken(self, inputs: ExecInputs) -> None:
+        """A silence undone while the action runs: once every silenced role reads the action's value again, nothing
+        is owed for it (`ExecState.retake`)."""
+        state = self.state
+        if not state.retake or self.silenced or state.phase != "active":
+            return
+        for name, _value in self.control.expiry.silence:
+            wanted = state.target.get(name)
+            if wanted is None or not self._satisfied(
+                self.control.role(name), wanted, inputs.reads.get(name), restoring=False
+            ):
+                return
+        self.state = replace(state, retake=False)
 
     def _settle_retries(self, inputs: ExecInputs) -> None:
         """Drop the retry of a restore write that is no longer needed: the role now reads what the hand-back wants
@@ -1945,6 +1988,10 @@ class Executor:
         if self._next_role(state, inputs) is not None:
             return []
         now = inputs.now
+        if state.retake:
+            # Taken back after a silence: now the hand-back proper.
+            self.state = replace(state, retake=False, target=self._restore_target(state), sent=(), confirmed=())
+            return [_event(now, "retaken", state.reason or "")]
         for name, entity_id in state.entities.items():
             if name not in state.unrestored:
                 self.ledger.release(entity_id)
@@ -2770,7 +2817,12 @@ class Executor:
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
         restoring = state.phase == "restoring"
-        if restoring:
+        retaking = restoring and state.retake
+        if retaking:
+            # After a silence: the plant taken back in the enter order (the switch before the roles it makes
+            # available), no idle role counted as done (`ExecState.retake`).
+            order = self.control.enter_order
+        elif restoring:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
@@ -2794,7 +2846,9 @@ class Executor:
                 if name in state.renew:
                     renewals.append(name)
                 continue
-            if not self._satisfied(self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring):
+            if not self._satisfied(
+                self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring and not retaking
+            ):
                 return name
             if name in state.renew:
                 renewals.append(name)
@@ -2925,7 +2979,7 @@ class Executor:
             if entity_id is not None:
                 self.ledger.release(entity_id)
         self.silenced = True
-        self.state = replace(state, target=target, sent=())
+        self.state = replace(state, target=target, sent=(), retake=self._can_retake())
         return [_event(now, "silenced", ",".join(name for name, _value in silence))]
 
     def _unsilence(self) -> None:

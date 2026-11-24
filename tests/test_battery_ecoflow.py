@@ -448,7 +448,7 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
 
 
 def _test_run(ocean: PowerOcean, executor: Executor, *, looks: int = 150, house_kw: float = 2.0,
-              headroom_a: float = 20.0) -> tuple[Any, list[StepResult], datetime]:
+              headroom_a: float = 20.0, until_silenced: bool = False) -> tuple[Any, list[StepResult], datetime]:
     """The hardware test's battery part (`Timing.quick`, `stop_on_fail`) with the dead-man step, as
     `BatteryControl.async_hardware_test_start` builds it, on the fake's own clock."""
     from custom_components.spotnav.battery.monitor import Capability  # noqa: PLC0415
@@ -480,7 +480,60 @@ def _test_run(ocean: PowerOcean, executor: Executor, *, looks: int = 150, house_
         now += TICK
         if verification.done and executor.state.phase in ("idle", "blocked") and not result.ops:
             break
+        if until_silenced and events([result], "silenced"):
+            break
     return verification, results, now
+
+
+def _hand_back(executor: Executor, ocean: PowerOcean, now: datetime, **overrides: Any) -> list[StepResult]:
+    """Looks with nothing asked of the plant but the hand-back (`stopping` or the fuse), the silence no longer
+    probed: what the executor writes by itself."""
+    results = []
+    for _ in range(30):
+        result = executor.step(inputs(ocean.at(now), now, None, power_kw=ocean.power_kw(), **overrides))
+        results.append(result)
+        for op in result.ops:
+            ocean.apply(op)
+        now += TICK
+    return results
+
+
+@pytest.mark.parametrize("end", ["stop", "fuse", "restart"])
+def test_every_end_of_the_silence_takes_the_plant_back_before_the_hand_back(end: str) -> None:
+    # A firmware without the dead-man: the inverter keeps Hold Battery after Modbus Control off. Stopped, handed back
+    # for the fuse, or restarted in the silence, the plant is taken back (the switch on, Automatic sent with the
+    # heartbeat running) and only then handed back: Hold never stands.
+    executor, ocean = _ocean(no_deadman=True)
+    _verification, results, now = _test_run(ocean, executor, until_silenced=True)
+    assert events(results, "silenced") and ocean.states["modbus_control"] == "off"
+    assert ocean.command[0] == "hold_battery" and executor.state.retake
+    if end == "restart":
+        from custom_components.spotnav.battery.executor import ExecState, Ledger, Monitor  # noqa: PLC0415
+
+        # As the shell loads a stored executor (`BatteryControl.async_start`).
+        stored = executor.as_dict()
+        executor = Executor(
+            ECOFLOW_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+            state=ExecState.from_dict(stored["state"]),
+        )
+        assert executor.state.retake
+    overrides = {"headroom_a": 0.5} if end == "fuse" else {"stopping": "stop"}
+    after = _hand_back(executor, ocean, now, **overrides)
+    assert events(after, "retaken")
+    writes = written(after)
+    # The switch on before anything else; the mode, unavailable in the silence, never counted as handed back.
+    assert writes[0] == ("modbus_control", True) and writes[-1] == ("modbus_control", False)
+    assert ocean.command[0] == "automatic" and ocean.states["modbus_control"] == "off"
+    assert executor.state.phase in ("idle", "blocked") and not executor.state.retake
+
+
+def test_a_hand_back_with_no_silence_standing_is_the_plain_one() -> None:
+    executor, ocean = _ocean()
+    now, _results = _run(executor, ocean, T0, 8, "hold")
+    assert executor.state.phase == "active" and not executor.state.retake
+    after = _hand_back(executor, ocean, now, stopping="stop")
+    assert not events(after, "retaken")
+    assert [role for role, _value in written(after)] == ["battery_mode", "modbus_control"]
 
 
 def test_the_dead_man_step_turns_modbus_control_off_alone_and_times_the_inverters_fallback() -> None:
