@@ -375,7 +375,8 @@ export class NotificationPhones {
           key: `phone:${phone.id}`,
           label: phoneName(language, phone),
           value: phoneSummary(language, phone, loads),
-          ...(phone.on ? { help: translate(language, ROUTE_KEYS[phone.route]) } : {}),
+          // Which app reaches the phone, also while it is off; "cannot be reached" only for one that is on.
+          ...(phone.on || phone.route !== "none" ? { help: translate(language, ROUTE_KEYS[phone.route]) } : {}),
           onTap: () => this.openPhone(phone.id),
         }),
       );
