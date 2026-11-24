@@ -175,6 +175,7 @@ class Test:
             return
         self.step = "restore"
         print("\nrestoring...")
+        self._wait_for_entities()
         for role, value in (("work_mode", SELF_USE), ("force_charge_power", self.snapshot.get("force_charge_power")),
                             ("max_charge_current", self.snapshot.get("max_charge_current"))):
             if value is None:
@@ -227,6 +228,20 @@ class Test:
         self.summary["fallback_after_s"] = round(charging[0]["at"] - started) if charging else None
         self.summary["fallback_charge_kw"] = max(row["charge_kw"] for row in charging) if charging else None
 
+    def _wait_for_entities(self, timeout_s: float = 120.0) -> None:
+        """Before the restore: the work mode readable again (after the integration's reload or a restart its entities
+        are unavailable for a while, and a write then would not read back)."""
+        end = self.clock() + timeout_s
+        while self.clock() < end:
+            try:
+                state = self.read().get(self.e["work_mode"])
+            except RuntimeError:
+                state = None
+            if state is not None and text(state) not in NO_READING:
+                return
+            self.sleep(5)
+        print("  the work mode still reads nothing: restoring anyway")
+
     def _wait_for_api(self) -> None:
         end = self.clock() + 600
         while self.clock() < end:
@@ -237,6 +252,11 @@ class Test:
                 pass
             self.sleep(5)
         raise Stop("Home Assistant did not come back within 10 minutes: set Self Use in the Fox app")
+
+
+def _terminated(_signum: int, _frame: Any) -> None:
+    """SIGTERM ends the test as Ctrl-C does: through the restore."""
+    raise Stop("terminated")
 
 
 def main() -> int:
@@ -268,7 +288,7 @@ def main() -> int:
         writer = csv.writer(out)
         writer.writerow(["time", "step", "marker", "charge_kw", "soc", "grid_kw", "work_mode", "force_kw", "cap_a"])
         test = Test(ha, default_entities(args.prefix), args, writer)
-        signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(Stop("terminated")))
+        signal.signal(signal.SIGTERM, _terminated)
         try:
             test.check()
             if args.dry_run:

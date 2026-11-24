@@ -804,6 +804,8 @@ async def test_no_check_runs_while_the_firmware_was_never_read(
     assert control.verification is None and plant.calls == []
     assert status["state"] == "waiting" and status["line"] == "waiting:firmware_unknown"
     assert "firmware_unknown" in status["needs"]
+    # Nor a hardware test: a pass on an unknown firmware could never be kept.
+    assert control.hardware_test_refusal() == "needs:firmware_unknown"
     # The firmware reads: the check starts.
     hass.states.async_set(FIRMWARE, "V100R001C21SPC117")
     await _looks(control, dt_util.now() + timedelta(minutes=5), 1)

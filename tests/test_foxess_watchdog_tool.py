@@ -168,3 +168,30 @@ def test_the_cap_is_never_raised_above_what_was_found() -> None:
     test.run()
     test.restore()
     assert ha.writes[0] == f"{E['max_charge_current']}=2.0" and test.summary["cap_a"] == 2.0
+
+
+def test_the_restore_waits_for_the_work_mode_to_read_again_after_the_reload() -> None:
+    ha = FakeHA()
+    test = _test(ha)
+    test.check()
+    test.run()
+    # The entities are still unavailable after the reload: the restore waits for the work mode, then writes.
+    ha.values[E["work_mode"]] = "unavailable"
+    looks = {"count": 0}
+    states = ha.states
+
+    def coming_back() -> dict[str, dict[str, Any]]:
+        looks["count"] += 1
+        if looks["count"] == 3:
+            ha.values[E["work_mode"]] = "Back-up"
+        return states()
+
+    ha.states = coming_back  # type: ignore[method-assign]
+    test.restore()
+    assert looks["count"] >= 3 and ha.values[E["work_mode"]] == "Self Use"
+    assert "self_use_after_restore" in test.summary and test.summary["self_use_after_restore"]
+
+
+def test_sigterm_ends_the_test_through_the_restore() -> None:
+    with pytest.raises(tool.Stop, match="terminated"):
+        tool._terminated(15, None)
