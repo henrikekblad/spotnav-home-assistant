@@ -159,16 +159,19 @@ def test_a_broken_stored_pool_reads_as_its_defaults() -> None:
 # ---- the spa
 
 
-def test_a_new_spa_starts_watched_at_the_setpoint_found() -> None:
+def test_a_new_spa_starts_watched_at_30_or_the_lower_setpoint_found() -> None:
     config, errors = write({"spa": {"entity_id": "climate.spa", "family": "balboa"}}, setpoint=36.7)
     assert errors == []
-    assert config.spa == SpaConfig("climate.spa", "balboa", idle_c=36.5)
+    assert config.spa == SpaConfig("climate.spa", "balboa", idle_c=30.0)
+    # A spa found below 30 °C keeps its own setpoint as the idle temperature.
+    lower, _ = write({"spa": {"entity_id": "climate.spa", "family": "balboa"}}, setpoint=27.8)
+    assert lower.spa.idle_c == 28.0
     assert (config.spa.bath_c, config.spa.floor_c, config.spa.control) == (38.0, 10.0, False)
     assert read_config(config.as_dict()) == config
     # Without a setpoint: 30 °C.
     config, _ = write({"spa": {"entity_id": "climate.spa"}})
     assert config.spa.idle_c == 30.0 and config.spa.family == "generic"
-    assert idle_from_setpoint(5.0) == 10.0 and idle_from_setpoint(55.0) == 40.0
+    assert idle_from_setpoint(5.0) == 10.0 and idle_from_setpoint(55.0) == 30.0
 
 
 def test_the_spa_ranges_baths_and_one_off_bath() -> None:
@@ -209,7 +212,7 @@ def test_a_watch_only_family_cannot_be_controlled_and_another_spa_starts_watched
     controlled, errors = write({"spa": {"entity_id": "climate.spa", "family": "balboa", "control": True}})
     assert errors == [] and controlled.spa.control
     config, errors = write({"spa": {"entity_id": "water_heater.gecko", "family": "gecko"}}, controlled, setpoint=35.0)
-    assert errors == [] and not config.spa.control and config.spa.idle_c == 35.0
+    assert errors == [] and not config.spa.control and config.spa.idle_c == 30.0
 
 
 def test_a_broken_stored_spa_reads_as_its_defaults() -> None:

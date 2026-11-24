@@ -51,7 +51,9 @@ through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Ev
   climate entity is switched by its switch and its `temp_set` number. Presets, fan modes and the cool or auto modes
   are never written; a pump you set to one of them is left alone until it reads `heat` or `off` again.
 * **Control the spa**: heats for your bath times, holds the temperature between baths, never lets the water below its
-  lowest temperature. Balboa is set by its presets, **Ready** to heat and **Rest** between (Home Assistant shows
+  lowest temperature. The temperature between baths starts at 30 °C (or at the spa's own setpoint when that is lower),
+  so the spa saves between baths; set it higher in the Spa tab to keep it warmer. The lowest temperature (10 °C) is
+  only a floor for frost and is never the target. Balboa is set by its presets, **Ready** to heat and **Rest** between (Home Assistant shows
   Balboa's Rest as `off`); SmartTub and Gecko by their setpoint, never below the temperature between baths; MSpa,
   Bestway, Intex and Tuya Local's Intex by turning the heater on and off. Gecko is set through its water heater only,
   never the water-care presets. MSpa is watched while its own heat schedule (its **Scheduled for**) is set.

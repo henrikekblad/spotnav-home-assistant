@@ -3,7 +3,7 @@
 Stored shape (every key optional but `entity_id`; a missing or broken one reads as its default):
 
     {entity_id: climate / water_heater id, family: one of `FAMILIES`,
-     bath_c: 20..40 in 0.5 steps (38), idle_c: 10..40 in 0.5 steps (the spa's setpoint found at setup, else 30),
+     bath_c: 20..40 in 0.5 steps (38), idle_c: 10..40 in 0.5 steps (30, or the spa's setpoint found at setup when lower),
      floor_c: 5..30 in 0.5 steps (10: well above the controllers' own freeze protection),
      baths: [{weekdays: [1..7] (Monday 1, as a car's departures), time: "HH:MM"}] (up to 4), bath_once: ISO instant with offset | null,
      heater_kw: 0.5..12 | null (entered where no power sensor is found), control: bool (false)}
@@ -221,10 +221,12 @@ def read_spa(raw: Any) -> SpaConfig | None:
 
 
 def idle_from_setpoint(setpoint_c: float | None) -> float:
-    """The idle temperature a new spa starts with: the setpoint found, to the half degree within range, else 30."""
+    """The idle temperature a new spa starts with: 30 °C, or the setpoint found when it is lower (to the half degree
+    within range). Most spas stand at the bath temperature, so starting from the setpoint would save nothing between
+    baths (owner 2026-11-24)."""
     if setpoint_c is None or setpoint_c != setpoint_c:
         return DEFAULT_IDLE_C
-    return min(IDLE_MAX_C, max(IDLE_MIN_C, round(setpoint_c / STEP) * STEP))
+    return min(DEFAULT_IDLE_C, IDLE_MAX_C, max(IDLE_MIN_C, round(setpoint_c / STEP) * STEP))
 
 
 def judge_baths(raw: Any) -> tuple[tuple[Bath, ...] | None, str | None]:
