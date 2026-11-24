@@ -300,6 +300,33 @@ The entity keys, options and services below were checked against each integratio
     written back; a negative number is written as 65535 plus the value (`number.py` `async_set_native_value`), one
     off from two's complement; and its ESS mode select names Hub4Mode's values 1 and 2 `SELF_CONSUMPTION` and
     `KEEP_CHARGED`. It has no entity for the maximum charge power.
+* **EcoFlow PowerOcean** (`ECOFLOW_CONTROL`; **never run on a plant**), `ef_powerocean_tcpmodbus`, MaxGrmm/EF-PowerOcean-
+  TcpModbus `56331de` (2.10.1, read 2026-11-24; `plans/research_integrations/ecoflow_control_2026-11-23.md`), local
+  Modbus TCP, which EcoFlow support or the installer must first enable on the inverter. Unique id `<config entry
+  id>_<key>` (`entity.py`). Switch `modbus_control` (`switch.py`: the integration's own flag, kept over a restart,
+  that starts and stops its heartbeat), select `battery_mode` (`select.py`, options `ControlFeature` in
+  `powerocean/models.py`: `automatic`, `hold_battery`, `charge_battery`, `discharge_battery`, `export_to_grid`,
+  `import_from_grid`, `export_solar_first`; its state is the integration's selected mode, with the inverter's
+  progress in the attribute `status`) and numbers `charge_battery_power` / `discharge_battery_power` (`number.py`,
+  W, 0 up to the integration's ceiling, step 100: the power of those two modes, kept by the integration and sent only
+  while that mode is selected). The select and the numbers are available only while the heartbeat holds control
+  (`requires_modbus_control`). The integration writes control command 40534 (method 0 for Automatic, method 3
+  "battery limits" for the rest) and the battery's signed setpoint 40571 (W, **positive charges**; Hold is 1 W, since
+  0 is "no limit" to the inverter), and the heartbeat 40608 every 20 s. **The dead-man is the inverter's**: "the
+  inverter runs on its app settings and merely stores the commands it is sent, until this register is written; each
+  write buys it a minute of obeying them" (`powerocean/const.py`). So a command ends by itself within about a minute
+  of Home Assistant stopping, but **not** while Home Assistant runs and SpotNav alone stalls: the integration keeps
+  beating (`Expiry` renewer `integration`, which never lifts a cap). Turning the switch off writes nothing but stops
+  the heartbeat, so a hand-back writes Automatic first (sent at once) and the switch off after; the person's hardware
+  test writes the switch off alone (`Expiry.silence`) to time the inverter's own fallback. Hold: `hold_battery`
+  (idle; at 100 % it curtails the panels, MaxGrmm #83); grid charge: the charge power, then `charge_battery`
+  (a battery setpoint: sun on the DC side counts towards it); discharge to the house: `automatic` with the switch on;
+  discharge to the grid: the discharge power, then `discharge_battery`. A plant is taken only in the app's
+  self-consumption with Modbus Control off (`adapters.ECOFLOW`'s mode rules); the app is locked while the switch is
+  on and for about a minute after. The inverter serves one Modbus client: `ecoflow_energy`'s local mode, evcc or an
+  installer tool on the same inverter lock the integration out. Not mapped: `ecoflow_energy` (its local controls
+  write the same registers with a client cap of 600 W by default) and every cloud route (no power setpoint on a
+  PowerOcean). How a three-phase unit spreads a grid charge over its phases is not stated: `grid_charge_phases` 1.
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -315,7 +342,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    FERROAMP, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key, _tesla,
+    ECOFLOW, FERROAMP, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key, _tesla,
 )
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -421,8 +448,15 @@ class Expiry:
     #: only such a reading in the verification's silence is the device's own (`expired`); any other change of a
     #: renewed role there is another writer. Empty: the device leaves them as written (Victron's setpoints).
     fallback_values: tuple[tuple[str, str], ...] = ()
+    #: For a dead-man the integration renews: the writes that stop its renewal and leave the command standing
+    #: (`(role, value)`; EcoFlow: Modbus control off stops the integration's heartbeat and writes nothing else), so
+    #: the device's own fallback can be timed. Only a person's hardware test writes them (`gate.deadman_testable`,
+    #: the verification's mode `expiry`). Empty: SpotNav cannot make the silence itself.
+    silence: tuple[tuple[str, Native], ...] = ()
 
     def __post_init__(self) -> None:
+        if self.silence and (self.kind != "device_deadman" or self.renewer != "integration"):
+            raise ValueError("a silence is written only for a dead-man an integration renews")
         renews = self.renewer == "spotnav" and self.kind in _RENEWED_KINDS
         if bool(self.renewed_roles) != renews:
             raise ValueError("renewed_roles are set exactly for an expiry SpotNav renews")
@@ -872,10 +906,17 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+    #: Until the recipe is `field_tested`, control runs on a site only once that site's own hardware test (the card's
+    #: Support box, `hardware_test.py`) passed on the plant's firmware as it is now (`gate.firmware_key`): before, it
+    #: watches as under shadow only and the checklist says so (`hardware_test_first`). `False`: the routine alone.
+    hardware_test_first: bool = False
 
     def __post_init__(self) -> None:
         if self.import_limit is not None and self.import_limit_trust is None:
             raise ValueError(f"{self.brand}: an import limit needs to say where it was shown to act")
+        names = {role.name for role in self.roles}
+        if any(role not in names for role, _value in self.expiry.silence):
+            raise ValueError(f"{self.brand}: a silence writes the control's own roles")
 
     @property
     def watchdog_roles(self) -> tuple[str, ...]:
@@ -1927,6 +1968,105 @@ FERROAMP_CONTROL: Final = BrandControl(
     note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
 )
 
+# --- EcoFlow PowerOcean (see the module) ---------------------------------------------------------------------------
+
+#: The option of `ef_powerocean_tcpmodbus`'s `battery_mode` select (`ControlFeature`, `powerocean/models.py`) each
+#: state writes: the inverter's own self-consumption (control method 0), and method 3 with the battery's setpoint at
+#: 1 W (a hold: 0 W is "no limit" to the inverter), at plus or at minus the mode's power.
+_EF_AUTOMATIC: Final = "automatic"
+_EF_HOLD: Final = "hold_battery"
+_EF_CHARGE: Final = "charge_battery"
+_EF_DISCHARGE: Final = "discharge_battery"
+#: The integration's heartbeat window (s): the inverter obeys the commands it stored for this long after the last
+#: heartbeat, which the integration writes every 20 s while Modbus Control is on (`powerocean/const.py`).
+ECOFLOW_HEARTBEAT_WINDOW_S: Final = 60.0
+
+# Modbus Control: the integration's own switch, which starts and stops its heartbeat (persisted by the integration;
+# its state is the integration's flag, so its read-back is that flag, and the battery's power judges the effect).
+_EF_SWITCH = Role("modbus_control", "switch", _key("modbus_control", "switch"), restored=False, readback="echo")
+# The mode and the two powers are available only while the heartbeat holds control: idle (unavailable) otherwise.
+# `ecoflow_energy`'s `<sn>_local_battery_mode` ends in the same key and is not this select.
+_EF_MODE = Role(
+    "battery_mode", "select", _key("battery_mode", "select", reject=r"local_battery_mode$"), restored=False,
+    idle_when=frozenset({"unavailable"}), readback="echo",
+)
+# The power of the integration's own Charge Battery and Discharge Battery modes (W, step 100), kept by it and sent
+# only while that mode is selected. Never handed back: unavailable before the switch is on, so there is no value to
+# snapshot, and harmless in every other mode.
+_EF_CHARGE_POWER = Role(
+    "charge_power", "number", _key("charge_battery_power", "number"), scale=1000.0, step=100.0, restored=False,
+    idle_when=frozenset({"unavailable"}), write_class="setpoint", readback="echo",
+)
+_EF_DISCHARGE_POWER = Role(
+    "discharge_power", "number", _key("discharge_battery_power", "number"), scale=1000.0, step=100.0,
+    restored=False, idle_when=frozenset({"unavailable"}), write_class="setpoint", readback="echo",
+)
+
+
+def _ef(mode: str, power: str | None = None) -> Callable[[float, int], tuple[Want, ...]]:
+    """Modbus Control on, the mode's power (W) where it has one, then the mode. A power that rounds to 0 W is a hold
+    instead: the inverter reads a setpoint of 0 as no limit at all (the integration does the same)."""
+
+    def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+        if power is None:
+            return (Want("modbus_control", True), Want("battery_mode", mode))
+        size = native(_EF_CHARGE_POWER, rate_kw)
+        if size <= 0:
+            return (Want("modbus_control", True), Want("battery_mode", _EF_HOLD))
+        return (Want("modbus_control", True), Want(power, size), Want("battery_mode", mode))
+
+    return build
+
+
+#: EcoFlow's one hold: Hold Battery, the battery idle (it stores no sun either; at 100 % it curtails the panels,
+#: MaxGrmm #83). Its peak cover writes Automatic, where the inverter covers the house itself.
+ECOFLOW_HOLDS: Final = (
+    HoldVariant("hold_battery", _ef(_EF_HOLD), ("battery_mode",), "Hold Battery (setpoint 1 W)", idle=True),
+)
+
+ECOFLOW_CONTROL: Final = BrandControl(
+    brand="ecoflow",
+    adapter=ECOFLOW,
+    roles=(_EF_SWITCH, _EF_CHARGE_POWER, _EF_DISCHARGE_POWER, _EF_MODE),
+    states={
+        ACTION_HOLD: ECOFLOW_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _ef(_EF_CHARGE, "charge_power"),
+        # The inverter's own self-consumption under Modbus Control: it covers the house (and stores a sun surplus).
+        ACTION_DISCHARGE_HOUSE: _ef(_EF_AUTOMATIC),
+        ACTION_EXPORT_DISCHARGE: _ef(_EF_DISCHARGE, "discharge_power"),
+    },
+    # The switch first (the rest is unavailable until its heartbeat holds control), the power before the mode that
+    # sends it. Back: Automatic first, which the live heartbeat sends at once (method 0), then the switch off, which
+    # only stops the heartbeat: the inverter returns to the app's settings within its window.
+    enter_order=("modbus_control", "charge_power", "discharge_power", "battery_mode"),
+    restore_order=("battery_mode", "modbus_control"),
+    own_states={"Modbus control": frozenset({"on"})},
+    requires=(("modbus_control", frozenset({"off"}), "modbus_control_already_on"),),
+    peak_first={ACTION_HOLD: ECOFLOW_HOLDS[0].peak_first, ACTION_GRID_CHARGE: ("battery_mode",)},
+    # The inverter's own heartbeat dead-man, renewed by the integration (not by SpotNav): it ends the command when Home
+    # Assistant stops, never when SpotNav alone stalls, so it never lifts a cap (`gate.expiry_lifts`). Stated by the
+    # integration and measured by another integration's author on one HJ31 (30-65 s); not yet seen by SpotNav. The
+    # switch off is the silence its hardware test times it with.
+    expiry=Expiry(
+        "device_deadman", "integration", ECOFLOW_HEARTBEAT_WINDOW_S, integration="ef_powerocean_tcpmodbus",
+        note="heartbeat 40608, written by the integration every 20 s while Modbus Control is on",
+        silence=(("modbus_control", False),),
+    ),
+    # A three-phase PowerOcean balances its phases itself, but how it spreads a grid charge is not stated anywhere:
+    # the HA-down cap takes the whole charge on one phase until a plant has shown the split.
+    grid_charge_phases=1,
+    hold_variants=ECOFLOW_HOLDS,
+    variant=ECOFLOW_HOLDS[0].name,
+    # The controls are the HACS integration `ef_powerocean_tcpmodbus`'s; `ecoflow_energy` (read only here) has its own.
+    hacs_roles=("charge_power", "discharge_power", "battery_mode"),
+    hacs_repo="MaxGrmm/EF-PowerOcean-TcpModbus",
+    # The protocol (EcoFlow Open Modbus V1.0, a trial version) says nothing of how often the setpoint may be written.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    hardware_test_first=True,
+    note="Modbus Control through ef_powerocean_tcpmodbus: the EcoFlow app is locked while it is on and for about a"
+    " minute after. Untested on a plant: runs only after the site's hardware test passed on its firmware.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -1935,11 +2075,12 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "solax": {"trigger": True},
     "solinteg": _SOLINTEG_NORMAL,
     "ferroamp": {"command": "auto"},
+    "ecoflow": {"modbus_control": False, "battery_mode": _EF_AUTOMATIC},
 }
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
-    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL,
+    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, ECOFLOW_CONTROL,
 )
 
 

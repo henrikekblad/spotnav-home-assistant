@@ -7,14 +7,21 @@ shuette42's (`<device sn>_<key>`) is built here.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
+from typing import Any
+
 import pytest
 
-from custom_components.spotnav.battery import commands
+from custom_components.spotnav.battery import commands, gate
 from custom_components.spotnav.battery.adapters import ECOFLOW, adapter_for
 from custom_components.spotnav.battery.coexist import coexistence_for
-from custom_components.spotnav.battery.facts import EntityFact, battery_facts
+from custom_components.spotnav.battery.commands import ECOFLOW_CONTROL
+from custom_components.spotnav.battery.executor import Executor, StepResult
+from custom_components.spotnav.battery.facts import EntityFact, Management, battery_facts
 
 from tests.test_battery_facts import _facts
+from tests.battery_control_fakes import T0, TICK, FakeBattery, events, inputs, written
 from tests.test_site_detection import Registry
 
 SN = "HJ31ZDH4ABC123"
@@ -46,13 +53,16 @@ def _energy(extra: list[EntityFact] | None = None):
     return entities, battery_facts(entities[0], entities, manufacturer="EcoFlow", power_kw=-0.8)
 
 
-def test_both_integrations_are_the_ecoflow_adapter_and_it_is_read_only() -> None:
+def test_both_integrations_are_the_ecoflow_adapter_and_only_modbus_has_a_control() -> None:
     assert adapter_for("ef_powerocean_tcpmodbus", "EcoFlow") is ECOFLOW
     assert adapter_for("ecoflow_energy", "EcoFlow") is ECOFLOW
     # The cloud integration is a different adapter-less one (its power rows only).
     assert adapter_for("ecoflow_cloud", "EcoFlow") is None
-    assert all(control.brand != "ecoflow" for control in commands.CONTROLS)
+    control = commands.control_for("ecoflow")
+    assert control is commands.ECOFLOW_CONTROL and control.adapter is ECOFLOW
+    # The adapter itself reads only; the recipe writes `ef_powerocean_tcpmodbus`'s controls.
     assert ECOFLOW.hold is None and ECOFLOW.grid_charge is None
+    assert control.hacs_repo == "MaxGrmm/EF-PowerOcean-TcpModbus"
 
 
 def test_modbus_reads_level_size_counters_and_the_apps_reserve() -> None:
@@ -154,3 +164,215 @@ def test_the_coexistence_row_names_the_apps_own_modes_and_no_aggregator() -> Non
 
     assert row is not None and row.brand == "ecoflow" and row.aggregators == ()
     assert coexistence_for(platform="ef_powerocean_tcpmodbus") is row
+
+
+# ---- the control (`commands.ECOFLOW_CONTROL`) ------------------------------------------------------------------------
+
+#: What the integration shows with Modbus Control off: the mode and the two powers are unavailable.
+STATES = {
+    "modbus_control": "off", "battery_mode": "unavailable", "charge_power": "unavailable",
+    "discharge_power": "unavailable",
+}
+
+
+@dataclass
+class PowerOcean(FakeBattery):
+    """A three-phase PowerOcean behind `ef_powerocean_tcpmodbus` as its source reads (`control.py`): the switch starts
+    the heartbeat, the mode and its powers are available only while it holds control, the integration keeps each
+    power and sends only the selected mode's, Modbus Control off resets its mode to Automatic and writes nothing, and
+    the inverter obeys what it was last sent until `window_s` after the last heartbeat, then runs on the app's own
+    settings (self-consumption: the battery covers the house)."""
+
+    now: datetime = T0
+    window_s: float = 60.0
+    #: The inverter ignores the heartbeat's end (a firmware without the dead-man).
+    no_deadman: bool = False
+    presets: dict[str, float] = field(default_factory=lambda: {"charge_power": 2000.0, "discharge_power": 2000.0})
+    mode: str = "automatic"
+    #: What the inverter follows: the mode and its power (W), and the last heartbeat.
+    command: tuple[str, float] = ("app", 0.0)
+    beat_at: datetime | None = None
+
+    def _shown(self) -> None:
+        on = self.states["modbus_control"] == "on"
+        self.states["battery_mode"] = self.mode if on else "unavailable"
+        for name, value in self.presets.items():
+            self.states[name] = f"{value:g}" if on else "unavailable"
+
+    def _send(self) -> None:
+        power = {"charge_battery": "charge_power", "discharge_battery": "discharge_power"}.get(self.mode)
+        self.command = (self.mode, 0.0 if power is None else self.presets[power])
+
+    def at(self, now: datetime) -> PowerOcean:
+        """The clock moves: the heartbeat beats while the switch is on."""
+        self.now = now
+        if self.states["modbus_control"] == "on":
+            self.beat_at = now
+        return self
+
+    def following(self) -> str:
+        if self.beat_at is None or (
+            not self.no_deadman and (self.now - self.beat_at).total_seconds() > self.window_s
+        ):
+            return "app"
+        return self.command[0]
+
+    def apply(self, op: Any) -> bool:
+        self.writes.append(op)
+        if op.role in self.raises:
+            return False
+        if op.role == "modbus_control":
+            on = op.value is True or str(op.value).lower() in ("on", "true")
+            self.states["modbus_control"] = "on" if on else "off"
+            # On: the integration re-sends its mode (Automatic after a reset). Off: its mode back to Automatic and
+            # nothing written; the inverter keeps what it has until the window runs out.
+            self.mode = "automatic" if not on else self.mode
+            if on:
+                self.beat_at = self.now
+                self._send()
+        elif self.states["modbus_control"] != "on":
+            return True  # unavailable: Home Assistant calls nothing
+        elif op.role == "battery_mode":
+            self.mode = str(op.value)
+            self._send()
+        else:
+            self.presets[op.role] = float(op.value)
+            self._send()
+        self._shown()
+        return True
+
+    def power_kw(self, action: str | None = None, rate_kw: float = 0.0) -> float:
+        mode = self.following()
+        if not self.obeys or mode in ("app", "automatic"):
+            return self.idle_kw
+        if mode == "hold_battery":
+            return 0.0
+        return (self.command[1] if mode == "charge_battery" else -self.command[1]) / 1000.0
+
+    def management(self) -> Management:
+        switch = self.states["modbus_control"]
+        settings = {"operating mode": "self_consumption", "Modbus control": switch}
+        if switch == "off":
+            return Management("free", "self_consumption", settings)
+        return Management("self_managed", "Modbus control:on", settings)
+
+
+def _ocean(**kwargs: Any) -> tuple[Executor, PowerOcean]:
+    return Executor(ECOFLOW_CONTROL), PowerOcean(ECOFLOW_CONTROL, dict(STATES), idle_kw=-2.0, **kwargs)
+
+
+def _run(executor: Executor, ocean: PowerOcean, start: datetime, looks: int, action: str | None,
+         rate_kw: float = 0.0, **overrides: Any) -> tuple[datetime, list[StepResult]]:
+    now = start
+    results: list[StepResult] = []
+    for _ in range(looks):
+        result = executor.step(inputs(ocean.at(now), now, action, rate_kw, power_kw=ocean.power_kw(), **overrides))
+        results.append(result)
+        for op in result.ops:
+            ocean.apply(op)
+        now += TICK
+    return now, results
+
+
+def test_each_action_writes_modbus_control_on_the_power_and_the_mode() -> None:
+    control = commands.control_for("ecoflow")
+    assert control is not None
+    assert control.wanted("hold", 2.0) == {"modbus_control": True, "battery_mode": "hold_battery"}
+    assert control.wanted("grid_charge", 2.35) == {
+        "modbus_control": True, "charge_power": 2300.0, "battery_mode": "charge_battery"
+    }
+    assert control.wanted("discharge_house", 2.0) == {"modbus_control": True, "battery_mode": "automatic"}
+    assert control.wanted("export_discharge", 1.0) == {
+        "modbus_control": True, "discharge_power": 1000.0, "battery_mode": "discharge_battery"
+    }
+    # A power that rounds to 0 W would be "no limit" to the inverter: a hold instead.
+    assert control.wanted("grid_charge", 0.05) == control.wanted("hold", 0.0)
+    assert control.wanted("export_discharge", 0.0) == control.wanted("hold", 0.0)
+    # Nothing is snapshot: the hand-back is the brand's normal (Automatic, then the switch off).
+    assert control.wanted("self_consume", 0.0) == {}
+    assert commands.NORMAL["ecoflow"] == {"modbus_control": False, "battery_mode": "automatic"}
+    assert control.restore_order == ("battery_mode", "modbus_control")
+    assert control.hold_idle() and not control.export_signed_by_charge() and control.local_readback
+
+
+def test_the_dead_man_is_the_integrations_and_never_lifts_a_cap() -> None:
+    expiry = ECOFLOW_CONTROL.expiry
+    assert (expiry.kind, expiry.renewer, expiry.window_s, expiry.evidence) == (
+        "device_deadman", "integration", 60.0, "stated"
+    )
+    assert expiry.silence == (("modbus_control", False),) and ECOFLOW_CONTROL.watchdog_roles == ()
+    assert not gate.expiry_lifts(expiry, measured=True, slow=False, fixed_charge=False)
+    assert not gate.expiry_testable(expiry, slow=False, fixed_charge=False)
+    assert ECOFLOW_CONTROL.hardware_test_first and not ECOFLOW_CONTROL.field_tested
+    assert ECOFLOW_CONTROL.grid_charge_phases == 1 and ECOFLOW_CONTROL.import_limit is None
+    # A silence is only for a dead-man an integration renews, and only of the control's own roles.
+    with pytest.raises(ValueError):
+        commands.Expiry("device_deadman", "spotnav", 60.0, ("x",), renew_s=20, silence=(("x", False),))
+    with pytest.raises(ValueError):
+        replace(ECOFLOW_CONTROL, expiry=replace(ECOFLOW_CONTROL.expiry, silence=(("nothing", False),)))
+
+
+def test_every_role_is_found_by_maxgrmms_key_and_not_ecoflow_energys_select() -> None:
+    keys = {
+        "modbus_control": ("switch", "01JENTRY_modbus_control"),
+        "battery_mode": ("select", "01JENTRY_battery_mode"),
+        "charge_power": ("number", "01JENTRY_charge_battery_power"),
+        "discharge_power": ("number", "01JENTRY_discharge_battery_power"),
+    }
+    for role in ECOFLOW_CONTROL.roles:
+        domain, unique_id = keys[role.name]
+        assert role.match.matches(domain, unique_id), role.name
+    assert not ECOFLOW_CONTROL.role("battery_mode").match.matches("select", f"{SN}_local_battery_mode")
+    assert not ECOFLOW_CONTROL.role("modbus_control").match.matches("binary_sensor", "01JENTRY_modbus_control")
+
+
+def test_a_charge_turns_modbus_control_on_then_the_power_then_the_mode_each_read_back() -> None:
+    executor, ocean = _ocean()
+    now, results = _run(executor, ocean, T0, 8, "grid_charge", 2.0)
+    assert written(results) == [("modbus_control", True), ("battery_mode", "charge_battery")], "2000 W was set"
+    assert [len(result.ops) for result in results[:3]] == [1, 1, 0], "one write a look, each read back first"
+    assert executor.state.phase == "active" and ocean.power_kw() == 2.0
+    # A lower rate is the power alone, and the mode keeps running.
+    now, results = _run(executor, ocean, now, 4, "grid_charge", 1.2)
+    assert written(results) == [("charge_power", 1200.0)] and ocean.power_kw() == 1.2
+    # A hold is the mode alone; the charge's power is left where it was (harmless outside its mode).
+    now, results = _run(executor, ocean, now, 4, "hold")
+    assert written(results) == [("battery_mode", "hold_battery")] and ocean.power_kw() == 0.0
+    assert ocean.presets["charge_power"] == 1200.0
+
+
+def test_the_hand_back_sends_automatic_first_then_turns_modbus_control_off() -> None:
+    executor, ocean = _ocean()
+    now, _results = _run(executor, ocean, T0, 8, "grid_charge", 3.0)
+    now, results = _run(executor, ocean, now, 6, "self_consume")
+    assert written(results) == [("battery_mode", "automatic"), ("modbus_control", False)]
+    assert all(op.restore for result in results for op in result.ops)
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    # The inverter left the charge at the first write, while the heartbeat still held control.
+    assert ocean.command[0] == "automatic" and ocean.power_kw() == -2.0
+    assert ocean.states == STATES | {"charge_power": "unavailable"}
+
+
+def test_it_starts_only_with_modbus_control_off_and_the_app_in_self_consumption() -> None:
+    executor, ocean = _ocean()
+    ocean.states["modbus_control"] = "on"
+    ocean._shown()
+    _now, results = _run(executor, ocean, T0, 2, "hold")
+    assert written(results) == [] and executor.state.phase == "idle"
+    assert events(results, "not_started")[0]["reason"] == "self_managed:Modbus control:on"
+
+
+def test_turning_modbus_control_off_alone_leaves_the_command_until_the_inverters_window() -> None:
+    # What Home Assistant stopping does, and what the hardware test's silence does: the heartbeat ends.
+    executor, ocean = _ocean()
+    now, _results = _run(executor, ocean, T0, 8, "grid_charge", 1.0)
+    ocean.at(now).apply(_op("modbus_control", False))
+    assert ocean.states["battery_mode"] == "unavailable" and ocean.power_kw() == 1.0
+    assert ocean.at(now + timedelta(seconds=50)).power_kw() == 1.0
+    assert ocean.at(now + timedelta(seconds=70)).power_kw() == -2.0
+
+
+def _op(role: str, value: Any) -> Any:
+    from custom_components.spotnav.battery.executor import Op  # noqa: PLC0415
+
+    return Op(role, "switch", f"switch.ecoflow_{role}", value)
