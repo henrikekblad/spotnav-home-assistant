@@ -95,6 +95,8 @@ administrators can confirm, and never over the webhook. The entities per brand:
   limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
   disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
   power L1, L2 and L3.
+* EcoFlow PowerOcean (the HACS EF-PowerOcean-TcpModbus integration; all enabled by default): Modbus Control, Battery
+  Mode, and the Charge Battery and Discharge Battery power.
 
 **GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
 the same routine as the others, and both are untested.
@@ -658,6 +660,46 @@ flags included (the card's section leaves those out). Neither is meant for every
 
 The site's diagnostics show it all under `battery_control`: the options, the state, the check's report per firmware,
 the actions allowed, what is missing, the notes, and the log of every write, refusal and would-do.
+
+### EcoFlow PowerOcean (mapped, not yet tested on a plant)
+
+For a PowerOcean through the HACS integration **EF-PowerOcean-TcpModbus** (`ef_powerocean_tcpmodbus`), which talks
+Modbus TCP to the inverter on your network. Modbus must first be enabled on the inverter by EcoFlow's support or
+your installer, and the inverter answers one Modbus client at a time: the other EcoFlow integration's local mode,
+evcc or an installer's tool on the same inverter lock this one out. The other integration (`ecoflow_energy`) and
+EcoFlow's cloud are read only in SpotNav; the cloud has no power setpoint for a PowerOcean at all.
+
+SpotNav takes the battery only while the EcoFlow app runs it in self-consumption and the integration's **Modbus
+Control** switch is off. It then uses the integration's own controls: it turns Modbus Control on, sets the power of
+the mode it wants and then **Battery Mode**: *Hold Battery* for a hold (the battery stands idle; at 100 % this also
+curtails the panels), *Charge Battery* at the rate for a grid charge, *Automatic* (the inverter's own
+self-consumption) to cover the house, and *Discharge Battery* at the rate to sell. The power is the battery's own,
+positive charging. A hand-back sets Battery Mode to Automatic first, which the inverter takes at once, then turns
+Modbus Control off. **While Modbus Control is on the EcoFlow app is locked**, and it stays locked for about a minute
+after: the inverter keeps obeying what it was last sent until its heartbeat runs out.
+
+**The heartbeat.** The integration writes a heartbeat to the inverter every 20 seconds while Modbus Control is on,
+and the inverter obeys commands only while it is fresh: about a minute after the last one it goes back to the app's
+own settings by itself. So a command ends on its own when Home Assistant stops. It does **not** end while Home
+Assistant runs and only SpotNav is stuck, since the integration keeps beating; SpotNav hands back actively when it
+stops or unloads, and its fuse cap for a grid charge is reckoned as for Sigenergy (the house at its learned peak,
+the whole charge on one phase, since EcoFlow does not say how a three-phase unit spreads it). The integration's
+default powers are kept by the integration; SpotNav leaves the last rate it used in Charge Battery and Discharge
+Battery, which matters only if you select those modes yourself.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
+do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed on the battery's present firmware and integration version; after an update it asks
+again. The checklist says so. Run it in the evening, with the house drawing and no sun: besides the usual steps
+(hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
+battery, turns Modbus Control off and nothing else, and watches how long the inverter keeps the hold before it
+covers the house by itself (a minute or so is expected); then it turns Modbus Control on again (the integration
+sends Automatic) and hands back. That step adds a few minutes, and the charge step shows the sign: the battery must
+charge when told to. If the inverter keeps the hold past the window the step fails, and the battery is still taken
+back.
+
+**If something goes wrong, restore by hand:** in Home Assistant set Battery Mode to Automatic, then turn Modbus
+Control off; after a minute the EcoFlow app works again. Then turn SpotNav's switch off.
 
 ## The signal
 

@@ -1071,10 +1071,12 @@ OVERVIEW: tuple[Overview, ...] = (
         "(shuette42/ecoflow-energy-ha)",
         keys=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
         adapter="ecoflow",
-        control="Not mapped: read only. Local Modbus has a battery power setpoint under a heartbeat the inverter drops "
-        "after a minute, and it locks the EcoFlow app meanwhile; Modbus is first enabled by EcoFlow's support or the "
-        "installer",
-        note="The ratings are learnt. The size is read over Modbus only.",
+        note="Control is mapped for `ef_powerocean_tcpmodbus` only (Modbus Control, Battery Mode and its power; "
+        "`ecoflow_energy` is read only) and runs only after the site's own hardware test passed on its firmware. "
+        "Modbus is first enabled by EcoFlow's support or the installer; the EcoFlow app is locked while SpotNav "
+        "controls the battery. The inverter drops a command about a minute after the integration's heartbeat stops "
+        "(when Home Assistant stops, not when SpotNav alone stalls); the hardware test times it. The ratings are "
+        "learnt. The size is read over Modbus only.",
     ),
     Overview(
         "Kostal (Plenticore plus)",
