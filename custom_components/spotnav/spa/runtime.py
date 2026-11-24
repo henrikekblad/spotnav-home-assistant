@@ -22,7 +22,6 @@ from .plan import (
     ACTION_HOLD,
     HOLD,
     READY_MARGIN_C,
-    REASON_BATH,
     STATE_HEATING,
     STATE_LATE,
     STATE_READY,
