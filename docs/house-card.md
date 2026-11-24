@@ -83,6 +83,16 @@ each line's middle shows the way instead. The house's own power (the
 heat included, the car not) is in its circle. The car's line is drawn only while a car is plugged in; otherwise its node
 is dimmed. A house with the grid alone is one low row, the grid to the house.
 
+The lines add up around the house: what comes in from the sun, the grid and the battery is what the house, the car and
+the battery take. So the battery's line is the battery where the grid's meter sees it, on the AC side. On a hybrid
+inverter that reads the battery at the battery (DC: Sigenergy, SolarEdge, Victron, GoodWe) that is a little more than
+the battery's own app shows while it charges and a little less while it gives (on a Sigenergy plant about 11.2 kW
+charged for the app's 10.6 kW), the difference being the inverter's own loss, which is not the house's. Where the plant
+reports its own house load (Sigenergy), the house is that load less the car, and the battery's line is what the meters
+leave for it; elsewhere, or when the readings do not agree (a figure from another moment), the battery's reading is
+turned with the inverter's loss (learnt where it can be, else an assumed 3 % in and 5 % out) and the house is what is
+left. The sun is shown as read.
+
 In the corners, the day so far, each figure in its part's colour (a little darker on a light card, lighter on a dark
 one): *Sun today*, *House today* (the heat included, the car not: where the site has a charger it says "without the
 car", since a battery's own app, Sigenergy's for one, counts the charger into the house's use and so shows a higher
@@ -182,6 +192,11 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   ("Car · 35 %") and its kWh under it; a column grows as wide as its widest pill needs. Tap House (or Heat) for what
   used it. Only where no diagram can be drawn yet (nothing has flowed between two blocks) the figures stand as tiles:
   *Sun*, *House*, *Discharged*, *Charged*, *Bought*, *Sold*, *Heat* and *Car*, each only where it has energy.
+  On a battery read at the battery (a hybrid's DC side, as in *Now*) the battery's blocks and bands are on the AC side,
+  so the inverter's loss is not in the house, and one line under the diagram says how much that was ("The inverter's
+  losses today: 1.8 kWh (taken out of the house)"; for a past day, month or year without "today"), from 0.1 kWh. A
+  past day is counted with the loss known now; the battery's own app counts its battery at the battery, so its
+  charged and discharged figures differ from these by that loss.
 
   ![The house card's Energy flow tab: today's energy from the sun, the battery and the grid to the battery, the house and the heat](images/house-card-flow.png)
 
