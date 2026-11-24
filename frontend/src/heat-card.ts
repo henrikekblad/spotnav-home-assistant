@@ -91,6 +91,7 @@ export function loadErrorKey(code: string | null): TranslationKey {
     case "spotnav_rate_limited":
       return "heat.load.rateLimited";
     case "spotnav_no_later_bath":
+    case "spotnav_no_later_session":
       return "heat.load.noLater";
     case "spotnav_invalid_value":
       return "heat.load.invalid";

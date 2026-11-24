@@ -397,6 +397,7 @@ describe("the card's presses", () => {
     expect(decodeLoadAnswer("spa", { api_version: 1, ok: true, error: null }).ok).toBe(false);
     expect(decodeLoadAnswer("pool", { api_version: 2, ok: true, error: null, pool: null })).toEqual({ ok: false, failure: "unsupported" });
     expect(loadErrorKey("spotnav_no_later_bath")).toBe("heat.load.noLater");
+    expect(loadErrorKey("spotnav_no_later_session")).toBe("heat.load.noLater");
     expect(loadErrorKey("other")).toBe("heat.error.generic");
   });
 });

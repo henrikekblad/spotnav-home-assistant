@@ -132,3 +132,16 @@ def test_the_sauna_heats_in_one_block_ending_at_the_session_and_is_off_between()
         )
     )
     assert capped.hold_until == session - timedelta(minutes=45) + timedelta(hours=1)
+
+
+def test_no_later_time_is_refused_with_the_loads_own_code() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.spa.plan import NotReady
+    from custom_components.spotnav.spa.runtime import DeadlineShadow
+
+    stuck = NotReady(at=BATH, cause="time", reach_c=30.0, short_c=8.0, short_kwh=4.0, later=None)
+    for profile, code in ((SPA, "spotnav_no_later_bath"), (SAUNA, "spotnav_no_later_session")):
+        shadow = DeadlineShadow(profile)
+        shadow.plan = SimpleNamespace(not_ready=stuck)  # type: ignore[assignment]
+        assert shadow.move_later() == (None, code)

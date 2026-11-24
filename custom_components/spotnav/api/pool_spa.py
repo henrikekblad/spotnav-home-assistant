@@ -29,9 +29,9 @@ The webhook's `pool` is the same body without `type` (`pool_action` routes it, a
 one-off as an ISO instant or `null`), judged as the settings are. `bath_now`/`session_now` heats at once, at any price
 (still under the fuse), until the temperature is reached and held two hours, or `cancel_now`; once per ten minutes
 (`spotnav_rate_limited`). The last three answer a session that will not be ready (`not_ready`): take what fits (it
-heats as far as it can), move it to the earliest later hour that fits (`spotnav_no_later_bath` when there is none),
-or allow the peak (the import target or the power level, never the fuse). Refusals: `spotnav_not_supported` (no spa or
-sauna), `spotnav_invalid_value`. Nothing is written to a device. The webhook's `spa` and `sauna` are the same bodies
+heats as far as it can), move it to the earliest later hour that fits (`spotnav_no_later_bath` when there is none, the
+sauna's `spotnav_no_later_session`), or allow the peak (the import target or the power level, never the fuse).
+Refusals: `spotnav_not_supported` (no spa or sauna), `spotnav_invalid_value`. Nothing is written to a device. The webhook's `spa` and `sauna` are the same bodies
 without `type`, routed by `spa_action` and `sauna_action`.
 """
 
