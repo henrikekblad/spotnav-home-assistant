@@ -740,6 +740,8 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "price_days_nordpool_fi.json",
             "price_days_held_gb.json",
             "price_days_held_se4.json",
+            "phone_notifications_invalid.json",
+            "phone_notifications_success.json",
             "push_register_invalid.json",
             "push_register_success.json",
             "suggest_import_target_success.json",
