@@ -134,6 +134,7 @@ from .solar_capability import solar_capability
 from .charger_test_hold import ChargerTestHold
 from ..heat.control import HeatControl
 from ..heat.water_heater_control import WaterHeaterControl
+from ..pool.control import PoolSpaControl
 from ..heat.zones_control import ZonesControl
 from ..pool.runtime import PoolSpaShadow
 from ..heat.runtime import HeatShadow
@@ -1001,6 +1002,9 @@ class SiteCapacityController:
         self.water_heater_control = WaterHeaterControl(hass, self.heat_shadow, self.heat_control)
         # The pool and the spa in shadow (`pool/runtime.py`): read, planned and logged; nothing is written to them.
         self.pool_spa = PoolSpaShadow(hass, self)
+        # SpotNav setting the pool's circulation and heat pump, the spa and the sauna (`pool/control.py`), each behind
+        # its own opt-in; every exit writes the person's values back where SpotNav's still read.
+        self.pool_spa_control = PoolSpaControl(hass, self)
         # The site's combined "not ready in time" notice and the pool's season notice (`notifications/site_notice.py`).
         from ..notifications.site_notice import SiteNotice  # noqa: PLC0415 - the notifier imports the planner
 
@@ -1085,6 +1089,7 @@ class SiteCapacityController:
         await self.site_notice.async_load()
         self.site_notice.async_start()
         await self.pool_spa.async_start()
+        await self.pool_spa_control.async_start()
         await self.hardware_test.async_load()
         # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
         await self.charger_test_hold.async_load()
@@ -1215,6 +1220,7 @@ class SiteCapacityController:
             ("zones", self.zones_control.halt),
             ("water heater", self.water_heater_control.halt),
             ("pool and spa", self.pool_spa.halt),
+            ("pool and spa control", self.pool_spa_control.halt),
             ("combined notice", self.site_notice.async_shutdown),
             ("house forecast", self.house_forecast.halt),
             ("sun review", self.sun_review.halt),
@@ -1262,6 +1268,7 @@ class SiteCapacityController:
             ("opening the heat relay", self.heat_control.async_shutdown),
             ("turning the water heater on", self.water_heater_control.async_shutdown),
             ("setting the zones back", self.zones_control.async_shutdown),
+            ("handing the pool, the spa and the sauna back", self.pool_spa_control.async_shutdown),
         )
         results = await asyncio.gather(*(step() for _name, step in steps), return_exceptions=True)
         for (name, _step), result in zip(steps, results, strict=True):
@@ -1276,7 +1283,7 @@ class SiteCapacityController:
         _LOGGER.warning(
             "SpotNav site %s: the hand-back did not finish by the stop's deadline; left for the next start: hardware"
             " test running %s, home battery or export limit held %s, heat relay held %s, raise held %s, a zone held %s,"
-            " water heater held off %s",
+            " water heater held off %s, the pool, spa or sauna held %s",
             self.entry_id,
             self.hardware_test.running,
             self.battery_control.holds_anything(),
@@ -1284,6 +1291,7 @@ class SiteCapacityController:
             self.heat_control.raised,
             self.zones_control.holds_any(),
             self.water_heater_control.held_off,
+            self.pool_spa_control.holds_any(),
         )
         for name, save in (("battery control", self.battery_control.async_save),
                            ("heat control", self.heat_control.async_save)):

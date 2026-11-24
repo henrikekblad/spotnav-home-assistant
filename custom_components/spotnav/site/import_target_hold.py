@@ -390,7 +390,7 @@ class ImportTargetHold:
         after = {load: step.live for load, step in order.steps.items()}
         if before != after:
             # A step taken or put back: the loads' controls look at once rather than at their next look.
-            for name in ("water_heater_control", "heat_control", "zones_control"):
+            for name in ("water_heater_control", "heat_control", "zones_control", "pool_spa_control"):
                 part = getattr(self._site, name, None)
                 if part is not None:
                     part.request_look()
@@ -475,7 +475,8 @@ class ImportTargetHold:
 
     def _offers(self, now: datetime | None = None) -> dict[str, Offer | None]:
         """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`); the pool's,
-        the spa's, the sauna's and house cooling's are `would` only (no control of theirs writes yet)."""
+        the spa's and the sauna's are live where their control steers them locally (`pool/control.py`), else `would`
+        only, as house cooling's."""
         heater_control = getattr(self._site, "water_heater_control", None)
         heat_control = getattr(self._site, "heat_control", None)
         zones_control = getattr(self._site, "zones_control", None)

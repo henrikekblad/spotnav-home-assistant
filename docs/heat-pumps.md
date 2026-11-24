@@ -96,7 +96,8 @@ out until there is a path SpotNav steers.
 
   ![The heat card's Use tab: today's heat per hour in kWh, the heat pump and the hot water stacked](images/heat-card-use.png)
 
-* **Pool**, **Spa** and **Sauna** (only where set up; SpotNav only watches them for now and says what it *would* do):
+* **Pool**, **Spa** and **Sauna** (only where set up; SpotNav says what it *would* do until an administrator turns on
+  the load's own switch, see [Pool, spa and sauna](pool-spa.md)):
   * **Pool**: the dial for the water the pool should keep, **Season open** or **Closed** (closed: SpotNav leaves the
     pool alone), what the heat pump and the circulation do now and what SpotNav would do, **Extra filtering** +2 h or
     +4 h (placed in the cheapest or sunniest hours of the next 24, with when), the next 24 hours as a band, and today's
@@ -114,7 +115,10 @@ out until there is a path SpotNav steers.
   The dial, the season, the extra filtering, the times and the press are anyone's who sees the card. The pool's heat
   pump, circulation and water sensor (a detected pool is confirmed once), the filtering hours (by default the water
   temperature divided by three, 2 to 12 hours), the spa's lowest temperature, the heaters' power, the sauna and a relay
-  sauna's safety declaration, and the phones that hear about them are in the gear's **Heating** section. Plan shows the
+  sauna's safety declaration, each load's own switch (**Control the circulation**, **Control the pool heat pump**,
+  **Control the spa**, **Control the sauna**) and the phones that hear about them are in the gear's **Heating**
+  section. Under each load the tab says whether SpotNav controls it, has paused it (and why, until when) or has handed
+  it back to you after a change it did not make. Plan shows the
   pool's, the spa's and the sauna's next hours under the day's chart, and Use stacks their energy as parts of their own
   (counted from when they ran and their power, kept 14 days).
 

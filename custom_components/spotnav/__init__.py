@@ -159,6 +159,7 @@ from .loads.runtime import SwitchLoadShadow
 from .site.solar_correction_shadow import SiteSolarCorrection
 from .site.solar_shadow import SiteSolarShadow
 from .pool.runtime import PoolSpaShadow
+from .pool.control import PoolSpaControl
 from .heat.control import HeatControl
 from .heat.runtime import HeatShadow
 from .site.site_capacity_controller import (
@@ -1045,6 +1046,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await HeatShadow.async_remove_stored(hass, entry.entry_id)
         await HeatControl.async_remove_stored(hass, entry.entry_id)
         await PoolSpaShadow.async_remove_stored(hass, entry.entry_id)
+        await PoolSpaControl.async_remove_stored(hass, entry.entry_id)
         await HardwareTest.async_remove_stored(hass, entry.entry_id)
         await ChargerTestHold.async_remove_stored(hass, entry.entry_id)
         return

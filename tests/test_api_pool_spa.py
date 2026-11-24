@@ -48,7 +48,10 @@ async def test_get_heat_shows_the_pool_watched_and_nothing_is_written(hass: Home
     pool = answer["pool"]
     assert pool["season_open"] is True and pool["target_c"] == 27.0
     assert (pool["water_c"], pool["water_source"]) == (24.6, "sensor")
-    assert pool["heat_pump"] == {"on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": pool["heat_pump"]["reason"]}
+    assert pool["heat_pump"] == {
+        "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": pool["heat_pump"]["reason"],
+        "paused_until": None, "failures": 0,
+    }
     assert pool["circulation"]["on"] is False and pool["circulation"]["state"] == "watched"
     # The day's need from the water: 24.6 / 3 in quarter hours.
     assert pool["today"]["need_h"] == 8.25 and pool["today"]["need_source"] == "water"
@@ -154,7 +157,7 @@ async def test_get_heat_shows_the_spa_and_the_sauna_watched(hass: HomeAssistant)
     spa, sauna = answer["spa"], answer["sauna"]
     assert spa["family"] == "balboa" and spa["water_c"] == 36.0 and spa["bath_c"] == 38.0
     assert spa["next_bath"]["source"] == "weekly" and spa["rate_learned"] is False and spa["rate_c_h"] == 1.5
-    assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None} and spa["live"] is False
+    assert spa["control"] == {"state": "watched", "reason": None, "paused_until": None, "failures": 0} and spa["live"] is False
     assert set(spa) == {
         "family", "water_c", "bath_c", "idle_c", "floor_c", "heating", "kw", "rate_c_h", "rate_learned", "state",
         "ready_at", "next_bath", "baths", "bath_once", "bath_now", "live", "control", "would", "not_ready", "planned",
@@ -212,3 +215,21 @@ async def test_without_a_spa_or_sauna_the_controls_are_not_supported(hass: HomeA
     _charger, site, _controller = await _site(hass)
     assert deadline_answer(hass, site, "spa", {"action": "bath_now"})["error"] == "spotnav_not_supported"
     assert deadline_answer(hass, site, "sauna", {"action": "session_now"})["error"] == "spotnav_not_supported"
+
+
+async def test_the_pool_s_opt_ins_show_in_get_heat_and_the_shed_order_s_offers(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.pool.rules import LOAD_POOL_CIRCULATION  # noqa: PLC0415
+
+    _charger, site, controller = await _site(hass, {"pool": {**POOL, "control_circulation": True}})
+    now = dt_util.utcnow()
+    controller.pool_spa.tick(now)
+    await controller.pool_spa_control.async_look(now)
+    answer = await heat_answer(hass, site, writable=False)
+    circulation = answer["pool"]["circulation"]
+    assert circulation["state"] == "controlled" and circulation["live"] is True and circulation["failures"] == 0
+    assert answer["pool"]["heat_pump"]["state"] == "watched"
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    controller.pool_spa_control.pool.circ_on_since = now - timedelta(hours=1)
+    await controller.pool_spa_control.async_look(now)
+    offers = controller.pool_spa.shed_offers(now)
+    assert offers[LOAD_POOL_CIRCULATION].live is True

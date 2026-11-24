@@ -1408,53 +1408,122 @@ def heat_pumps_section() -> list[str]:
 # ---- pool heat pumps and spas ---------------------------------------------------------------------
 
 POOL_SPA_HEADER = ("Kind", "Integration", "Local or cloud", "How SpotNav finds it", "SpotNav controls")
-WATCHED = "Not yet: watched and planned in shadow"
+#: What SpotNav writes behind each load's own switch (`pool/control.py`, `spa/control.py`, `spa/adapters.py`).
+CONTROLS = "Yes, behind its own switch"
+CLOUD_CONTROLS = "Yes, behind its own switch: slow planned changes only, never a shed step"
+UNTESTED = "untested"
+#: The routes tried on real equipment (owner and pilot, November 2026).
+TRIED: dict[str, str] = {
+    "tuya_local": "being tried on a Madimack",
+    "circulation": "being tried with a Fibaro relay",
+    "balboa": "being tried",
+}
+
+
+def _controls(cloud: bool, what: str, tried: str | None = None) -> str:
+    return f"{CLOUD_CONTROLS if cloud else CONTROLS} ({what}); {tried or UNTESTED}"
 
 
 def pool_spa_rows() -> list[tuple[str, ...]]:
-    """The pool heat pump routes and spa families the detection knows (`pool/detect.py`, `spa/detect.py`)."""
+    """The pool heat pump routes, spa families and saunas the detection knows (`pool/detect.py`, `spa/detect.py`,
+    `sauna/detect.py`) and what SpotNav writes to each behind its own switch."""
+    from custom_components.spotnav.spa import adapters as spa_adapters  # noqa: PLC0415
+
     rows: list[tuple[str, ...]] = []
 
-    def cloud(domain: str) -> str:
-        return "Cloud" if domain in pool_detect.CLOUD_DOMAINS else "Local"
+    def cloud(domain: str) -> bool:
+        return domain in pool_detect.CLOUD_DOMAINS
 
+    def where(domain: str) -> str:
+        return "Cloud" if cloud(domain) else "Local"
+
+    heat_off = "heat and off, the dial once per change"
     rows.append(
-        ("Pool heat pump", f"{name_of('tuya_local')} (`tuya_local`)", "Local", "Its pool heat pump climate (sure)", WATCHED)
+        (
+            "Pool heat pump", f"{name_of('tuya_local')} (`tuya_local`)", "Local", "Its pool heat pump climate (sure)",
+            _controls(False, heat_off, TRIED["tuya_local"]),
+        )
     )
     rows.append(
         (
             "Pool heat pump", f"{name_of('tuya')} (`tuya`)", "Cloud",
-            "A temperature number, a switch and a compressor sensor on one device (sure)", WATCHED,
+            "A temperature number, a switch and a compressor sensor on one device (sure)",
+            _controls(True, "its switch, and `temp_set` once per change"),
         )
     )
     for domain in sorted(pool_detect.POOL_DOMAINS):
-        rows.append(("Pool heat pump", f"{name_of(domain)} (`{domain}`)", cloud(domain), "The integration (sure)", WATCHED))
-    for domain in sorted(pool_detect.PANEL_DOMAINS):
         rows.append(
-            ("Pool heat pump", f"{name_of(domain)} (`{domain}`)", cloud(domain), "The integration; you say pool or spa", WATCHED)
+            ("Pool heat pump", f"{name_of(domain)} (`{domain}`)", where(domain), "The integration (sure)", _controls(cloud(domain), heat_off))
+        )
+    for domain in sorted(pool_detect.PANEL_DOMAINS):
+        if domain == "intellicenter":
+            rows.append(
+                (
+                    "Pool heat pump", f"{name_of(domain)} (`{domain}`)", "Local", "Not found: its heaters are water heaters",
+                    "No: SpotNav sets a pool heat pump through a climate entity only",
+                )
+            )
+            continue
+        rows.append(
+            (
+                "Pool heat pump", f"{name_of(domain)} (`{domain}`)", where(domain), "The integration; you say pool or spa",
+                _controls(cloud(domain), heat_off),
+            )
         )
     rows.append(
         (
-            "Pool heat pump", "Any climate entity", "Local",
-            "A pool brand, an 18 to 40 °C range and no fan modes; you confirm it", WATCHED,
+            "Pool heat pump", "Any climate entity (LocalTuya `localtuya` too)", "Local",
+            "A pool brand, an 18 to 40 °C range and no fan modes; you confirm it",
+            _controls(False, "where it offers heat and off"),
         )
     )
-    rows.append(("Circulation pump", "Any switch", "Local", "You choose it (a pool or pump name is suggested)", WATCHED))
+    rows.append(
+        (
+            "Circulation pump", "Any switch", "Local", "You choose it (a pool or pump name is suggested)",
+            _controls(False, "on and off, always before and after the heat pump", TRIED["circulation"]),
+        )
+    )
+    how = {
+        spa_adapters.HEAT_PRESET: "Ready and Rest, the dial once per change",
+        spa_adapters.HEAT_HVAC: "heater on and off, the dial once per change",
+        spa_adapters.HEAT_OPERATION: "heater on and off, the dial once per change",
+        None: "its setpoint, between the idle and the bath temperature",
+    }
     for domain, family in sorted(spa_detect.SPA_DOMAINS.items()):
-        control = WATCHED if family in spa_config.CONTROLLABLE else "No: watched only"
         local = "Cloud" if family in spa_config.CLOUD else "Local"
+        route = spa_adapters.ROUTES.get(family)
+        if family not in spa_config.CONTROLLABLE or route is None:
+            control = "No: watched only"
+        else:
+            what = how[route.heat]
+            if family == spa_config.FAMILY_GECKO:
+                what = "its water heater's setpoint only, never the water care"
+            elif family == spa_config.FAMILY_MSPA:
+                what = f"{what}; watched while its own schedule is set"
+            control = _controls(family in spa_config.CLOUD, what, TRIED.get(family))
         rows.append(("Spa", f"{name_of(domain)} (`{domain}`)", local, "The integration (sure)", control))
-    rows.append(("Spa", f"{name_of('tuya_local')} (`tuya_local`), Intex", "Local", "An Intex water heater (sure)", WATCHED))
+    rows.append(
+        (
+            "Spa", f"{name_of('tuya_local')} (`tuya_local`), Intex", "Local", "An Intex water heater (sure)",
+            _controls(False, how[spa_adapters.HEAT_OPERATION]),
+        )
+    )
     rows.append(
         ("Spa", "Any climate or water heater", "Local", "A spa's range and name; you confirm it", "No: watched only")
     )
     for domain in sorted(sauna_detect.SAUNA_DOMAINS):
-        local = "Cloud" if domain in sauna_config.CLOUD else "Local"
-        rows.append(("Sauna", f"{name_of(domain)} (`{domain}`)", local, "The integration (sure); a door or safety state it shows is respected", WATCHED))
+        is_cloud = domain in sauna_config.CLOUD
+        rows.append(
+            (
+                "Sauna", f"{name_of(domain)} (`{domain}`)", "Cloud" if is_cloud else "Local",
+                "The integration (sure); a door or safety state it shows is respected",
+                _controls(is_cloud, "heat and off for a booked session only"),
+            )
+        )
     rows.append(
         (
             "Sauna", "A relay or contactor (any switch)", "Local", "A sauna or bastu name; you confirm it",
-            "Not yet; only once you declare the heater's own safety measure for a remote start",
+            "Only once you declare the heater's own safety measure for a remote start; untested",
         )
     )
     return rows
@@ -1465,9 +1534,12 @@ def pool_spa_section() -> list[str]:
         "## Supported pool heat pumps, spas and saunas",
         "",
         "SpotNav 3.0 plans a pool (its circulation pump and its heat pump), a spa and a sauna as flexible loads. They are "
-        "found from the integrations below and chosen once in the heat settings. In this release SpotNav only watches "
-        "them and shows what it would do; it writes nothing to them. A sauna is only ever heated for a session you "
-        "booked, and never past its own door or safety lock.",
+        "found from the integrations below and chosen once in the heat settings. SpotNav only watches them and shows "
+        "what it would do until an administrator turns on the load's own switch; then it sets them within hard rules "
+        "(the circulation before the heat pump, the spa's lowest temperature, your settings written back, no writes "
+        "with the season closed). A sauna is only ever heated for a session you booked, and never past its own door or "
+        "safety lock. See [Pool, spa and sauna](pool-spa.md). *Untested* means read from the integration's source and "
+        "not yet run on real equipment.",
         "",
         *table(POOL_SPA_HEADER, pool_spa_rows()),
         "",

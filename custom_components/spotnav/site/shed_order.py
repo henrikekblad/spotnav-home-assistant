@@ -10,9 +10,11 @@ free level, less its margin), the loads give way from the bottom of the site's p
 
 which keeps the order of 3.0's first steps for the loads it stepped (battery -> water heater -> car -> heat). A load's
 place decides its measure (`_measure`): above every car `beyond_cars_w` (as heat below), else `excess_w` (as the
-water heater below); below the battery also without the battery's help (`Projection.battery_help_w`). The pool, the
-spa, the sauna and cooling (`WATCH_ONLY`) have no control yet: their steps are `would` only and hold no other step
-back. The steps below describe the water heater and heat at their default places.
+water heater below); below the battery also without the battery's help (`Projection.battery_help_w`). The pool's heat
+pump and its circulation beyond the day's need, the spa (idle or for a booked bath) and the sauna (`WATCH_ONLY`) step
+live only where their own control steers them locally behind its opt-in (`pool/control.py`: a cloud route never is);
+otherwise, like house cooling, their steps are `would` only and hold no other step back. The steps below describe the
+water heater and heat at their default places.
 
 **The projection** is the hold's own, never a second one: its period budget (`HourBudget`) says what the rest of the
 period may still import on average (`rate_w`) and what the house draws now without the cars (`house_w`); the hold's
@@ -111,7 +113,8 @@ LOAD_SPA_IDLE: Final = ID_SPA_IDLE
 LOAD_SAUNA: Final = ID_SAUNA
 LOAD_POOL_CIRCULATION: Final = ID_POOL_CIRCULATION
 LOAD_POOL_HEAT: Final = ID_POOL_HEAT
-#: Loads without a control of their own yet: their steps are `would` only and never hold another step back.
+#: Loads whose step is `would` unless their own control offers it live (`Offer.live`): a `would` step never holds
+#: another step back.
 WATCH_ONLY: Final = (LOAD_POOL_HEAT, LOAD_POOL_CIRCULATION, LOAD_SPA_IDLE, LOAD_SPA, LOAD_SAUNA, LOAD_COOLING)
 #: The loads this module steps (the battery and the car are counted, not stepped).
 STEPPED: Final = (LOAD_WATER_HEATER, LOAD_HEAT, *WATCH_ONLY)
@@ -330,7 +333,7 @@ class ShedOrder:
     @staticmethod
     def _holds_back(load: str, live: bool) -> bool:
         """Whether a step of this load holds the next one back: a live one, and the water heater's and heat's as
-        before; a load without a control yet (`WATCH_ONLY`) never does."""
+        before; a `would` step of a load whose control is not live (`WATCH_ONLY`) never does."""
         return live or load not in WATCH_ONLY
 
     # ---- each pass
@@ -399,7 +402,7 @@ class ShedOrder:
     def _release(self, now: datetime, excess: float, beyond: float, help_w: float) -> None:
         """The last step taken put back once the period stays under with its give back for `RELEASE_S` (see the
         module): from the top of the list down (heat before the water heater by default), one at a time. A step its
-        control has not taken yet holds none back, nor a `would` step of a load without a control yet."""
+        control has not taken yet holds none back, nor a `would` step of a load whose control is not live."""
         for load in reversed(self._stepped()):
             step = self.steps.get(load)
             if step is None or not step.taken:

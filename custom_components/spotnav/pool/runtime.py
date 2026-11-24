@@ -41,6 +41,7 @@ from ..heat.config import HeatConfig
 from ..loads.switch_load import RunHistory
 from ..planning.demand_charge import hour_start
 from ..sauna.config import FAMILY_HARVIA, FAMILY_RELAY, FAMILY_TYLO, SaunaConfig
+from ..spa.adapters import HARVIA_ON_TIME_KEY
 from ..spa.config import SpaConfig
 from ..spa.plan import HeatHour
 from ..spa.runtime import DEFAULT_KW, Reading, new_sauna, new_spa
@@ -555,7 +556,7 @@ class PoolSpaShadow:
         if entry is None or entry.device_id is None:
             return None
         for item in er.async_entries_for_device(registry, entry.device_id):
-            if item.domain == "number" and item.translation_key == "on_time":
+            if item.domain == "number" and item.translation_key == HARVIA_ON_TIME_KEY:
                 state = self.hass.states.get(item.entity_id)
                 minutes = None if state is None else number_from_state(state.state)
                 if minutes is not None and minutes > 0:
@@ -744,6 +745,7 @@ class PoolSpaShadow:
         if spa is None:
             return None
         common = self.spa.common(spa, now)
+        self._controlled(common, "spa", now, spa)
         current = self.spa.reading.current_c
         return {
             "family": common["family"],
@@ -775,6 +777,7 @@ class PoolSpaShadow:
         if sauna is None:
             return None
         common = self.sauna.common(sauna, now)
+        self._controlled(common, "sauna", now, sauna)
         current = self.sauna.reading.current_c
         return {
             "family": common["family"],
@@ -801,6 +804,18 @@ class PoolSpaShadow:
             "notes": common["notes"],
         }
 
+    def _controlled(self, common: dict[str, Any], kind: str, now: datetime, block: Any) -> None:
+        """The spa's or the sauna's control block from its control where the opt-in is on (or SpotNav still holds
+        something on it), else the shadow's watched one; `failures` counted either way."""
+        found = self._control_part(kind, now, block.control, block)
+        if found is None:
+            common["control"] = {**common["control"], "failures": 0}
+            return
+        common["control"] = {
+            "state": found["state"], "reason": found["reason"], "paused_until": found["paused_until"], "failures": found["failures"],
+        }
+        common["live"] = found["live"]
+
     def deadline_lanes(self, config: HeatConfig) -> list[dict[str, Any]]:
         """What the Plan tab draws of the spa and the sauna."""
         out = []
@@ -810,42 +825,73 @@ class PoolSpaShadow:
         return out
 
     def shed_offers(self, now: datetime) -> dict[str, Any]:
-        """The pool's, the spa's and the sauna's offers to the site's shed order (`site/shed_order.Offer`), each
-        `would` only (nothing of theirs is written yet, spec stage 6): the pool's heat pump while it heats (its
-        entered kW); the circulation beyond the day's filtering need (with the heat pump it carries); the spa heating
-        towards a booked bath (`spa`) or holding its idle temperature (`spa_idle`, never below its floor); the sauna
-        heating for a session. A load not running now offers nothing to give."""
+        """The pool's, the spa's and the sauna's offers to the site's shed order (`site/shed_order.Offer`): the pool's
+        heat pump while it heats (its entered kW, else a typical one: a learnt figure is allowed for this low-risk
+        load); the circulation beyond the day's filtering need, or while the need still fits after the period
+        (`until_max`), with the heat pump it carries; the spa heating towards a booked bath (`spa`) or holding its
+        idle temperature (`spa_idle`, never below its floor); the sauna heating for a session. A load SpotNav controls
+        locally offers live (`pool/control.py`); a watched or cloud one is `would` only. A load not running now offers
+        nothing to give."""
         from ..site.shed_order import LOAD_POOL_CIRCULATION, LOAD_POOL_HEAT, LOAD_SAUNA, LOAD_SPA, LOAD_SPA_IDLE, Offer  # noqa: PLC0415
         from ..spa.plan import STATE_HEATING, STATE_LATE  # noqa: PLC0415
 
         out: dict[str, Any] = {}
         config = self.config()
         pool = config.pool
+        control = getattr(self.site, "pool_spa_control", None)
         if pool is not None and pool.season_open:
             on, heating, _reading = self._pump_state(pool)
-            pump_w = (pool.heat_pump_kw or 0.0) * 1000.0 if heating else 0.0
+            pump_w = (pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW) * 1000.0 if heating else 0.0
             out[LOAD_POOL_HEAT] = Offer(live=False, ready=bool(heating), give_w=pump_w, drawing=bool(heating))
+            day_start = self._local(now).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
+            done_h = self.history.on_seconds(day_start, now) / 3600.0
+            need_h = None if self.plan is None else self.plan.need_h
+            beyond = need_h is not None and done_h >= need_h
+            until_max = None
+            if need_h is not None and not beyond:
+                # The latest a pause may end and still leave the day's need before its deadline (moved, never dropped).
+                by = self.load_facts().get("by") or (day_start + timedelta(days=1))
+                until_max = by - timedelta(hours=need_h - done_h)
             circulating = self._switch_on(pool.circulation_id)
             if circulating:
-                day_start = self._local(now).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
-                done_h = self.history.on_seconds(day_start, now) / 3600.0
-                need_h = None if self.plan is None else self.plan.need_h
-                beyond = need_h is not None and done_h >= need_h
-                give = (pool.circulation_kw or 0.0) * 1000.0 + pump_w
-                out[LOAD_POOL_CIRCULATION] = Offer(live=False, ready=beyond, give_w=give, why=None if beyond else "need")
+                give = (pool.circulation_kw or DEFAULT_CIRCULATION_KW) * 1000.0 + pump_w
+                fits = beyond or (until_max is not None and until_max > now)
+                out[LOAD_POOL_CIRCULATION] = Offer(
+                    live=False, ready=fits, give_w=give, why=None if fits else "need", until_max=None if beyond else until_max
+                )
+            if control is not None:
+                out.update(control.pool.offers(now, pool, beyond=beyond, until_max=until_max))
         for part, block, booked_load in ((self.spa, config.spa, LOAD_SPA), (self.sauna, config.sauna, LOAD_SAUNA)):
-            if block is None or not part.reading.heating:
+            if block is None:
                 continue
-            give = (block.heater_kw or 0.0) * 1000.0
-            plan = part.plan
-            booked = plan is not None and plan.state in (STATE_HEATING, STATE_LATE)
-            if booked or isinstance(block, SaunaConfig):
-                out[booked_load] = Offer(live=False, ready=True, give_w=give)
-                continue
-            current = part.reading.current_c
-            warm = current is not None and current > block.floor_c + 1.0
-            out[LOAD_SPA_IDLE] = Offer(live=False, ready=warm, give_w=give, why=None if warm else "floor")
+            if part.reading.heating:
+                give = (block.heater_kw or 0.0) * 1000.0
+                plan = part.plan
+                booked = plan is not None and plan.state in (STATE_HEATING, STATE_LATE)
+                if booked or isinstance(block, SaunaConfig):
+                    out[booked_load] = Offer(live=False, ready=True, give_w=give)
+                else:
+                    current = part.reading.current_c
+                    warm = current is not None and current > block.floor_c + 1.0
+                    out[LOAD_SPA_IDLE] = Offer(live=False, ready=warm, give_w=give, why=None if warm else "floor")
+            if control is not None:
+                out.update(getattr(control, booked_load).offers(now, block))
         return out
+
+    def _control_part(self, name: str, now: datetime, enabled: bool, block: Any) -> dict[str, Any] | None:
+        """A part's control as the card shows it (`pool/control.py`), `None` while the opt-in is off and SpotNav holds
+        nothing on it."""
+        control = getattr(self.site, "pool_spa_control", None)
+        if control is None:
+            return None
+        if name in ("heat_pump", "circulation"):
+            found = control.pool.status(now, block)[name]
+            holds = (control.pool.hp if name == "heat_pump" else control.pool.circ).holds()
+        else:
+            part = getattr(control, name)
+            found = part.status(now, block)
+            holds = part.part.holds()
+        return found if enabled or holds else None
 
     def pool_status(self, config: HeatConfig, now: datetime) -> dict[str, Any] | None:
         """`get_heat`'s `pool` (`heat/view.py`), `None` without a pool."""
@@ -890,6 +936,14 @@ class PoolSpaShadow:
         days = {date.fromisoformat(day): row[1] for day, row in self.water_days.items()}
         hint = season_hint(days, local.date(), season_open=pool.season_open, hinted_year=None)
         reason_now = None if would is None else would["reason"]
+        hp_control = None if pool.heat_pump is None else self._control_part("heat_pump", now, pool.control_heat_pump, pool)
+        circ_control = None if pool.circulation_id is None else self._control_part("circulation", now, pool.control_circulation, pool)
+
+        def part_control(found: dict[str, Any] | None) -> dict[str, Any]:
+            if found is None or not pool.season_open:
+                return {"live": False, "state": state, "paused_until": None, "failures": 0 if found is None else found["failures"]}
+            return {"live": found["live"], "state": found["state"], "paused_until": found["paused_until"], "failures": found["failures"]}
+
         return {
             "season_open": pool.season_open,
             "water_c": None if self.water_c is None else round(self.water_c, 1),
@@ -901,18 +955,24 @@ class PoolSpaShadow:
                 "on": on,
                 "heating": heating,
                 "kw": pump_kw,
-                "live": False,
-                "state": state,
-                "reason": None if not pool.season_open else (reason_now if action == ACTION_HEAT else REASON_WAITING if heat_h else REASON_MET),
+                **part_control(hp_control),
+                "reason": None
+                if not pool.season_open
+                else hp_control["reason"]
+                if hp_control is not None and hp_control["state"] != "controlled"
+                else (reason_now if action == ACTION_HEAT else REASON_WAITING if heat_h else REASON_MET),
             },
             "circulation": None
             if pool.circulation_id is None
             else {
                 "on": self._switch_on(pool.circulation_id),
                 "kw": circ_kw,
-                "live": False,
-                "state": state,
-                "reason": None if not pool.season_open else reason_now,
+                **part_control(circ_control),
+                "reason": None
+                if not pool.season_open
+                else circ_control["reason"]
+                if circ_control is not None and circ_control["state"] != "controlled"
+                else reason_now,
             },
             "today": {
                 "need_h": None if plan is None else plan.need_h,
@@ -963,4 +1023,5 @@ class PoolSpaShadow:
             "spa": None if self.spa.plan is None else self.spa.plan.as_dict(),
             "sauna": None if self.sauna.plan is None else self.sauna.plan.as_dict(),
             "log": [entry.as_dict() for entry in self.book.entries],
+            "control": None if getattr(self.site, "pool_spa_control", None) is None else self.site.pool_spa_control.diagnostics(),
         }
