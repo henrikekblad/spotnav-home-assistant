@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACAction, HVACMode
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_HALVES, UnitOfTemperature
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -55,24 +56,25 @@ class FakeSpaClimate(ClimateEntity):
         )
         self._preset = "ready"
         self._water = START_C
-        self._attr_target_temperature = 37.5
+        self._target = 37.5
         self._last = time.monotonic()
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(async_track_time_interval(self.hass, self._tick, TICK))
 
     def _heats(self) -> bool:
-        return self._preset in ("ready", "ready_in_rest") and self._water < (self._attr_target_temperature or 0.0)
+        return self._preset in ("ready", "ready_in_rest") and self._water < self._target
 
     def _advance(self) -> None:
         now = time.monotonic()
         hours = (now - self._last) / 3600.0
         self._last = now
         if self._heats():
-            self._water = min(self._attr_target_temperature, self._water + HEAT_C_H * hours)
+            self._water = min(self._target, self._water + HEAT_C_H * hours)
         elif self._water > AMBIENT_C:
             self._water = max(AMBIENT_C, self._water - LOSS_C_H * hours)
 
+    @callback
     def _tick(self, _now) -> None:
         self._advance()
         self.async_write_ha_state()
@@ -80,6 +82,10 @@ class FakeSpaClimate(ClimateEntity):
     @property
     def current_temperature(self) -> float:
         return round(self._water, 1)
+
+    @property
+    def target_temperature(self) -> float:
+        return self._target
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -100,7 +106,7 @@ class FakeSpaClimate(ClimateEntity):
     async def async_set_temperature(self, **kwargs) -> None:
         self._advance()
         value = float(kwargs[ATTR_TEMPERATURE])
-        self._attr_target_temperature = min(self._attr_max_temp, max(self._attr_min_temp, round(value * 2) / 2))
+        self._target = min(self._attr_max_temp, max(self._attr_min_temp, round(value * 2) / 2))
         self.async_write_ha_state()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:

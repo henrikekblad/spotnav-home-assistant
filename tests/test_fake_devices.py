@@ -4,6 +4,7 @@ controllable Balboa spa and a Saunum sauna with its door (`spa/detect.py`, `saun
 from __future__ import annotations
 
 import shutil
+from datetime import timedelta
 import sys
 from pathlib import Path
 
@@ -11,6 +12,8 @@ import pytest
 from homeassistant import loader
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 import custom_components
 
@@ -58,6 +61,9 @@ async def test_the_fakes_take_writes_at_once(hass: HomeAssistant, fake_devices) 
     for domain in DOMAINS:
         await _add(hass, domain)
 
+    # The models' ticks run on the event loop and redraw the states.
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
+    await hass.async_block_till_done()
     spa = hass.states.get("climate.balboa_spa_fake")
     assert (spa.state, spa.attributes["preset_mode"], spa.attributes["current_temperature"]) == ("heat", "ready", 30.0)
     assert spa.attributes["hvac_action"] == "heating"
