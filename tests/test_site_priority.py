@@ -325,3 +325,111 @@ async def test_an_older_apps_writes_move_the_rows(hass: HomeAssistant, hass_ws_c
     from custom_components.spotnav.site.priority import solar_priority as derived  # noqa: PLC0415
 
     assert derived(site_controller.config) == "battery_first"
+
+
+# --------------------------------------------------------- an older app's charger_priority write (review S6)
+
+
+async def _site_with(hass: HomeAssistant, names: str) -> object:
+    """Chargers named by the letters of `names` (joined in that order, none with a stored priority) on one site."""
+    from .helpers import make_entry, make_site_entry  # noqa: PLC0415
+    from .world import controller_of  # noqa: PLC0415
+
+    for name in names:
+        hass.states.async_set(f"switch.c{name}", "off")
+        entry = make_entry(
+            hass, entry_id=f"c{name}", charge_control=f"switch.c{name}", current_limit=None,
+            webhook_id=f"webhook-c{name}", title=f"Charger {name}",
+        )
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    site = make_site_entry(hass, entry_id="prio_site", charger_entry_ids=[f"c{name}" for name in names])
+    assert await hass.config_entries.async_setup(site.entry_id)
+    await hass.async_block_till_done()
+    return controller_of(hass, site.entry_id)
+
+
+async def _write(client, charger: str, expected: str, value: str) -> dict:
+    message = {
+        "type": "spotnav/update_entity_config",
+        "api_version": 1,
+        "charger_id": charger,
+        "scope": "charger",
+        "expected": {"charger_priority": expected},
+        "changes": {"charger_priority": value},
+    }
+    return (await ws_call(client, message))["result"]
+
+
+def _read_back(result: dict) -> str:
+    return next(field["value"] for field in result["config"]["fields"] if field["field"] == "charger_priority")
+
+
+def _cut_first(controller, names: str) -> str:
+    """The charger an import overload is cut on first (`regulator.overload_order`)."""
+    requests = [
+        _request(f"c{name}", controller.charger_priority(f"c{name}"), index) for index, name in enumerate(names)
+    ]
+    return overload_order(requests)[0].charger_entry_id
+
+
+@pytest.mark.parametrize("names", ["ab", "abc"])
+@pytest.mark.parametrize("charger", ["a", "b", "c"])
+@pytest.mark.parametrize("value", ["first", "last", "normal"])
+async def test_every_older_app_write_moves_the_list_and_reads_back(
+    hass: HomeAssistant, hass_ws_client, names: str, charger: str, value: str
+) -> None:
+    if charger not in names:
+        pytest.skip("no such charger on this site")
+    controller = await _site_with(hass, names)
+    client = await admin(hass, hass_ws_client)
+    result = await _write(client, f"c{charger}", "normal", value)
+    assert result["ok"] is True
+    assert _read_back(result) == value
+    # The others keep what they were shown, and a second read says the same.
+    for other in names:
+        again = (
+            await ws_call(client, {"type": "spotnav/get_entity_config", "api_version": 1, "charger_id": f"c{other}"})
+        )["result"]
+        assert _read_back(again) == (value if other == charger else "normal")
+    cars = [item for item in controller.config.get(CONF_PRIORITY) or [] if item.startswith("charger:")]
+    if value == "first":
+        assert cars[0] == f"charger:c{charger}"
+        # Review S6: "A first" over "B normal": A no longer takes an overload's cut first.
+        assert _cut_first(controller, names) != f"c{charger}"
+    elif value == "last":
+        assert cars[-1] == f"charger:c{charger}"
+        assert _cut_first(controller, names) == f"c{charger}"
+    else:
+        # Normal over normal: nothing to store, the old order as before.
+        assert CONF_PRIORITY not in controller.config
+
+
+@pytest.mark.parametrize("names", ["ab", "abc"])
+async def test_older_app_writes_in_a_row_read_back_and_order_by_class(hass: HomeAssistant, hass_ws_client, names: str) -> None:
+    controller = await _site_with(hass, names)
+    client = await admin(hass, hass_ws_client)
+    assert _read_back(await _write(client, "ca", "normal", "first")) == "first"
+    assert _read_back(await _write(client, "cb", "normal", "last")) == "last"
+    # Back to normal from first, and from last: each reads back "normal", ordered by class.
+    assert _read_back(await _write(client, "ca", "first", "normal")) == "normal"
+    cars = [item for item in controller.config[CONF_PRIORITY] if item.startswith("charger:")]
+    assert cars[-1] == "charger:cb"
+    assert _cut_first(controller, names) == "cb"
+    assert _read_back(await _write(client, "cb", "last", "normal")) == "normal"
+    assert _read_back(await _write(client, "cb", "normal", "first")) == "first"
+    cars = [item for item in controller.config[CONF_PRIORITY] if item.startswith("charger:")]
+    assert cars[0] == "charger:cb"
+    # The card saving the list drops the classes: the positions speak again.
+    shown = [row["id"] for row in (
+        await ws_call(client, {"type": "spotnav/get_site_settings_view", "api_version": 1, "site_id": "prio_site"})
+    )["result"]["priority"]["order"]]
+    message = update_site_settings_message(charger_id=None, expected={"priority": shown}, changes={"priority": list(reversed(shown))})
+    message["site_id"] = "prio_site"
+    assert (await ws_call(client, message))["result"]["ok"] is True
+    assert "priority_classes" not in controller.config
+    top = list(reversed(shown))[0]
+    again = (await ws_call(client, {"type": "spotnav/get_entity_config", "api_version": 1, "charger_id": top[len("charger:"):]}))[
+        "result"
+    ]
+    assert _read_back(again) == "first"
