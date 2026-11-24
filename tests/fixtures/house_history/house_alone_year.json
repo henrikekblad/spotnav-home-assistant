@@ -344,7 +344,7 @@
     "heat_hours": 0,
     "heat_sources": 0,
     "hours": 2552,
-    "inverter_loss_kwh": null,
+    "inverter_kwh": null,
     "links": [
       {
         "from": "source.grid",

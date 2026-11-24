@@ -15,6 +15,7 @@
       "statistic_id": "sensor.smart_energy_switch_electric_consumption_kwh"
     }
   ],
+  "inverter_kwh": null,
   "kind": "house",
   "loads": [
     {
@@ -56,5 +57,6 @@
   "over_kwh": 0.0,
   "period": "month",
   "site_id": "site_villa",
-  "through": "2026-11-01T00:00:00+00:00"
+  "through": "2026-11-01T00:00:00+00:00",
+  "unknown_kwh": 946.2
 }

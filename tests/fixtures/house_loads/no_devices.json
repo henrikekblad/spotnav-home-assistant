@@ -5,6 +5,7 @@
   "end": "2027-01-01",
   "house_kwh": 6120.4,
   "implausible": [],
+  "inverter_kwh": null,
   "kind": "house",
   "loads": [],
   "meters_kwh": 0,
@@ -13,5 +14,6 @@
   "over_kwh": 0.0,
   "period": "year",
   "site_id": "site_villa",
-  "through": "2026-11-17T13:00:00+00:00"
+  "through": "2026-11-17T13:00:00+00:00",
+  "unknown_kwh": 6120.4
 }

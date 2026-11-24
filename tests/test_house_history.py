@@ -17,7 +17,7 @@ from custom_components.spotnav.api.house_history import read_archived_reviews
 from custom_components.spotnav.battery.hindsight import CellTemperature
 from custom_components.spotnav.battery.plan_shadow import DayReview, PriceSlot, Run
 from custom_components.spotnav.day_record import review_part
-from custom_components.spotnav.site.energy_flow import EnergyHour, on_ac_side
+from custom_components.spotnav.site.energy_flow import EnergyHour, inverter_use
 from custom_components.spotnav.site.history_period import (
     PERIOD_DAY,
     PERIOD_MONTH,
@@ -262,19 +262,20 @@ def test_month_buckets_sum_the_hours_and_the_flow_is_the_sum_of_the_hours() -> N
     assert answer["period"] == "month" and answer["complete"] is False and answer["date"] == "2026-11-01"
 
 
-def test_a_battery_read_at_the_battery_counts_on_the_ac_side_and_its_loss_is_the_sum_of_the_days() -> None:
+def test_the_inverter_on_a_battery_read_at_the_battery_stays_in_the_house_and_is_the_sum_of_the_days() -> None:
     as_read = month_inputs()
-    turned = month_inputs(periods=on_ac_side(as_read.periods or [], (0.0366, 0.065)))
-    before, after = house_history(as_read), house_history(turned)
-    assert before["energy_flow"]["inverter_loss_kwh"] is None
-    loss = after["energy_flow"]["inverter_loss_kwh"]
-    assert loss is not None and loss > 0
-    # The month's loss is its periods' summed, and it is what left the house.
-    assert loss == pytest.approx(sum(item.inverter_loss or 0.0 for item in turned.periods or []), abs=0.01)
+    counted = month_inputs(periods=inverter_use(as_read.periods or [], (0.0346, 0.0431), 0.19))
+    before, after = house_history(as_read), house_history(counted)
+    assert before["energy_flow"]["inverter_kwh"] is None
+    used = after["energy_flow"]["inverter_kwh"]
+    assert used is not None and used > 0
+    # The month's is its periods' summed, and the house still holds it.
+    assert used == pytest.approx(sum(item.inverter or 0.0 for item in counted.periods or []), abs=0.01)
+
     def house(answer: dict[str, Any]) -> float:
         return next(node["kwh"] for node in answer["energy_flow"]["nodes"] if node["role"] == "house")
 
-    assert house(before) - house(after) == pytest.approx(loss, abs=0.05)
+    assert house(before) == pytest.approx(house(after), abs=0.01)
 
 
 def test_cost_prices_each_hour_and_counts_the_unpriced() -> None:

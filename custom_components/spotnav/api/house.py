@@ -48,7 +48,7 @@ from ..site.energy_flow import (
     energy_flow,
     energy_hours,
     hour_figures,
-    on_ac_side,
+    inverter_use,
     quarter_hours,
 )
 from ..site.energy_statistics import (
@@ -564,10 +564,23 @@ def battery_loss(controller: Any) -> tuple[float, float] | None:
     return loss
 
 
+def inverter_idle_kw(controller: Any) -> float | None:
+    """The inverter's standing use (kW) the battery plan learnt for a battery read at the battery
+    (`battery/conversion_loss.ConversionLoss.idle`), `None` where it is not learnt or the battery is read on the AC
+    side."""
+    shadow = getattr(controller, "battery_shadow", None)
+    facts = getattr(shadow, "facts", None)
+    learned = getattr(getattr(shadow, "plan", None), "learned", None)
+    if facts is None or learned is None or not getattr(facts, "power_dc", False):
+        return None
+    idle: float | None = learned.conversion.idle(True)
+    return idle
+
+
 def flow_battery_loss(hass: HomeAssistant, controller: Any, ids: FlowIds) -> tuple[float, float] | None:
     """`battery_loss` where the Energy dashboard's battery meters are the battery's own (every one an entity of the
-    battery's integration, so counted on the same side as its power): the energy flow turns them to the AC side
-    (`site/energy_flow.on_ac_side`); `None` otherwise."""
+    battery's integration, so counted on the same side as its power): the energy flow counts what the inverter used
+    from them (`site/energy_flow.inverter_use`); `None` otherwise."""
     loss = battery_loss(controller)
     meters = (*ids.battery_in, *ids.battery_out)
     if loss is None or not meters:
@@ -583,14 +596,18 @@ def flow_battery_loss(hass: HomeAssistant, controller: Any, ids: FlowIds) -> tup
     return loss
 
 
-def with_ac_battery(hass: HomeAssistant, controller: Any, ids: FlowIds, periods: Sequence[EnergyHour]) -> list[EnergyHour]:
-    """The periods with a battery read at the battery on the AC side (`flow_battery_loss`), else as they are."""
+def with_inverter(hass: HomeAssistant, controller: Any, ids: FlowIds, periods: Sequence[EnergyHour]) -> list[EnergyHour]:
+    """The periods with what a hybrid's inverter used of the house (`site/energy_flow.inverter_use`: its loss on a
+    battery whose meters are its own counters, `flow_battery_loss`, and its standing use where learnt), else as they
+    are. The battery's figures stay as read either way."""
     try:
         loss = flow_battery_loss(hass, controller, ids)
-    except Exception:  # noqa: BLE001 - without the loss the battery is counted as read
+        idle = None if loss is None else inverter_idle_kw(controller)
+    except Exception:  # noqa: BLE001 - without the loss the inverter is not said apart
         _LOGGER.debug("SpotNav house view: the battery's side could not be told", exc_info=True)
         loss = None
-    return list(periods) if loss is None else on_ac_side(periods, loss)
+        idle = None
+    return list(periods) if loss is None else inverter_use(periods, loss, idle)
 
 
 def _with_parts(hass: HomeAssistant, controller: Any, periods: Sequence[EnergyHour], meter: Any, zones: ZoneSources) -> tuple[list[EnergyHour], int]:
@@ -648,7 +665,7 @@ async def async_day_flow(
     else:
         periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter, zones)
     periods, parts = _with_parts(hass, controller, periods, meter, zones)
-    periods = with_ac_battery(hass, controller, ids, periods)
+    periods = with_inverter(hass, controller, ids, periods)
     has_battery = bool(ids.battery_in)
     soc = None
     if has_battery and day == today:

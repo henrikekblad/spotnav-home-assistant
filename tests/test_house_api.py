@@ -394,10 +394,13 @@ def test_the_card_shows_the_round_trip_the_plan_uses() -> None:
     assert _on_ac_side(ac, learned, 0.97) == 0.97
 
 
-async def test_the_energy_flow_turns_only_the_batterys_own_meters_to_the_ac_side(hass: HomeAssistant) -> None:
+async def test_the_energy_flow_counts_the_inverter_only_on_the_batterys_own_meters(hass: HomeAssistant) -> None:
+    from datetime import datetime, timezone
+
     from homeassistant.helpers import entity_registry as er
 
-    from custom_components.spotnav.api.house import flow_battery_loss
+    from custom_components.spotnav.api.house import flow_battery_loss, inverter_idle_kw, with_inverter
+    from custom_components.spotnav.site.energy_flow import EnergyHour
     from custom_components.spotnav.battery.conversion_loss import DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS
     from custom_components.spotnav.site.energy_statistics import FlowIds
 
@@ -411,8 +414,13 @@ async def test_the_energy_flow_turns_only_the_batterys_own_meters_to_the_ac_side
         return SimpleNamespace(battery_shadow=SimpleNamespace(facts=facts, plan=SimpleNamespace(learned=learned)))
 
     ids = FlowIds(grid_in=("sensor.import",), battery_in=(charged,), battery_out=(given,))
-    learned = SimpleNamespace(conversion=SimpleNamespace(loss=lambda dc: (0.0366, 0.065)))
+    learned = SimpleNamespace(conversion=SimpleNamespace(loss=lambda dc: (0.0366, 0.065), idle=lambda dc: 0.19))
     assert flow_battery_loss(hass, controller(True, learned), ids) == (0.0366, 0.065)
+    assert inverter_idle_kw(controller(True, learned)) == 0.19 and inverter_idle_kw(controller(False, learned)) is None
+    night = [EnergyHour(start=datetime(2026, 11, 20, 1, tzinfo=timezone.utc), grid_in=0.2, grid_out=0.0, battery_in=0.0, battery_out=10.0)]
+    counted = with_inverter(hass, controller(True, learned), ids, night)[0]
+    assert counted.inverter == pytest.approx(0.65 + 0.19) and counted.battery_out == 10.0
+    assert with_inverter(hass, controller(False, learned), ids, night) == night
     assert flow_battery_loss(hass, controller(True), ids) == (DEFAULT_CHARGE_LOSS, DEFAULT_DISCHARGE_LOSS)
     # Read on the AC side, or the dashboard counting the battery with another meter: as read.
     assert flow_battery_loss(hass, controller(False, learned), ids) is None
