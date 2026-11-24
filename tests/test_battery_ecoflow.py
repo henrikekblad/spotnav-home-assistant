@@ -400,6 +400,7 @@ def test_a_hardware_test_passes_only_with_the_hold_the_charge_and_the_hand_back_
     assert gate.hardware_test_passed(_report(expiry="not_judgeable:charge_in_silence"))
     assert not gate.hardware_test_passed(_report(expiry="ignored"))
     assert not gate.hardware_test_passed(_report(expiry="aborted:fuse_headroom"))
+    assert not gate.hardware_test_passed(_report(**{"expiry:1": "skipped"}))
     # The charge skipped counts only for a recipe that has none (`supported` without it).
     assert not gate.hardware_test_passed(_report(charge="skipped"))
     assert gate.hardware_test_passed(_report(charge="skipped"), {"hold", "discharge_house"})

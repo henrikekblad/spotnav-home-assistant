@@ -304,9 +304,9 @@ def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[s
     """Whether a person's finished hardware test (its verification's report) shows the battery doing as told: what a
     recipe with `BrandControl.hardware_test_first` waits for before anything is written outside a test. The hold and
     the hand-back (`normal`) passed; the grid charge passed where the recipe has one (`supported`, the modes it has
-    an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, where the test
-    times one) passed or could not be judged; every other step passed, could not be judged or was skipped. A step
-    stopped or still open is no pass."""
+    an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, or
+    `expiry:<phase>` per phase, where the test times one) passed or could not be judged; every other step passed,
+    could not be judged or was skipped. A step stopped or still open is no pass."""
     if not isinstance(report, Mapping):
         return False
     modes = _modes(report)
@@ -314,7 +314,8 @@ def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[s
     must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
     if any(status.get(name) != "passed" for name in must):
         return False
-    if MODE_EXPIRY in status and status[MODE_EXPIRY] not in ("passed", "not_judgeable"):
+    deadman = [value for name, value in status.items() if name.split(":", 1)[0] == MODE_EXPIRY]
+    if any(value not in ("passed", "not_judgeable") for value in deadman):
         return False
     return all(value in ("passed", "not_judgeable", "skipped") for value in status.values())
 
