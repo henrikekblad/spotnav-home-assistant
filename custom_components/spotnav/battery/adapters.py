@@ -51,7 +51,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
 * FoxESS, `foxess_modbus` (nathanmarlor/foxess_modbus `94252f0`, read 2026-11-20, `plans/v3_foxess.md`): unique id
-  `foxess_modbus_[<prefix>_]<key>`, read only (no control is mapped). One integration for the H1 (G1, G2, LAN), AC1,
+  `foxess_modbus_[<prefix>_]<key>`, control is limits only (`commands.FOXESS_CONTROL`). One integration for the H1 (G1, G2, LAN), AC1,
   KH, H3, AC3, AIO-H3, H3-Pro and H3-Smart families; the 1KOMMA5 `1K5-HI-<kW>-V1` is read as an H3-Smart. The
   level is `battery_soc` on H1, KH and H3; the H3-Pro and H3-Smart (and 1K5) have no total, only `battery_soc_1` and
   `battery_soc_2` per battery input, which are combined (`soc_packs`, weighted by each pack's `bms_kwh_remaining`;
