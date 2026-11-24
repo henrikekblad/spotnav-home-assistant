@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "The charger's own schedule is holding back the planned charge.",
     "stopped.charger_ignores_stop": "The charger keeps charging although it was stopped. Stop it at the charger or unplug the car.",
     "stopped.charger_disabled": "The charger is disabled, so the planned charge cannot start.",
+    "stopped.car_refuses": "The car is not taking current though the target is not reached. Start the charge in the car's app.",
+    "stopped.car_refuses_level": "The car is not taking current at {level} though the target is {target}. Start the charge in the car's app.",
     "at_risk": "The charge will not be ready by the departure.",
     "at_risk.time": "The charge will not be ready by the departure at {time}.",
     "complete.target": "Charging complete: the target {percent} was reached.",

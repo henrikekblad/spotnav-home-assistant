@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "Der eigene Zeitplan der Ladestation hält den geplanten Ladevorgang zurück.",
     "stopped.charger_ignores_stop": "Die Ladestation lädt weiter, obwohl sie gestoppt wurde. Stoppe sie an der Ladestation oder ziehe das Kabel ab.",
     "stopped.charger_disabled": "Die Ladestation ist deaktiviert, daher kann der geplante Ladevorgang nicht beginnen.",
+    "stopped.car_refuses": "Das Auto nimmt keinen Strom an, obwohl das Ziel nicht erreicht ist. Starte das Laden in der App des Autos.",
+    "stopped.car_refuses_level": "Das Auto nimmt bei {level} keinen Strom an, obwohl das Ziel {target} ist. Starte das Laden in der App des Autos.",
     "at_risk": "Das Laden wird bis zur Abfahrt nicht fertig.",
     "at_risk.time": "Das Laden wird bis zur Abfahrt um {time} nicht fertig.",
     "complete.target": "Laden abgeschlossen: Das Ladeziel von {percent} ist erreicht.",

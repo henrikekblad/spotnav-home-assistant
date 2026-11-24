@@ -72,11 +72,15 @@ def _figures(
     return f" {joined[:1].upper()}{joined[1:]}."
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tuple[str, str]:
     """The title and the message of one notification.
 
     `facts` by event: `plan_stopped` {reason} (`charger_ignores_stop` too: the charger keeps charging under a
-    person's Stop); `plan_at_risk` {time?}; `charge_complete` {reason,
+    person's Stop; `car_refuses` with `level_percent` and `target_percent`: the car takes no current below its target); `plan_at_risk` {time?}; `charge_complete` {reason,
     target_percent?, level_percent?, basis?, kwh?, cost?}; `charge_started` {until?}; `plan_installed` {time, kwh?,
     cost?, guest?} (`guest`: the plan is a guest car's).
 
@@ -90,6 +94,12 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
     cost = facts.get("cost")
     if event == "plan_stopped":
         message = text.get(f"stopped.{facts.get('reason')}", text["stopped.not_started"])
+        level = facts.get("level_percent")
+        target = facts.get("target_percent")
+        if facts.get("reason") == "car_refuses" and _is_number(level) and _is_number(target):
+            message = text["stopped.car_refuses_level"].format(
+                level=percent_text(language, round(level)), target=percent_text(language, round(target))
+            )
     elif event == "plan_at_risk":
         time = facts.get("time")
         message = text["at_risk.time"].format(time=time) if time else text["at_risk"]

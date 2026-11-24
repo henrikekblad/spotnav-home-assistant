@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "Het eigen schema van de laadpaal houdt het geplande laden tegen.",
     "stopped.charger_ignores_stop": "De laadpaal blijft laden hoewel hij is gestopt. Stop hem bij de laadpaal of koppel de auto los.",
     "stopped.charger_disabled": "De laadpaal is uitgeschakeld, dus het geplande laden kan niet starten.",
+    "stopped.car_refuses": "De auto neemt geen stroom af hoewel het doel niet is bereikt. Start het laden in de app van de auto.",
+    "stopped.car_refuses_level": "De auto neemt geen stroom af bij {level} hoewel het doel {target} is. Start het laden in de app van de auto.",
     "at_risk": "Het laden is niet klaar voor vertrek.",
     "at_risk.time": "Het laden is niet klaar voor het vertrek om {time}.",
     "complete.target": "Laden voltooid: het doel van {percent} is bereikt.",

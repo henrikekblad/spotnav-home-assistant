@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "La programación propia del cargador está reteniendo la carga planificada.",
     "stopped.charger_ignores_stop": "El cargador sigue cargando aunque se ha detenido. Detenlo en el cargador o desenchufa el coche.",
     "stopped.charger_disabled": "El cargador está desactivado, así que la carga planificada no puede empezar.",
+    "stopped.car_refuses": "El coche no acepta corriente aunque no ha llegado al objetivo. Inicia la carga en la app del coche.",
+    "stopped.car_refuses_level": "El coche no acepta corriente al {level} aunque el objetivo es {target}. Inicia la carga en la app del coche.",
     "at_risk": "La carga no estará lista para la salida.",
     "at_risk.time": "La carga no estará lista para la salida de las {time}.",
     "complete.target": "Carga completada: se ha alcanzado el objetivo del {percent}.",

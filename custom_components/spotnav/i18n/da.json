@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "Laderens egen tidsplan holder den planlagte opladning tilbage.",
     "stopped.charger_ignores_stop": "Laderen bliver ved med at lade, selvom den blev stoppet. Stop den ved laderen, eller tag stikket ud af bilen.",
     "stopped.charger_disabled": "Laderen er slået fra, så den planlagte opladning kan ikke starte.",
+    "stopped.car_refuses": "Bilen tager ikke imod strøm, selvom målet ikke er nået. Start opladningen i bilens app.",
+    "stopped.car_refuses_level": "Bilen tager ikke imod strøm ved {level}, selvom målet er {target}. Start opladningen i bilens app.",
     "at_risk": "Opladningen bliver ikke færdig til afgangen.",
     "at_risk.time": "Opladningen bliver ikke færdig til afgangen kl. {time}.",
     "complete.target": "Opladningen er færdig: målet {percent} er nået.",
