@@ -4,19 +4,21 @@ Stored shape (every key optional but `entity_id`; a missing or broken one reads 
 
     {entity_id: climate / water_heater id, family: one of `FAMILIES`,
      bath_c: 20..40 in 0.5 steps (38), idle_c: 10..40 in 0.5 steps (30, or the spa's setpoint found at setup when lower),
-     floor_c: 5..30 in 0.5 steps (10: well above the controllers' own freeze protection),
      baths: [{weekdays: [1..7] (Monday 1, as a car's departures), time: "HH:MM"}] (up to 4), bath_once: ISO instant with offset | null,
      heater_kw: 0.5..12 | null (entered where no power sensor is found), control: bool (false)}
 
 `family` says which integration the spa is read through (`spa/detect.py`) and so how it would be steered; `generic`,
 `control_my_spa`, `arctic_spa` and `joyonway` are watched only (`control` cannot be turned on). The baths are the times
 the spa should be at `bath_c` by, like a car's departures: each weekly one on its weekdays at its local time, and one
-one-off date. Between them it is held at `idle_c`, never below `floor_c`.
+one-off date. Between them it is held at `idle_c`, never below the fixed frost floor `DEFAULT_FLOOR_C` (10 °C: well
+above the controllers' own freeze protection; not a setting since 2026-11-24, a stored `floor_c` from earlier builds is
+ignored).
 
 `control` is the opt-in for the control to come; nothing in this release writes to the spa. The write (`apply_spa`)
 changes each key named and keeps the rest (a new spa starts watched, its `idle_c` the setpoint found); `null` removes the
-spa. The household's own controls (the bath temperature, the idle temperature, the bath times) are also written by
-`spotnav/spa` (`api/pool_spa.py`) through `apply_spa`, for any user who can see the card.
+spa. The household's own controls (the bath temperature and the bath times) are also written by `spotnav/spa`
+(`api/pool_spa.py`) through `apply_spa`, for any user who can see the card; the idle temperature is an administrator's
+setting.
 """
 
 from __future__ import annotations
@@ -59,8 +61,7 @@ DEFAULT_BATH_C: Final = 38.0
 IDLE_MIN_C: Final = 10.0
 IDLE_MAX_C: Final = 40.0
 DEFAULT_IDLE_C: Final = 30.0
-FLOOR_MIN_C: Final = 5.0
-FLOOR_MAX_C: Final = 30.0
+#: The frost floor: water at or below it is heated whatever else holds. Fixed, not a setting.
 DEFAULT_FLOOR_C: Final = 10.0
 HEATER_KW: Final = (0.5, 12.0)
 MAX_BATHS: Final = 4
@@ -69,7 +70,7 @@ BATH_ONCE_MAX_DAYS: Final = 30
 STEP: Final = 0.5
 
 KEYS: Final = frozenset(
-    {"entity_id", "family", "bath_c", "idle_c", "floor_c", "baths", "bath_once", "heater_kw", "control"}
+    {"entity_id", "family", "bath_c", "idle_c", "baths", "bath_once", "heater_kw", "control"}
 )
 
 ERR_INVALID: Final = "invalid_value"
@@ -113,7 +114,6 @@ class SpaConfig:
     family: str = FAMILY_GENERIC
     bath_c: float = DEFAULT_BATH_C
     idle_c: float = DEFAULT_IDLE_C
-    floor_c: float = DEFAULT_FLOOR_C
     baths: tuple[Bath, ...] = ()
     bath_once: str | None = None
     heater_kw: float | None = None
@@ -126,7 +126,7 @@ class SpaConfig:
     @property
     def hold_c(self) -> float:
         """What the spa is held at between baths: its idle temperature, never below its floor."""
-        return max(self.idle_c, self.floor_c)
+        return max(self.idle_c, DEFAULT_FLOOR_C)
 
     def bath_once_at(self) -> datetime | None:
         return parse_instant(self.bath_once)
@@ -137,7 +137,6 @@ class SpaConfig:
             "family": self.family,
             "bath_c": self.bath_c,
             "idle_c": self.idle_c,
-            "floor_c": self.floor_c,
             "baths": [bath.as_dict() for bath in self.baths],
             "bath_once": self.bath_once,
             "heater_kw": self.heater_kw,
@@ -195,7 +194,8 @@ def _bath(raw: Any, *, stored: bool = False) -> Bath | None:
 
 
 def read_spa(raw: Any) -> SpaConfig | None:
-    """The stored block, every missing or broken key read as its default (see the module)."""
+    """The stored block, every missing or broken key read as its default (see the module); a stored `floor_c` is
+    ignored."""
     if not isinstance(raw, Mapping):
         return None
     entity_id = _entity(raw.get("entity_id"), SPA_DOMAINS)
@@ -204,7 +204,6 @@ def read_spa(raw: Any) -> SpaConfig | None:
     family = raw.get("family") if raw.get("family") in FAMILIES else FAMILY_GENERIC
     bath = _number_in(raw.get("bath_c"), BATH_MIN_C, BATH_MAX_C)
     idle = _number_in(raw.get("idle_c"), IDLE_MIN_C, IDLE_MAX_C)
-    floor = _number_in(raw.get("floor_c"), FLOOR_MIN_C, FLOOR_MAX_C)
     stored = raw.get("baths")
     baths = tuple(b for b in (_bath(item, stored=True) for item in stored[:MAX_BATHS]) if b is not None) if isinstance(stored, list) else ()
     return SpaConfig(
@@ -212,7 +211,6 @@ def read_spa(raw: Any) -> SpaConfig | None:
         family=family,
         bath_c=DEFAULT_BATH_C if bath is None else bath,
         idle_c=DEFAULT_IDLE_C if idle is None else idle,
-        floor_c=DEFAULT_FLOOR_C if floor is None else floor,
         baths=baths,
         bath_once=raw.get("bath_once") if parse_instant(raw.get("bath_once")) is not None else None,
         heater_kw=_number_in(raw.get("heater_kw"), *HEATER_KW, step=False),
@@ -323,7 +321,6 @@ def apply_spa(
     for key, low, high, step, nullable in (
         ("bath_c", BATH_MIN_C, BATH_MAX_C, True, False),
         ("idle_c", IDLE_MIN_C, IDLE_MAX_C, True, False),
-        ("floor_c", FLOOR_MIN_C, FLOOR_MAX_C, True, False),
         ("heater_kw", *HEATER_KW, False, True),
     ):
         if key in raw:

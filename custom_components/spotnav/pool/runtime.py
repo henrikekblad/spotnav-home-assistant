@@ -49,7 +49,7 @@ from ..loads.switch_load import RunHistory
 from ..planning.demand_charge import hour_start
 from ..sauna.config import FAMILY_HARVIA, FAMILY_RELAY, FAMILY_TYLO, SaunaConfig
 from ..spa.adapters import HARVIA_ON_TIME_KEY
-from ..spa.config import SpaConfig
+from ..spa.config import DEFAULT_FLOOR_C, SpaConfig
 from ..spa.plan import HeatHour
 from ..spa.runtime import DEFAULT_KW, Reading, new_sauna, new_spa
 from .config import SHAPE_CLIMATE, PoolConfig
@@ -859,7 +859,7 @@ class PoolSpaShadow:
             "water_c": None if current is None else round(current, 1),
             "bath_c": spa.bath_c,
             "idle_c": spa.idle_c,
-            "floor_c": spa.floor_c,
+            "floor_c": DEFAULT_FLOOR_C,
             "heating": common["heating"],
             "kw": common["kw"],
             "rate_c_h": common["rate_c_h"],
@@ -979,7 +979,7 @@ class PoolSpaShadow:
                     out[booked_load] = Offer(live=False, ready=True, give_w=give)
                 else:
                     current = part.reading.current_c
-                    warm = current is not None and current > block.floor_c + 1.0
+                    warm = current is not None and current > DEFAULT_FLOOR_C + 1.0
                     out[LOAD_SPA_IDLE] = Offer(live=False, ready=warm, give_w=give, why=None if warm else "floor")
             if control is not None:
                 out.update(getattr(control, booked_load).offers(now, block))

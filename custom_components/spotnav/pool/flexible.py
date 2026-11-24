@@ -46,6 +46,7 @@ from ..spa.config import (
     FAMILY_MSPA,
     FAMILY_SMARTTUB,
     FAMILY_TUYA_INTEX,
+    DEFAULT_FLOOR_C,
     SpaConfig,
 )
 from ..sauna.config import SaunaConfig
@@ -183,11 +184,11 @@ def spa_load(
         goal=Goal(
             GOAL_TEMPERATURE_BY,
             by=next_bath,
-            values=values(bath_c=spa.bath_c, idle_c=spa.idle_c, floor_c=spa.floor_c),
+            values=values(bath_c=spa.bath_c, idle_c=spa.idle_c, floor_c=DEFAULT_FLOOR_C),
         ),
         handles=handles,
         hard_rules=(
-            rule("floor", floor_c=spa.floor_c),
+            rule("floor", floor_c=DEFAULT_FLOOR_C),
             rule("write_cap", per_day=writes),
             rule("hand_back", confirm_s=FOREIGN_CONFIRM_S),
         ),

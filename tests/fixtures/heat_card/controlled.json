@@ -782,7 +782,6 @@
       "control": false,
       "entity_id": "climate.spa",
       "family": "balboa",
-      "floor_c": 10.0,
       "heater_kw": 3.0,
       "idle_c": 30.0
     },

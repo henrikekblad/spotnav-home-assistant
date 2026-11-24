@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final
 
 from ..sauna.config import CLOUD as SAUNA_CLOUD, FAMILY_RELAY, SaunaConfig
-from .config import CLOUD as SPA_CLOUD, SpaConfig
+from .config import CLOUD as SPA_CLOUD, DEFAULT_FLOOR_C, SpaConfig
 from .plan import (
     FIRST_STEP_C,
     IDLE_DRIFT_C_H,
@@ -207,7 +207,7 @@ class DeadlineShadow:
                 self.runs = [*self.runs, (counted[0], now, counted[1], current)][-LEARN_KEPT:]
         rate, _learnt = learnt_rate(self.runs, self.profile.seed_rate_c_h)
         if isinstance(config, SpaConfig):
-            target, weekly, once, hold, floor = config.bath_c, config.baths, config.bath_once_at(), config.hold_c, config.floor_c
+            target, weekly, once, hold, floor = config.bath_c, config.baths, config.bath_once_at(), config.hold_c, DEFAULT_FLOOR_C
             kw = config.heater_kw
         else:
             target, weekly, once, hold, floor = config.target_c, config.sessions, config.session_once_at(), None, None
