@@ -499,6 +499,21 @@ describe("the live flows' answer", () => {
     const { has: _has, ...missing } = raw;
     expect(decodeHouseNow(missing)).toEqual({ ok: false, failure: "malformed" });
     expect(decodeHouseNow({ ...raw, later: 1 }).ok).toBe(true);
+    // From a backend before the AC side: the battery as read, no word of the house's source.
+    const { battery_ac_kw: _ac, house_from: _from, ...older } = raw;
+    const decoded = decodeHouseNow(older);
+    expect(decoded.ok && decoded.value.battery_ac_kw).toBe(decoded.ok ? decoded.value.battery_kw : null);
+    expect(decoded.ok && decoded.value.house_from).toBeNull();
+  });
+
+  it("draws a battery read at the battery on the AC side, so the lines add up around the house", () => {
+    const dc = live("villa_dc_battery.json");
+    expect(dc.battery_kw).toBe(-10);
+    expect(dc.house_from).toBe("plant");
+    const lines = schematicLines(dc, house());
+    const by = Object.fromEntries(lines.map((line) => [line.role, line]));
+    expect(by["battery"]).toMatchObject({ way: "in", kw: 9.3 });
+    expect((by["grid"]!.kw ?? 0) + (by["sun"]!.kw ?? 0) + by["battery"]!.kw!).toBeCloseTo(dc.house_kw!, 5);
   });
 });
 
