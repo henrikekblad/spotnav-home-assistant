@@ -8,6 +8,9 @@ trackers, so a disabled event entity does not silence a phone:
 * `UnexpectedStopDetector` (`unexpected_stop.py`) for `plan_stopped`, looked at again when its grace
   period runs out, and the controller's `ignores_person_stop` for `plan_stopped` as
   `charger_ignores_stop` (SpotNav gave up stopping a charger that keeps charging under a person's Stop);
+* the controller's `car_refuses_notice` for `plan_stopped` as `car_refuses` (the car takes no current the charger
+  offers below its target, and SpotNav could not start the charge in the car, `execution/car_start.py`): once per
+  plug-in, with the car's level and target; a `vehicle_not_requesting` is not told beside it;
 * the controller's `completion_record` for `charge_complete`, with the charge's energy and cost from
   its session.
 
@@ -137,7 +140,12 @@ from .phone_store import phone_store
 from .phones import ROUTE_COMPANION, route_of
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
-from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
+from .unexpected_stop import (
+    ExpectationFacts,
+    REASON_NOT_STARTED,
+    REASON_VEHICLE_NOT_REQUESTING,
+    UnexpectedStopDetector,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -171,6 +179,11 @@ HOURLY_LIMIT: Final = 12
 DEFAULT_URL: Final = "/"
 #: `plan_stopped`'s reason when SpotNav gave up stopping a charger under a person's Stop.
 REASON_CHARGER_IGNORES_STOP: Final = "charger_ignores_stop"
+#: `plan_stopped`'s reason when the car takes no current the charger offers, below its target, and SpotNav could not
+#: start the charge in the car (`execution/car_start.py`): told once per plug-in, with the level and the target.
+REASON_CAR_REFUSES: Final = "car_refuses"
+#: The reasons with a repeat limit of their own: a `plan_stopped` told a moment before does not silence them.
+_OWN_REPEAT_REASONS: Final = (REASON_CHARGER_IGNORES_STOP, REASON_CAR_REFUSES)
 #: A new plan calculated this soon after a settings write for the charger is not announced.
 QUIET_AFTER_WRITE_S: Final = 60.0
 #: Plans installed this close to one another are one burst: only the last is judged. Long enough for a
@@ -361,6 +374,8 @@ class ChargerNotifier:
         self._snapshot: AutoSnapshot | None = None
         self._completion_at: str | None = None
         self._ignores_stop = False
+        # The car-refuses notice last seen (`ChargingController.car_refuses_notice`'s `at`): a new one is told.
+        self._car_refuses_at: datetime | None = None
         self._baselined = False
         self._recheck: CALLBACK_TYPE | None = None
         self._recheck_at: datetime | None = None
@@ -614,8 +629,27 @@ class ChargerNotifier:
         if stop_state != self._stop_state or self._at_risk_told != at_risk_told:
             self._stop_state = stop_state
             self._save_plan()
+        if reason == REASON_VEHICLE_NOT_REQUESTING and controller.car_start_status is not None:
+            # The car refusing the offered current is told by its own notice (`car_refuses`), once per plug-in, with
+            # what to do; while SpotNav starts the charge in the car there is nothing to tell yet.
+            _LOGGER.debug("SpotNav charger %s: vehicle_not_requesting told as the car refusing", self._entry_id)
+            reason = None
         if reason is not None and not (away and reason == REASON_NOT_STARTED) and not held:
             events.append((EVENT_PLAN_STOPPED, {"reason": reason}))
+        refuses = controller.car_refuses_notice
+        refuses_at = None if refuses is None else refuses["at"]
+        if self._baselined and refuses is not None and refuses_at != self._car_refuses_at:
+            events.append(
+                (
+                    EVENT_PLAN_STOPPED,
+                    {
+                        "reason": REASON_CAR_REFUSES,
+                        "level_percent": refuses["soc_percent"],
+                        "target_percent": refuses["target"],
+                    },
+                )
+            )
+        self._car_refuses_at = refuses_at
         ignores_stop = bool(controller.ignores_person_stop)
         if self._baselined and ignores_stop and not self._ignores_stop:
             events.append((EVENT_PLAN_STOPPED, {"reason": REASON_CHARGER_IGNORES_STOP}))
@@ -893,8 +927,8 @@ class ChargerNotifier:
         # Giving up on a charger under a person's Stop is its own kind of trouble: a missed window told a
         # moment before does not silence it.
         repeat_key = (
-            REASON_CHARGER_IGNORES_STOP
-            if event == EVENT_PLAN_STOPPED and attributes.get("reason") == REASON_CHARGER_IGNORES_STOP
+            str(attributes.get("reason"))
+            if event == EVENT_PLAN_STOPPED and attributes.get("reason") in _OWN_REPEAT_REASONS
             else event
         )
         last = self._last_sent.get(repeat_key)
@@ -1295,6 +1329,12 @@ class ChargerNotifier:
         controller = self._controller
         plan = controller.plan
         if event == EVENT_PLAN_STOPPED:
+            if attributes.get("reason") == REASON_CAR_REFUSES:
+                return {
+                    "reason": REASON_CAR_REFUSES,
+                    "level_percent": attributes.get("level_percent"),
+                    "target_percent": attributes.get("target_percent"),
+                }
             return {"reason": attributes.get("reason")}
         if event == EVENT_PLAN_AT_RISK:
             return {"time": attributes.get("departure_time")}

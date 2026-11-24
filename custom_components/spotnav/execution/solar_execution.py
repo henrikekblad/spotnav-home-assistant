@@ -875,6 +875,9 @@ class SolarExecutionCoordinator:
         # (`_ended_context`): the plug-in, its state of charge, its limit and the target.
         self._seen_control_on = False
         self._idle_since: float | None = None
+        # The last start of the charge in the car seen (`ChargingController.car_start_at`): a new one begins the car's
+        # idle clock again (`_watch_charge`).
+        self._car_start_seen: datetime | None = None
         self._unseen_since: float | None = None
         self._drawing_since: float | None = None
         self._ended_context: tuple[datetime | None, float | None, float | None, float | None] | None = None
@@ -1297,6 +1300,12 @@ class SolarExecutionCoordinator:
             if drawing is None:
                 self._idle_since = None
                 return None
+            car_start_at = controller.car_start_at
+            if car_start_at != self._car_start_seen:
+                # SpotNav started the charge in the car (`car_start.py`): its idling counts from now.
+                self._car_start_seen = car_start_at
+                if car_start_at is not None:
+                    self._idle_since = None
             if self._idle_since is None:
                 self._idle_since = now
             if now - self._idle_since < CAR_IDLE_S:

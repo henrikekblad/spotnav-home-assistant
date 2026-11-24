@@ -860,6 +860,16 @@ async def _async_setup_auto_preview(
     data.controller.set_reading_asker(_ask_reading)
     entry.async_on_unload(lambda: data.controller.set_reading_asker(None))
 
+    def _car_start_target() -> tuple[str | None, float | None]:
+        # The car the charger plans for and its target, as the settings name them, for the car refusing the offered
+        # current outside the plan's charge (`execution/car_start.py`).
+        settings = settings_store.settings(entry_id)
+        vehicle_id, _ = resolve_target_vehicle(hass, settings.target.vehicle_id, charger_vehicle_ids(hass, entry_id))
+        return vehicle_id, settings.target.target_percent if settings.driver == DRIVER_TARGET_SOC else None
+
+    data.controller.set_car_start_target(_car_start_target)
+    entry.async_on_unload(lambda: data.controller.set_car_start_target(None))
+
     def _floor_inputs() -> FloorInputs | None:
         # The car the charger plans for, read as the planner reads it, with no side effect on the planner's wait.
         settings = settings_store.settings(entry_id)

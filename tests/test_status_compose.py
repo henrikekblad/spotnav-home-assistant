@@ -884,6 +884,27 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "held_by_charger", "params": {}}],
     ),
     (
+        "SpotNav started the charge in a car that took no current: a normal fact line",
+        base(car_start_state="started", waiting_for_tomorrow=True),
+        "normal",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "car_start_made", "params": {}}],
+    ),
+    (
+        "a car that still takes no current below its target is a notice with its level and target",
+        base(
+            car_start_state="refuses", car_start_soc_percent=65.04, car_start_target=80.0,
+            car_start_since=datetime(2026, 11, 24, 3, 7, tzinfo=timezone.utc), waiting_for_tomorrow=True,
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {
+                "code": "car_refuses",
+                "params": {"soc_percent": 65.0, "target": 80.0, "since": "2026-11-24T03:07:00+00:00"},
+            },
+        ],
+    ),
+    (
         "a charge an Easee circuit limit caps below what SpotNav set says so, only while it charges",
         base(circuit_limit_a=10.0, charging=True),
         "notice",

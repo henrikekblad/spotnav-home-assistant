@@ -109,7 +109,10 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
    kept, or the charger's recorded charges; not for `kept_recent`, a register that was read and is
    unread for less than half an hour, nor `rebased`, one that reads again),
-   held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_circuit_limited{limit_a}
+   held_by_charger (the charger's own scheduler or load balancer holds the charge), car_start_made (the car took no
+   current the charger offered and SpotNav started the charge in the car, `execution/car_start.py`; tone normal),
+   car_refuses{soc_percent, target, since} (the car still takes none, or its start could not be made: the person starts
+   the charge in the car's app; until the car draws or is unplugged; only for a car with a charge switch SpotNav knows), charger_circuit_limited{limit_a}
    (while it charges, a limit outside SpotNav's reach caps it below the current SpotNav set: Easee's circuit dynamic
    limit, read only), charger_disabled
    (its own enable switch is off, so it cannot start), charger_own_mode (one per own mode of the charger
@@ -362,6 +365,14 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
     "held_by_charger": (TONE_NOTICE, ()),
+    # The car took no current the charger offered, and SpotNav started the charge in the car (its charge switch,
+    # `execution/car_start.py`): said while the car has not taken it yet.
+    "car_start_made": (TONE_NORMAL, ()),
+    # The car takes no current the charger offers at `soc_percent` though its target (capped by the car's own limit)
+    # is `target`, and SpotNav could not start the charge in the car (or it did not help): the person starts it in the
+    # car's app. Said until the car draws or is unplugged; told once per plug-in as `plan_stopped` (`car_refuses`).
+    # `since`: when it was told, kept across a restart (an app tells it once by it); null when not known.
+    "car_refuses": (TONE_NOTICE, ("soc_percent", "target", "since")),
     # The charger draws under a limit outside SpotNav's reach, below the current SpotNav set: Easee's circuit
     # dynamic limit (`limit_a`), shared by the circuit's chargers and set by Easee's Equalizer, its app or an
     # automation. SpotNav reads it and never writes it.
@@ -674,6 +685,12 @@ class StatusFacts:
     hold_until: datetime | None = None
     #: A person started the charge again after the hold and it is allowed to continue.
     hold_overridden: bool = False
+    #: The car refusing the offered current (`ChargingController.car_start_status`): `started` (SpotNav started the
+    #: charge in the car) or `refuses` (the person is told), the level and the target it was told with; else `None`.
+    car_start_state: str | None = None
+    car_start_soc_percent: float | None = None
+    car_start_target: float | None = None
+    car_start_since: datetime | None = None
     #: Whether the charger says when a car is plugged in, so an unplug ends a person's manual pause.
     reports_plug_in: bool = True
     #: Under a person's Stop nothing can see the unplug (`ChargingController.stop_unplug_unseen`).
@@ -1217,6 +1234,17 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         )
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
+    if facts.car_start_state == "started":
+        lines.append(_line("car_start_made"))
+    elif facts.car_start_state == "refuses":
+        lines.append(
+            _line(
+                "car_refuses",
+                soc_percent=None if facts.car_start_soc_percent is None else round(facts.car_start_soc_percent, 1),
+                target=None if facts.car_start_target is None else round(facts.car_start_target, 1),
+                since=None if facts.car_start_since is None else aware_iso(facts.car_start_since),
+            )
+        )
     if facts.circuit_limit_a is not None and facts.charging:
         lines.append(_line("charger_circuit_limited", limit_a=round(facts.circuit_limit_a, 1)))
     if facts.charger_disabled and not facts.charging:

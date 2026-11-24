@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "Laturin oma aikataulu pidättää suunniteltua latausta.",
     "stopped.charger_ignores_stop": "Laturi jatkaa lataamista, vaikka se pysäytettiin. Pysäytä se laturista tai irrota auto.",
     "stopped.charger_disabled": "Laturi on pois käytöstä, joten suunniteltu lataus ei voi alkaa.",
+    "stopped.car_refuses": "Auto ei ota virtaa vastaan, vaikka tavoitetta ei ole saavutettu. Käynnistä lataus auton sovelluksessa.",
+    "stopped.car_refuses_level": "Auto ei ota virtaa vastaan tasolla {level}, vaikka tavoite on {target}. Käynnistä lataus auton sovelluksessa.",
     "at_risk": "Lataus ei valmistu lähtöön mennessä.",
     "at_risk.time": "Lataus ei valmistu lähtöön klo {time} mennessä.",
     "complete.target": "Lataus on valmis: tavoite {percent} saavutettiin.",

@@ -627,6 +627,25 @@ class VehicleIdentifier:
             and self._planned_vehicle() == vehicle_id
         )
 
+    def confirms(self, vehicle_id: str) -> bool:
+        """Whether the car plugged in here is settled to be `vehicle_id` for this plug-in: it `claims` it (decided by a
+        method that says which car it is, never assumed), no question is open, a decision a car's own report may still
+        correct (by position or the camera) is no longer listened to, no other connected charger claims it, and with
+        identification off the charger has that one car only (two cars with nothing identifying them is a guess)."""
+        if not self.claims(vehicle_id) or self._elsewhere(vehicle_id):
+            return False
+        session = self._session
+        if session is None:
+            settings = self._settings()
+            return not (
+                settings.identify_mode == IDENTIFY_OFF and len(self._candidates(settings)) >= 2
+            )
+        if session.single:
+            return session.state != STATE_ASKING and not session.ruled_out
+        if session.state != STATE_DECIDED:
+            return False
+        return not (session.listening and self._method in _CORRECTED)
+
     @property
     def guest(self) -> bool:
         """Whether this charger plans for a guest car (a person said so; `guest.py`)."""

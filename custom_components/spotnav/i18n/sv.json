@@ -8,6 +8,8 @@
     "stopped.held_by_charger": "Laddarens eget schema håller tillbaka den planerade laddningen.",
     "stopped.charger_ignores_stop": "Laddaren fortsätter ladda fast den stoppades. Stoppa den vid laddaren eller koppla ur bilen.",
     "stopped.charger_disabled": "Laddaren är avstängd, så den planerade laddningen kan inte starta.",
+    "stopped.car_refuses": "Bilen tar inte emot ström fast målet inte är nått. Starta laddningen i bilens app.",
+    "stopped.car_refuses_level": "Bilen tar inte emot ström vid {level} fast målet är {target}. Starta laddningen i bilens app.",
     "at_risk": "Laddningen hinner inte bli klar till avresan.",
     "at_risk.time": "Laddningen hinner inte bli klar till avresan {time}.",
     "complete.target": "Laddningen är klar: målet {percent} är nått.",

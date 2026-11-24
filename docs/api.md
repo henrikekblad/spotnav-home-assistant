@@ -427,6 +427,20 @@ below the current SpotNav set, the line `charger_circuit_limited` (`limit_a`, th
 `notice`) says so. SpotNav reads that limit and never writes it. The webhook leaves it out, and works the block's tone
 out again, unless the request asks for it (`"reads": ["circuit_limited"]`).
 
+**The car takes no current.** When the car refuses the current the charger offers in a charge SpotNav runs, below
+its target and its own limit ([starting the charge in the car](target-soc.md#starting-the-charge-in-the-car)):
+`car_start_made` (no params, tone `normal`) while SpotNav has started the charge in the car and the car has not taken
+it yet, then `car_refuses` (`soc_percent`, the car's level; `target`, the target capped by the car's own limit, both
+percent or `null`; `since`, when it was told, kept across a restart, so a client tells it once by it, or `null`;
+tone `notice`) once the person is told (the car still refuses, or has no charge switch SpotNav
+knows), until the car draws or is unplugged. The notification is `plan_stopped` with the reason `car_refuses`, once
+per plug-in. The webhook leaves both lines out, and works the block's tone out again, unless the request asks for them
+(`"reads": ["car_start"]`). The charger's diagnostics carry `vehicle_charge_start`: per car the last start (`at`,
+`integration`, `entity_id`, `plug_in`, `result`: `asked`, `ok`, `failed` or `timeout`, `calls`: the starts of the
+last 24 hours, at most three), the notice told (`notice_plug_in`, `notice_at`, `notice_soc_percent`,
+`notice_target`, and `notice_line`: whether its status line still stands) and `switch` (the car's charge switch now, `null` when it has none or it is
+unavailable).
+
 **The sun filling past a reached target.** Under Solar or Hybrid with a target, once the car is at the target and
 below its own known charge limit, the sun may keep charging it to that limit. The status then says
 `sun_past_target` (`percent`, the car's limit; tone `normal`): after the solar headline, and under Hybrid in place

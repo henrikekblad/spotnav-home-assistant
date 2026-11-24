@@ -194,6 +194,11 @@ class PlatformProfile:
     status_keys: tuple[str, ...] = ()
     charging_values: tuple[str, ...] = ()
     vehicle_idle_values: tuple[str, ...] = ()
+    #: The status values that say the charger offers current and the car refuses it, read only to start the charge in
+    #: the car (`execution/car_start.py`). Narrower than `vehicle_idle_values`, which also holds states where the
+    #: charger itself does not offer (no pilot signal, waiting for approval): filled only where verified, empty
+    #: elsewhere (no start in the car, no notice). OCPP's `SuspendedEV` is read from the connector, not from here.
+    car_refuses_values: tuple[str, ...] = ()
     #: Status values meaning no vehicle is connected, so a move out of one is a plug-in (the point after
     #: which a charger that forgets its limit is told it again, `WritePolicy.resend_after_plug_in`).
     disconnected_values: tuple[str, ...] = ()
@@ -311,6 +316,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status", "easee_status"),
         charging_values=("charging",),
         vehicle_idle_values=("ready_to_charge", "completed"),
+        # Verified in the field (plans/cases/2026-11-24-...-SN-F8PZ.md): a Tesla stopped from its own side read
+        # `completed` and `ready_to_charge` at 0 A while the Easee offered current; a start in the car cleared it.
+        car_refuses_values=("ready_to_charge", "completed"),
         disconnected_values=("disconnected",),
         current_sensor_keys=("current",),
         # Easee reports the input terminals, not phases: T2 is the neutral on a TN network and T3, T4,

@@ -48,6 +48,10 @@ DECISION_DOMAIN_PHASE_OBSERVATIONS = "phase_observations"
 # A car's last wake for a reading (`{"at", "integration", "occasion", "result"}`), kept so a restart cannot wake it
 # again inside the interval. Written only by `vehicles/vehicle_wake.py`.
 DECISION_DOMAIN_VEHICLE_WAKE = "vehicle_wake"
+# A car's last start of the charge in the car (`{"at", "integration", "entity_id", "plug_in", "result"}`) and the
+# plug-in whose "the car takes no current" notice was told (`notice_plug_in`), kept so a restart repeats neither.
+# Written only by `vehicles/vehicle_charge_start.py`.
+DECISION_DOMAIN_VEHICLE_CHARGE_START = "vehicle_charge_start"
 # The guest car's amount (`{"amount_kwh": 10.0}` under `"guest"`), the one for the whole installation. Written only by
 # `vehicles/guest.py`.
 DECISION_DOMAIN_GUEST = "guest"

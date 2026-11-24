@@ -19,6 +19,9 @@ car ended, and the start is sent again instead (`START_RETRY_AFTER_S`).
 While load balancing holds the plan's charge back this watch sees nothing; there the battery probe is the car's
 test instead: two probes in a row the car refused (`site/battery_probe.py`, `car_refused`) end the charge the same
 way (`ChargingController.note_car_refused_probe`).
+
+A car that refuses the offered current outright (`SuspendedEV` for `car_start.CAR_START_AFTER_S`) may first have its
+charge started in the car (`car_start.py`): the idle clock begins again at that start (`restart_at`).
 """
 
 from __future__ import annotations
@@ -61,8 +64,12 @@ class PlanChargeWatch:
         balancing_paused: bool,
         start_pending: bool,
         phase_switch_settling: bool = False,
+        restart_at: datetime | None = None,
     ) -> bool:
-        """One look at the plan's charge. `True` once per stretch of idling: the car ended it by itself."""
+        """One look at the plan's charge. `True` once per stretch of idling: the car ended it by itself.
+
+        `restart_at`: when SpotNav last started the charge in the car (`car_start.py`); the car's idling counts from
+        then at the earliest, so the car has its time to take the charge before it counts as ended."""
         status = None if connector_status is None else connector_status.lower()
         if not plan_charge or not control_on:
             # The charge is over (or not the plan's): the next one has to draw before the car can end it.
@@ -89,6 +96,8 @@ class PlanChargeWatch:
             return False
         if self._idle_since is None:
             self._idle_since = now
+        if restart_at is not None and self._idle_since < restart_at <= now:
+            self._idle_since = restart_at
         if self._told or (now - self._idle_since).total_seconds() < PLAN_CAR_IDLE_S:
             return False
         self._told = True
