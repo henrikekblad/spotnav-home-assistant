@@ -455,9 +455,9 @@ def modes_to_run(report: Mapping[str, Any] | None, supported: Iterable[str] | No
 
 
 def needs_run(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
-    """Whether the routine has anything left to try for this key: never after `MAX_ATTEMPTS` runs, also once hold
-    and normal passed (each run writes to the plant; a mode still pending then stays off). `supported` as for
-    `modes_to_run`."""
+    """Whether the routine has anything left to try for this key: a mode still pending (one that could not be judged
+    is tried again at a later suitable moment by itself, also once hold and normal passed), never after `MAX_ATTEMPTS`
+    runs (each run writes to the plant; a mode still pending then stays off). `supported` as for `modes_to_run`."""
     status = report_status(report)
     if status == "failed":
         return False

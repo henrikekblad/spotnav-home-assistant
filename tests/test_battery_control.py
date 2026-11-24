@@ -2925,3 +2925,18 @@ async def test_a_hold_that_follows_the_sun_is_given_the_ha_down_cap_and_the_ship
     monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (None, None))
     assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == math.inf
     assert control.inputs(now, following, slot=("grid_charge", 2.0, None)).hold_charge_cap_kw == 0.0
+
+
+async def test_a_routine_step_that_could_not_be_judged_is_tried_again_at_a_later_suitable_moment_without_a_prompt(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    _passed(control, charge="not_judgeable:grid_charge_cap")
+    report = control.report()
+    # Control runs on what passed; the charge is tried again by the routine by itself, and nothing is asked.
+    assert control.state() == "on" and "charge" in gate.modes_to_run(report)
+    assert gate.report_status(report) == "passed" and gate.needs_run(report)
+    assert control.status()["needs"] == []
+    assert control.notes == []
+    await control.async_stop()
