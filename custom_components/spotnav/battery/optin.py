@@ -140,6 +140,14 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "discharge_battery_power"),
         ("select", "battery_mode"),
     ),
+    # `marstek_modbus` ships every control entity disabled. The RS485 control switch is also read by the adapter's
+    # mode rule (someone else's force commands).
+    "marstek": (
+        ("number", "max_discharge_power"),
+        ("switch", "rs485_control_mode"),
+        ("number", "set_charge_power"),
+        ("select", "force_mode"),
+    ),
 }
 
 #: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.

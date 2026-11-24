@@ -1097,10 +1097,13 @@ OVERVIEW: tuple[Overview, ...] = (
         "power has no direction",
         keys=("marstek_local_api", "marstek_modbus"),
         adapter="marstek",
-        control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "
-        "slots; Modbus has RS485 control with force charge and discharge and charge and discharge limits",
-        note="The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with several "
-        "batteries in one entry it is not read at all.",
+        control="Mapped for the Modbus integration only",
+        note="Control needs the Modbus integration: a hold sets the maximum discharge power to 0, a grid charge is an "
+        "RS485 force charge, which the battery keeps if Home Assistant stops (no dead-man), so SpotNav caps it as all "
+        "on the battery's one phase. Nothing is written until a hardware test has passed on the battery's firmware. "
+        "The local API has no control SpotNav uses. A battery run by Omnibattery is only "
+        "watched. The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with "
+        "several batteries in one entry it is not read at all.",
     ),
 )
 
