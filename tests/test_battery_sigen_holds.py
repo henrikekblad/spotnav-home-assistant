@@ -156,15 +156,52 @@ def test_a_peak_under_a_pv_first_hold_writes_the_mode_back_to_msc_in_one_write()
     assert executor.state.phase == "idle"
 
 
-def test_a_pv_first_hold_under_the_hand_back_mark_writes_every_role_in_one_look_mode_first() -> None:
+def test_a_pv_first_hold_under_the_hand_back_mark_writes_the_mode_first_and_the_raised_limit_once_it_read_back() -> None:
     executor, battery = _pv_first()
     now = _held(executor, battery)
-    _now, results = run(executor, battery, now, 1, "hold", headroom_a=0.5)
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=0.5)
     assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
-    # The never-set charge limit goes back as the rating.
-    assert [(op.role, op.value) for op in results[0].ops] == [
-        ("control_mode", MSC), ("remote_ems", False), ("charge_limit", 10.0)
-    ]
+    # The mode and Remote EMS at once; the charge limit stays 0 until both read back, then goes back as the rating
+    # (never set before).
+    assert [(op.role, op.value) for op in results[0].ops] == [("control_mode", MSC), ("remote_ems", False)]
+    assert written(results)[2:] == [("charge_limit", 10.0)]
+    assert battery.states["remote_ems"] == "off" and battery.states["charge_limit"] == "10"
+
+
+@pytest.mark.parametrize("how", ["raises", "drops"])
+def test_a_fuse_hand_back_whose_remote_ems_write_is_lost_keeps_the_charge_limit_at_0(how: str) -> None:
+    executor, battery = _pv_first()
+    now = _held(executor, battery)
+    getattr(battery, how).add("remote_ems")
+    battery.register_40031 = "Command Charging (PV First)"
+    battery.states["control_mode"] = "Command Charging (PV First)"
+    getattr(battery, how).add("control_mode")
+    now, results = run(executor, battery, now, 8, "hold", headroom_a=0.5)
+    # Never raised while neither the mode nor Remote EMS reads back: Command Charging (PV First) at the full limit
+    # would charge from the grid with the fuse at its closest.
+    assert "charge_limit" not in [role for role, _value in written(results)] and battery.states["charge_limit"] == "0"
+    # Once the writes are taken again, the hand-back goes on and the limit goes back last.
+    getattr(battery, how).discard("remote_ems")
+    getattr(battery, how).discard("control_mode")
+    _now, results = run(executor, battery, now, _looks(300), "hold", headroom_a=0.5)
+    assert battery.states["remote_ems"] == "off" and battery.states["charge_limit"] == "10"
+    order = [role for role, _value in written(results)]
+    assert order.index("charge_limit") > max(index for index, role in enumerate(order) if role != "charge_limit")
+
+
+@pytest.mark.parametrize("how", ["raises", "drops"])
+def test_a_fuse_hand_back_whose_mode_write_alone_is_lost_raises_the_limit_only_once_remote_ems_reads_off(
+    how: str,
+) -> None:
+    executor, battery = _pv_first()
+    now = _held(executor, battery)
+    getattr(battery, how).add("control_mode")
+    _now, results = run(executor, battery, now, 8, "hold", headroom_a=0.5)
+    looks = [[op.role for op in result.ops] for result in results]
+    # Never in the look that writes Remote EMS off: only once it reads off (the plant out of its Command modes, the
+    # mode idle) does the limit go back.
+    assert "charge_limit" not in looks[0] and any("charge_limit" in ops for ops in looks[1:])
+    assert battery.states["remote_ems"] == "off" and battery.states["charge_limit"] == "10"
 
 
 def test_a_pv_first_charge_limit_someone_else_changed_is_given_up_not_written_over() -> None:

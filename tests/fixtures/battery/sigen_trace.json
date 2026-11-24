@@ -882,14 +882,6 @@
       "reason": "remote_ems",
       "restore": true,
       "value": false
-     },
-     {
-      "at": "2026-11-14T02:10:20+01:00",
-      "entity_id": "number.sigenergy_charge_limit",
-      "kind": "write",
-      "reason": "charge_limit",
-      "restore": true,
-      "value": 10.0
      }
     ],
     "ops": [
@@ -903,12 +895,6 @@
       "remote_ems",
       "switch.sigenergy_remote_ems",
       false,
-      true
-     ],
-     [
-      "charge_limit",
-      "number.sigenergy_charge_limit",
-      10.0,
       true
      ]
     ],
@@ -926,16 +912,32 @@
      {
       "at": "2026-11-14T02:10:30+01:00",
       "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
       "kind": "confirmed",
       "read": "10",
       "reason": "charge_limit"
      }
     ],
-    "ops": [],
-    "persist_first": false
-   },
-   {
-    "events": [],
     "ops": [],
     "persist_first": false
    },
@@ -1517,14 +1519,6 @@
       "reason": "remote_ems",
       "restore": true,
       "value": false
-     },
-     {
-      "at": "2026-11-14T02:01:30+01:00",
-      "entity_id": "number.sigenergy_charge_limit",
-      "kind": "write",
-      "reason": "charge_limit",
-      "restore": true,
-      "value": 10.0
      }
     ],
     "ops": [
@@ -1532,12 +1526,6 @@
       "remote_ems",
       "switch.sigenergy_remote_ems",
       false,
-      true
-     ],
-     [
-      "charge_limit",
-      "number.sigenergy_charge_limit",
-      10.0,
       true
      ]
     ],
@@ -1555,12 +1543,33 @@
      {
       "at": "2026-11-14T02:01:40+01:00",
       "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
       "kind": "confirmed",
       "read": "10",
       "reason": "charge_limit"
      },
      {
-      "at": "2026-11-14T02:01:40+01:00",
+      "at": "2026-11-14T02:01:50+01:00",
       "kind": "handed_back",
       "reason": "fuse_headroom"
      }
@@ -1569,13 +1578,7 @@
     "persist_first": false
    },
    {
-    "events": [
-     {
-      "at": "2026-11-14T02:01:50+01:00",
-      "kind": "not_started",
-      "reason": "headroom_too_small"
-     }
-    ],
+    "events": [],
     "ops": [],
     "persist_first": false
    },
@@ -1632,7 +1635,7 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:03:40+01:00",
+      "at": "2026-11-14T02:03:50+01:00",
       "kind": "enter",
       "rate_kw": 0.0,
       "reason": "hold",
@@ -1642,7 +1645,7 @@
       }
      },
      {
-      "at": "2026-11-14T02:03:40+01:00",
+      "at": "2026-11-14T02:03:50+01:00",
       "entity_id": "number.sigenergy_charge_limit",
       "kind": "write",
       "reason": "charge_limit",
@@ -1663,14 +1666,14 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:03:50+01:00",
+      "at": "2026-11-14T02:04:00+01:00",
       "entity_id": "number.sigenergy_charge_limit",
       "kind": "confirmed",
       "read": "0",
       "reason": "charge_limit"
      },
      {
-      "at": "2026-11-14T02:03:50+01:00",
+      "at": "2026-11-14T02:04:00+01:00",
       "entity_id": "number.sigenergy_discharge_limit",
       "kind": "write",
       "reason": "discharge_limit",
@@ -1691,14 +1694,14 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:04:00+01:00",
+      "at": "2026-11-14T02:04:10+01:00",
       "entity_id": "number.sigenergy_discharge_limit",
       "kind": "confirmed",
       "read": "0",
       "reason": "discharge_limit"
      },
      {
-      "at": "2026-11-14T02:04:00+01:00",
+      "at": "2026-11-14T02:04:10+01:00",
       "entity_id": "switch.sigenergy_remote_ems",
       "kind": "write",
       "reason": "remote_ems",
@@ -1719,14 +1722,14 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:04:10+01:00",
+      "at": "2026-11-14T02:04:20+01:00",
       "entity_id": "switch.sigenergy_remote_ems",
       "kind": "confirmed",
       "read": "on",
       "reason": "remote_ems"
      },
      {
-      "at": "2026-11-14T02:04:10+01:00",
+      "at": "2026-11-14T02:04:20+01:00",
       "entity_id": "select.sigenergy_control_mode",
       "kind": "write",
       "reason": "control_mode",
@@ -1747,19 +1750,19 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:04:20+01:00",
+      "at": "2026-11-14T02:04:30+01:00",
       "entity_id": "select.sigenergy_control_mode",
       "kind": "confirmed",
       "read": "Command Charging (PV First)",
       "reason": "control_mode"
      },
      {
-      "at": "2026-11-14T02:04:20+01:00",
+      "at": "2026-11-14T02:04:30+01:00",
       "kind": "primed",
       "reason": "hold"
      },
      {
-      "at": "2026-11-14T02:04:20+01:00",
+      "at": "2026-11-14T02:04:30+01:00",
       "entity_id": "number.sigenergy_discharge_limit",
       "kind": "write",
       "reason": "discharge_limit",
@@ -1780,18 +1783,13 @@
    {
     "events": [
      {
-      "at": "2026-11-14T02:04:30+01:00",
+      "at": "2026-11-14T02:04:40+01:00",
       "entity_id": "number.sigenergy_discharge_limit",
       "kind": "confirmed",
       "read": "23.04",
       "reason": "discharge_limit"
      }
     ],
-    "ops": [],
-    "persist_first": false
-   },
-   {
-    "events": [],
     "ops": [],
     "persist_first": false
    },
@@ -2138,7 +2136,7 @@
    "covered_at": null,
    "day": "2026-11-14",
    "device_id": null,
-   "entered_at": "2026-11-14T02:03:40+01:00",
+   "entered_at": "2026-11-14T02:03:50+01:00",
    "entities": {},
    "given_up": [],
    "in_flight": [],
@@ -2148,7 +2146,7 @@
    "phase": "idle",
    "phase_kw": null,
    "phased": false,
-   "rate_changed_at": "2026-11-14T02:03:40+01:00",
+   "rate_changed_at": "2026-11-14T02:03:50+01:00",
    "rate_kw": 0.0,
    "reason": "plan_self_consume",
    "released_at": "2026-11-14T02:12:30+01:00",
@@ -2163,7 +2161,7 @@
    "unrestored": [],
    "unsure": [],
    "variant": "pv_first",
-   "watchdog_at": "2026-11-14T02:03:40+01:00",
+   "watchdog_at": "2026-11-14T02:03:50+01:00",
    "writes_today": 9,
    "written": []
   }

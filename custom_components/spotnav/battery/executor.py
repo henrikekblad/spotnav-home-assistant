@@ -2806,7 +2806,7 @@ class Executor:
             return []
         restoring = state.phase == "restoring"
         name = self._next_role(state, inputs)
-        if name is None or self._capped(state, inputs, name):
+        if name is None or self._capped(state, inputs, name) or (restoring and self._limit_waits(state, inputs, name)):
             return []
         role = self.control.role(name)
         value = state.target[name]
@@ -2845,6 +2845,35 @@ class Executor:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _limit_waits(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
+        """In a hand-back, whether a limit that acts in the plant's modes (`BrandControl.mode_limits`) must wait before
+        it is raised: until every role the hand-back writes before it (the mode, the switch) reads back what it
+        should (a mode idle once the switch is off counts: the plant is out of its Command modes). A fuse hand-back
+        writes its roles in one look; were the mode write lost or given up while the
+        raised limit landed, Sigenergy would sit in Command Charging (PV First) at its full charge limit just as the
+        fuse is closest. Waiting, the limit stays where the hold left it (0) and the next look tries again."""
+        if name not in self.control.mode_limits:
+            return False
+        role = self.control.role(name)
+        wanted = state.target[name]
+        read = inputs.reads.get(name)
+        now_read = reading(role, None if read is None else read.state)
+        if (
+            isinstance(wanted, bool) or not isinstance(wanted, (int, float))
+            or (isinstance(now_read, (int, float)) and not isinstance(now_read, bool) and wanted <= now_read)
+        ):
+            return False  # not raised: lowering a limit never waits
+        for before in restore_order(self.control, state.action):
+            if before == name:
+                return False
+            if before in self.control.mode_limits or before not in state.target:
+                continue
+            if not self._satisfied(
+                self.control.role(before), state.target[before], inputs.reads.get(before), restoring=True
+            ):
+                return True
+        return False
 
     def _readback_s(self, state: ExecState, name: str) -> float:
         """How long this write may take to read back: the role's longer wait (`Role.readback_s`) only for a write
