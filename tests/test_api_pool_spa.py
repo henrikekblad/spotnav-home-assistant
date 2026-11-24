@@ -40,24 +40,36 @@ async def _site(hass: HomeAssistant, heat: dict | None = None):
     return charger, site, controller
 
 
+def _read_once(hass: HomeAssistant, shadow: Any, now: Any) -> None:
+    """The circulation runs long enough for one valid water reading, then stops."""
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    shadow.tick(now - timedelta(minutes=10))
+    shadow.tick(now - timedelta(minutes=4))
+    hass.states.async_set("switch.pool_cirkulation", "off")
+    shadow.tick(now)
+
+
 async def test_get_heat_shows_the_pool_watched_and_nothing_is_written(hass: HomeAssistant) -> None:
     calls: list = []
     hass.bus.async_listen("call_service", lambda event: calls.append(event))
     _charger, site, controller = await _site(hass)
-    controller.pool_spa.tick(dt_util.now())
+    now = dt_util.now()
+    _read_once(hass, controller.pool_spa, now)
     answer = await heat_answer(hass, site, writable=False)
     pool = answer["pool"]
     assert pool["season_open"] is True and pool["target_c"] == 27.0
-    assert (pool["water_c"], pool["water_source"]) == (24.6, "sensor")
+    # The heat pump's own reading first, kept with its time once the circulation stopped.
+    assert (pool["water_c"], pool["water_source"]) == (24.0, "heat_pump")
+    assert pool["water_at"] == (now - timedelta(minutes=4)).isoformat()
     assert pool["heat_pump"] == {
         "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": pool["heat_pump"]["reason"],
         "paused_until": None, "failures": 0,
     }
     assert pool["circulation"]["on"] is False and pool["circulation"]["state"] == "watched"
-    # The day's need from the water: 24.6 / 3 in quarter hours.
-    assert pool["today"]["need_h"] == 8.25 and pool["today"]["need_source"] == "water"
+    # The day's need from the water: 24.0 / 3 in quarter hours.
+    assert pool["today"]["need_h"] == 8.0 and pool["today"]["need_source"] == "water"
     assert set(pool) == {
-        "season_open", "water_c", "water_source", "target_c", "heat_pump", "circulation", "today", "planned", "extra",
+        "season_open", "water_c", "water_source", "water_at", "target_c", "heat_pump", "circulation", "today", "planned", "extra",
         "season_hint", "would", "notes",
     }
     assert [event for event in calls if event.data.get("domain") in ("switch", "climate")] == []
@@ -105,7 +117,7 @@ async def test_the_webhook_twin(hass: HomeAssistant) -> None:
 async def test_the_shadow_keeps_its_days_and_extra_over_a_restart(hass: HomeAssistant) -> None:
     _charger, site, controller = await _site(hass)
     shadow = controller.pool_spa
-    shadow.tick(dt_util.now())
+    _read_once(hass, shadow, dt_util.now())
     shadow.set_extra(2, dt_util.utcnow())
     data = shadow._book_data()  # noqa: SLF001
     from custom_components.spotnav.pool.runtime import PoolSpaShadow
@@ -113,7 +125,9 @@ async def test_the_shadow_keeps_its_days_and_extra_over_a_restart(hass: HomeAssi
     again = PoolSpaShadow(hass, controller)
     again._restore(data, dt_util.now())  # noqa: SLF001
     assert again.extra == shadow.extra
-    assert again.water_days == shadow.water_days and list(again.water_days.values())[0] == [24.6, 24.6]
+    assert again.water_days == shadow.water_days and list(again.water_days.values())[0] == [24.0, 24.0]
+    # The valid readings are kept too: the water is known again at the first look.
+    assert again.readings == shadow.readings and set(again.readings) == {"heat_pump", "sensor"}
 
 
 async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant) -> None:
@@ -251,3 +265,71 @@ async def test_without_prices_the_day_s_filtering_still_runs(hass: HomeAssistant
     # Nothing filtered today yet: the need is run in any hour, never read as off (review S5).
     assert shadow.would == {"action": "filter", "until": None, "reason": "need"}
     assert shadow.would_at == now
+
+
+async def test_a_water_reading_counts_only_once_the_circulation_has_run_five_minutes(hass: HomeAssistant) -> None:
+    """Both readings sit on the pipe: a reading is the pool's only after the circulation has run five minutes, the last
+    valid one is kept with its time, the heat pump's first; a cooled pipe never reaches the day's water."""
+    _charger, _site_entry, controller = await _site(hass)
+    shadow = controller.pool_spa
+    start = dt_util.now()
+    shadow.tick(start)
+    assert (shadow.water_c, shadow.water_source, shadow.water_at) == (None, None, None)
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    shadow.tick(start + timedelta(minutes=1))
+    shadow.tick(start + timedelta(minutes=5))
+    assert shadow.water_c is None
+    settled = start + timedelta(minutes=6)
+    shadow.tick(settled)
+    assert (shadow.water_c, shadow.water_source, shadow.water_at) == (24.0, "heat_pump", settled)
+    # The heat pump's reading lost: the standalone sensor's, read at the same look, stands in.
+    hass.states.async_set("climate.poolpump", "unavailable")
+    later = start + timedelta(minutes=7)
+    shadow.tick(later)
+    assert (shadow.water_c, shadow.water_source, shadow.water_at) == (24.6, "sensor", later)
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "idle", "current_temperature": 24.2})
+    shadow.tick(start + timedelta(minutes=8))
+    assert (shadow.water_c, shadow.water_source) == (24.2, "heat_pump")
+    # The circulation stops: both pipes drift towards the air; the last valid reading is kept with its time.
+    hass.states.async_set("switch.pool_cirkulation", "off")
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "idle", "current_temperature": 15.0})
+    hass.states.async_set("sensor.pool_vatten", "14.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    shadow.tick(start + timedelta(minutes=30))
+    assert (shadow.water_c, shadow.water_source, shadow.water_at) == (24.2, "heat_pump", start + timedelta(minutes=8))
+    assert all(low >= 24.0 for low, _high in shadow.water_days.values())
+    # Started again: nothing counts for five minutes.
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    shadow.tick(start + timedelta(minutes=31))
+    shadow.tick(start + timedelta(minutes=34))
+    assert shadow.water_c == 24.2
+
+
+async def test_without_a_circulation_pump_the_readings_count_as_they_come(hass: HomeAssistant) -> None:
+    _charger, _site_entry, controller = await _site(hass, heat={"pool": {**POOL, "circulation_id": None}})
+    shadow = controller.pool_spa
+    now = dt_util.now()
+    shadow.tick(now)
+    assert (shadow.water_c, shadow.water_source, shadow.water_at) == (24.0, "heat_pump", now)
+    # A sensor alone (no heat pump reading): the sensor's.
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "idle"})
+    shadow.tick(now + timedelta(minutes=1))
+    assert (shadow.water_c, shadow.water_source) == (24.6, "sensor")
+
+
+async def test_core_tuyas_heat_pump_reads_its_own_water_sensor(hass: HomeAssistant) -> None:
+    """The switch-and-number heat pump's own reading is the `temp_current` sensor on its switch's device."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    _charger, site, controller = await _site(hass, heat={})
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=site.entry_id, identifiers={("tuya", "abc")})
+    registry = er.async_get(hass)
+    switch = registry.async_get_or_create("switch", "tuya", "abcswitch", device_id=device.id, suggested_object_id="pool_hp")
+    water = registry.async_get_or_create("sensor", "tuya", "abctemp_current", device_id=device.id, suggested_object_id="pool_hp_temp")
+    hass.states.async_set(switch.entity_id, "on")
+    hass.states.async_set(water.entity_id, "23.5", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    pool = {"heat_pump": {"entity_id": switch.entity_id, "shape": "switch_number", "switch_id": switch.entity_id}}
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {"pool": pool}})
+    await hass.async_block_till_done()
+    shadow = controller.pool_spa
+    shadow.tick(dt_util.now())
+    assert (shadow.water_c, shadow.water_source) == (23.5, "heat_pump")

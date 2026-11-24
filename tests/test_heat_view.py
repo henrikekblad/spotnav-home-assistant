@@ -445,7 +445,8 @@ def controlled_answer() -> dict[str, Any]:
         "live": True, "automation": None, "paused_until": None,
     }
     pool = {
-        "season_open": True, "water_c": 24.6, "water_source": "sensor", "target_c": 27.0,
+        "season_open": True, "water_c": 24.6, "water_source": "heat_pump",
+        "water_at": (MIDNIGHT + timedelta(hours=7, minutes=40)).isoformat(), "target_c": 27.0,
         "heat_pump": {
             "on": True, "heating": False, "kw": 1.6, "live": False, "state": "watched", "reason": "waiting", "paused_until": None,
             "failures": 0,

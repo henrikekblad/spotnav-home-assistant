@@ -2,8 +2,7 @@
 shadow, what SpotNav would do. One per site, owned by its `SiteCapacityController`; idle unless the heat settings name
 a pool or a spa (`heat/config.py`).
 
-Every `TICK_S` it reads the pool's water (the chosen sensor, else the heat pump's own reading once it has run
-`PUMP_READING_AFTER`), the heat pump and the circulation as they are, keeps each day's highest and lowest water reading
+Every `TICK_S` it reads the pool's water (`_pool_tick`), the heat pump and the circulation as they are, keeps each day's highest and lowest water reading
 (the season hint), learns the heat pump's rise per hour from its real runs and the water's fall overnight, counts the
 hours it would have run the circulation (its own rolling need, as the switched load's), plans again when the hour turns,
 the prices or the settings change or a household control is pressed (`pool/plan.py`), and logs each change of what it
@@ -16,6 +15,14 @@ or the sauna while it heats, at the entered powers or typical ones) for the heat
 
 Nothing here writes to a device: no service is called. The settings are the heat settings'; the household's extra
 filtering is kept here (`extra`). Stored in `spotnav.pool_spa.<entry>`, the days' figures for `DAYS_KEPT` days.
+
+**The water**: two readings, the heat pump's own first (a climate's `current_temperature`, the water in; core `tuya`'s
+`temp_current` sensor on the pump's device) and the chosen standalone sensor second (`water_sensor`). Both usually sit on
+the pipe, where the water drifts towards the air once the circulation stops: with a circulation pump chosen a reading
+only counts as the pool's once the circulation has run `CIRCULATION_SETTLE`; otherwise the last valid one is kept with
+its time (`readings`, stored). Without a circulation pump the readings count as they come. The water used is the
+freshest valid reading, the heat pump's on a tie. The season hint, the day's highest water and the learning only take
+valid readings, so a cooled pipe never reaches the planners.
 """
 
 from __future__ import annotations
@@ -74,8 +81,15 @@ STORE_VERSION: Final = 1
 _SAVE_DELAY_S: Final = 300.0
 MAX_GAP: Final = timedelta(minutes=2)
 DAYS_KEPT: Final = 14
-#: The heat pump's own water reading is valid once it has run this long (the water at the sensor has turned over).
-PUMP_READING_AFTER: Final = timedelta(minutes=10)
+#: A water reading counts as the pool's once the circulation has run this long (the water in the pipe has turned over).
+CIRCULATION_SETTLE: Final = timedelta(minutes=5)
+#: A kept reading older than this does not start an overnight fall sample or a heat run.
+LEARN_MAX_AGE: Final = timedelta(hours=3)
+#: The overnight fall sample ends at the first valid reading before this local hour.
+NIGHT_END_BY_H: Final = 12
+#: The water's two sources (`water_source`).
+SOURCE_HEAT_PUMP: Final = "heat_pump"
+SOURCE_SENSOR: Final = "sensor"
 SUN_REFRESH: Final = timedelta(minutes=15)
 #: The overnight window the water's fall is learnt in (local hours), with no heat between.
 NIGHT_FROM_H: Final = 22
@@ -142,13 +156,19 @@ class PoolSpaShadow:
         self.fall_samples: list[tuple[float, float, float]] = []
         self.water_c: float | None = None
         self.water_source: str | None = None
+        #: When the water used was read (a valid reading; it may be kept from earlier).
+        self.water_at: datetime | None = None
+        #: Each source's last valid reading: `{source: (entity_id, °C, when)}`.
+        self.readings: dict[str, tuple[str, float, datetime]] = {}
         self.would: dict[str, Any] | None = None
         #: When `would` was last decided (the control holds what is there once it is older than a few minutes).
         self.would_at: datetime | None = None
         # ---- the spa and the sauna
         self.spa = new_spa()
         self.sauna = new_sauna()
-        self._pump_on_since: datetime | None = None
+        self._flow_since: datetime | None = None
+        #: The heat pump's own water sensor (core `tuya`'s `temp_current`), by its switch.
+        self._pump_water_ids: dict[str, str | None] = {}
         self._run_start: tuple[datetime, float | None] | None = None
         self._night_start: tuple[datetime, float] | None = None
         self._night_heated = False
@@ -209,6 +229,11 @@ class PoolSpaShadow:
                 start, end, low, high = _aware(row[0]), _aware(row[1]), _float(row[2]), _float(row[3])
                 if start and end and low is not None and high is not None:
                     self.heat_runs.append((start, end, low, high))
+        for source, row in (pool.get("readings") or {}).items() if isinstance(pool.get("readings"), dict) else ():
+            if source in (SOURCE_HEAT_PUMP, SOURCE_SENSOR) and isinstance(row, list) and len(row) == 3:
+                entity_id, value, at = row[0], _float(row[1]), _aware(row[2])
+                if isinstance(entity_id, str) and value is not None and at is not None:
+                    self.readings[source] = (entity_id, value, at)
         for row in pool.get("fall_samples") or ():
             if isinstance(row, list) and len(row) == 3 and all(_float(v) is not None for v in row):
                 self.fall_samples.append((float(row[0]), float(row[1]), float(row[2])))
@@ -274,6 +299,7 @@ class PoolSpaShadow:
                 "water_days": {day: list(row) for day, row in self.water_days.items()},
                 "heat_runs": [[a.isoformat(), b.isoformat(), low, high] for a, b, low, high in self.heat_runs],
                 "fall_samples": [list(row) for row in self.fall_samples],
+                "readings": {source: [entity_id, value, at.isoformat()] for source, (entity_id, value, at) in self.readings.items()},
             },
         )
         self.book.set_section("spa", self.spa.as_dict())
@@ -317,11 +343,36 @@ class PoolSpaShadow:
         switch = None if pump.switch_id is None else self.hass.states.get(pump.switch_id)
         on = None if switch is None or switch.state in _UNREADABLE else switch.state == "on"
         reading = None
-        if pump.entity_id.startswith("sensor."):
-            sensor = self.hass.states.get(pump.entity_id)
-            if sensor is not None:
-                reading = self._celsius(number_from_state(sensor.state), sensor.attributes.get("unit_of_measurement"))
+        water_id = self._pump_water_id(pump)
+        sensor = None if water_id is None else self.hass.states.get(water_id)
+        if sensor is not None:
+            reading = self._celsius(number_from_state(sensor.state), sensor.attributes.get("unit_of_measurement"))
         return on, on, reading
+
+    def _pump_water_id(self, pump: Any) -> str | None:
+        """Core `tuya`'s heat pump's own water sensor: the block's sensor, else the `temp_current` sensor on its switch's
+        device (looked up once)."""
+        if pump.entity_id.startswith("sensor."):
+            return pump.entity_id
+        if pump.switch_id is None:
+            return None
+        if pump.switch_id not in self._pump_water_ids:
+            from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(pump.switch_id)
+            found = None
+            if entry is not None and entry.device_id is not None:
+                found = next(
+                    (
+                        item.entity_id
+                        for item in er.async_entries_for_device(registry, entry.device_id)
+                        if item.domain == "sensor" and str(item.unique_id or "").endswith("temp_current")
+                    ),
+                    None,
+                )
+            self._pump_water_ids[pump.switch_id] = found
+        return self._pump_water_ids[pump.switch_id]
 
     def _switch_on(self, entity_id: str | None) -> bool | None:
         state = None if entity_id is None else self.hass.states.get(entity_id)
@@ -329,18 +380,35 @@ class PoolSpaShadow:
             return None
         return state.state == "on"
 
-    def _water(self, pool: PoolConfig, now: datetime, pump_reading: float | None) -> tuple[float | None, str | None]:
-        """The water now and where it is read: the chosen sensor, else the heat pump's own once it has run long
-        enough; else `None`."""
-        if pool.water_sensor is not None:
-            state = self.hass.states.get(pool.water_sensor)
-            if state is None:
-                return None, None
-            value = self._celsius(number_from_state(state.state), state.attributes.get("unit_of_measurement"))
-            return value, None if value is None else "sensor"
-        if pump_reading is not None and self._pump_on_since is not None and now - self._pump_on_since >= PUMP_READING_AFTER:
-            return pump_reading, "heat_pump"
-        return None, None
+    def _water(self, pool: PoolConfig, now: datetime, pump_reading: float | None, settled: bool) -> float | None:
+        """Note each source's reading where it counts now (`settled`: the circulation has run long enough, or there
+        is none), pick the water used (the freshest valid reading, the heat pump's on a tie) and answer the valid
+        reading of this look (the heat pump's first), else `None`."""
+        fresh: float | None = None
+        if settled:
+            sensor_value = None
+            if pool.water_sensor is not None:
+                state = self.hass.states.get(pool.water_sensor)
+                if state is not None and state.state not in _UNREADABLE:
+                    sensor_value = self._celsius(number_from_state(state.state), state.attributes.get("unit_of_measurement"))
+            if pool.water_sensor is not None and sensor_value is not None:
+                self.readings[SOURCE_SENSOR] = (pool.water_sensor, sensor_value, now)
+                fresh = sensor_value
+            if pool.heat_pump is not None and pump_reading is not None:
+                self.readings[SOURCE_HEAT_PUMP] = (pool.heat_pump.entity_id, pump_reading, now)
+                fresh = pump_reading
+        chosen = {SOURCE_HEAT_PUMP: None if pool.heat_pump is None else pool.heat_pump.entity_id, SOURCE_SENSOR: pool.water_sensor}
+        valid = [
+            (at, source == SOURCE_HEAT_PUMP, source, value)
+            for source, (entity_id, value, at) in self.readings.items()
+            if chosen.get(source) == entity_id
+        ]
+        if valid:
+            at, _first, source, value = max(valid)
+            self.water_c, self.water_source, self.water_at = value, source, at
+        else:
+            self.water_c = self.water_source = self.water_at = None
+        return fresh
 
     def _prices(self, now: datetime) -> list[PriceHour]:
         """The window's whole hours with their mean buy and sell price, from the running hour on."""
@@ -579,14 +647,14 @@ class PoolSpaShadow:
         return None
 
     def _pool_tick(self, now: datetime, pool: PoolConfig) -> None:
-        on, heating, reading = self._pump_state(pool)
-        if heating:
-            self._pump_on_since = self._pump_on_since or now
+        _on, heating, reading = self._pump_state(pool)
+        if self._switch_on(pool.circulation_id):
+            self._flow_since = self._flow_since or now
         else:
-            self._pump_on_since = None
-        water, source = self._water(pool, now, reading)
+            self._flow_since = None
+        settled = pool.circulation_id is None or (self._flow_since is not None and now - self._flow_since >= CIRCULATION_SETTLE)
+        water = self._water(pool, now, reading, settled)
         if water is not None:
-            self.water_c, self.water_source = water, source
             day = self._local(now).date().isoformat()
             row = self.water_days.setdefault(day, [water, water])
             row[0], row[1] = min(row[0], water), max(row[1], water)
@@ -611,10 +679,19 @@ class PoolSpaShadow:
         if notice is not None and notice.pool_season(now):
             self.season_hinted = local.year
 
+    def _kept(self, now: datetime) -> tuple[datetime, float] | None:
+        """The water used and when it was read, while that is recent enough to start a sample."""
+        if self.water_c is None or self.water_at is None or now - self.water_at > LEARN_MAX_AGE:
+            return None
+        return self.water_at, self.water_c
+
     def _learn(self, now: datetime, heating: bool, water: float | None) -> None:
-        """The heat pump's real runs (their rise) and the water's overnight fall without heat."""
+        """The heat pump's real runs (their rise) and the water's overnight fall without heat. `water` is this look's
+        valid reading (`None` while the circulation has not run long enough); a run or a night starts from the last
+        valid reading and its time, and ends at a valid one."""
         if heating and self._run_start is None:
-            self._run_start = (now, water)
+            kept = self._kept(now)
+            self._run_start = (now, None if kept is None else kept[1])
         elif not heating and self._run_start is not None:
             start, low = self._run_start
             self._run_start = None
@@ -623,14 +700,19 @@ class PoolSpaShadow:
         local = self._local(now)
         if heating:
             self._night_heated = True
-        if local.hour == NIGHT_FROM_H and self._night_start is None and water is not None:
-            self._night_start, self._night_heated = (now, water), heating
-        elif local.hour == NIGHT_TO_H and self._night_start is not None:
+        if local.hour == NIGHT_FROM_H and self._night_start is None:
+            kept = self._kept(now)
+            if kept is not None:
+                self._night_start, self._night_heated = kept, heating
+        elif self._night_start is not None and NIGHT_TO_H <= local.hour < NIGHT_END_BY_H and water is not None:
+            # The first valid reading of the morning (the circulation may start later than six).
             start, low = self._night_start
             self._night_start = None
-            if water is not None and not self._night_heated:
+            if not self._night_heated:
                 hours = (now - start).total_seconds() / 3600.0
                 self.fall_samples = [*self.fall_samples, (low, water, hours)][-LEARN_KEPT:]
+        elif self._night_start is not None and NIGHT_END_BY_H <= local.hour < NIGHT_FROM_H:
+            self._night_start = None
 
     def _account(self, now: datetime) -> None:
         last, self._last_tick = self._last_tick, now
@@ -973,6 +1055,7 @@ class PoolSpaShadow:
             "season_open": pool.season_open,
             "water_c": None if self.water_c is None else round(self.water_c, 1),
             "water_source": self.water_source,
+            "water_at": None if self.water_at is None else self.water_at.isoformat(),
             "target_c": pool.target_c,
             "heat_pump": None
             if pool.heat_pump is None
@@ -1039,6 +1122,8 @@ class PoolSpaShadow:
             "would": self.would,
             "water_c": self.water_c,
             "water_source": self.water_source,
+            "water_at": None if self.water_at is None else self.water_at.isoformat(),
+            "readings": {source: [entity_id, value, at.isoformat()] for source, (entity_id, value, at) in self.readings.items()},
             "water_days": dict(self.water_days),
             "rise_c_h": {"value": rise[0], "learnt": rise[1]},
             "fall_c_day": {"value": fall[0], "learnt": fall[1]},

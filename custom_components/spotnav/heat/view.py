@@ -56,7 +56,7 @@
      water_heater: {entity_id, name, on: bool | null, metered, meter_waiting, mode: "metered" | "unmetered" | "tank", kw, state, reason,
                     check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
                     automation: {entity_id, name} | null, paused_until} | null,
-     pool: {season_open, water_c, water_source: "sensor" | "heat_pump" | null, target_c,
+     pool: {season_open, water_c, water_source: "sensor" | "heat_pump" | null, water_at: ISO | null, target_c,
             heat_pump: {on, heating, kw, live, state, reason, paused_until, failures} | null,
             circulation: {on, kw, live, state, reason, paused_until, failures} | null,
             today: {need_h, need_source: "water" | "override" | "default", done_h, planned_h, heat_h, kwh},

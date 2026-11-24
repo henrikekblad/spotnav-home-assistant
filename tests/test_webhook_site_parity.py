@@ -650,7 +650,13 @@ async def test_the_pool_spa_and_sauna_presses_answer_as_their_commands(
     await hass.async_block_till_done()
     controller = site_controller_for(hass, site.entry_id)
     assert controller is not None
-    controller.pool_spa.tick(dt_util.now())
+    # The circulation ran long enough for one valid reading, then stopped: the heat pump's is kept with its time.
+    now = dt_util.now()
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    controller.pool_spa.tick(now - timedelta(minutes=10))
+    controller.pool_spa.tick(now - timedelta(minutes=4))
+    hass.states.async_set("switch.pool_cirkulation", "off")
+    controller.pool_spa.tick(now)
 
     # The pool: the dial, the extra filtering, a value refused.
     status, body = await post(client, HOOK, {"action": "pool", "pool_action": "target", "target_c": 28})
