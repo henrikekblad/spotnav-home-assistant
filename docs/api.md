@@ -71,7 +71,9 @@ no such webhook) until 3.0 runs again.
 One fixed, public webhook, `POST /api/webhook/spotnav_pairing`, that grants nothing by itself:
 
 1. `{"version": 1, "action": "request", "code": "123456", "device": "Pixel"}` records a pending
-   request and shows an approval item in Home Assistant with the device name and the code.
+   request and shows an approval item in Home Assistant with the device name and the code. Since 3.0 the app may add
+   `"model"` (its model, the name being the phone's own) and `"app_id"`; on approval its phone is linked to its
+   Companion phone (see `phone_notifications` below).
    The code must be six digits; the answer is `{"ok": true, "request_id": "..."}`.
 2. The person compares the code and chooses **Approve** or **Deny** in Home Assistant.
 3. `{"version": 1, "action": "poll", "request_id": "..."}` answers `pending`, `denied`,
@@ -205,7 +207,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `answer_price_duplicate` | Answer the same-area question: `{"area_id", "keep_entry_id"}` (see below). |
 | `update_grid_tariff` | The electricity price's grid tariff (a percentage of spot, a high-load fee and its window): `{"expected_write_revision", "grid_tariff"}` (see below). |
 | `push_register` | An app before SpotNav 3.0: its instant notifications, `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
-| `phone_notifications` | The app's own phone: `{"app_id", "name"?, "push_ref"?, "shows"?, "set"?}` (see below). |
+| `phone_notifications` | The app's own phone: `{"app_id", "name"?, "model"?, "push_ref"?, "shows"?, "set"?}` (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `update_guest` | The guest amount a guest car's plan starts from: `{"amount_kwh"}` (see [the guest car](#the-guest-car)). |
@@ -541,13 +543,16 @@ Companion notification for the same notice. Examples are in `tests/fixtures/webh
 
 ```json
 {"action": "phone_notifications", "api_version": 1, "app_id": "<base64url, 32 to 128 characters>",
- "name": "Pixel 8", "push_ref": "<ref>" | null, "shows": ["plan_stopped", "...", "pool_season", "heat_at_risk"],
+ "name": "Anna's Pixel 8", "model": "Pixel 8", "push_ref": "<ref>" | null, "shows": ["plan_stopped", "...", "pool_season", "heat_at_risk"],
  "set": {"on": true, "events": ["plan_stopped", "..."], "chargers": null}}
 ```
 
 `app_id` is a secret the app makes once and keeps (also sent with its pairing request); Home Assistant keeps it hashed
 and never answers or logs it. The first call makes the phone (on, the default events, every charger), adopting the
-phone of an older app whose `push_ref` is the same, and linking it to the Companion phone of the same name. `push_ref`
+phone of an older app whose `push_ref` is the same, and linking it to its Companion phone. While the phone has no
+Companion service and no administrator split the two, every call tries that link: the one Companion phone whose
+name or name in Home Assistant is `name` (or ends with it as a word, or `name` ends with it), else the one whose model
+is `model` (or `name`: an older app sends its model as its name); two that match link nothing. `push_ref`
 sets the wake-up reference (`null` clears it); `shows` says which notices the app shows itself (a notice it cannot show
 goes to the phone's Companion service instead); `set` changes `on`, `events` and `chargers` (`null` for every charger).
 Every field but `app_id` is optional. The answer: `{"ok": true, "action", "api_version": 1, "phone": {"id", "name",

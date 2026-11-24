@@ -70,6 +70,8 @@ class PendingPairing:
     #: The stored form of the app's secret `app_id` (SpotNav 3.0, `notifications/phones.app_key`), `None` from an
     #: older app: on approval the app's phone entry is made and linked by name (`PhoneStore.async_paired`).
     app_key: str | None = None
+    #: The phone's model where the app sends it beside its name (`device`): what its Companion phone is matched by.
+    model: str | None = None
 
 
 class PairingRegister:
@@ -111,7 +113,12 @@ class PairingRegister:
         return max(0.0, last + self._remote_interval_s - self._now())
 
     def open(
-        self, code: str, device: str, remote: str | None = None, app_key: str | None = None
+        self,
+        code: str,
+        device: str,
+        remote: str | None = None,
+        app_key: str | None = None,
+        model: str | None = None,
     ) -> PendingPairing | None:
         """Record a request, or `None` when too many are already waiting."""
         self._prune()
@@ -125,6 +132,7 @@ class PairingRegister:
             device=device,
             created_at=self._now(),
             app_key=app_key,
+            model=model,
         )
         self._open[record.request_id] = record
         return record
@@ -279,7 +287,9 @@ def _async_request(hass: HomeAssistant, payload: dict[str, Any], remote: str | N
         key = None if payload.get("app_id") is None else app_key(payload["app_id"])
     except PhoneError:
         key = None
-    record = register.open(code, device_label, remote, key)
+    model = payload.get("model")
+    # Optional (SpotNav 3.0): the model beside the name, matched against the Companion phones on approval.
+    record = register.open(code, device_label, remote, key, model[:DEVICE_LABEL_MAX * 4] if isinstance(model, str) else None)
     if record is None:
         _log_refused("Refused a SpotNav pairing request: %s", "too many awaiting approval")
         raise ValueError("Too many pairing requests are awaiting approval")
@@ -322,7 +332,7 @@ def _async_poll(hass: HomeAssistant, payload: dict[str, Any]) -> web.Response:
         phones = domain_data(hass).phones
         if record is not None and record.app_key is not None and phones is not None:
             # The app's own phone entry, on with the defaults, linked to the Companion phone of the same name.
-            hass.async_create_task(phones.async_paired(record.app_key, record.device), eager_start=True)
+            hass.async_create_task(phones.async_paired(record.app_key, record.device, record.model), eager_start=True)
         # Built now so a charger added in between is included; the pairing payload is the only
         # place a webhook id crosses to the app.
         return web.json_response(

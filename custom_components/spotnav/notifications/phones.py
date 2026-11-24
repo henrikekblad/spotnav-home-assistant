@@ -122,6 +122,8 @@ class Phone:
     events: tuple[str, ...] = DEFAULT_PHONE_EVENTS
     #: `None`: every charger; a tuple: only those (may be empty: a phone that follows only the heat loads).
     chargers: tuple[str, ...] | None = None
+    #: An administrator split this phone's app from its Companion phone ("Split"): never linked again by itself.
+    apart: bool = False
 
     def follows(self, charger_id: str) -> bool:
         return self.chargers is None or charger_id in self.chargers
@@ -142,6 +144,7 @@ class Phone:
             "on": self.on,
             "events": list(self.events),
             "chargers": None if self.chargers is None else list(self.chargers),
+            "apart": self.apart,
         }
 
 
@@ -194,6 +197,7 @@ def read_phone(raw: Any) -> Phone | None:
         on=raw.get("on") is True,
         events=DEFAULT_PHONE_EVENTS if events is None else ordered_events(event for event in events if event in PHONE_EVENTS),
         chargers=None if chargers is None else (_strings(chargers) or ()),
+        apart=raw.get("apart") is True,
     )
 
 
@@ -208,6 +212,42 @@ def read_phones(raw: Any) -> tuple[Phone, ...]:
             seen.add(phone.id)
             found.append(phone)
     return tuple(found[:MAX_PHONES])
+
+
+# ------------------------------------------------------------------------------------------- the app's Companion
+
+
+def _ends_with_word(longer: str, shorter: str) -> bool:
+    return bool(shorter) and longer.endswith(f" {shorter}")
+
+
+def match_companion(
+    name: str | None, model: str | None, devices: Iterable[tuple[str, Iterable[str], str | None]]
+) -> str | None:
+    """The service of the one Companion phone the app's phone is, else `None`. `devices` are `(service, names, model)`
+    (`targets.companion_devices`). Tried in order, the first rule that matches any phone decides, and only when it
+    matches exactly one: a name the same (case, spaces and punctuation folded) or the service named after it; one name
+    ending with the other as a word ("Henrik N6", "N6"); the same model, from the app's `model` or its name (an older
+    app sends the model as its name). Two phones of one model link nothing."""
+    devices = [(service, [name_key(item) for item in names], name_key(dev_model or "")) for service, names, dev_model in devices]
+    sent = name_key(name or "")
+    sent_model = name_key(model or "")
+    slug_service = f"{MOBILE_APP_PREFIX}{'_'.join(sent.split())}" if sent else None
+
+    def exact(service: str, names: list[str], _model: str) -> bool:
+        return bool(sent) and (sent in names or service == slug_service)
+
+    def suffix(_service: str, names: list[str], _model: str) -> bool:
+        return bool(sent) and any(_ends_with_word(sent, item) or _ends_with_word(item, sent) for item in names)
+
+    def same_model(_service: str, _names: list[str], dev_model: str) -> bool:
+        return bool(dev_model) and dev_model in (sent_model, sent)
+
+    for rule in (exact, suffix, same_model):
+        found = [service for service, names, dev_model in devices if rule(service, names, dev_model)]
+        if found:
+            return found[0] if len(set(found)) == 1 else None
+    return None
 
 
 # ---------------------------------------------------------------------------------------------------------- routing
