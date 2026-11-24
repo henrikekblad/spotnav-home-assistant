@@ -66,7 +66,6 @@ async def test_balboa_heats_by_ready_rests_by_rest_and_never_by_hvac_off(hass: H
 async def test_the_floor_comes_before_the_shed_and_the_budget(hass: HomeAssistant) -> None:
     devices = _balboa(hass)
     control, shadow, order = make_control(hass, _spa())
-    order.steps[LOAD_SPA_IDLE] = NOW + 5 * H
     # The day's preset budget spent by ups and downs.
     moment = NOW
     for index in range(9):
@@ -76,6 +75,13 @@ async def test_the_floor_comes_before_the_shed_and_the_budget(hass: HomeAssistan
     presets = [call for call in devices.writes() if call[0] == "climate.set_preset_mode"]
     # The day's last write is never spent on Rest: the spa is left in Ready (review S7).
     assert len(presets) == 5 and presets[-1][2] == "ready"
+    # A shed step's Rest is written all the same (exempt), and its offer is held once it reads.
+    order.steps[LOAD_SPA_IDLE] = moment + 5 * H
+    shadow.spa.set("idle", current=35.0)
+    await looks(control, moment, moment + 30 * S)
+    assert devices.writes()[-1] == ("climate.set_preset_mode", SPA, "rest")
+    assert control.spa.offers(moment + 30 * S, control.config().spa)[LOAD_SPA_IDLE].held
+    moment += MIN
     shadow.spa.set("idle", current=9.5)
     await control.async_look(moment + MIN)
     assert devices.writes()[-1] == ("climate.set_preset_mode", SPA, "ready") and control.spa.part.reason == "floor"

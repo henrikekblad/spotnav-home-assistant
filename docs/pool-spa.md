@@ -35,9 +35,13 @@ through Tuya Local with a Fibaro relay for the circulation, and a Balboa spa. Ev
 * **Control the sauna** (an integration's sauna, or a relay once you declare the heater's own safety measure): heats
   only for a booked session or **Heat now**.
 
-Once the heat-up for a bath or a session has started, SpotNav keeps it: the heater stays on and the device's own
-thermostat holds the temperature until two hours after the booked time. It is not switched off and on again as the
-water or the room warms faster than learnt.
+Once the heat-up for a bath or a session has started, SpotNav keeps it and the quarter hours it planned for it: it
+heats in them (the cheapest, sunniest ones with room under the ceiling), waits between them, and from the last one
+on the device's own thermostat holds the temperature until two hours after the booked time. The quarters are placed
+again only when the prices, the room or your answer change, or when the rate learnt since says they no longer reach
+the temperature; only when the heat-up itself is all the time left does it go straight through. A bath or a session
+moved by **Later** is heated for its new time, also once the old time has passed, and only while the original
+booking stands.
 
 ## The hard rules
 
@@ -56,7 +60,8 @@ says:
 * **The sauna**: only for a session you booked or **Heat now**; never while its door or lock reads locked, or while a
   lock you chose cannot be read (a lock that turns locked or unreadable while it heats turns it off); never longer
   than its own longest run (Harvia's on time, Saunum's session length) and never longer than 3 hours, counted over the
-  whole session or press, across a restart; never through a relay whose safety measure is not declared. SpotNav only
+  continuous run (a "now" press on top of a session is the same run; a new one starts after 10 minutes off), across a
+  restart; never through a relay whose safety measure is not declared. SpotNav only
   turns off a session it started, and never turns a sauna on when it hands it back.
 * **Season closed: nothing is written at all.** What SpotNav held is left as it stands when you close the season.
 * **Your settings come back.** What the load showed before SpotNav acted is written back when you turn its switch off,
@@ -68,13 +73,14 @@ says:
   SpotNav writes nothing back and leaves the load to you until the next day. A temperature set at the panel stays
   yours after that too: SpotNav writes the temperature again only when you change its dial.
 * **No plan is not "off".** Without prices the day's filtering still runs; if the plan stops being made, SpotNav keeps
-  the pool as it is rather than turning it off. An enabled automation that steers the load
+  the pool and the spa as they are rather than turning them off, and turns off a sauna it started. An enabled automation that steers the load
   keeps SpotNav off it.
 * **Every write is read back** within 90 seconds (5 minutes through a cloud). A write that does not show is counted,
   shown under the load, and pauses SpotNav's control of it until the next day.
 * **Budgets** per day: at most 6 setpoint or preset writes and 12 on/off writes per entity, at most 6 starts of the
   heat pump and 8 of the circulation (2 an hour). Only the writes the budget limits count against it; the day's last
-  write is never spent on turning the spa's heat off, so a spent budget leaves it heating, never parked in Rest. The heat pump runs at least 30 minutes and rests 10; the circulation
+  write is never spent on turning the spa's heat off, so a spent budget leaves it heating, never parked in Rest. A shed
+step's write is never held back by the budget. The heat pump runs at least 30 minutes and rests 10; the circulation
   runs 30 and rests 15. A write a hard rule needs (the heat pump off, the circulation on for the run-on, the spa's
   lowest temperature) is never held back by a budget.
 * **Through a cloud** (core Tuya, Aquatemp, WarmLink, Fairland, iAquaLink, SmartTub, MSpa, Bestway, Huum, Harvia):

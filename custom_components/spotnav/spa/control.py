@@ -68,6 +68,10 @@ IDLE_BAND_C: Final = 1.0
 FLOOR_MARGIN_C: Final = 2.0
 #: A sauna never runs longer than this where the device says nothing of its own (placeholder).
 SAUNA_MAX_ON: Final = timedelta(hours=3)
+#: The sauna's on time starts over once it has read off this long (a new run).
+RUN_RESET: Final = timedelta(minutes=10)
+#: A spa's or a sauna's plan older than this is not followed: the spa is left as it is, the sauna turned off.
+STALE_PLAN: Final = timedelta(minutes=5)
 #: A gap between two looks counted as on time at most this long (a restart's gap is not counted).
 LOOK_GAP: Final = timedelta(minutes=2)
 LOAD_SPA_IDLE: Final = "spa_idle"
@@ -78,6 +82,7 @@ REASON_LOCK: Final = "lock"
 REASON_LOCK_UNREADABLE: Final = "lock_unreadable"
 REASON_MAX_ON: Final = "max_on"
 REASON_FLOOR: Final = "floor"
+REASON_STALE: Final = "stale_plan"
 REASON_UNSUPPORTED: Final = "unsupported"
 
 KEY_HEAT: Final = "heat"
@@ -104,6 +109,7 @@ class DeadlinePart:
         # and the run its longest run ended (kept).
         self.on_since: datetime | None = None
         self.last_on_look: datetime | None = None
+        self.off_since: datetime | None = None
         self.run_key: datetime | None = None
         self.on_seconds = 0.0
         self.max_on_for: datetime | None = None
@@ -115,6 +121,7 @@ class DeadlinePart:
             **self.part.stored(),
             "dial_written": self.dial_written,
             "run_key": None if self.run_key is None else self.run_key.isoformat(),
+            "off_since": None if self.off_since is None else self.off_since.isoformat(),
             "on_seconds": self.on_seconds,
             "max_on_for": None if self.max_on_for is None else self.max_on_for.isoformat(),
         }
@@ -124,6 +131,7 @@ class DeadlinePart:
             self.part.restore(raw)
             self.dial_written = finite_number(raw.get("dial_written"))
             self.run_key = aware_instant(raw.get("run_key"))
+            self.off_since = aware_instant(raw.get("off_since"))
             self.on_seconds = finite_number(raw.get("on_seconds")) or 0.0
             self.max_on_for = aware_instant(raw.get("max_on_for"))
 
@@ -257,6 +265,10 @@ class DeadlinePart:
             await self.async_exit(now, config)
             return
         part.state, part.reason = STATE_CONTROLLED, REASON_CLOUD if route.cloud else None
+        if self._stale(now) and not floor:
+            # The shadow's plan stopped: the spa is left as it is (its own thermostat holds it).
+            part.reason = REASON_STALE
+            return
         action = None if plan is None else plan.action
         bath = action in (ACTION_HEAT, ACTION_HOLD)
         shed_bath = bath and self.control.shed_until(LOAD_SPA, now) is not None
@@ -270,15 +282,17 @@ class DeadlinePart:
         elif action != ACTION_IDLE:
             self.idle_heating = False
         heat = floor or action == ACTION_FLOOR or (bath and not shed_bath) or (action == ACTION_IDLE and self.idle_heating and not shed_idle)
-        if floor or action == ACTION_FLOOR:
+        floor_rule = floor or action == ACTION_FLOOR
+        if floor_rule:
             part.reason = REASON_FLOOR
-        exempt = floor or action == ACTION_FLOOR
+        # The floor's write and a shed step's are never held back by the day's budget (review, should-fix).
+        exempt = floor_rule or shed_bath or shed_idle
         if route.heat is not None:
             await self._async_set_heat(now, config, route, route.on if heat else route.off, exempt=exempt)
         if route.setpoint == SETPOINT_HOLD:
             # The setpoint is the handle: the bath, or the idle temperature (never below the floor).
             value = config.bath_c if (bath and not shed_bath) else hold
-            if exempt:
+            if floor_rule:
                 value = max(value, config.floor_c + FLOOR_MARGIN_C)
             await self._async_setpoint(now, config, route, max(value, hold), exempt=exempt)
         elif route.setpoint == SETPOINT_DIAL:
@@ -292,36 +306,53 @@ class DeadlinePart:
             return
         part.state, part.reason = STATE_CONTROLLED, REASON_CLOUD if route.cloud else None
         shadow = self.shadow
+        if self._stale(now):
+            # The shadow's plan stopped: SpotNav's own start is turned off, a person's is left (review, should-fix).
+            part.reason = REASON_STALE
+            if part.held(KEY_HEAT).holds() and self.heat_read == route.on:
+                await self._async_set_heat(now, config, route, route.off, exempt=True)
+            return
         plan = shadow.plan
         would = shadow.would(config)
         action = None if would is None else would["action"]
         nxt = None if plan is None else plan.next_session
         session = None if nxt is None else nxt[0]
-        # One run per session: a "now" press is keyed on the press (its plan's session is "now" at every look), a
-        # booked one on its time; the on time adds up across starts of the same run (review B2).
+        # The on time of the continuous run counts against the longest run, whatever session or press it serves
+        # (review R2 of the sauna's cap): it starts over only once the sauna has read off for `RUN_RESET`. The run a
+        # cap ended (its session, or the "now" press) is not started again; another one may start once the sauna has
+        # been off `RUN_RESET`, or at once for a new press.
         key = None
         if nxt is not None:
             pressed = getattr(shadow, "now_pressed", None)
             key = pressed if nxt[1] == SOURCE_NOW and pressed is not None else nxt[0]
         on = self.heat_read == route.on
         held = part.held(KEY_HEAT)
-        if key != self.run_key and key is not None:
-            self.run_key, self.on_seconds, self.max_on_for = key, 0.0, None
         if on and held.ours(self.heat_read):
             self.on_since = self.on_since or now
+            self.off_since = None
             if self.last_on_look is not None and timedelta(0) < now - self.last_on_look <= LOOK_GAP:
                 self.on_seconds += (now - self.last_on_look).total_seconds()
             self.last_on_look = now
         else:
             self.on_since = None
             self.last_on_look = None
+            if not on:
+                self.off_since = self.off_since or now
+        long_off = self.off_since is not None and now - self.off_since >= RUN_RESET
+        if long_off and self.max_on_for is None:
+            self.on_seconds = 0.0
+        new_press = nxt is not None and nxt[1] == SOURCE_NOW and key != self.run_key
+        if self.max_on_for is not None and key is not None and key != self.max_on_for and not on and (long_off or new_press):
+            self.max_on_for, self.on_seconds = None, 0.0
+        if key is not None:
+            self.run_key = key
         want = action in (ACTION_HEAT, ACTION_HOLD) and session is not None
         if shadow.reading.locked or (config.lock_id is not None and shadow.reading.locked is None):
             want = False
             part.reason = REASON_LOCK_UNREADABLE if shadow.reading.lock_unreadable or shadow.reading.locked is None else REASON_LOCK
-        if self.run_key is not None and self.on_seconds >= self._device_max_on(config).total_seconds():
+        if self.run_key is not None and self.max_on_for is None and self.on_seconds >= self._device_max_on(config).total_seconds():
             self.max_on_for = self.run_key
-        if self.max_on_for is not None and self.max_on_for == self.run_key:
+        if self.max_on_for is not None:
             want = False
             part.reason = REASON_MAX_ON
         if self.control.shed_until(LOAD_SAUNA, now) is not None:
@@ -392,6 +423,11 @@ class DeadlinePart:
         else:
             part.reason = REASON_WRITE_CAP
 
+    def _stale(self, now: datetime) -> bool:
+        plan = getattr(self.shadow, "plan", None)
+        made = getattr(plan, "made_at", None)
+        return isinstance(made, datetime) and now - made > STALE_PLAN
+
     # ---- exits
 
     async def async_exit(self, now: datetime, config: SpaConfig | SaunaConfig | None) -> bool:
@@ -441,7 +477,7 @@ class DeadlinePart:
             return {}
         if isinstance(config, SaunaConfig):
             if self.control.shed_until(LOAD_SAUNA, now) is not None:
-                return {LOAD_SAUNA: Offer(live=True, ready=True, give_w=give, drawing=on, held=not on, pending=on)}
+                return {LOAD_SAUNA: Offer(live=True, ready=True, give_w=give, drawing=on, held=not on, pending=on and self.part.reason != REASON_WRITE_CAP)}
             return {LOAD_SAUNA: Offer(live=True, ready=on, give_w=give if on else 0.0, drawing=on, why=None if on else "off")}
         plan = self.shadow.plan
         current = self.shadow.reading.current_c
@@ -450,12 +486,12 @@ class DeadlinePart:
         out: dict[str, Offer] = {}
         if action in (ACTION_HEAT, ACTION_HOLD):
             if self.control.shed_until(LOAD_SPA, now) is not None:
-                out[LOAD_SPA] = Offer(live=True, ready=warm, give_w=give, drawing=on, held=not on, pending=on, why=None if warm else "floor")
+                out[LOAD_SPA] = Offer(live=True, ready=warm, give_w=give, drawing=on, held=not on, pending=on and self.part.reason != REASON_WRITE_CAP, why=None if warm else "floor")
             else:
                 out[LOAD_SPA] = Offer(live=True, ready=on and warm, give_w=give if on else 0.0, drawing=on, why=None if on and warm else ("floor" if on else "off"))
         elif action == ACTION_IDLE:
             if self.control.shed_until(LOAD_SPA_IDLE, now) is not None:
-                out[LOAD_SPA_IDLE] = Offer(live=True, ready=warm, give_w=give, drawing=on, held=not on, pending=on, why=None if warm else "floor")
+                out[LOAD_SPA_IDLE] = Offer(live=True, ready=warm, give_w=give, drawing=on, held=not on, pending=on and self.part.reason != REASON_WRITE_CAP, why=None if warm else "floor")
             else:
                 out[LOAD_SPA_IDLE] = Offer(live=True, ready=on and warm, give_w=give if on else 0.0, drawing=on, why=None if on and warm else ("floor" if on else "off"))
         return out

@@ -1669,6 +1669,7 @@
   "heat.loadControl.why.lock_unreadable": "het slot kan niet worden gelezen, start niet",
   "heat.loadControl.why.pump_not_ours": "de warmtepomp wordt niet door SpotNav gestuurd en wordt beschermd door zijn eigen stromingsschakelaar; zet Zwembadwarmtepomp aansturen aan zodat de circulatie hem volgt",
   "heat.loadControl.why.restore_waits": "je instelling Verwarmen wordt teruggeschreven zodra de circulatie loopt",
+  "heat.loadControl.why.stale_plan": "het plan wordt nu niet gemaakt, er wordt niets gewijzigd",
   "heat.settings.tankSensor": "Vatsensor",
   "heat.settings.tankSensorHelp": "Optioneel: een temperatuursensor in het vat. SpotNav ziet volledige opwarming bij 60 °C en zet de boiler onder 40 °C meteen aan.",
   "heat.settings.pool": "Zwembad",

@@ -65,8 +65,16 @@ from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..runtime import site_controller_for
 from ..site.house_loads import merged_belongs, stored_belongs
 from ..site.import_target import stored_import_target_kw
-from ..site.priority import merged as merged_order, with_solar_priority
-from ..site.priority_store import priority_block, shown_order, site_order, site_solar_priority, store_order
+from ..site.priority import charger_entry_of, merged as merged_order, with_solar_priority
+from ..site.priority_store import (
+    charger_priority_value,
+    has_stored_list,
+    priority_block,
+    shown_order,
+    site_order,
+    site_solar_priority,
+    store_order,
+)
 from ..site.site_capacity_controller import (
     ENABLE_ALREADY,
     ENABLE_ENABLED,
@@ -436,6 +444,15 @@ async def _update_locked(
         if _PRIORITY in changes:
             # The list itself saved: the old classes an older app wrote no longer say anything.
             store_order(hass, site_entry, new_order, None)
+        elif not has_stored_list(hass, site_entry):
+            # An older app's first write on a site with no list stored: the old classes it shows are kept with the
+            # list, so two chargers it read as normal/normal still read so (not first/last from their places).
+            shown = {
+                entry_id: charger_priority_value(hass, site_entry, entry_id)
+                for item in new_order
+                if (entry_id := charger_entry_of(item)) is not None
+            }
+            store_order(hass, site_entry, new_order, shown)
         else:
             store_order(hass, site_entry, new_order)
 
