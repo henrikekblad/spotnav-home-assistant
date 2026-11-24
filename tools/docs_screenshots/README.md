@@ -109,7 +109,10 @@ takes the 2.x pictures of the charger flow, in the dark theme). Written: `house-
 house card (`house-card-plan` with **Per load** and **In words** opened, `house-card-flow`, `house-card-chart` and
 `house-card-earnings` on the month, `house-card-price`), `house-card-plan-past` (the Plan tab stepped back to
 yesterday, planned against what ran), `heat-card-now`, `heat-card-plan`, `heat-card-use`, `heat-card-hot-water`,
-`settings-home-battery`, `settings-beta`, `readme-hero` and `docs-home` (a copy of it); only when named: `social-card`
+`heat-card-pool`, `heat-card-spa`, `heat-card-sauna` (the Pool tab waits until the water counts, five minutes of
+circulation after the start), `settings-home-battery`, `settings-beta`, `settings-priority` (the priority list's editor),
+`settings-notifications` and `settings-notification-phone` (the phones, one phone opened), `settings-pool`,
+`settings-spa`, `settings-sauna` (the heat card's gear on each tab), `readme-hero` and `docs-home` (a copy of it); only when named: `social-card`
 (the house card at twice the pixels, `tools/social/card-light.png`). The house card's tab pictures are taken first,
 with no scene pinned, so that the battery's measured and planned level meet at now.
 
@@ -127,6 +130,13 @@ beyond the 2.x demo:
 - `demo_components/sigen` now also has the home battery: its level, ratings, work mode and the controls the battery
   check writes (a Remote EMS switch, the control mode select and the charge and discharge limits); they move the
   simulated battery, so the check of its control sees a plant that obeys.
+- `demo_components/tuya_local`: a pool heat pump (a climate with Tuya Local's `pool_heatpump` translation key) and the
+  pool's circulation pump ("Pool pump", a relay on a device of its own) around one small water model; with the fake spa
+  and sauna of `tools/fake_devices/` (`balboa`, `saunum`, copied in by `run.sh` and renamed "Spa" and "Sauna" as a
+  person would) the site has a pool, a spa and a sauna, each under SpotNav's control. Each run books a bath for tonight
+  (20:00) and a sauna session this evening (19:00), tomorrow's when the run is after 15:00, beside weekly ones.
+- Two Companion phones ("Anna's phone", "Erik's phone"), registered through the `mobile_app` API as the app does (the push
+  address is nothing that listens; nothing is sent) and turned on, for the Notifications section.
 - `seed_house.py` (loaded by `ha_launch.py` with `DOCS_SEED_HOUSE`): the house-load history the forecast needs, the heat
   store's hot-water runs and five shadow days (the progress line under the heat card's Plan), a month of reviewed
   battery days and the battery's day money (the earnings), and the decision history's hours from three days back to

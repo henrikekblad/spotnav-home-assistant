@@ -45,6 +45,8 @@ for (let i = 0; i < 60; i++) {
   await sleep(3000);
 }
 phase("site answers ready");
+// Tonight's bath and sauna session, booked again at every run (a kept installation's would be another day's).
+await v3.bookPoolSpa(api, ids.site);
 if (process.env.DOCS_CONFIG) {
   // The finished installation: what run.sh keeps for the next run (--fresh throws it away).
   try { fs.writeFileSync(path.join(process.env.DOCS_CONFIG, ".docs_built"), new Date().toLocaleDateString("sv-SE") + "\n"); } catch {}
@@ -157,16 +159,37 @@ if (wanted("house-card-plan-past")) {
 if (wanted("house-card-now")) {
   await scene();
   await open("v3-house", TAGS.house, 700);
+  // The card remembers its tab in the browser: an earlier picture's tab would stay.
+  await tab(TAGS.house, "now");
   await shot("house-card-now", CARD(TAGS.house));
 }
 if (wanted("heat-card-now")) {
   await scene();
   await open("v3-heat", TAGS.heat, 700);
+  // The card remembers its tab in the browser: an earlier picture's tab would stay.
+  await tab(TAGS.heat, "now");
   await shot("heat-card-now", CARD(TAGS.heat));
 }
 // The heat card's Plan and Use tabs (docs/heat-pumps.md), on today.
 for (const [name, tabName] of [["heat-card-plan", "plan"], ["heat-card-use", "use"]]) {
   if (!wanted(name)) continue;
+  await scene();
+  await open("v3-heat", TAGS.heat, 700);
+  await tab(TAGS.heat, tabName);
+  await shot(name, CARD(TAGS.heat));
+}
+// The heat card's Pool, Spa and Sauna tabs (docs/pool-spa.md): the demo pool filtering in the day's cheap hours, the
+// spa heating for tonight's bath and the sauna waiting for this evening's session, all under SpotNav's control.
+for (const [name, tabName] of [["heat-card-pool", "pool"], ["heat-card-spa", "spa"], ["heat-card-sauna", "sauna"]]) {
+  if (!wanted(name)) continue;
+  if (tabName === "pool") {
+    // The water counts as the pool's only once the circulation has run five minutes since the start: waited for.
+    for (let i = 0; i < 60; i++) {
+      const heat = await api.ws({ type: "spotnav/get_heat", api_version: 1, site_id: ids.site });
+      if (heat.pool?.water_c != null) break;
+      await sleep(10000);
+    }
+  }
   await scene();
   await open("v3-heat", TAGS.heat, 700);
   await tab(TAGS.heat, tabName);
@@ -180,6 +203,7 @@ if (wanted("readme-hero") || wanted("docs-home")) {
   const parts = [];
   for (const [page, tag] of [["v3-charger", TAGS.charger], ["v3-house", TAGS.house], ["v3-heat", TAGS.heat]]) {
     await open(page, tag, 700);
+    if (tag !== TAGS.charger) await tab(tag, "now");
     const file = path.join(os.tmpdir(), `docs-hero-${process.pid}-${parts.length}.png`);
     await b.shotElement(file, CARD(tag), 0);
     parts.push(file);
@@ -223,6 +247,38 @@ if (wanted("settings-support")) {
   await b.eval(`${SECTION(TAGS.house, "support")}?.scrollIntoView({ block: "nearest" })`);
   await sleep(1500);
   await shot("settings-support", SECTION(TAGS.house, "support"));
+}
+// The site's priority list (docs/site-and-load-balancing.md): the editor an administrator opens from Site → Priority.
+if (wanted("settings-priority")) {
+  await open("v3-house", TAGS.house, 900, 1800);
+  await gear(TAGS.house);
+  await b.eval(`${CARD(TAGS.house)}.shadowRoot.querySelector("[data-edit=priority]").scrollIntoView({ block: "nearest" })`);
+  await b.eval(`${CARD(TAGS.house)}.shadowRoot.querySelector("[data-edit=priority]").click()`);
+  await sleep(1500);
+  await shot("settings-priority", DIALOG(TAGS.house));
+}
+// Notifications (docs/notifications.md): the phones, then one phone's events grouped Charging, Pool, Spa and Sauna.
+if (wanted("settings-notifications") || wanted("settings-notification-phone")) {
+  await open("v3-house", TAGS.house, 900, 2400);
+  await gear(TAGS.house);
+  await b.eval(`${SECTION(TAGS.house, "notifications")}?.scrollIntoView({ block: "nearest" })`);
+  await sleep(1500);
+  await shot("settings-notifications", SECTION(TAGS.house, "notifications"));
+  if (wanted("settings-notification-phone")) {
+    await b.eval(`${SECTION(TAGS.house, "notifications")}.querySelector("[data-edit^='phone:']").click()`);
+    await sleep(1500);
+    await shot("settings-notification-phone", DIALOG(TAGS.house));
+  }
+}
+// The heat card's gear on the Pool, Spa and Sauna tabs opens at that load's section (docs/pool-spa.md#the-settings).
+for (const [name, kind] of [["settings-pool", "pool"], ["settings-spa", "spa"], ["settings-sauna", "sauna"]]) {
+  if (!wanted(name)) continue;
+  await open("v3-heat", TAGS.heat, 900, 2400);
+  await tab(TAGS.heat, kind);
+  await gear(TAGS.heat);
+  await b.eval(`${SECTION(TAGS.heat, kind)}?.scrollIntoView({ block: "nearest" })`);
+  await sleep(1000);
+  await shot(name, SECTION(TAGS.heat, kind), 8);
 }
 if (wanted("settings-home-battery")) {
   // Battery control on: the plant is checked step by step (about two minutes here: the demo battery obeys and demo_fast.py
@@ -296,6 +352,7 @@ if (only.has("readme-hero-dark")) {
   const parts = [];
   for (const [page, tag] of [["v3-charger", TAGS.charger], ["v3-house", TAGS.house], ["v3-heat", TAGS.heat]]) {
     await open(page, tag, 700);
+    if (tag !== TAGS.charger) await tab(tag, "now");
     // The house card's heat figure can arrive a little after the card has drawn: wait for it rather than show a dash.
     for (let i = 0; i < 20 && tag === TAGS.house && (await b.eval(`/HEAT TODAY\\s*–/i.test(${CARD(tag)}.shadowRoot.textContent.replace(/\\s+/g, " "))`)); i++) await sleep(1500);
     const file = path.join(os.tmpdir(), `docs-hero-dark-${process.pid}-${parts.length}.png`);
