@@ -89,6 +89,8 @@ administrators can confirm, and never over the webhook. The entities per brand:
 * Solinteg (the Solinteg plugin of SolaX Modbus): Working Mode and EMS BattCtrl Charge Discharge Power Target, and for
   the per-phase control EMS ACCtrl AC Power Scheduling Mode, Grid Unbalanced Output (read by SpotNav) and the EMS
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
+* Marstek (the Marstek Venus Modbus integration; all four are disabled by default): Max Discharge Power, RS485 Control
+  Mode, Set Charge Power and Force Mode.
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
 * Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
@@ -182,7 +184,8 @@ SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not r
 writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
-**Read only: Marstek (Venus E, C, D, A).** SpotNav reads these through either the Marstek Local API integration
+**Marstek (Venus E, C, D, A): read through both integrations, control mapped for the Modbus one, never run on a
+device.** SpotNav reads these through either the Marstek Local API integration
 (`marstek_local_api`, Marstek's own local API, which you switch on in the Marstek app) or the Marstek Venus Modbus
 integration (`marstek_modbus`, RS485 or Modbus TCP): the battery's power and level and its size (*Rated capacity*, or
 *Battery Total Energy* over Modbus). With several batteries in one Local API entry SpotNav reads them whole, from the
@@ -192,9 +195,55 @@ learnt. Over Modbus it also reads the battery's lifetime charge and discharge co
 only in the *Operating mode* "Auto" (local API; "AI", "Manual", "Passive" and "UPS" are someone else's), or in the
 *User Work Mode* "Self Consumption" with *RS485 Control Mode* off (Modbus). The local API reports the mode every
 5 minutes, and the *Marstek System* device has none, so with several batteries in one entry SpotNav cannot tell who
-runs them. SpotNav has no control for Marstek and writes nothing to it: the mode, Passive mode, the time slots and the
-RS485 control stay yours. The official Marstek integration (`marstek`) is not read: it reports the battery's power as a number with no direction. Read from the integrations'
-source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+runs them. The official Marstek integration (`marstek`) is not read: it reports the battery's power as a number with
+no direction. Read from the integrations' source and not yet tested on a battery: [tell us](supported.md) how yours
+reads.
+
+SpotNav's control for Marstek goes through the **Modbus integration only** (the local API has no limit to set, and its
+Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
+local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
+the other brands, and stays in test mode by default (it only logs what it would do) until a **hardware test** (below)
+has passed on a real Marstek; on a beta tester's installation the check runs by itself.
+
+* A **hold** sets *Max Discharge Power* to 0. The battery stays in its own self-consumption: it still stores a sun
+  surplus and covers nothing. This is a limit that is safe if it is left standing. On a Venus A or D with its own
+  solar input, a hold at 100 % may also stop its own panels (evcc issue 36206).
+* A **grid charge** turns *RS485 Control Mode* on, sets *Set Charge Power* (in steps of 50 W, at most 2500 W) and then
+  *Force Mode* to charge. The battery keeps a force charge until it is told otherwise: there is **no dead-man**, so if
+  Home Assistant stops, the charge goes on until the battery is full. SpotNav therefore caps a grid charge for that case,
+  counting all of it on the one phase the battery is plugged into (see the grid charge cap below). *Charge to SoC* is
+  never written.
+* A **discharge for the house** is the battery's own self-consumption: nothing is written. Discharging to the grid and
+  the battery's *Max Charge Power* are not used.
+* Every **hand-back** sets *Force Mode* back to standby, turns *RS485 Control Mode* off (the battery is then in its own
+  work mode again) and sets *Max Discharge Power* back to what it was. *Set Charge Power* is left as SpotNav last wrote
+  it: it does nothing without a force charge.
+* SpotNav does not start while *Force Mode* reads anything but standby, or *RS485 Control Mode* is on (someone else's
+  force commands, such as evcc), or the work mode is not "Self Consumption".
+* **Batteries run by Omnibattery** (ffunes/Omnibattery) are not this integration's: Omnibattery is the battery's one
+  Modbus client and its own controller, so the Modbus integration's entities do not exist. SpotNav reads the
+  Omnibattery system and only watches it; it never writes to a battery Omnibattery runs.
+
+**The Marstek hardware test** (Support → Hardware test in the card, with battery control switched on and the four
+entities enabled; at most ten minutes, with you watching the Marstek app). Before you start, note *Max Discharge
+Power*, *User Work Mode* and that *RS485 Control Mode* is off and *Force Mode* is standby. The steps and what you should
+see:
+
+1. **Hold** (about a minute): *Max Discharge Power* reads 0 within some seconds; the battery stops discharging
+   (*Battery Power* near 0, or positive if the sun charges it). *RS485 Control Mode* stays off.
+2. **Charge from the grid** (a few minutes, at most 2 kW and less if the fuse needs it): *RS485 Control Mode* on, *Set
+   Charge Power* at the test's power, *Force Mode* charge; *Battery Power* positive at about that power, and the grid
+   import up by about as much on the battery's phase.
+3. **Cover the house**: *Force Mode* standby, *RS485 Control Mode* off, *Max Discharge Power* back; the battery covers
+   the house again.
+4. **Hand back**: everything as you noted it.
+
+The test stops at once and hands back if a write does not read back, if the battery does not do what it was told, or
+if a phase comes near the main fuse. If something is left behind (Home Assistant restarted mid-test, say), restore by
+hand: *Force Mode* to standby, *RS485 Control Mode* off, *Max Discharge Power* to your value (often 2500 W, or 800 W in
+Germany), then turn SpotNav's switch off. If the battery's maximum powers read 800 W after the test, toggle them in the
+Marstek app (evcc issue 36110 saw that after its own stop). Send the result: it tells which firmware the control worked
+on, and Marstek's control leaves test mode by default only once such a test has passed.
 
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
