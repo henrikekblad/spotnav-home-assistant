@@ -212,6 +212,12 @@ def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_control.{entry_id}"
 
 
+def _least(first: float | None, second: float | None) -> float | None:
+    """The smaller of two bounds, either missing (`None`) or not positive counting as no bound."""
+    bounds = [value for value in (first, second) if value is not None and value > 0]
+    return min(bounds) if bounds else None
+
+
 def _float(value: Any) -> float | None:
     try:
         number = float(value)
@@ -1436,6 +1442,40 @@ class BatteryControl:
         self.verification = None
         self._verify_key = None
 
+    def _charge_entity_max_kw(self, executor: Executor) -> float | None:
+        """The largest grid charge the plant's own charge power entity takes (kW: its `max`, or its `min` for a power
+        written negative, over the role's scale), `None` where none says. The recipe may allow more than a model
+        takes (Marstek: 2500 W for the Venus E, where a Venus A's *Set Charge Power* stops at 1500 W and refuses a
+        write above it). The power roles are those whose value follows the rate."""
+        control = executor.control
+        build = control.states.get(ACTION_GRID_CHARGE)
+        if build is None:
+            return None
+        try:
+            one = {want.role: want.value for want in build(1.0, executor.watchdog_s)}
+            two = {want.role: want.value for want in build(2.0, executor.watchdog_s)}
+        except Exception:  # noqa: BLE001 - a recipe that cannot build a probe rate has no entity bound to read
+            return None
+        roles = {role.name: role for role in control.roles}
+        found: float | None = None
+        for name, value in one.items():
+            role = roles.get(name)
+            other = two.get(name)
+            if (
+                role is None or role.method != "number" or not role.scale or isinstance(value, bool)
+                or not isinstance(value, (int, float)) or not isinstance(other, (int, float)) or value == other
+            ):
+                continue
+            entity_id = plant_entity_id(self.hass, self.site.config, role.match)
+            state = None if entity_id is None else self.hass.states.get(entity_id)
+            if state is None:
+                continue
+            bound = _float(state.attributes.get("max" if value > 0 else "min"))
+            if bound is None or bound == 0:
+                continue
+            found = _least(found, abs(bound) / role.scale)
+        return found
+
     def _keep_hardware_verdict(self, done: bool) -> None:
         """Record on the firmware key now whether a person's hardware test passed (`gate.hardware_test_passed`): a
         finished test decides either way (a later one that fails takes a pass back), a stopped one only by a step that
@@ -1462,7 +1502,9 @@ class BatteryControl:
             headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
             volts_between_phases=inputs.volts_between_phases,
         )
-        action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
+        # The charge step never asks for more than the battery's rating or its own charge power entity takes.
+        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor))
+        action, rate = verification.command(now, sample, charge_max_kw)
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
@@ -1482,7 +1524,7 @@ class BatteryControl:
                 else:
                     # No grid charge fits under the HA-down cap now: tried again at a later run.
                     verification.not_judgeable(now, "grid_charge_cap")
-                action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
+                action, rate = verification.command(now, sample, charge_max_kw)
                 probe = verification.probe()
             rate = rate if cap is None or probe is not None else min(rate, cap)
         # The probe of `per_phase` is a discharge on one phase (`Verification.probe`), which needs no cap; `charge`

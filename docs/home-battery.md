@@ -265,9 +265,10 @@ see:
 
 1. **Hold** (about a minute): *Max Discharge Power* reads 0 within some seconds; the battery stops discharging
    (*Battery Power* near 0, or positive if the sun charges it). *RS485 Control Mode* stays off.
-2. **Charge from the grid** (a few minutes, at most 2 kW and less if the fuse needs it): *RS485 Control Mode* on, *Set
-   Charge Power* at the test's power, *Force Mode* charge; *Battery Power* positive at about that power, and the grid
-   import up by about as much on the battery's phase.
+2. **Charge from the grid** (a few minutes, at most 2 kW, never more than *Set Charge Power* takes (1500 W on a Venus
+   A), and less if the fuse needs it): *RS485 Control Mode* on, *Set Charge Power* at the test's power, *Force Mode*
+   charge; *Battery Power* positive at about that power, and the grid import up by about as much on the battery's
+   phase.
 3. **Cover the house**: *Force Mode* standby, *RS485 Control Mode* off, *Max Discharge Power* back; the battery covers
    the house again.
 4. **Hand back**: everything as you noted it.

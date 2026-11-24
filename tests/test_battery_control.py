@@ -2405,6 +2405,29 @@ async def test_a_hardware_test_runs_under_shadow_only_in_minutes_and_leaves_the_
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
 
 
+async def test_a_hardware_test_charges_no_harder_than_the_batterys_own_charge_power_entity_takes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # A Venus A's Set Charge Power stops at 1500 W where the recipe allows 2500 W: the test's charge (2 kW) asks for
+    # no more than the entity takes. Here the owner's plant's charge limit says 1.5 kW.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    old = hass.states.get(CHARGE)
+    hass.states.async_set(CHARGE, old.state, {**old.attributes, "max": 1.5})
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert control._charge_entity_max_kw(control._executor()) == 1.5
+    assert await control.async_hardware_test_start() is None
+    started = now = dt_util.now()
+    while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
+        now = await _looks(control, now, 1)
+    charged = [call[2]["value"] for call in plant.calls if call[2].get("entity_id") == CHARGE and call[2]["value"]]
+    # The first is the charge step's; the later ones are hand-backs to the limit as found.
+    assert charged[0] == 1.5 < TEST_CHARGE_KW
+    assert control.hardware_test_progress()["report"]["modes"]["charge"]["outcome"] == "obeyed"
+
+
 async def test_a_hardware_test_stopped_hands_the_plant_back_at_once(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
