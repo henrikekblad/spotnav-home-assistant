@@ -1,8 +1,14 @@
 """A person's hardware test of a site's plant ("Kör hårdvarutest" in the card's Support box, `api/beta.py`).
 
-Started by an administrator, never on a timer, at most once a day per site (`ONCE_A_DAY`) and once more after a
-SpotNav update or a changed plant firmware (`gate.firmware_key`; `allowance`). It runs the parts the site has, each
-through the engine that already writes to it, with every rule of that engine, in at most `MAX_TEST` all told:
+Started by an administrator pressing Start, at most once a day per site (`ONCE_A_DAY`) and once more after a
+SpotNav update or a changed plant firmware (`gate.firmware_key`; `allowance`). **Nothing else is asked of the person.**
+Where the site has a battery part, the test waits for a moment that suits every battery step by itself
+(`BatteryControl.hardware_test_moment`, the verification routine's own rule: the house drawing more than the sun
+gives, so the battery covers it; its level between `gate.SUITABLE_SOC_PCT`; no car charging; the fuse with room) for
+at most `WAIT_MAX`, and the card says when it is likely to run (`state` `waiting`, `next_at`). A run where a battery
+step could not be judged (and none failed) runs again by itself at the next such moment, up to `MAX_RETRIES` times.
+It runs the parts the site has, each through the engine that already writes to it, with every rule of that engine,
+in at most `MAX_TEST` all told:
 
 * **The home battery** (`battery/control.py`, `async_hardware_test_start`): the verification routine's modes in
   minutes (`verify.Timing.quick`): hold, a small grid charge under the HA-down fuse cap (the learned per-phase house
@@ -18,13 +24,12 @@ through the engine that already writes to it, with every rule of that engine, in
 * **Hot water**: a boost only where a self-ending one exists; none does on this branch, so no step is shown (the
   hot-water gate adds its step when it brings one).
 
-**The site's chargers** (`site/charger_test_hold.py`): a test whose battery part would run does not start while a
-charger on the site is on (`blocked` `car_charging`), and from its start until its battery part is over, by whatever
+**The site's chargers** (`site/charger_test_hold.py`): a test whose battery part would run waits while a charger on
+the site is on, and from its start until its battery part is over, by whatever
 path, every charger is held stopped: no start of any kind goes out, a charge a charger begins by itself is stopped, an OCPP charger's
 charge point is taken out of service with its availability switch (and set back to operative at the end, or at the
 next start after a restart in between), and the
-battery's HA-down cap may count a held charger that cannot draw without Home Assistant at 0 A. The card asks the person
-not to start a charge meanwhile.
+battery's HA-down cap may count a held charger that cannot draw without Home Assistant at 0 A.
 
 The parts run side by side (separate devices; the battery's modes alone take about nine minutes, most of it the
 executor's own re-arm after each hand-back). Any step that does not pass (a mode ignored or partial, a write not
@@ -80,8 +85,17 @@ ABSENT: Final = frozenset({"no_battery_control", "not_enabled", "no_relay"})
 _HEAT_FAILURES: Final = ("aborted:no_read_back", "aborted:write_failed", "aborted:not_read_back")
 
 ERROR_NO_TEST: Final = "spotnav_no_test"
-#: A test whose battery part would run waits while a charger on the site is on.
-BLOCKED_CAR_CHARGING: Final = "car_charging"
+#: A test pressed and waiting for a suitable moment (`blocked` while it waits: one is enough).
+BLOCKED_WAITING: Final = "waiting"
+#: How long a pressed test waits for a moment that suits its battery steps before it gives up (no prompt: the
+#: record says `no_suitable_moment`).
+WAIT_MAX: Final = timedelta(days=3)
+#: How often a waiting test looks at the site (s).
+WAIT_POLL_S: Final = 60.0
+#: How many times a run with a battery step that could not be judged runs again by itself.
+MAX_RETRIES: Final = 3
+#: The local hour a daytime wait is likely to end at (the evening's house load over the sun, `gate.EVENING_HOURS`).
+LIKELY_HOUR: Final = 17
 #: The chargers' hold ends by itself this long after the test's deadline, should nothing release it.
 HOLD_SLACK: Final = timedelta(minutes=1)
 #: How long the unload waits for the OCPP chargers to be set back to operative (s): more than one call's own time
@@ -216,6 +230,10 @@ class HardwareTest:
         self.sent_ref: str | None = None
         self._task: asyncio.Task[None] | None = None
         self._running: dict[str, Any] | None = None
+        #: A test pressed (or a run to retry) waiting for a suitable moment: `since`, `until`, `version`, `retry`,
+        #: `why` (the battery's reason to wait now); stored, so a restart goes on waiting.
+        self.waiting: dict[str, Any] | None = None
+        self._waiter: asyncio.Task[None] | None = None
         self._closed = False
         self._unloading = False
 
@@ -232,12 +250,17 @@ class HardwareTest:
             # A test kept from before the partial/skipped results is judged again by its steps.
             self.record["result"] = result_of([step for step in self.record["steps"] if isinstance(step, dict)])
         self.sent_ref = raw.get("sent_ref") if isinstance(raw.get("sent_ref"), str) else None
+        waiting = raw.get("waiting")
+        if isinstance(waiting, dict) and _time(waiting.get("until")) is not None:
+            self.waiting = waiting
+            self._wait()
 
     def _save(self) -> None:
         if not self._closed:
-            self._store.async_delay_save(
-                lambda: {"last": self.last, "record": self.record, "sent_ref": self.sent_ref}, 1.0
-            )
+            self._store.async_delay_save(self._data, 1.0)
+
+    def _data(self) -> dict[str, Any]:
+        return {"last": self.last, "record": self.record, "sent_ref": self.sent_ref, "waiting": self.waiting}
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -270,10 +293,12 @@ class HardwareTest:
             return None
 
     def blocked(self, now: datetime, version: str | None) -> tuple[str | None, datetime | None]:
-        """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`, `not_ready`, `car_charging`),
+        """Why a test cannot be pressed now (`running`, `waiting`, `once_a_day`, `nothing_to_test`, `not_ready`),
         and when it may."""
         if self.running:
             return "running", None
+        if self.waiting is not None:
+            return BLOCKED_WAITING, None
         # Nothing to test comes first: the day's slot is no reason on a site where no test could run at all.
         parts = self._parts(now)
         if not parts:
@@ -284,9 +309,6 @@ class HardwareTest:
         if all(why is not None for why in parts.values()):
             # A part is there but cannot run now (starting, busy, waiting for an acknowledgement): not "nothing".
             return "not_ready", None
-        if parts.get("battery", "absent") is None and self._hold().charging_now():
-            # The battery's charge step is reckoned with the site's chargers held stopped: none may run at the start.
-            return BLOCKED_CAR_CHARGING, None
         return None, None
 
     def _hold(self) -> Any:
@@ -317,9 +339,87 @@ class HardwareTest:
         if blocked is not None:
             return blocked
         self.last = {"at": now.isoformat(), "version": version, "firmware_key": self._firmware_key()}
+        why = self._wait_reason(now)
+        if why is not None:
+            # Pressed: the test runs by itself at the first moment that suits its battery steps.
+            self._schedule(now, version, retry=0, why=why)
+            return None
+        return self._begin(now, version)
+
+    def _wait_reason(self, now: datetime) -> str | None:
+        """Why a test with a battery part should wait now (`BatteryControl.hardware_test_moment`, a charger on the
+        site charging), `None` when it may run: also when it has no battery part to wait for."""
+        if self._parts(now).get("battery", "absent") is not None:
+            return None
+        try:
+            why = self.site.battery_control.hardware_test_moment(now)
+        except Exception:  # noqa: BLE001 - nothing read: wait, the next look tries again
+            _LOGGER.debug("wait_reason: ignored failure (the moment could not be read)", exc_info=True)
+            return "stale_data"
+        if why is None and self._hold().charging_now():
+            # The battery's charge step is reckoned with the site's chargers held stopped: none may run at the start.
+            return "car_charging"
+        return why
+
+    def _schedule(self, now: datetime, version: str | None, *, retry: int, why: str) -> None:
+        self.waiting = {"since": now.isoformat(), "until": (now + WAIT_MAX).isoformat(), "version": version,
+                        "retry": retry, "why": why}
+        self._save()
+        _LOGGER.info("SpotNav hardware test: waits for a suitable moment (%s)%s", why,
+                     f", run {retry + 1}" if retry else "")
+        self._wait()
+
+    def _wait(self) -> None:
+        if self._closed or (self._waiter is not None and not self._waiter.done()):
+            return
+        self._waiter = self.hass.async_create_background_task(self._async_wait(), f"{DOMAIN} hardware test wait")
+
+    async def _async_wait(self) -> None:
+        """Look at the site every `WAIT_POLL_S` until the moment suits (the test then runs) or `WAIT_MAX` is over (it
+        gives up without asking anything: the record says `no_suitable_moment`)."""
+        while self.waiting is not None and not self._closed:
+            await asyncio.sleep(WAIT_POLL_S)
+            self.look_waiting(dt_util.now())
+
+    def look_waiting(self, now: datetime) -> None:
+        """One look of a waiting test (also for the tests)."""
+        waiting = self.waiting
+        if waiting is None or self._closed or self.running:
+            return
+        until = _time(waiting.get("until"))
+        parts = self._parts(now)
+        if until is None or now >= until or "battery" not in parts:
+            self.waiting = None
+            self._give_up(now, "no_suitable_moment" if "battery" in parts else str(parts.get("battery") or "absent"))
+            return
+        if parts["battery"] is not None:
+            waiting["why"] = parts["battery"]  # starting, verifying, a trial: not yet
+            return
+        why = self._wait_reason(now)
+        if why is not None:
+            if why != waiting.get("why"):
+                waiting["why"] = why
+                self._save()
+            return
+        self.waiting = None
+        self._save()
+        self._begin(now, waiting.get("version"), retry=int(waiting.get("retry") or 0))
+
+    def _give_up(self, now: datetime, why: str) -> None:
+        """A wait that found no suitable moment: the record says so, and the day's slot is left (`skipped`)."""
+        self.record = {
+            "site": self.site.entry_id, "started_at": now.isoformat(), "finished_at": now.isoformat(),
+            "spotnav_version": None, "firmware_key": self._firmware_key(), "result": "skipped", "stopped": None,
+            "error": None, "steps": [{"part": "battery", "step": "battery", "status": "skipped", "reason": why}],
+            "battery": None, "heat": None,
+        }
+        self._save()
+        _LOGGER.info("SpotNav hardware test: no suitable moment came (%s)", why)
+
+    def _begin(self, now: datetime, version: str | None, *, retry: int = 0) -> str | None:
         parts = self._parts(now)
         self._running = {"started_at": now.isoformat(), "parts": parts, "battery": None, "heat": None,
-                         "version": version}
+                         "version": version, "retry": retry}
         self.record = None
         self.sent_ref = None
         self._save()
@@ -358,7 +458,16 @@ class HardwareTest:
             await hold.async_rearm_refused(refused)
 
     async def async_stop(self, why: str) -> None:
-        """End a running test at once (everything it engaged handed back)."""
+        """End a running test at once (everything it engaged handed back), or a waiting one."""
+        waiter, self._waiter = self._waiter, None
+        if self.waiting is not None and why != "unload":
+            # The person's stop ends the wait; an unload keeps it (stored), so a restart goes on waiting.
+            self.waiting = None
+            self._save()
+        if waiter is not None and not waiter.done():
+            waiter.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await waiter
         task = self._task
         if task is None or task.done():
             return
@@ -405,8 +514,24 @@ class HardwareTest:
             # Whatever ended the run (done, a failure, the deadline, the person's stop, an error, a cancel): the
             # chargers are let go, after the battery was handed back.
             self._release_hold()
+        retry = int(running.get("retry") or 0)
         self._finish()
+        self._retry_if_unjudged(retry, running.get("version"))
         await self._async_send_if_beta()
+
+    def _retry_if_unjudged(self, retry: int, version: str | None) -> None:
+        """A run whose battery steps all passed or could not be judged, some not: it runs again by itself at the
+        next suitable moment (up to `MAX_RETRIES` times); nothing is asked of the person."""
+        record = self.record
+        if record is None or record.get("stopped") is not None or record.get("error") is not None or self._closed:
+            return
+        battery = [step for step in record.get("steps") or () if step.get("part") == "battery"]
+        statuses = {step.get("status") for step in battery}
+        if "not_judgeable" not in statuses or not statuses <= {"passed", "not_judgeable", "skipped"}:
+            return
+        if retry >= MAX_RETRIES:
+            return
+        self._schedule(dt_util.now(), version, retry=retry + 1, why="not_judgeable")
 
     def _failed(self) -> bool:
         """Whether a part failed so far (the other then ends at once)."""
@@ -546,6 +671,10 @@ class HardwareTest:
         # The chargers unload too: their plans are not armed again from here.
         self._unloading = True
         await self.async_stop("unload")
+        if self.waiting is not None:
+            # Kept for the next start, written now (a delayed save may not come before the restart).
+            with contextlib.suppress(Exception):
+                await self._store.async_save(self._data())
         self._closed = True
         # Ended with the run; again here in case the run never got to its end.
         self._release_hold()
@@ -568,6 +697,15 @@ class HardwareTest:
                     "sent_ref": None}
         blocked, next_at = self.blocked(now, _current_version(self.hass, version))
         record = self.record
+        if self.waiting is not None:
+            # Pressed and waiting for a suitable moment: when it is likely to run (`likely_at`), nothing asked.
+            likely = likely_at(now)
+            return {
+                "state": "waiting", "blocked": BLOCKED_WAITING, "next_at": None if likely is None else likely.isoformat(),
+                "started_at": self.waiting.get("since"), "finished_at": None,
+                "result": None if record is None else record.get("result"),
+                "steps": [] if record is None else list(record.get("steps") or []), "sent_ref": None,
+            }
         return {
             "state": "idle" if record is None else "done",
             "blocked": blocked,
@@ -578,6 +716,15 @@ class HardwareTest:
             "steps": [] if record is None else list(record.get("steps") or []),
             "sent_ref": self.sent_ref,
         }
+
+
+def likely_at(now: datetime) -> datetime | None:
+    """When a waiting test is likely to run, for the card: in the daytime the evening (`LIKELY_HOUR`, when the house
+    draws more than the sun gives), `None` (soon) in the evening and at night."""
+    local = dt_util.as_local(now)
+    if 6 <= local.hour < LIKELY_HOUR:
+        return local.replace(hour=LIKELY_HOUR, minute=0, second=0, microsecond=0)
+    return None
 
 
 def _current_version(hass: HomeAssistant, fallback: str | None) -> str | None:

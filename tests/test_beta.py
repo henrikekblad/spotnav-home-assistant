@@ -240,15 +240,23 @@ class _FakeBattery:
         self.running = False
         self.stopped: list[str] = []
         self.slow = slow
+        #: Why the moment does not suit the battery steps now (`BatteryControl.hardware_test_moment`).
+        self.moment: str | None = None
+        self.started = 0
 
     def hardware_test_refusal(self) -> str | None:
         return self.refusal
+
+    def hardware_test_moment(self, _now: datetime) -> str | None:
+        return self.moment
 
     def firmware_key(self) -> str:
         return "SPC117 | sigen | 2.0.3"
 
     async def async_hardware_test_start(self) -> str | None:
         self.running = True
+        self.started += 1
+        self.done = {}
         return None
 
     async def async_hardware_test_stop(self, reason: str) -> None:
@@ -490,17 +498,111 @@ async def test_a_running_test_is_ended_at_the_unload(hass: HomeAssistant) -> Non
     assert runner.record is not None and runner.record["stopped"] == "unload"
 
 
-async def test_a_charging_car_blocks_a_test_with_a_battery_part(hass: HomeAssistant) -> None:
+async def test_a_charging_car_makes_a_test_with_a_battery_part_wait_and_it_runs_by_itself_once_it_stopped(
+    hass: HomeAssistant,
+) -> None:
     car = _FakeCharger(on=True)
-    runner = await _runner(hass, _FakeBattery(), _FakeHeat(), {"car": car})
-    assert runner.view()["blocked"] == "car_charging"
-    assert await runner.async_start() == "car_charging"
-    assert runner.site.charger_test_hold.active is False
-    # Without a battery part to run, a car charging is no reason.
-    heat_only = await _runner(hass, _FakeBattery(refusal="no_battery_control"), _FakeHeat(), {"car": car})
-    assert heat_only.view()["blocked"] is None
+    battery = _FakeBattery()
+    runner = await _runner(hass, battery, _FakeHeat(), {"car": car})
+    assert runner.view()["blocked"] is None, "pressing Start is all the person does"
+    assert await runner.async_start() is None
+    assert runner.view()["state"] == "waiting" and runner.view()["blocked"] == "waiting"
+    assert runner.waiting is not None and runner.waiting["why"] == "car_charging"
+    assert runner.site.charger_test_hold.active is False and battery.started == 0
+    runner.look_waiting(dt_util.now())
+    assert battery.started == 0
     car.charging = car.charge_control_on = False
+    runner.look_waiting(dt_util.now())
+    assert runner.waiting is None and runner.running
+    await _finished(runner)
+    assert runner.record is not None and runner.record["result"] == "passed"
+    # Without a battery part to run, a car charging is no reason to wait.
+    car.charging = car.charge_control_on = True
+    heat_only = await _runner(hass, _FakeBattery(refusal="no_battery_control"), _FakeHeat(), {"car": car})
+    assert await heat_only.async_start() is None and heat_only.waiting is None
+    await _finished(heat_only)
+
+
+async def test_a_test_waits_for_a_moment_that_suits_its_battery_steps_and_says_when_it_is_likely(
+    hass: HomeAssistant, freezer: Any,
+) -> None:
+    morning = dt_util.start_of_local_day() + timedelta(hours=11)
+    freezer.move_to(morning)
+    battery = _FakeBattery()
+    battery.moment = "battery_not_discharging"  # the sun covers the house: a hold could not be judged
+    runner = await _runner(hass, battery, _FakeHeat())
+    assert await runner.async_start() is None
+    view = runner.view()
+    assert view["state"] == "waiting" and view["next_at"] == (morning + timedelta(hours=6)).isoformat()
+    assert battery.started == 0 and not runner.running
+    # A second press is refused while it waits; the person's stop ends the wait.
+    assert await runner.async_start() == "waiting"
+    freezer.move_to(morning + timedelta(hours=7))
+    assert runner.view()["next_at"] is None, "in the evening: soon"
+    battery.moment = None
+    runner.look_waiting(dt_util.now())
+    assert runner.running
+    await _finished(runner)
+    assert battery.started == 1 and runner.record is not None and runner.record["result"] == "passed"
+
+
+async def test_a_wait_that_finds_no_moment_gives_up_without_asking_anything(
+    hass: HomeAssistant, freezer: Any,
+) -> None:
+    freezer.move_to("2026-11-19T11:00:00+01:00")
+    battery = _FakeBattery()
+    battery.moment = "soc_out_of_range"
+    runner = await _runner(hass, battery, _FakeHeat())
+    assert await runner.async_start() is None
+    freezer.tick(hardware_test.WAIT_MAX + timedelta(minutes=1))
+    runner.look_waiting(dt_util.now())
+    assert runner.waiting is None and battery.started == 0
+    record = runner.record
+    assert record is not None and record["result"] == "skipped"
+    assert record["steps"] == [{"part": "battery", "step": "battery", "status": "skipped", "reason": "no_suitable_moment"}]
+    # It leaves the day's slot: Start can be pressed again.
     assert runner.view()["blocked"] is None
+
+
+async def test_a_step_that_could_not_be_judged_runs_again_by_itself_at_the_next_suitable_moment(
+    hass: HomeAssistant,
+) -> None:
+    battery = _FakeBattery({"hold": "obeyed", "charge": "not_judgeable:grid_charge_cap",
+                            "discharge_house": "obeyed", "normal": "restored"})
+    runner = await _runner(hass, battery, _FakeHeat(refusal="no_battery_control"))
+    assert await runner.async_start() is None
+    await _finished(runner)
+    # Rescheduled, no prompt: the record says what could not be judged, and the test waits for the next moment.
+    assert runner.record is not None and runner.record["result"] == "partial"
+    assert runner.waiting is not None and runner.waiting["retry"] == 1 and runner.view()["state"] == "waiting"
+    for retry in range(2, hardware_test.MAX_RETRIES + 1):
+        runner.look_waiting(dt_util.now())
+        await _finished(runner)
+        assert runner.waiting is not None and runner.waiting["retry"] == retry
+    runner.look_waiting(dt_util.now())
+    await _finished(runner)
+    # Bounded: after `MAX_RETRIES` runs again it stops by itself.
+    assert runner.waiting is None and battery.started == hardware_test.MAX_RETRIES + 1
+    # A charge judged on a later run ends the retries.
+    battery.outcomes["charge"] = "obeyed"
+    runner.waiting = None
+    runner._schedule(dt_util.now(), "3.0.0", retry=1, why="not_judgeable")  # noqa: SLF001
+    runner.look_waiting(dt_util.now())
+    await _finished(runner)
+    assert runner.waiting is None and runner.record is not None and runner.record["result"] == "passed"
+
+
+async def test_a_waiting_test_goes_on_waiting_after_a_restart(hass: HomeAssistant) -> None:
+    battery = _FakeBattery()
+    battery.moment = "battery_not_discharging"
+    runner = await _runner(hass, battery, _FakeHeat())
+    assert await runner.async_start() is None
+    await runner.async_shutdown()
+    await hass.async_block_till_done()
+    again = await _runner(hass, battery, _FakeHeat())
+    assert again.waiting is not None and again.view()["state"] == "waiting"
+    await again.async_stop("stopped")
+    assert again.waiting is None and again.view()["state"] == "idle"
 
 
 async def test_the_chargers_are_held_while_the_battery_part_runs_and_let_go_by_every_path(

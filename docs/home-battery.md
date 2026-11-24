@@ -261,9 +261,8 @@ only if that check fails does the checklist ask for the hardware test again.
   Omnibattery system and only watches it; it never writes to a battery Omnibattery runs.
 
 **The Marstek hardware test** (Settings → Support → Hardware test in the card, with battery control switched on and
-the four entities enabled; at most ten minutes, with you watching the Marstek app). Before you start, note *Max
-Discharge Power*, *User Work Mode* and that *RS485 Control Mode* is off and *Force Mode* is standby. The steps and what
-you should see:
+the four entities enabled; at most ten minutes). Press Start: it runs by itself at a suitable moment, and nothing else
+is needed from you. If you like to follow it in the Marstek app, the steps and what it shows:
 
 1. **Hold** (about a minute): *Max Discharge Power* reads 0 within some seconds; the battery stops discharging
    (*Battery Power* near 0, or positive if the sun charges it). *RS485 Control Mode* stays off.
@@ -273,7 +272,7 @@ you should see:
    phase.
 3. **Cover the house**: *Force Mode* standby, *RS485 Control Mode* off, *Max Discharge Power* back; the battery covers
    the house again.
-4. **Hand back**: everything as you noted it.
+4. **Hand back**: everything as it was before the test.
 
 The test stops at once and hands back if a write does not read back, if the battery does not do what it was told, or
 if a phase comes near the main fuse. If something is left behind (Home Assistant restarted mid-test, say), restore by
@@ -777,7 +776,8 @@ Battery, which matters only if you select those modes yourself.
 **The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
 hardware test) has passed once on the battery; after a firmware or integration update SpotNav checks the battery
-again by itself, and asks for the hardware test again only if that check fails. The checklist says so. Run it in the evening, with the house drawing and no sun: besides the usual steps
+again by itself, and asks for the hardware test again only if that check fails. The checklist says so. Press Start:
+the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
 (hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
 battery, turns Modbus Control off and nothing else, and watches how long the inverter keeps the hold before it
 covers the house by itself (a minute or so is expected); then it turns Modbus Control on again (the integration

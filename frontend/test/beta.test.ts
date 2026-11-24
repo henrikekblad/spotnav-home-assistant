@@ -67,7 +67,7 @@ describe("the words", () => {
     const idle = decodeBetaAnswer(fixture("off_idle.json"))!.test!;
     expect(blockedText("en", idle)).toBeNull();
     expect(blockedText("en", { ...idle, blocked: "nothing_to_test" })).toBe(translate("en", "test.blocked.nothing"));
-    expect(blockedText("en", { ...idle, blocked: "car_charging" })).toBe(translate("en", "test.blocked.carCharging"));
+    expect(blockedText("en", { ...idle, blocked: "waiting" })).toBeNull();
     expect(blockedText("sv", { ...idle, blocked: "once_a_day", nextAt: "2026-11-20T20:15:00+01:00" })).toMatch(/^Nästa test kan köras /);
   });
 
@@ -216,6 +216,37 @@ describe("testBox", () => {
     const after = test([{ ...done, test: { ...done.test, blocked: "nothing_to_test", next_at: null } }]);
     await settle();
     expect(after.root.hidden).toBe(false);
+  });
+
+  it("says when a pressed test will run by itself and asks nothing more, then reads again a minute later", async () => {
+    vi.useFakeTimers();
+    const idle = fixture("off_idle.json") as { test: Record<string, unknown> };
+    const at = { ...idle, test: { ...idle.test, state: "waiting", blocked: "waiting", next_at: "2026-11-19T17:00:00+01:00",
+      result: null, steps: [] } };
+    const { root, calls } = test([at, fixture("on_running.json")]);
+    await settle();
+    const line = q(root, "[data-beta=result]").textContent ?? "";
+    expect(line).toContain("Körs av sig själv, troligen från ungefär");
+    expect(line).toContain("Inget behövs från dig");
+    expect(q(root, "[data-beta=runTest]").hidden).toBe(true);
+    expect(q(root, "[data-beta=stopTest]").hidden).toBe(false);
+    expect(q(root, "[data-beta=blocked]").hidden).toBe(true);
+    expect(testSummary("en", decodeBetaAnswer(at))).toBe("Waiting for a suitable moment");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(calls.length).toBe(1);
+    await vi.advanceTimersByTimeAsync(60000);
+    await settle();
+    expect(calls[1]).toEqual({ action: "get" });
+  });
+
+  it("says a step that could not be judged runs again by itself", async () => {
+    const partial = fixture("on_done_partial.json") as { test: Record<string, unknown> };
+    const retry = { ...partial, test: { ...partial.test, state: "waiting", blocked: "waiting", next_at: null } };
+    const { root } = test([retry]);
+    await settle();
+    const line = q(root, "[data-beta=result]").textContent ?? "";
+    expect(line).toContain(translate("sv", "test.waiting.retry"));
+    expect(line).toContain(translate("sv", "test.waiting.soon"));
   });
 
   it("hides the test where the answer has no site", async () => {

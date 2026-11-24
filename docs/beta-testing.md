@@ -62,14 +62,18 @@ test.
 - Any step that fails, or a write that does not read back, ends the test and hands everything back at once.
 
 It takes at most ten minutes and costs at most a few kronor of grid energy. Only you start it: at most once a day
-per site, and once more after a SpotNav update or a new plant firmware.
+per site, and once more after a SpotNav update or a new plant firmware. **Pressing Start is all you do.** A test with a
+battery part waits by itself for a moment that suits every step (the house using more than the sun gives, so the
+battery covers it; its level between 30 and 80 %; no car charging; room under the fuse) and runs then; the dialog
+says when that is likely ("Runs by itself, likely from about 17:00"). It waits up to three days. A step that could
+not be judged (no room under the fuse, the sun came out) runs again by itself at the next suitable moment, up to
+three times. **Stop the test** ends a waiting test too.
 
 While the battery part runs, SpotNav holds every charger on the site stopped: no plan, sun or Start starts one, and
 a charge a charger begins by itself is stopped. An OCPP charger is set unavailable meanwhile (the `ocpp` integration's
 **Availability** switch) and set back to available afterwards, also at the next start should Home Assistant stop in
-the middle. Do not start a car charge during the test: one started anyway is stopped, and you have to start it again afterwards. A test with a battery
-part does not start while a car charges; stop the charge first. The chargers are let go as soon as the battery part
-is over, and a plan whose window is open starts again.
+the middle. A charge that starts in those minutes is paused. A test with a battery part waits while a car charges.
+The chargers are let go as soon as the battery part is over, and a plan whose window is open starts again.
 
 It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
 skipped. The result is then **partial**, or **skipped** when nothing ran, and such a test does not use up the day.

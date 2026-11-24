@@ -18,13 +18,15 @@ import { element } from "./dom";
 export { BETA_API_VERSION };
 /** How often a running test is read again (ms). */
 export const TEST_POLL_MS = 3000;
+/** How often the box looks again while a pressed test waits for a suitable moment. */
+export const TEST_WAIT_POLL_MS = 60000;
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export type BetaState = { on: boolean; startedAt: string | null; endsAt: string | null; ended: boolean; email: string | null };
 export type TestStep = { part: string; step: string; status: string; reason: string | null };
 export type TestState = {
-  state: "idle" | "running" | "done";
+  state: "idle" | "waiting" | "running" | "done";
   blocked: string | null;
   nextAt: string | null;
   startedAt: string | null;
@@ -50,7 +52,7 @@ const ANSWER_KEYS = ["api_version", "ok", "error", "beta", "test", "ref", "retry
 const BETA_KEYS = ["on", "started_at", "ends_at", "ended", "email"];
 const TEST_KEYS = ["state", "blocked", "next_at", "started_at", "finished_at", "result", "steps", "sent_ref"];
 const STEP_KEYS = ["part", "step", "status", "reason"];
-const TEST_STATES = ["idle", "running", "done"];
+const TEST_STATES = ["idle", "waiting", "running", "done"];
 const RESULTS = ["passed", "partial", "skipped", "failed"];
 
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
@@ -193,8 +195,8 @@ export function blockedText(language: Language, test: TestState): string | null 
         : translate(language, "test.blocked.onceADay", { time: dateText(language, test.nextAt, true) });
     case "nothing_to_test":
       return translate(language, "test.blocked.nothing");
-    case "car_charging":
-      return translate(language, "test.blocked.carCharging");
+    case "waiting":
+      return null;
     default:
       return translate(language, "test.blocked.later");
   }
@@ -243,6 +245,9 @@ export function testSummary(language: Language, answer: BetaAnswer | null): stri
   }
   if (test.state === "running") {
     return translate(language, "test.value.running");
+  }
+  if (test.state === "waiting") {
+    return translate(language, "test.value.waiting");
   }
   if (test.result !== null) {
     const result = translate(language, RESULT_VALUES[test.result]);
@@ -297,7 +302,7 @@ interface Session {
 
 /**
  * One box's link to `spotnav/beta`: the first read, a read after each action, and every `TEST_POLL_MS` while a test
- * runs (until the box leaves the page). `paint` draws the box from the answer; `error` holds a failed action's line.
+ * runs, every `TEST_WAIT_POLL_MS` while a pressed one waits (until the box leaves the page). `paint` draws the box from the answer; `error` holds a failed action's line.
  */
 function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, paint: () => void): Session {
   const say = (key: TranslationKey): string => translate(input.language, key);
@@ -310,13 +315,14 @@ function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, pai
       clearTimeout(timer);
       timer = null;
     }
-    if (answer?.test?.state === "running") {
+    const state = answer?.test?.state;
+    if (state === "running" || state === "waiting") {
       timer = setTimeout(() => {
         timer = null;
         if (root.isConnected) {
           void request({ action: "get" });
         }
-      }, TEST_POLL_MS);
+      }, state === "running" ? TEST_POLL_MS : TEST_WAIT_POLL_MS);
     }
   }
 
@@ -538,9 +544,10 @@ export function testBox(input: BetaBoxInput): HTMLElement {
       return;
     }
     const running = test.state === "running";
-    run.hidden = running;
+    const waiting = test.state === "waiting";
+    run.hidden = running || waiting;
     run.disabled = busy || test.blocked !== null;
-    stop.hidden = !running;
+    stop.hidden = !running && !waiting;
     stop.disabled = busy;
     send.hidden = test.state !== "done" || answer?.beta?.on === true || test.sentRef !== null;
     sendActions.hidden = send.hidden;
@@ -562,6 +569,14 @@ export function testBox(input: BetaBoxInput): HTMLElement {
     const lines: string[] = [];
     if (running) {
       lines.push(say("test.running"));
+    } else if (waiting) {
+      // Pressed: it runs by itself at a suitable moment, and says when it is likely to.
+      if (test.result === "partial") {
+        lines.push(say("test.waiting.retry"));
+      }
+      lines.push(test.nextAt === null
+        ? say("test.waiting.soon")
+        : say("test.waiting.at", { time: dateText(language, test.nextAt, true) }));
     } else if (test.result !== null) {
       lines.push(say(RESULT_LABELS[test.result]));
     }

@@ -1653,6 +1653,18 @@ class BatteryControl:
 
     # ---- a person's hardware test
 
+    def hardware_test_moment(self, now: datetime) -> str | None:
+        """Why the battery part of a hardware test should wait now, `None` when the moment suits every step: the
+        routine's own rule (`gate.suitable`: a fresh reading, the battery between `SUITABLE_SOC_PCT` and covering the
+        house, so a hold and a discharge can be judged and a charge seen; no car charging; the fuse with room; the
+        plant SpotNav's to take). The test waits for such a moment by itself: nothing is asked of the person."""
+        executor = self._executor()
+        if executor is None:
+            return "no_battery_control"
+        # The test takes the plant over from control itself (`async_hardware_test_start`): a running executor is no
+        # reason to wait.
+        return gate.suitable(replace(self._moment(now, executor), executor_idle=True), evening=False)
+
     def hardware_test_refusal(self) -> str | None:
         """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the
         person still has to do (`_needs`: an acknowledgement, a control to enable), a known firmware, nothing else
