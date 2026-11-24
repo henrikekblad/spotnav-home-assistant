@@ -153,7 +153,9 @@ from .plan_shadow import (
 )
 from .review_baselines import no_battery_cost, sun_by_quarter
 from . import gate
+from .conversion_loss import ac_kw
 from .learned import LearnedBattery, with_learned
+from .round_trip import DC_CAP, PLAN_CAP
 from .stored_value import StoredValue
 
 if TYPE_CHECKING:
@@ -171,6 +173,8 @@ SHOWN_QUARTERS: Final = 96
 PRICE_DAYS: Final = 2
 #: A day whose perfect plan could not be worked out is tried again after this long (s).
 FACIT_RETRY_S: Final = 3600.0
+#: The battery's own way beating its perfect plan by more than this (minor units, 2 kr) is logged (`_async_facit`).
+OWN_ABOVE_LOG_MINOR: Final = 200.0
 #: The modes beside the site's own are planned only while the solve has taken at most this long (s); the ones left
 #: are skipped and named (`modes_skipped`).
 MODES_BUDGET_S: Final = 5.0
@@ -745,6 +749,10 @@ class BatteryPlanShadow:
         #: Whether a day's perfect plan is being worked out (`_async_facit`), and when each day was last tried.
         self._facit_running = False
         self._facit_tried: dict[date, datetime] = {}
+        #: A review from before the AC side being rebuilt from the recorder (`review_rebuild.py`), and the days tried
+        #: since the start (each once).
+        self._rebuild_running = False
+        self._rebuild_tried: set[date] = set()
         self._loaded = False
         self._closed = False
         #: The plan's and the sun's tasks in flight, cancelled at the shutdown.
@@ -895,12 +903,17 @@ class BatteryPlanShadow:
             )
         grid_w = site_net_grid_w(self.site)
         car_w = None if grid_w is None else site_car_w(self.hass, self.site, idle_unread_as_zero=True)
+        grid_kw = None if grid_w is None else grid_w / 1000.0
+        if facts.power_dc:
+            # The inverter's loss learnt where the plant reads its own load and sun (`conversion_loss.py`).
+            self.learned.conversion.observe(now, facts.power_kw, grid_kw, facts.plant_pv_kw, facts.plant_load_kw)
         self.actuals.observe(
             now,
-            None if grid_w is None else grid_w / 1000.0,
+            grid_kw,
             None if car_w is None else car_w / 1000.0,
             facts.power_kw,
             facts.soc_pct,
+            None if facts.power_kw is None else ac_kw(facts.power_kw, self.learned.conversion.loss(facts.power_dc)),
         )
         if turned:
             # After the reading above, which closed the quarter hour that just ended.
@@ -909,6 +922,8 @@ class BatteryPlanShadow:
     def _learn_round_trip(self, now: datetime, facts: BatteryFacts) -> None:
         """The round trip from the battery's own meters (`round_trip.py`), at each quarter hour's turn."""
         ratings = [kw for kw in (facts.rated_charge_kw, facts.rated_discharge_kw) if kw is not None and kw > 0]
+        # Counted at the battery, the plan turns it into an AC round trip itself (`learned.with_learned`).
+        self.learned.round_trip.set_cap(DC_CAP if facts.power_dc else PLAN_CAP)
         before = self.learned.round_trip.efficiency
         if self.learned.round_trip.observe(
             now,
@@ -953,6 +968,7 @@ class BatteryPlanShadow:
             controlled=self._controlled(),
         )
         if params is not None:
+            self._review_again(now, params)
             reviewed = [review.day for review in self.reviews]
             planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE, VARIANT_DEMAND]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
@@ -965,8 +981,163 @@ class BatteryPlanShadow:
             self.reviews = sorted(self.reviews, key=lambda r: r.day)[-REVIEW_DAYS:]
             self._ask_sun(now)
             self._ask_facit(now)
+            self._ask_rebuild(now)
         self.actuals.prune(now)
         self._save()
+
+    def _review_again(self, now: datetime, params: BatteryParams) -> None:
+        """On a battery read at the battery (DC): the quarter hours from before the AC side turned with the loss known
+        now, and the reviews from before it reviewed again while all their quarter hours are kept (`plan_shadow`, the
+        battery on the AC side); an older review keeps its figures."""
+        if not self._facts.power_dc:
+            return
+        loss = self.learned.conversion.loss(True)
+        for bucket in self.actuals.buckets.values():
+            bucket.fill_ac(loss)
+        tz = self._tz
+        zone = time_zones.require_zone(tz)
+        kept: dict[date, int] = {}
+        for bucket in self.actuals.buckets.values():
+            day = bucket.start.astimezone(zone).date()
+            kept[day] = kept.get(day, 0) + 1
+        again: list[DayReview] = []
+        for review in self.reviews:
+            if review.battery_ac or kept.get(review.day, 0) != review.quarters:
+                again.append(review)
+                continue
+            made = review_day(
+                review.day,
+                self.actuals.buckets.values(),
+                params,
+                tz,
+                now,
+                [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE, VARIANT_DEMAND],
+                review.mode,
+                self._demand_basis(review.day),
+            )
+            if made is None:
+                again.append(review)
+                continue
+            _LOGGER.debug("SpotNav battery plan: %s reviewed again on the AC side, saving %.0f", review.day, made.saving)
+            again.append(replace(made, cell_temperature=review.cell_temperature))
+        self.reviews = again
+
+    def _ask_rebuild(self, now: datetime) -> None:
+        """Rebuild the first review from before the AC side whose quarter hours are gone (one at a time, each day once
+        since the start), on a battery read at the battery."""
+        if not self._facts.power_dc or self._rebuild_running or self._closed:
+            return
+        day = next(
+            (r.day for r in self.reviews if r.battery_ac is None and r.day not in self._rebuild_tried), None
+        )
+        if day is None:
+            return
+        self._rebuild_tried.add(day)
+        self._rebuild_running = True
+        self._start(self._async_rebuild(day, now), "spotnav_battery_review_rebuild")
+
+    async def _async_read_day_power(
+        self, start: datetime, end: datetime
+    ) -> tuple[dict[datetime, float], dict[datetime, float], timedelta] | None:
+        """The site's grid and the battery's power (kW, import and charging positive) over [start, end) from the
+        recorder: per five minutes where every entity has them, else per hour; `None` where either cannot be read."""
+        from ..const import (  # noqa: PLC0415
+            CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+            CONF_BATTERY_DISCHARGE_POWER_ENTITY,
+            CONF_BATTERY_POWER_INVERTED,
+        )
+        from ..site.hour_statistics import (  # noqa: PLC0415 - it imports Home Assistant's recorder helpers
+            KIND_POWER,
+            UNIT_FACTORS,
+            RecorderReader,
+            Term,
+            recorder_ready,
+            site_series,
+            term_five_minutes,
+            term_watts,
+        )
+
+        if not recorder_ready(self.hass):
+            return None
+        config = self.site.config
+        battery_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+        if not battery_id:
+            return None
+        sign = -1.0 if config.get(CONF_BATTERY_POWER_INVERTED) else 1.0
+        battery_terms = [Term(battery_id, KIND_POWER, sign)]
+        discharge_id = config.get(CONF_BATTERY_DISCHARGE_POWER_ENTITY)
+        if discharge_id:
+            battery_terms.append(Term(discharge_id, KIND_POWER, -sign))
+        grid_terms = list(site_series(self.hass, config).grid)
+        terms = [*grid_terms, *battery_terms]
+        if not grid_terms or any(term.kind != KIND_POWER for term in terms):
+            return None
+        reader = RecorderReader(self.hass)
+        ids = {term.entity_id for term in terms}
+        meta = await reader.metadata(ids)
+        factors: dict[Term, float] = {}
+        for term in terms:
+            item = meta.get(term.entity_id)
+            factor = None if item is None or not item.has_mean else UNIT_FACTORS[KIND_POWER].get(item.unit or "")
+            if factor is None:
+                return None
+            factors[term] = factor
+        short = await reader.short_rows(ids, start, end)
+        step = timedelta(minutes=5)
+        if not all(short.get(entity_id) for entity_id in ids):
+            short = await reader.rows(ids, start, end, {"mean"})
+            step = timedelta(hours=1)
+        read = term_five_minutes if step < timedelta(hours=1) else term_watts
+
+        def summed(group: list[Any]) -> dict[datetime, float]:
+            series = [read(term, factors[term], short.get(term.entity_id, ())) for term in group]
+            common = set(series[0]).intersection(*series[1:]) if series else set()
+            return {moment: sum(item[moment] for item in series) / 1000.0 for moment in common}
+
+        return summed(grid_terms), summed(battery_terms), step
+
+    async def _async_rebuild(self, day: date, now: datetime) -> None:
+        """[day]'s review from before the AC side counted again from the recorder (`review_rebuild.py`). Never
+        raises; a day that cannot be rebuilt keeps its figures."""
+        from .review_rebuild import rebuilt_quarters, rebuilt_review  # noqa: PLC0415
+
+        try:
+            review = next((item for item in self.reviews if item.day == day), None)
+            params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
+            if review is None or params is None or review.battery_ac is not None:
+                return
+            start, end = self._day_bounds(day)
+            _end, next_end = self._day_bounds(day + timedelta(days=1))
+            power = await self._async_read_day_power(start, end)
+            prices = self._prices_after(day - timedelta(days=1))
+            if power is None or not prices:
+                _LOGGER.debug("SpotNav battery plan: %s cannot be rebuilt (no statistics or prices)", day)
+                return
+            grid, battery, step = power
+            quarters, actual = rebuilt_quarters(
+                start, end, grid, battery, step, prices, self._cap_kw, self.learned.conversion.loss(True)
+            )
+            wear, _unknown = self._wear()
+            made: DayReview | None = await self.hass.async_add_executor_job(
+                partial(
+                    rebuilt_review, review, quarters, actual, params, self._prices_after(day), end, next_end,
+                    day_quarters(day, self._tz), wear, now, self._sell_margin(),
+                )
+            )
+            if made is None:
+                _LOGGER.debug("SpotNav battery plan: %s cannot be rebuilt (%d quarter hours read)", day, len(quarters))
+                return
+            _LOGGER.debug(
+                "SpotNav battery plan: %s rebuilt on the AC side from %s statistics, the battery's saving %.0f -> %.0f",
+                day, "5-minute" if step < timedelta(hours=1) else "hourly", review.battery_saving or 0.0,
+                made.battery_saving or 0.0,
+            )
+            self.reviews = [made if item.day == day else item for item in self.reviews]
+            self._save()
+        except Exception:  # noqa: BLE001 - a day that cannot be rebuilt keeps its figures
+            _LOGGER.debug("SpotNav battery plan: %s could not be rebuilt", day, exc_info=True)
+        finally:
+            self._rebuild_running = False
 
     def _demand_basis(self, day: date) -> Any:
         """What [day]'s demand cost is measured against (`demand_plan.demand_basis`); `None` without a priced part or
@@ -1124,6 +1295,13 @@ class BatteryPlanShadow:
             )
             if made is None:
                 return
+            own, yardstick = made.candidates.get("own"), made.yardstick
+            if own is not None and yardstick is not None and own.saving > yardstick.saving + OWN_ABOVE_LOG_MINOR:
+                # Logged, never shown (nothing for the person to do): the model or the accounting is off that day.
+                _LOGGER.debug(
+                    "SpotNav battery plan: %s the battery's own way beat its perfect plan by %.0f", day,
+                    own.saving - yardstick.saving,
+                )
             self._facit_tried.pop(day, None)  # worked out: a later try waits only for the prices
             self.reviews = [
                 replace(item, facit=made, cell_temperature=temperature or item.cell_temperature)
@@ -1591,7 +1769,7 @@ class BatteryPlanShadow:
             "last_duration_s": self.last_duration_s,
             "inputs": dict(self.inputs),
             # The size and rated power learnt where the integration reads none, and the samples behind them.
-            "learned": self.learned.view(),
+            "learned": self.learned.view(self._facts.power_dc),
             # The plan in force: the site's mode's.
             "mode": self.mode,
             "plan": self.view,

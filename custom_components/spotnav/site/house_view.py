@@ -405,8 +405,9 @@ def day_flow(battery: BatteryInputs, now: datetime, tz: str, has_sun: bool) -> d
         return None
     grid_in = sum(bucket.scaled(bucket.import_kwh) for bucket in quarters)
     grid_out = sum(bucket.scaled(bucket.export_kwh) for bucket in quarters)
-    battery_in = sum(max(0.0, bucket.scaled(bucket.battery_kwh)) for bucket in quarters)
-    battery_out = sum(max(0.0, -bucket.scaled(bucket.battery_kwh)) for bucket in quarters)
+    # On the AC side (`Bucket.battery_ac`), so the load (the balance) holds no inverter loss of a DC-side reading.
+    battery_in = sum(max(0.0, bucket.scaled(bucket.battery_ac)) for bucket in quarters)
+    battery_out = sum(max(0.0, -bucket.scaled(bucket.battery_ac)) for bucket in quarters)
     hours = {hour_start(bucket.start, tz) for bucket in quarters}
     known = [start for start in hours if start in battery.production]
     solar = sum(battery.production[start] for start in known)

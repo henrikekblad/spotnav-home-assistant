@@ -720,7 +720,10 @@ def test_rows_and_reviews_from_before_the_modes_still_load() -> None:
     bucket = Bucket(MIDNIGHT, buy=100.0, sell=40.0, covered_s=900, ran_action=ACTION_HOLD, ran_kw=0.0)
     bucket.ran_modes[MODE_MAX_PROFIT] = (ACTION_EXPORT_DISCHARGE, -5.0)
     row = bucket.as_row()
-    assert len(row) == 17 and Bucket.from_row(row) == bucket
+    assert len(row) == 18 and Bucket.from_row(row) == bucket
+    # A row from before the AC side (17 fields) loads with no AC energy: it counts as read.
+    before = Bucket.from_row(row[:17])
+    assert before is not None and before.battery_ac_kwh is None and before.battery_ac == before.battery_kwh
     old = [*row[:16], ACTION_EXPORT_DISCHARGE, -5.0]
     loaded = Bucket.from_row(old)
     assert loaded is not None and loaded.ran_modes == {} and loaded.ran_action == ACTION_HOLD

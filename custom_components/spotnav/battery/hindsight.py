@@ -39,8 +39,14 @@ that day had everything been known, and each way's share of it.
 * **Cell temperature** (`cell_temperature`): the day's mean, maximum and minutes above `HOT_C`, from the recorder's
   five-minute (else hourly) statistics of the battery's own cell temperature, where the battery reports it.
 
-What it cannot tell: the model's battery is ideal (the real one has its own losses and ramps), so what really happened
-is held to a slightly kinder standard than it met; the perfect plan sees only the measured quarter hours; a single
+The battery is counted on the AC side throughout (`Bucket.battery_ac`, `conversion_loss.py`): the house each way
+plans around is the same, the real battery's inverter loss is its own cost, and the model's battery has the AC round
+trip. Counted as read on a DC-side battery, that loss sat in the house, every other way paid for it and the battery's
+own way could come out above its perfect plan (`plans/research_integrations/sigen_ai_above_perfect_2026-11-24.md`).
+
+What it cannot tell: the model's battery has no ramps and an even loss, so what really happened is held to a slightly
+kinder standard than it met; an assumed conversion loss (where it is not learnt) is only as good as the assumption;
+the perfect plan sees only the measured quarter hours; a single
 day's share still hangs on the energy left at midnight, which a week or a month washes out (`site/perfect_view.py`
 sums the days' savings before it divides).
 """
@@ -124,6 +130,9 @@ class MeasuredQuarter(Protocol):
 
     @property
     def net_house_kw(self) -> float | None: ...
+
+    @property
+    def battery_ac(self) -> float: ...
 
     def scaled(self, kwh: float) -> float: ...
 
@@ -227,13 +236,13 @@ def work_of(steps: Iterable[tuple[float, float, float]], usable_kwh: float) -> W
 
 
 def measured_work(buckets: Iterable[MeasuredQuarter], usable_kwh: float) -> Work:
-    """What the battery really did, from the meters."""
+    """What the battery really did, from the meters, on the AC side (`Bucket.battery_ac`) like the simulated ways."""
     steps = []
     for bucket in buckets:
         hours = bucket.covered_s / 3600.0
         if hours <= 0:
             continue
-        steps.append(((bucket.battery_kwh) / hours, (bucket.import_kwh - bucket.export_kwh) / hours, QUARTER.total_seconds() / 3600.0))
+        steps.append((bucket.battery_ac / hours, (bucket.import_kwh - bucket.export_kwh) / hours, QUARTER.total_seconds() / 3600.0))
     return work_of(steps, usable_kwh)
 
 
@@ -460,10 +469,12 @@ def facit_day(
     day_quarters: int,
     now: datetime,
     sell_margin: float = DEFAULT_SELL_MARGIN,
+    own_work: Work | None = None,
 ) -> Facit | None:
     """The day against its perfect plan (see the module). [buckets] are the review's usable quarter hours, oldest
     first, of a local day of [day_quarters]; [actual_cost] and [actual_end_soc_pct] what really happened (the
-    review's); `None` without a quarter hour. A partial day gets its figures and no share."""
+    review's), [own_work] its work where the quarter hours do not hold the battery (a rebuilt day,
+    `review_rebuild.py`); `None` without a quarter hour. A partial day gets its figures and no share."""
     if not buckets:
         return None
     site_mode = mode if mode in PLANNING_MODES else PLANNING_MODES[0]
@@ -493,7 +504,7 @@ def facit_day(
     def add(name: str, cost: float, end_soc: float, work: Work) -> None:
         ways[name] = Candidate(saving(cost, end_soc), 0.0, None, False, work)
 
-    add(OWN, actual_cost, actual_end_soc_pct, measured_work(buckets, usable))
+    add(OWN, actual_cost, actual_end_soc_pct, measured_work(buckets, usable) if own_work is None else own_work)
     base = simulate(slots, battery, start_soc_pct, [(ACTION_SELF_CONSUME, 0.0)] * len(slots))
     add(SELF_CONSUMPTION, base.cost, base.end_soc_pct, base.work)
     for name in PLANNING_MODES:

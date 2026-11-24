@@ -43,9 +43,16 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   what its own day peak adds to the month's demand charge against the month's measured peaks before the day
   (`demand_plan.day_demand_cost`, `demand`), and the savings on the full bill (`bill_savings`, energy plus demand).
 
-What the review cannot tell: the battery's real losses and ramp limits (the sim's battery is ideal and its power is
-the battery's own reading, so the plan is flattered by a few percent); a slot where the meters were lost counts in
-no run.
+* **The battery on the AC side** (2026-11-24, `conversion_loss.py`): the house (`Bucket.net_house_kw`, the hour
+  rows), the day with no battery (`review_baselines`) and every simulated way count the battery's energy on the AC
+  side (`Bucket.battery_ac`), so a DC-side reading's inverter loss is the real battery's cost alone and not a house
+  load every way pays. The sims run on the AC round trip (`learned.with_learned`). A review from before it
+  (`DayReview.battery_ac` `None`) on a DC-side reading is reviewed again while all its quarter hours are still kept
+  (`BUCKET_DAYS`), its quarter hours turned with the loss known then (`Bucket.fill_ac`); an older one is rebuilt from
+  the recorder's statistics (`review_rebuild.py`).
+
+What the review cannot tell: the battery's ramp limits (the sim's battery is ideal); a slot where the meters were
+lost counts in no run.
 """
 
 from __future__ import annotations
@@ -62,6 +69,7 @@ from ..core.electric import three_phase_kw
 from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
 from .export_curtail import curtail_slots, curtails, would_save
+from .conversion_loss import ac_kw
 from .facts import BatteryFacts
 from .hindsight import IDLE_KW, CellTemperature, Facit, measured_slot
 from .plan import action_power, buy_prices, run_slot, sell_prices
@@ -132,6 +140,11 @@ EST_HOUSE_COUNTS_BATTERY: Final = "house_counts_battery"
 EST_NO_SOLAR: Final = "no_solar_forecast"
 EST_SOLAR_IN_HOUSE: Final = "solar_in_house_history"
 EST_HORIZON_CUT: Final = "horizon_cut_by_forecast"
+
+# How a review counted the battery on the AC side (`DayReview.battery_ac`).
+BATTERY_AC_MEASURED: Final = "measured"
+BATTERY_AC_STATISTICS: Final = "statistics"
+BATTERY_AC: Final = (BATTERY_AC_MEASURED, BATTERY_AC_STATISTICS)
 
 #: The defensive variant (`battery/defensive.py`): the site's mode planned on the learnt error band's pessimistic side
 #: (the house's p90 in the dear hours, the sun's p10). Planned and reviewed beside the modes, never in force.
@@ -577,8 +590,11 @@ def bucket_start(moment: datetime) -> datetime:
 class Bucket:
     """One quarter hour: what the meters said, its prices and cap, and what the plan said about it.
 
-    Energies in kWh over the time measured (`covered_s`); the battery's signed `+` charging. `first_*` is the first
-    plan that covered it, `ran_*` the plan in force when it began (what would have been written)."""
+    Energies in kWh over the time measured (`covered_s`); the battery's signed `+` charging, as read (`battery_kwh`,
+    at the battery on a DC-side reading: the SoC's and the round trip's side) and on the AC side (`battery_ac_kwh`,
+    `conversion_loss.py`: the meter's side, which the house, the review and the perfect plan count; `None` in a
+    quarter hour from before it, which then counts as read). `first_*` is the first plan that covered it, `ran_*` the
+    plan in force when it began (what would have been written)."""
 
     start: datetime
     buy: float | None = None
@@ -598,10 +614,21 @@ class Bucket:
     ran_soc: float | None = None
     #: The same per mode planned beside it: `{mode: (action, kW)}`.
     ran_modes: dict[str, tuple[str, float]] = field(default_factory=dict)
+    battery_ac_kwh: float | None = None
 
     @property
     def end(self) -> datetime:
         return self.start + BUCKET
+
+    @property
+    def battery_ac(self) -> float:
+        """The battery's energy on the AC side (kWh over the time measured, + charging; see the class)."""
+        return self.battery_kwh if self.battery_ac_kwh is None else self.battery_ac_kwh
+
+    def fill_ac(self, loss: tuple[float, float]) -> None:
+        """A quarter hour from before the AC side: its battery energy turned with [loss] (`conversion_loss.ac_kw`)."""
+        if self.battery_ac_kwh is None:
+            self.battery_ac_kwh = ac_kw(self.battery_kwh, loss)
 
     @property
     def covered(self) -> bool:
@@ -613,11 +640,11 @@ class Bucket:
 
     @property
     def net_house_kw(self) -> float | None:
-        """The house less the sun (kW): the grid less the cars and the battery."""
+        """The house less the sun (kW): the grid less the cars and the battery (on the AC side)."""
         if not self.covered:
             return None
         hours = self.covered_s / 3600.0
-        return (self.import_kwh - self.export_kwh - self.car_kwh - self.battery_kwh) / hours
+        return (self.import_kwh - self.export_kwh - self.car_kwh - self.battery_ac) / hours
 
     def actual_action(self) -> str | None:
         """What the battery really did, in the plan's words where they fit."""
@@ -655,12 +682,18 @@ class Bucket:
             r(self.ran_kw, 3),
             r(self.ran_soc, 2),
             {mode: [action, round(kw, 3)] for mode, (action, kw) in sorted(self.ran_modes.items())} or None,
+            r(self.battery_ac_kwh),
         ]
 
     @classmethod
     def from_row(cls, raw: Any) -> Bucket | None:
-        # 18 fields: a row from before the modes, whose export variant is dropped.
+        # 18 fields with an action at 16: a row from before the modes, whose export variant is dropped; 17: a row from
+        # before the AC side.
         if not isinstance(raw, list) or len(raw) not in (17, 18):
+            return None
+        old = len(raw) == 18 and isinstance(raw[16], str)
+        battery_ac = None if len(raw) == 17 or old else raw[17]
+        if battery_ac is not None and not _finite(battery_ac):
             return None
         start = parse_aware_datetime(raw[0])
         if start is None:
@@ -675,7 +708,7 @@ class Bucket:
         if any(action is not None and action not in ACTIONS for action in actions):
             return None
         ran_modes: dict[str, tuple[str, float]] = {}
-        if len(raw) == 17 and raw[16] is not None:
+        if not old and raw[16] is not None:
             if not isinstance(raw[16], Mapping):
                 return None
             for mode, pair in raw[16].items():
@@ -702,6 +735,7 @@ class Bucket:
             ran_kw=raw[14],
             ran_soc=raw[15],
             ran_modes=ran_modes,
+            battery_ac_kwh=None if battery_ac is None else float(battery_ac),
         )
 
     def view(self) -> dict[str, Any]:
@@ -726,6 +760,7 @@ class _Sample:
     grid_kw: float | None
     car_kw: float | None
     battery_kw: float | None
+    battery_ac_kw: float | None = None
 
 
 @dataclass(slots=True)
@@ -782,10 +817,17 @@ class PlanActuals:
         return bucket
 
     def observe(
-        self, now: datetime, grid_kw: float | None, car_kw: float | None, battery_kw: float | None, soc: float | None
+        self,
+        now: datetime,
+        grid_kw: float | None,
+        car_kw: float | None,
+        battery_kw: float | None,
+        soc: float | None,
+        battery_ac_kw: float | None = None,
     ) -> None:
         """A reading: the last one's power counts until now in its quarter hour (a gap over `MAX_GAP_S` counts
-        nothing); the SoC marks the quarter hour's start and end."""
+        nothing); the SoC marks the quarter hour's start and end. [battery_ac_kw] is the battery's power on the AC side
+        (`conversion_loss.ac_kw`), the reading as it is where not given."""
         last = self.last
         if last is not None:
             gap = (now - last.at).total_seconds()
@@ -803,14 +845,18 @@ class PlanActuals:
                 else:
                     bucket.export_kwh -= last.grid_kw * hours
                 bucket.car_kwh += max(0.0, last.car_kw) * hours
+                if bucket.battery_ac_kwh is None:
+                    bucket.battery_ac_kwh = bucket.battery_kwh  # a quarter hour begun before the AC side
                 bucket.battery_kwh += last.battery_kw * hours
+                ac = last.battery_kw if last.battery_ac_kw is None else last.battery_ac_kw
+                bucket.battery_ac_kwh += ac * hours
                 bucket.covered_s += gap
         bucket = self.buckets.get(bucket_start(now))
         if bucket is not None and soc is not None and _finite(soc):
             if bucket.soc_start is None:
                 bucket.soc_start = soc
             bucket.soc_end = soc
-        self.last = _Sample(now, grid_kw, car_kw, battery_kw)
+        self.last = _Sample(now, grid_kw, car_kw, battery_kw, battery_ac_kw)
 
     def close_hours(self, now: datetime, tz: str) -> list[datetime]:
         """Turn every local hour that has ended and whose quarter hours are measured into a house row; the hours
@@ -826,7 +872,7 @@ class PlanActuals:
             covered = [bucket for bucket in buckets if bucket.covered]
             if len(covered) * 2 < len(buckets) or not covered:
                 continue
-            kwh = sum(b.import_kwh - b.export_kwh - b.car_kwh - b.battery_kwh for b in covered)
+            kwh = sum(b.import_kwh - b.export_kwh - b.car_kwh - b.battery_ac for b in covered)
             hours = sum(b.covered_s for b in covered) / 3600.0
             self.rows[start] = kwh / hours
             added.append(start)
@@ -930,6 +976,10 @@ class DayReview:
     #: What each run's day peak adds to the month's demand charge (minor units; `demand_plan.day_demand_cost`), keyed
     #: `actual`, `plan`, `self_consumption` and each mode reviewed; `None` without a priced part that month.
     demand: Mapping[str, float] | None = None
+    #: How the battery was counted on the AC side (`Bucket.battery_ac`; 2026-11-24 on): `BATTERY_AC_MEASURED` from the
+    #: quarter hours measured, `BATTERY_AC_STATISTICS` rebuilt from the recorder (`review_rebuild.py`); `None` in a
+    #: review from before it, which counted the battery as read (on a DC-side reading the inverter's loss in the house).
+    battery_ac: str | None = None
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -1016,6 +1066,7 @@ class DayReview:
             },
             "facit": None if self.facit is None else self.facit.as_dict(),
             "cell_temperature": None if self.cell_temperature is None else self.cell_temperature.as_dict(),
+            "battery_ac": self.battery_ac,
             **self._demand_dict(),
         }
 
@@ -1063,6 +1114,7 @@ class DayReview:
                 facit=Facit.from_dict(raw.get("facit")),
                 cell_temperature=CellTemperature.from_dict(raw.get("cell_temperature")),
                 demand=_demand_from(raw.get("demand")),
+                battery_ac=raw.get("battery_ac") if raw.get("battery_ac") in BATTERY_AC else None,
             )
         except (AttributeError, KeyError, TypeError, ValueError):
             return None
@@ -1265,6 +1317,7 @@ def review_day(
         curtail_saving=curtail_saving,
         no_battery_cost=no_battery_cost(usable),
         demand=demand_cost,
+        battery_ac=BATTERY_AC_MEASURED,
     )
 
 

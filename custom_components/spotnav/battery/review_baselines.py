@@ -8,7 +8,8 @@ baselines from the same measured quarter hours, no setting:
 * **Against no battery** (`battery_saving`): what the day really cost (`actual`: import at the buy price less export at
   the sell price) against the same day with no battery at all. Without the battery the house and the car draw their
   load from the grid and the sun is still there, so each quarter hour's grid is `import - export - battery` (the
-  battery's own charge taken away: its discharge added back), bought at the buy price when it is positive and sold at
+  battery's own charge taken away: its discharge added back; the battery on the AC side, `Bucket.battery_ac`, so the
+  inverter's loss on a DC-side reading is the battery's and not the house's), bought at the buy price when it is positive and sold at
   the sell price when it is negative. Positive is money the battery saved. The energy left in the battery at the end of
   the day is *not* counted here (the battery apps do not count it either; `DayReview.actual_saving` is the figure that
   does).
@@ -23,8 +24,9 @@ still has them and else the hour spread evenly over its quarter hours, so a quar
 counts in the battery's figure and not the sun's (`sun_quarters` against `covered` says so; a partial day likewise,
 `covered` against the day's quarter hours).
 
-What it cannot tell: the grid of the day without the battery is the measured one less the battery's power, so the
-losses of the battery's own conversion and a limit that the missing battery would have imposed on the sun (the export
+What it cannot tell: the grid of the day without the battery is the measured one less the battery's power on the AC
+side, so a conversion loss that is assumed rather than learnt (`conversion_loss.py`) is only as good as the
+assumption, and a limit that the missing battery would have imposed on the sun (the export
 limit) are not in it; the quarter hour's net is taken over the whole quarter hour while the actual import and export
 are summed sample by sample, so a quarter hour that both imported and exported reads a little dearer in `actual` than
 in the baseline.
@@ -54,7 +56,7 @@ def no_battery_cost(buckets: Iterable[Bucket]) -> float:
     """What the quarter hours would have cost with no battery (see the module); [buckets] are the usable ones."""
     total = 0.0
     for bucket in buckets:
-        grid = bucket.scaled(bucket.import_kwh - bucket.export_kwh - bucket.battery_kwh)
+        grid = bucket.scaled(bucket.import_kwh - bucket.export_kwh - bucket.battery_ac)
         total += grid_cost(grid, float(bucket.buy), float(bucket.sell))  # type: ignore[arg-type]
     return total
 
@@ -87,7 +89,7 @@ def sun_gave(buckets: Iterable[Bucket], sun_kwh: Mapping[datetime, float]) -> tu
         sun = sun_kwh.get(bucket.start)
         if sun is None or sun < 0:
             continue
-        grid = bucket.scaled(bucket.import_kwh - bucket.export_kwh - bucket.battery_kwh)
+        grid = bucket.scaled(bucket.import_kwh - bucket.export_kwh - bucket.battery_ac)
         buy, sell = float(bucket.buy), float(bucket.sell)  # type: ignore[arg-type]
         total += grid_cost(grid + sun, buy, sell) - grid_cost(grid, buy, sell)
         quarters += 1
