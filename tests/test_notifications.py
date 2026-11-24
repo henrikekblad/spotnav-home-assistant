@@ -250,9 +250,14 @@ def test_messages_are_short_and_carry_the_charger_energy_and_money() -> None:
 
 
 async def _choose(hass: HomeAssistant, entry_id: str, **notifications: Any) -> None:
+    """A charger's phones and events, chosen as a client before the per-phone settings chooses them: the charger keeps
+    the `url`, the phones take the rest (`PhoneStore.async_charger_write`)."""
     store = domain_data(hass).auto_store
     chosen = NotificationSettings(**notifications)
-    await store.async_update(entry_id, mutate=lambda settings: replace(settings, notifications=chosen))
+    await store.async_update(
+        entry_id, mutate=lambda settings: replace(settings, notifications=replace(settings.notifications, url=chosen.url))
+    )
+    await domain_data(hass).phones.async_charger_write(entry_id, chosen)
 
 
 async def _charger(hass: HomeAssistant, **notifications: Any) -> tuple[Any, list[Any]]:
@@ -447,7 +452,7 @@ async def test_the_app_keeps_notifications_it_does_not_read_and_edits_them_when_
     )
     assert status == 200 and answer["ok"] is True and "notifications" not in answer["settings"]
     stored = domain_data(hass).auto_store.settings(entry.entry_id)
-    assert stored.amps == 12 and stored.notifications.targets == ("mobile_app_pixel",)
+    assert stored.amps == 12 and domain_data(hass).phones.charger_view(entry.entry_id, None).targets == ("mobile_app_pixel",)
 
     # One that reads it may change it.
     status, answer = await _post(
@@ -459,10 +464,12 @@ async def test_the_app_keeps_notifications_it_does_not_read_and_edits_them_when_
             "settings": {**older, "amps": 12, "notifications": {"targets": [], "events": ["plugged_in"]}},
         },
     )
-    assert status == 200 and answer["settings"]["notifications"]["events"] == ["plugged_in"]
-    assert domain_data(hass).auto_store.settings(entry.entry_id).notifications == NotificationSettings(
-        events=("plugged_in",)
-    )
+    # The phone stops following the charger (and, following nothing else, is off); the events of no phone are none.
+    assert status == 200 and answer["settings"]["notifications"]["targets"] == []
+    (pixel,) = domain_data(hass).phones.phones
+    assert pixel.notify == "mobile_app_pixel" and pixel.on is False
+    # The charger's own record is not where the phones are kept: a write leaves its old choice as it was.
+    assert domain_data(hass).auto_store.settings(entry.entry_id).notifications.targets == ()
 
 
 # ------------------------------------------------------------------ a plan a person's own settings write caused

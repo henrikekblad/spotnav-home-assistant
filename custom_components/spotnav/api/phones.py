@@ -3,7 +3,7 @@ every paired phone at once.
 
 Every charger and every site gets a new webhook id (`entry_migration.new_webhook_id`); the old ones stop answering at
 once (Home Assistant's empty answer, which the app reads as "pair again"), including a site id a charger handed over
-(`get_site_access`). Each charger's instant-notification registration is cleared, so no phone is woken any more, and
+(`get_site_access`). Every phone's SpotNav app wake-up reference is cleared, so no phone is woken any more, and
 pending pairing requests are dropped (and their approval items in Devices & services withdrawn), so an approval given
 just before cannot fetch the new ids. Nothing else
 changes: no entry is reloaded and charging goes on. A phone is connected again by pairing it again.
@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from ..const import CONF_ENTRY_TYPE, CONF_WEBHOOK_ID, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_SITE
 from ..entry_migration import new_webhook_id
 from ..notifications.push import ChargerPush
-from ..runtime import charger_data, domain_data
+from ..runtime import domain_data
 from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
 from .pairing import PairingRegister
 from .site_entry_webhook import async_ensure_site_webhook
@@ -83,17 +83,18 @@ async def async_disconnect_phones(hass: HomeAssistant) -> dict[str, int]:
         _LOGGER.warning("SpotNav: a waiting phone approval could not be withdrawn", exc_info=True)
     for entry in chargers:
         try:
-            data = charger_data(hass, entry.entry_id)
-            push = None if data is None else data.push
-            if push is not None:
-                await push.async_register(None)
-            else:
-                await ChargerPush.async_remove_stored(hass, entry.entry_id)
+            # The release before's registration, read only by the migration: gone too.
+            await ChargerPush.async_remove_stored(hass, entry.entry_id)
         except Exception:  # noqa: BLE001 - one charger's store must not stop the others
-            counts["notifications_not_cleared"] += 1
-            _LOGGER.warning(
-                "SpotNav: the phone notifications of charger %s could not be cleared", entry.entry_id, exc_info=True
-            )
+            _LOGGER.debug("SpotNav: charger %s's old push registration could not be removed", entry.entry_id, exc_info=True)
+    phones = domain.phones
+    if phones is not None:
+        try:
+            # No app is woken any more; each keeps its phone's settings for when it pairs again.
+            await phones.async_clear_refs()
+        except Exception:  # noqa: BLE001 - the ids are replaced already
+            counts["notifications_not_cleared"] = len(chargers)
+            _LOGGER.warning("SpotNav: the phones' instant notifications could not be cleared", exc_info=True)
     _LOGGER.info(
         "SpotNav: every phone was disconnected (%d charger and %d site webhooks replaced, %d chargers' notifications "
         "not cleared)",

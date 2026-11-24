@@ -15,10 +15,10 @@ deadline ahead) and, for a car, only where its notifier may tell (a car there, n
   `#spotnav-not-ready`). The car's own notices are taken off meanwhile and its `plan_at_risk` is held back behind this
   one (`ChargerNotifier.hold_for_site`), as behind its own. Once on the phones it stays the site's until nothing asks
   (a car left alone in it is not told again on its own).
-* **Recipients**: the union of each involved charger's phones that want `plan_at_risk` and, where a bath or a session is
-  involved, the heat card's phones that want it (`heat_notifications`); each phone once. The paired app is woken for
-  the involved cars (`plan_at_risk`, once per wake-up address): a bath or a session alone wakes nothing, since the
-  released app has nothing to show for it.
+* **Recipients**: the phones that are on, want `plan_at_risk` and follow an involved charger, or any such phone where a
+  bath or a session is involved (`phone_store.py`); each phone once, by one route: its SpotNav app when the app shows
+  every kind in the notice (`plan_at_risk` for a car, `heat_at_risk` for a bath or a session), woken once per address,
+  else its Companion service. An app from before this release shows no bath, so such a phone gets that on Companion.
 
 **Buttons.** A car's keep its own action ids, handled by its notifier (`SPOTNAV_TAKE_WHAT_FITS_`,
 `SPOTNAV_LATER_DEPARTURE_`, `SPOTNAV_IMPORT_TARGET_RELEASE_` with the charger's id). A bath's and a session's:
@@ -36,7 +36,7 @@ Taken off the phones once nothing asks (it fits, a choice was made here, in the 
 `HOURLY_LIMIT` an hour.
 
 **The pool's season** (`pool_season`): once a season (the pool's shadow keeps the year told), in the daytime, to the
-heat card's phones that want it: "The water has been around 10 °C for three days – time to close the pool season?"
+phones that want it (an app that shows `pool_season` is woken instead): "The water has been around 10 °C for three days – time to close the pool season?"
 with "Close the season" (`SPOTNAV_POOL_SEASON_<site>`), which closes it as the card's switch does.
 
 Kept across a restart (`spotnav.site_notice.<site>`): the deadlines told, the phones it is on and when it was told.
@@ -58,7 +58,9 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_LATER, CHOICE_TAKES_WHAT_FITS
 from ..texts import language_of
-from .heat_settings import EVENT_POOL_SEASON, HeatNotifications
+from .phone_store import phone_store
+from .phones import EVENT_POOL_SEASON, SHOWS_HEAT_AT_RISK
+from .push import async_wake_refs
 from .messages import (
     does_not_fit_choice_text,
     not_ready_button,
@@ -143,14 +145,12 @@ class SiteNotice:
         *,
         site: Any,
         notifier_of: Callable[[str], Any],
-        heat_notifications: Callable[[], HeatNotifications],
         recheck: Callable[[], None],
     ) -> None:
         self._hass = hass
         self._entry_id = site_entry_id
         self._site = site
         self._notifier_of = notifier_of
-        self._heat_notifications = heat_notifications
         self._recheck = recheck
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(site_entry_id))
         #: The deadlines told (`load@deadline` -> deadline), the phones it is on and when it went out.
@@ -333,9 +333,6 @@ class SiteNotice:
             self._sent.popleft()
         return len(self._sent) < HOURLY_LIMIT
 
-    def _has(self, target: str) -> bool:
-        return self._hass.services.has_service(NOTIFY_DOMAIN, target)
-
     def _tell(
         self,
         asking: list[dict[str, Any]],
@@ -344,32 +341,21 @@ class SiteNotice:
         now: datetime,
     ) -> bool:
         """Tell the notice to the phones and wake the paired app; whether either heard it."""
-        targets: list[str] = []
-        cars_told: list[Any] = []
-        pushes: dict[str, Any] = {}
-        for item in asking:
-            if item["kind"] != "car":
-                continue
-            notifier = self._notifier_of(item["load_id"])
-            found = notifier.fit_targets(now)
-            if found:
-                cars_told.append(notifier)
-            targets.extend(found)
-            push = notifier.push
-            registration = None if push is None else push.registration
-            if registration is not None:
-                pushes.setdefault(registration.push_ref, push)
-        if any(item["kind"] != "car" for item in asking):
-            heat = self._heat_notifications()
-            if heat.wants(EVENT_PLAN_AT_RISK):
-                targets.extend(target for target in heat.targets if self._has(target))
-        phones = tuple(dict.fromkeys(targets))
+        cars = [item["load_id"] for item in asking if item["kind"] == "car"]
+        heat = any(item["kind"] != "car" for item in asking)
+        # Each phone by one route: its app where the app shows every kind in the notice, else Companion.
+        needs = ([EVENT_PLAN_AT_RISK] if cars else []) + ([SHOWS_HEAT_AT_RISK] if heat else [])
+        store = phone_store(self._hass)
+        phones, refs = (
+            ((), ()) if store is None else store.recipients(EVENT_PLAN_AT_RISK, chargers=cars, heat=heat, needs=needs)
+        )
+        cars_told = [notifier for notifier in (self._notifier_of(car) for car in cars) if notifier.fit_targets(now)]
         if phones and not self._within_limit(now):
             _LOGGER.debug("SpotNav site %s: hourly limit of the combined notice reached", self._entry_id)
             phones = ()
-        pushed = False
-        for push in pushes.values():
-            pushed = push.async_event(EVENT_PLAN_AT_RISK, now) or pushed
+        pushed = bool(refs)
+        if refs:
+            self._hass.async_create_task(async_wake_refs(self._hass, refs), eager_start=True)
         if not phones and not pushed:
             return False
         # Told for these deadlines from here on, whatever else happens to them.
@@ -530,16 +516,16 @@ class SiteNotice:
     # ------------------------------------------------------------------ the pool's season
 
     def pool_season(self, now: datetime) -> bool:
-        """Tell the pool's season hint once (the caller keeps the season told): in the daytime, to the heat card's
+        """Tell the pool's season hint once (the caller keeps the season told): in the daytime, to the
         phones that want it. Whether it went to any."""
         if is_quiet(now):
             return False
-        heat = self._heat_notifications()
-        if not heat.wants(EVENT_POOL_SEASON):
-            return False
-        targets = tuple(target for target in heat.targets if self._has(target))
+        store = phone_store(self._hass)
+        targets, refs = ((), ()) if store is None else store.recipients(EVENT_POOL_SEASON)
+        if refs:
+            self._hass.async_create_task(async_wake_refs(self._hass, refs), eager_start=True)
         if not targets or not self._within_limit(now):
-            return False
+            return bool(refs)
         self._sent.append(now)
         title, message, button = pool_season_text(language_of(self._hass.config.language))
         payload = {
@@ -638,5 +624,5 @@ class SiteNotice:
         answer = pool_answer(self._hass, entry, {"action": "season", "open": False})
         if answer.get("ok"):
             _LOGGER.info("SpotNav site %s: the pool season closed from a phone", self._entry_id)
-            heat = self._heat_notifications()
-            self._clear(tuple(target for target in heat.targets if self._has(target)), self._season_tag)
+            store = phone_store(self._hass)
+            self._clear(() if store is None else store.recipients(EVENT_POOL_SEASON)[0], self._season_tag)

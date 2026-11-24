@@ -441,9 +441,8 @@ async def test_a_guest_evening_end_to_end_and_its_core_events_replay(hass: HomeA
     with freeze_time(NOW) as frozen:
         charger, ev6, _ = await charger_and_car(hass, amps=16, phases=3)
         store = domain_data(hass).auto_store
-        await store.async_update(
-            charger.entry_id,
-            mutate=lambda s: replace(s, notifications=NotificationSettings(targets=("mobile_app_pixel",))),
+        await domain_data(hass).phones.async_charger_write(
+            charger.entry_id, NotificationSettings(targets=("mobile_app_pixel",))
         )
         plug = vehicle_entity(
             hass, device_id=ev6, domain="binary_sensor", object_id="ev6_plugged_in", state="on",

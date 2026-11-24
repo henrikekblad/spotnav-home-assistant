@@ -200,11 +200,12 @@ class World:
             self.entry.entry_id,
             mutate=lambda settings: replace(
                 settings,
-                notifications=NotificationSettings(targets=phones),
                 identify_mode=mode,
                 target=TargetSocIntent(vehicle_id=kia, target_percent=80.0),
             ),
         )
+        # The phones that hear this charger (`notifications/phone_store.py`), as an older client chooses them.
+        await domain_data(hass).phones.async_charger_write(self.entry.entry_id, NotificationSettings(targets=phones))
         from custom_components.spotnav.vehicles import vehicle_properties
 
         if "Tesla" in self.cars:

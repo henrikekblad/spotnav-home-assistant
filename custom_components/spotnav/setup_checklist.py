@@ -67,10 +67,9 @@ from .const import (
     CONF_MEASUREMENT_MODE,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SOLAR_FORECAST_ENTRIES,
-    DOMAIN,
 )
 from .planning.auto_settings import DRIVER_TARGET_SOC, AutoSettings
-from .runtime import charger_data, domain_data
+from .runtime import domain_data
 from .site.grid_sign import KIND_CURRENT, KIND_POWER
 from .site.import_target import stored_import_target_kw
 
@@ -207,11 +206,8 @@ def app_used(hass: HomeAssistant) -> bool:
     store = domain_data(hass).decision_store
     if store is not None and store.confirmed_payload(DECISION_DOMAIN_SETUP_DONE, SETUP_APP) is not None:
         return True
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        data = charger_data(hass, entry.entry_id)
-        if data is not None and data.push is not None and data.push.registration is not None:
-            return True
-    return False
+    phones = domain_data(hass).phones
+    return phones is not None and any(phone.app is not None for phone in phones.phones)
 
 
 async def async_note_app_used(hass: HomeAssistant) -> None:
@@ -249,9 +245,7 @@ def capture_setup(
     `None` while it is not offered (`api/dashboard.py:capture_phase_switching`). `demand_needs_grid_power`: a
     demand-charge component or an import target is set and the site cannot measure it (`api/grid_tariff.py`).
     `grid_sign`: the site's grid sign warnings (`grid_sign_rows`)."""
-    data = charger_data(hass, entry_id)
-    push = None if data is None else data.push
-    app_notifies = push is not None and push.registration is not None
+    phones = domain_data(hass).phones
     left: list[str] = []
     if not has_vehicle:
         left.append(SETUP_VEHICLE)
@@ -267,7 +261,8 @@ def capture_setup(
         left.append(SETUP_DEMAND_GRID_POWER)
     if phase_switching is False:
         left.append(SETUP_PHASE_SWITCHING)
-    if settings is not None and not settings.notifications.targets and not app_notifies:
+    if settings is not None and phones is not None and not phones.has_recipient(entry_id):
+        # No phone that is on follows this charger by a route that exists (`notifications/phone_store.py`).
         left.append(SETUP_PHONE)
     if not app_used(hass):
         left.append(SETUP_APP)

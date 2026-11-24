@@ -1286,6 +1286,10 @@ def _capture_dashboard(
     # The area and fees are the price source's (`pricing/price_source.py`): the market, the `fiscal` block and the
     # settings record's `area_id`/`overrides` all follow it. Without a price entry it is the stored record.
     settings = None if store is None else effective_settings(hass, entry_id, store.settings(entry_id))
+    phones = domain_data(hass).phones
+    if settings is not None and phones is not None:
+        # The phones that hear this charger, as a client before the per-phone settings reads them.
+        settings = replace(settings, notifications=phones.charger_view(entry_id, settings.notifications.url))
     snapshot = None if preview is None else preview.snapshot()
     catalogue = None if repository is None else repository.catalogue_snapshot()
     area_id = None if settings is None else settings.area_id

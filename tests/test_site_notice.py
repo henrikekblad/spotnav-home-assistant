@@ -14,7 +14,10 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.notifications.heat_settings import HeatNotifications
+from custom_components.spotnav.notifications.phone_store import PhoneStore
+from custom_components.spotnav.notifications.phones import Phone, ordered_events
 from custom_components.spotnav.notifications.site_notice import SiteNotice
+from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.site.not_ready import car_item, deadline_item, site_block
 
 #: 2026-11-02 in Stockholm (UTC+1): 13:00, 22:30 and the next morning's 07:00.
@@ -127,16 +130,50 @@ def _bath(at: datetime = _BATH, cause: str = "import_target", short_kwh: float =
     return {"at": at.isoformat(), "cause": cause, "reach_c": 35.0, "short_c": 3.0, "short_kwh": short_kwh, "later": (at + timedelta(hours=1)).isoformat()}
 
 
+class _Phones(PhoneStore):
+    """The installation's phones as the world's cars and heat choice make them: each car's phones follow that car and
+    hear `plan_at_risk`; the heat phones follow no charger and hear the heat events (as the migration makes them)."""
+
+    def __init__(self, hass: HomeAssistant, world: _World) -> None:
+        super().__init__(hass)
+        self._world = world
+
+    @property
+    def _phones(self) -> tuple[Phone, ...]:
+        phones: dict[str, Phone] = {}
+        for charger, car in self._world.cars.items():
+            for service in car.targets:
+                found = phones.get(service) or Phone(id=f"ph_{len(phones):012x}", name=service, notify=service, on=True, events=(), chargers=())
+                phones[service] = Phone(
+                    id=found.id, name=service, notify=service, on=True,
+                    events=ordered_events((*found.events, "plan_at_risk")), chargers=(*(found.chargers or ()), charger),
+                )
+        heat = self._world.heat
+        for service in heat.targets:
+            found = phones.get(service) or Phone(id=f"ph_{len(phones):012x}", name=service, notify=service, on=True, events=(), chargers=())
+            phones[service] = Phone(
+                id=found.id, name=service, notify=service, on=True,
+                events=ordered_events((*found.events, *heat.events)), chargers=found.chargers,
+            )
+        return tuple(phones.values())
+
+    @_phones.setter
+    def _phones(self, _value: Any) -> None:
+        pass
+
+
 class _World:
-    def __init__(self, hass: HomeAssistant, cars: dict[str, _Car], heat_targets: tuple[str, ...] = ("mobile_app_ipad",)) -> None:
+    def __init__(
+        self, hass: HomeAssistant, cars: dict[str, _Car], heat_targets: tuple[str, ...] = ("mobile_app_ipad",), phones: bool = True
+    ) -> None:
         self.hass = hass
         self.cars = cars
         self.site = _Site()
         self.rechecks = 0
         self.heat = HeatNotifications(targets=heat_targets)
-        self.notice = SiteNotice(
-            hass, _SITE, site=self.site, notifier_of=cars.get, heat_notifications=lambda: self.heat, recheck=self._recheck
-        )
+        if phones:
+            domain_data(hass).phones = _Phones(hass, self)
+        self.notice = SiteNotice(hass, _SITE, site=self.site, notifier_of=cars.get, recheck=self._recheck)
         self.notice.async_start()
         self.car_blocks: dict[str, dict | None] = {}
         self.baths: list[dict] = []
@@ -295,7 +332,8 @@ async def test_a_car_away_or_held_by_a_stop_is_left_out(hass: HomeAssistant) -> 
         world.baths = [_bath()]
         world.tell()
         await hass.async_block_till_done()
-        assert _sent(world.pixel) == [], "only the car's phones, and the car is left out"
+        # The car is left out; every phone that hears "not ready in time" hears the spa's.
+        assert _sent(world.pixel)[0]["message"] == "Spa 19:00: reaches 35 °C"
         assert _sent(world.ipad)[0]["message"] == "Spa 19:00: reaches 35 °C"
         assert not world.cars["garage"].holds
 
@@ -304,6 +342,7 @@ async def test_no_phone_for_the_spa_tells_nothing(hass: HomeAssistant) -> None:
     with freeze_time(_DAY):
         world = await _world(hass)
         world.heat = HeatNotifications(targets=("mobile_app_ipad",), events=("pool_season",))
+        world.cars["garage"].targets = ()
         world.baths = [_bath()]
         world.tell()
         await hass.async_block_till_done()
@@ -369,12 +408,12 @@ async def test_the_told_deadlines_are_kept_across_a_restart(hass: HomeAssistant,
         await hass.async_block_till_done()
         world.notice.async_shutdown()
         await hass.async_block_till_done()
-        again = SiteNotice(hass, _SITE, site=world.site, notifier_of=world.cars.get, heat_notifications=lambda: world.heat, recheck=lambda: None)
+        again = SiteNotice(hass, _SITE, site=world.site, notifier_of=world.cars.get, recheck=lambda: None)
         # Saved after its delay.
         async_fire_time_changed(hass, _DAY + timedelta(seconds=5))
         await hass.async_block_till_done()
         await again.async_load()
-        assert again.on_phones == ("mobile_app_ipad",)
+        assert again.on_phones == ("mobile_app_pixel", "mobile_app_ipad")
         again.update(world.block(), {"garage": None})
         await hass.async_block_till_done()
         assert len(_sent(world.ipad)) == 1, "not told again after the restart"
@@ -545,7 +584,7 @@ async def test_a_held_plan_at_risk_is_told_once_its_car_drops_out_of_the_sites_n
         await hass.config.async_set_time_zone("Europe/Stockholm")
         entry, _calls = await _charger(hass, events=("plan_at_risk",))
         notifier = charger_data(hass, entry.entry_id).notifier
-        world = _World(hass, {entry.entry_id: notifier})
+        world = _World(hass, {entry.entry_id: notifier}, phones=False)
         calls = world.pixel  # the phone's service, mocked again by the world
         world.car_blocks[entry.entry_id] = _car_block()
         world.baths = [_bath()]
