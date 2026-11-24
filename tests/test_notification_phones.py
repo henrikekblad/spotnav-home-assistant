@@ -191,6 +191,40 @@ async def test_the_chargers_and_their_app_registration_migrate_once(
     assert len(phones.phones) == 2, "once"
 
 
+async def test_a_store_that_could_not_be_read_is_never_migrated_or_written_over(
+    hass: HomeAssistant, hass_storage: dict[str, Any], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    await setup_charger(hass, title="Garage")
+    kept = {"version": 1, "key": "spotnav.notification_phones", "data": {"migrated": True, "phones": [{"id": "x"}]}}
+    hass_storage["spotnav.notification_phones"] = kept
+    store = phone_store_module.PhoneStore(hass)
+
+    async def unreadable() -> None:
+        raise OSError("disk")
+
+    monkeypatch.setattr(store._store, "async_load", unreadable)  # noqa: SLF001
+    saved: list[Any] = []
+
+    async def save(data: Any) -> None:
+        saved.append(data)
+
+    monkeypatch.setattr(store._store, "async_save", save)  # noqa: SLF001
+    await store.async_load()
+    assert store.load_failed and store.phones == ()
+    await store.async_migrate()
+    await store.async_set_url("/lovelace/0")
+    await store.async_set_url("/lovelace/1")
+    assert saved == [] and hass_storage["spotnav.notification_phones"] is kept
+    assert caplog.text.count("are not saved") == 1
+    # A load that succeeds again lets the saves through.
+    monkeypatch.undo()
+    monkeypatch.setattr(store._store, "async_save", save)  # noqa: SLF001
+    await store.async_load()
+    assert not store.load_failed
+    await store.async_set_url("/lovelace/2")
+    assert len(saved) == 1
+
+
 # ------------------------------------------------------------------ routing on a real charger
 
 

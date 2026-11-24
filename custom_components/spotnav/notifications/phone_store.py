@@ -82,6 +82,11 @@ class PhoneStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, STORE_KEY)
         self._phones: tuple[Phone, ...] = ()
         self._migrated = False
+        #: The kept phones could not be read: no migration and no save (either would overwrite them) until a load
+        #: succeeds; the changes made meanwhile live in memory only.
+        self._load_failed = False
+        #: The skipped save is logged once.
+        self._skip_logged = False
         #: Where a tap opens when a charger has no dashboard of its own: the page an administrator last saved a phone
         #: from (`url` of `spotnav/update_notification_phone`).
         self._url: str | None = None
@@ -95,18 +100,35 @@ class PhoneStore:
         try:
             raw = await self._store.async_load()
         except Exception:  # noqa: BLE001 - the integration never fails to start on what the phones kept
-            _LOGGER.warning("SpotNav: the phones' notification settings could not be read", exc_info=True)
-            raw = None
+            _LOGGER.warning(
+                "SpotNav: the phones' notification settings could not be read; they are not written over until they can",
+                exc_info=True,
+            )
+            self._load_failed = True
+            return
+        self._load_failed = False
         if isinstance(raw, dict):
             self._phones = read_phones(raw.get("phones"))
             self._migrated = raw.get("migrated") is True
             url = raw.get("url")
             self._url = url if isinstance(url, str) and _PATH.match(url) else None
 
+    @property
+    def load_failed(self) -> bool:
+        return self._load_failed
+
     async def _async_save(self) -> None:
-        await self._store.async_save(
-            {"migrated": self._migrated, "url": self._url, "phones": [phone.as_dict() for phone in self._phones]}
-        )
+        if self._load_failed:
+            if not self._skip_logged:
+                self._skip_logged = True
+                _LOGGER.warning(
+                    "SpotNav: the phones' notification settings are not saved (they could not be read); "
+                    "changes last until Home Assistant restarts"
+                )
+        else:
+            await self._store.async_save(
+                {"migrated": self._migrated, "url": self._url, "phones": [phone.as_dict() for phone in self._phones]}
+            )
         for listener in list(self._listeners):
             listener()
 
@@ -116,7 +138,7 @@ class PhoneStore:
 
     async def async_migrate(self) -> None:
         """Once per installation: the per-charger, push and heat choices of the release before become phones."""
-        if self._migrated:
+        if self._migrated or self._load_failed:
             return
         from ..api.heat import stored_config  # noqa: PLC0415 - the API imports the notifier
         from ..vehicles.charger_inventory import charger_entries, site_entries  # noqa: PLC0415
@@ -136,7 +158,12 @@ class PhoneStore:
             migrated = migrate(chargers, heats, names, every_charger(self._hass))
             self._phones = (*self._phones, *migrated)[:MAX_PHONES]
             self._migrated = True
-            await self._async_save()
+            try:
+                await self._async_save()
+            except BaseException:
+                # Not kept: carried over again at the next start.
+                self._migrated = False
+                raise
         if migrated:
             _LOGGER.info("SpotNav: %d phones' notification settings carried over from the chargers", len(migrated))
 
