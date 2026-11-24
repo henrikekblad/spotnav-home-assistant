@@ -266,6 +266,18 @@ class SiteNotice:
                     outcomes[charger_entry_id] = outcome
             return outcomes
         involved = {item["load_id"] for item in asking if item["kind"] == "car"}
+        for charger_entry_id, car_block in car_blocks.items():
+            if charger_entry_id in involved:
+                continue
+            # Not in the site's notice: its own notifier is told as alone (its notice taken off once nothing asks, its
+            # held plan_at_risk let go; a car away or under a Stop is its notifier's to judge).
+            notifier = self._notifier_of(charger_entry_id)
+            if notifier is None:
+                continue
+            notifier.hold_for_site(False)
+            outcome = notifier.does_not_fit(car_block, recheck=self._recheck)
+            if outcome is not None:
+                outcomes[charger_entry_id] = outcome
         for charger_entry_id in involved:
             notifier = self._notifier_of(charger_entry_id)
             notifier.hold_for_site(True)
