@@ -311,7 +311,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # `basis` (`estimate`: the last reading carried by the energy delivered since; `last_known`: the last reading,
     # made at `read_at`; `full_charge`: from empty to the target; null when no plan was made from it), `soc_percent`
     # the level it planned from (null for `full_charge` and with no basis). `problem` is `reauth` when the car's
-    # integration (`integration`, its entry's title) waits for a new login, `setup_error` when it failed to start
+    # integration (`integration`, its own name, never an entry's title) waits for a new login, `setup_error` when it failed to start
     # (both something a person can fix in Devices & services), else null with `integration`.
     "soc_unreadable": (TONE_NOTICE, ("basis", "soc_percent", "read_at", "integration", "problem")),
     "price_data_stale": (TONE_NOTICE, ("reason",)),
@@ -528,7 +528,8 @@ class SocFacts:
 @dataclass(frozen=True, slots=True)
 class SocUnreadableFacts:
     """The car's level entity reads nothing now, the car is not known to be away, and it has been so long enough to
-    say (or its integration needs a person at once): `integration` is the car integration's entry title and `problem`
+    say (or its integration needs a person at once): `integration` is the car integration's own name (never an entry's
+    title, which can hold an e-mail address) and `problem`
     `reauth` or `setup_error` while that entry needs a person, else both `None`."""
 
     integration: str | None = None

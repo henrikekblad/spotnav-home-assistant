@@ -141,7 +141,7 @@ async def test_an_expired_login_is_named_at_once_and_clears_when_the_level_reads
         async def async_step_reauth_confirm(self, user_input: Any = None) -> Any:
             return self.async_show_form(step_id="reauth_confirm")
 
-    mock_integration(hass, MockModule("test"))
+    mock_integration(hass, MockModule("test", partial_manifest={"name": "Kia Connect"}))
     mock_platform(hass, "test.config_flow", None)
     with freeze_time(NOW) as frozen, mock_config_flow("test", _Flow):
         charger, soc_entity = await _car_read_then_lost(hass, transport, frozen)
@@ -149,7 +149,8 @@ async def test_an_expired_login_is_named_at_once_and_clears_when_the_level_reads
         assert car_entry is not None
         car_entry.mock_state(hass, ConfigEntryState.LOADED)
         er.async_get(hass).async_update_entity(soc_entity, config_entry_id="car_entry")
-        hass.config_entries.async_update_entry(car_entry, title="Kia Connect")
+        # A title a person may hold an e-mail address in: never said, the integration's own name is.
+        hass.config_entries.async_update_entry(car_entry, title="Kia Europe someone@example.com")
         car_entry.async_start_reauth(hass)
         await hass.async_block_till_done()
 
@@ -157,6 +158,7 @@ async def test_an_expired_login_is_named_at_once_and_clears_when_the_level_reads
         status = _status(hass, charger)
         assert status["soc_unreadable"]["problem"] == "reauth"
         assert status["soc_unreadable"]["integration"] == "Kia Connect"
+        assert "@" not in repr(status), "the entry's title (an e-mail address) reached the status"
 
         # The login is done and the car reads again: the line is gone, and the plan is made from the reading.
         for flow in hass.config_entries.flow.async_progress():
@@ -170,11 +172,15 @@ async def test_an_expired_login_is_named_at_once_and_clears_when_the_level_reads
 
 
 async def test_a_failed_start_of_the_cars_integration_is_named(hass: HomeAssistant) -> None:
-    entry = MockConfigEntry(domain="test", entry_id="broken", title="Car cloud")
+    """Named by the integration's own name, else its domain: never by the entry's title, which can hold an e-mail."""
+    entry = MockConfigEntry(domain="test", entry_id="broken", title="someone@example.com")
     entry.add_to_hass(hass)
     entry.mock_state(hass, ConfigEntryState.SETUP_ERROR)
     entity = er.async_get(hass).async_get_or_create("sensor", "test", "broken_soc", config_entry=entry)
-    assert level_problem.integration_problem(hass, entity.entity_id) == ("Car cloud", "setup_error")
+    # Not loaded: the domain.
+    assert level_problem.integration_problem(hass, entity.entity_id) == ("test", "setup_error")
+    mock_integration(hass, MockModule("test", partial_manifest={"name": "Car Cloud"}))
+    assert level_problem.integration_problem(hass, entity.entity_id) == ("Car Cloud", "setup_error")
     entry.mock_state(hass, ConfigEntryState.SETUP_RETRY)
     assert level_problem.integration_problem(hass, entity.entity_id) is None, "a retry is the integration's own"
 
