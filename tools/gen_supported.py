@@ -1652,7 +1652,8 @@ def vehicles_section() -> list[str]:
         "- **A Tesla that stopped its own charge.** A Tesla stopped from its app, or by a service linked to the car, "
         "takes no current whatever the charger offers. On Tesla Fleet (`tesla_fleet`), Teslemetry (`teslemetry`) and "
         "Tessie (`tessie`) SpotNav turns the car's charge switch on once per plug-in when the car refuses the "
-        "current below its target, and never turns it off "
+        "current below its target at an OCPP or Easee charger and the car is confirmed to be the one plugged in, and "
+        "never turns it off "
         "([starting the charge in the car](target-soc.md#starting-the-charge-in-the-car)).",
     ]
     lines.append("- Shapes the detection was checked to leave alone:")

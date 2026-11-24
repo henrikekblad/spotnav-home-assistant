@@ -172,10 +172,11 @@ start" told shortly before it.
 The same event also tells when **the car takes no current** the charger offers in a charge SpotNav runs (the plan's,
 a person's Start, the sun's, a catch-up after a missed departure, the car's minimum level), below both its target and
 its own charge limit, and SpotNav could not get it to take the charge: "The car is not taking current at 65 % though
-the target is 80 %. Start the charge in the car's app." It is told once per plug-in, from any charge, and in place of
-"the car takes no current" above. For a Tesla SpotNav first starts the charge in the car itself
-([target state of charge](target-soc.md#starting-the-charge-in-the-car)); the notice comes only when the car still
-takes nothing two minutes after that, or the car has no switch SpotNav can use.
+the target is 80 %. Start the charge in the car's app." It is told once per plug-in (also across a restart), from any
+charge, and in place of "the car takes no current" above. It is only for a Tesla whose charge SpotNav can start
+([target state of charge](target-soc.md#starting-the-charge-in-the-car)), confirmed to be the car at the charger:
+SpotNav first starts the charge in the car, and the notice comes only when the car still takes nothing two minutes
+after that, or the start cannot be made. Any other car gets "the car takes no current" as before.
 
 ## Not ready in time across the site
 

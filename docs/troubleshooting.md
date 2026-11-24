@@ -237,9 +237,10 @@ changes.
 - **The car does not take current.** The charger offers current but the car asks for none (`SuspendedEV`; Easee
   *Ready to charge* or *Completed*) below its target: the car has stopped its own charge, from its app, a schedule in
   the car, or a service linked to the car (an electricity company's smart charging, for example). Nothing the charger
-  does clears that. For a Tesla on Tesla Fleet, Teslemetry or Tessie SpotNav starts the charge in the car once per
-  plug-in ([starting the charge in the car](target-soc.md#starting-the-charge-in-the-car)); otherwise, or when that
-  did not help, the status and a notification say *Start the charge in the car's app*. Check the car's own charging
+  does clears that. For a Tesla on Tesla Fleet, Teslemetry or Tessie, at an OCPP or Easee charger, SpotNav starts the
+  charge in the car once per plug-in when it is sure the Tesla is the car at that charger
+  ([starting the charge in the car](target-soc.md#starting-the-charge-in-the-car)); when that did not help, the status
+  and a notification say *Start the charge in the car's app*. Otherwise start it in the car's app yourself. Check the car's own charging
   schedule and any service linked to the car too.
 - **Nothing is planned.** The card lists what is missing, for example the price area or the charging current.
   While tomorrow's prices are not published, SpotNav buys what the deadline requires now and plans the rest

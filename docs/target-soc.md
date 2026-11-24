@@ -214,15 +214,25 @@ The setting is offered only for a car whose integration has a wake SpotNav knows
 ## Starting the charge in the car
 
 A car can stop its own charge: a Tesla stopped from the Tesla app, or by a service linked to the car, stays stopped
-whatever the charger does. The charger offers current, the connector says the car asks for none (`SuspendedEV`;
-Easee's *Ready to charge* or *Completed* with no current), and only a start from the car's side clears it.
+whatever the charger does. The charger offers current, the car asks for none, and only a start from the car's side
+clears it.
 
-So when, in a charge SpotNav runs (the plan's charge in an open window, a person's Start, a solar or hybrid charge
-with enough sun, the catch-up after a missed departure, the car's minimum level), the charger offers current (not
-held by load balancing or by the charger itself, no phase switch settling, the start answered) and the car has taken
-nothing for two minutes with the connector saying it refuses, and the car's level (a reading or the estimate) is at
-least 2 percentage points below both the target and the car's own limit, SpotNav turns the car's charge switch **on**
-once:
+SpotNav turns the car's charge switch **on** once when all of these hold:
+
+- the charge is one SpotNav runs (the plan's charge in an open window, a person's Start, a solar or hybrid charge with
+  enough sun, the catch-up after a missed departure, the car's minimum level) and the charger offers current: not
+  held by load balancing or by the charger itself, no phase switch settling, the start answered, and the current it
+  offers at least 6 A where SpotNav reads it (Easee: its *Dynamic charger limit* sensor, enabled, and the circuit's
+  dynamic limit when read; a limit that cannot be read is no start);
+- for two minutes the car has taken nothing while the charger says the car refuses the offer. Only statuses verified
+  to mean that count: an OCPP connector's `SuspendedEV`, and Easee's *Ready to charge* and *Completed*. Any other
+  charger never starts the car;
+- the car is confirmed to be the car at this charger: its identification is settled for this plug-in (no question
+  open, not a guess, not claimed at another charger), and, where the car has them, its own plug sensor says plugged in
+  and its tracker says home (a sensor that reads nothing or is unavailable is no confirmation);
+- the car's level is at least 2 percentage points below both the target and the car's own limit, 5 points when the
+  level is an estimate or a reading older than six hours (a full car, or one at its own limit, is never poked);
+- the car has a charge switch SpotNav knows:
 
 | Integration | Switch |
 | --- | --- |
@@ -235,17 +245,19 @@ never turns the switch off and restores nothing: the switch reads on only while 
 the car's own setting was, and a stop from the car's side is exactly what made the charger's current go unused. The
 charger keeps all control of starting and stopping, as before. There is no setting.
 
-It is done at most once per plug-in, and never within 30 minutes of the last start in the same car; the start is
-stored first, so a restart does not repeat it. The call may wake the car, and Teslemetry bills commands, so a few a
-month at most. A call that fails or times out is only logged.
+It is done at most once per plug-in, never within 30 minutes of the last start in the same car and at most three times
+a day per car; the start is stored first, so a restart does not repeat it, and with no plug-in time known (no plug-in
+seen yet) nothing is started. A plug-in made while Home Assistant was down may read as the plug-in before and get no
+start. The call may wake the car, and Teslemetry bills commands. A call that fails or times out is only logged.
 
-When the car still takes nothing two minutes after that start, or it has no such switch (another car, a switch that
-is unavailable or disabled), the person is told once per plug-in (*The car is not taking current at 65 % though the
-target is 80 %. Start the charge in the car's app.*, [notifications](notifications.md)), and the card's status says
-the same until the car draws or is unplugged. The car ending the charge is handled as before, its five minutes
-counted from the start in the car. A full car, or one at its own limit, is never started nor told about. The charger's
-diagnostics show each car's last start (`vehicle_charge_start`: when, which switch, for which plug-in, the result, and
-the plug-in whose notice was told).
+When the car still takes nothing two minutes after the call has answered, or the start cannot be made (used up for
+the plug-in, too soon, the switch unavailable), and the car's level, read again, still allows it, the person is told
+once per plug-in (*The car is not taking current at 65 % though the target is 80 %. Start the charge in the car's
+app.*, [notifications](notifications.md)), and the card's status says the same until the car draws or is unplugged,
+also after a restart. The car ending the charge is handled as before, its five minutes counted from the call's answer.
+A car with no such switch, or not confirmed to be here, keeps what it had: the plain notice that the car takes no
+current, and the car's end. The charger's diagnostics show each car's last start (`vehicle_charge_start`: when, which
+switch, for which plug-in, the result, the starts of the last day, and the notice told for the plug-in).
 
 ## Vehicle charge limit
 
