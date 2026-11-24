@@ -145,6 +145,7 @@ from .verify import (
     Timing,
     Verification,
     phase_charge_step,
+    supported_modes,
 )
 
 if TYPE_CHECKING:
@@ -818,7 +819,20 @@ class BatteryControl:
         options = options or self.options()
         if self.state(options) != "on":
             return frozenset()
-        return gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge())
+        return self._supported(gate.allowed_actions(
+            self.report(), options, export_needs_charge=self._export_needs_charge()
+        ))
+
+    def _supported(self, actions: frozenset[str]) -> frozenset[str]:
+        """The actions the plant's recipe has (a limits-only recipe has no grid charge or sale): a report never allows
+        what the executor would refuse."""
+        control = control_for(self.facts.brand)
+        return frozenset() if control is None else frozenset(action for action in actions if control.supports(action))
+
+    def _supported_modes(self) -> frozenset[str] | None:
+        """The battery modes the plant's recipe has an action for (`verify.supported_modes`), `None` without one."""
+        control = control_for(self.facts.brand)
+        return None if control is None else supported_modes(control)
 
     def _export_needs_charge(self) -> bool:
         """Whether this brand's discharge to the grid needs the charge step passed (`gate.allowed_actions`)."""
@@ -1342,7 +1356,7 @@ class BatteryControl:
         attempt = (previous or {}).get("attempts")
         self._verify_attempt = (attempt if isinstance(attempt, int) else 0) + 1
         self._verify_key = key
-        modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous)
+        modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous, self._supported_modes())
         if self._per_phase_due(previous):
             modes = (*modes, gate.MODE_PER_PHASE)
         expiry = self._expiry_to_test(previous) if self._expiry_due(previous) else None
@@ -1460,7 +1474,7 @@ class BatteryControl:
         report = self.report()
         state = self.state(options)
         if state not in ("waiting", "on") or not (
-            gate.needs_run(report) or self._per_phase_due(report) or self._expiry_due(report)
+            gate.needs_run(report, self._supported_modes()) or self._per_phase_due(report) or self._expiry_due(report)
         ):
             self.waiting_for = None
             return
@@ -1786,7 +1800,7 @@ class BatteryControl:
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         report = self.report()
-        allowed = gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge())
+        allowed = self._supported(gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge()))
         cap, caps = self._charge_limits(now, options)
         if caps is None and gate.charge_by_phases(report):
             # The charge was shown only per phase: the balanced one is never run on that.
@@ -2397,6 +2411,9 @@ class BatteryControl:
         command can never disagree. `cap_kw` `None` with the rule `import_limit` is no cap of this kind (the plant's
         own import limit guards the fuse); a cap that cannot be worked out is 0 with the rule `error`, never no cap."""
         try:
+            control = control_for(self.facts.brand)
+            if control is not None and not control.supports(ACTION_GRID_CHARGE):
+                return 0.0, RULE_NO_GRID_CHARGE  # a limits-only recipe: control never charges from the grid
             options = self.options()
             executor = self.executor
             phased = executor is not None and executor.control.phased
