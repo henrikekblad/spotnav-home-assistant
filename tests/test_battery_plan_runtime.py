@@ -1106,7 +1106,9 @@ async def test_each_quarter_hour_feeds_the_round_trip_and_the_plan_uses_it_once_
     controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 2))
     await hass.async_block_till_done()
 
-    assert plan.inputs["battery"]["round_trip_efficiency"] == 0.83
+    # Sigenergy's battery power is read at the battery (DC): the plan takes the round trip on the AC side, with the
+    # assumed conversion loss until one is learnt.
+    assert plan.inputs["battery"]["round_trip_efficiency"] == round(0.83 * 0.95 / 1.03, 3)
     assert EST_ROUND_TRIP not in plan.inputs["estimates"]
 
 

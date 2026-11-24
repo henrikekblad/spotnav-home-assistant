@@ -188,12 +188,34 @@ def _battery(controller: Any) -> BatteryInputs | None:
         control=_control_state(controller),
         action_now=_action_now(controller),
         power_kw=facts.power_kw,
-        round_trip=plan.learned.round_trip_efficiency,
+        round_trip=_plan_round_trip(facts, plan.learned),
         round_trip_learned=plan.learned.round_trip.efficiency is not None,
         round_trip_series=tuple(
-            (window.end.date().isoformat(), window.efficiency) for window in plan.learned.round_trip.windows
+            (window.end.date().isoformat(), _on_ac_side(facts, plan.learned, window.efficiency))
+            for window in plan.learned.round_trip.windows
         ),
     )
+
+
+def _plan_round_trip(facts: Any, learned: Any) -> float:
+    """The round trip the plan uses (`battery/learned.with_learned`): on a battery read at the battery the AC one, not
+    the counters' own; the assumed one until it is learnt."""
+    from ..battery.learned import with_learned  # noqa: PLC0415
+    from ..battery.plan_model import DEFAULT_ROUND_TRIP_EFFICIENCY  # noqa: PLC0415
+
+    if getattr(facts, "battery_entity_id", None) is None:
+        return float(learned.round_trip_efficiency)
+    value = with_learned(facts, learned).round_trip_efficiency
+    return DEFAULT_ROUND_TRIP_EFFICIENCY if value is None else float(value)
+
+
+def _on_ac_side(facts: Any, learned: Any, efficiency: float) -> float:
+    """A window's round trip as the plan counts it: turned to the AC side on a battery read at the battery."""
+    from ..battery.conversion_loss import ac_round_trip  # noqa: PLC0415
+
+    if not getattr(facts, "power_dc", False):
+        return efficiency
+    return ac_round_trip(efficiency, learned.conversion.loss(True))
 
 
 def _action_now(controller: Any) -> str | None:

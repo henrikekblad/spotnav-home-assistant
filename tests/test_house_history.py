@@ -592,3 +592,13 @@ def test_contract_fixtures() -> None:
     first, _ = utc_bounds(year, TZ)
     hours = [first + timedelta(hours=offset) for offset in range(0, 24 * 319, 3)]
     _fixture("house_alone_year.json", house_history(month_inputs(period=year, periods=[EnergyHour(start=h, grid_in=2.4, grid_out=0.0) for h in hours], has_solar=False, has_battery=False, has_heat=False, reviews=None)))
+
+
+def test_a_day_the_battery_lost_money_says_loss_beside_its_zero_share() -> None:
+    from custom_components.spotnav.site.house_period import SHARE_LOSS, _day_shares
+
+    made = review(date(2026, 11, 12), facit=facit_for(date(2026, 11, 12), 900.0, -470.0, 820.0, 760.0))
+    shares = _day_shares(made)
+    assert shares["own_share"] == 0.0 and shares["share_note"] == SHARE_LOSS
+    kept = review(date(2026, 11, 12), facit=facit_for(date(2026, 11, 12), 900.0, 470.0, 820.0, 760.0))
+    assert _day_shares(kept)["share_note"] is None

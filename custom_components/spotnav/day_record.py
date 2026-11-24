@@ -68,6 +68,7 @@ QUARTER_COLUMNS: Final = (
     "ran_kw",
     "ran_soc",
     "ran_modes",
+    "battery_ac_kwh",
 )
 FORECAST_COLUMNS: Final = ("hour", "value", "made_at", "outcome")
 PRICE_COLUMNS: Final = ("start", "end", "spot", "buy", "sell")

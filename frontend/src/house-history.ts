@@ -133,7 +133,7 @@ export interface HouseReviewDay {
   own_share: number | null;
   plan_share: number | null;
   /** Why a day with a perfect plan has no share: under 90 % measured, or too small a difference to compare. */
-  share_note: "partial" | "small" | null;
+  share_note: "partial" | "small" | "loss" | null;
 }
 
 export interface HouseReview {
@@ -300,7 +300,7 @@ function cost(value: unknown): HouseCost | null {
 
 /** A day's `share_note`: a known reason, else none (a newer backend's word is not shown as a reason). */
 function shareNote(value: unknown): HouseReviewDay["share_note"] {
-  return value === "partial" || value === "small" ? value : value === null ? null : (text(value), null);
+  return value === "partial" || value === "small" || value === "loss" ? value : value === null ? null : (text(value), null);
 }
 
 function review(value: unknown): HouseReview | null {
@@ -670,13 +670,13 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
   const { doc, language } = input;
   const ownName = translate(language, "house.compare.own");
   const block = section(doc, translate(language, "perfect.headingPeriod"), "perfect");
-  const headline = perfectHeadline(language, perfect, ownName);
+  const headline = perfectHeadline(language, perfect, ownName, answer.money);
   if (headline !== null) {
     const line = element(doc, "p", H.perfectHead, headline);
     line.dataset["line"] = "perfect-headline";
     block.append(line);
   }
-  block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode));
+  block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode, answer.money));
   // The figures first, then every word about them together.
   const table = perfectTable(doc, language, perfect, answer.money, ownName);
   if (table !== null) {
@@ -760,7 +760,15 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
       row.append(element(doc, "td", undefined, value === null ? "–" : amount(language, value, answer.money)));
     }
     if (shares) {
-      const cell = day.own_share !== null ? `${formatNumber(language, day.own_share, 0)} %` : day.share_note === null ? "–" : translate(language, `hist.house.share.${day.share_note}`);
+      // A day the battery's own way lost money says "loss", not "0 %".
+      const cell =
+        day.share_note === "loss"
+          ? translate(language, "hist.house.share.loss")
+          : day.own_share !== null
+            ? `${formatNumber(language, day.own_share, 0)} %`
+            : day.share_note === null
+              ? "–"
+              : translate(language, `hist.house.share.${day.share_note}`);
       row.append(element(doc, "td", day.own_share === null && day.share_note !== null ? C.muted : undefined, cell));
     }
     rows.append(row);

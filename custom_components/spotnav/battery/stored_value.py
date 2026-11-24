@@ -12,7 +12,8 @@ weighted-average cost is kept, carried across days and across restarts (`as_dict
   hour less that cost: the buy price for a kWh the house used, the sell price for a kWh the battery exported. The
   export from the battery is arbitrage, not "sold": a quarter hour's export counts as the battery's first, up to what
   it gave, and the rest is the sun's surplus, which alone is `sold`.
-* **Losses**: the kWh are counted on the AC side (the battery's measured power), and after each quarter hour the
+* **Losses**: the kWh are counted on the AC side (`Bucket.battery_ac`: the battery's measured power, turned to the
+  AC side where it is read at the battery, `conversion_loss.py`), and after each quarter hour the
   stock is set to what the SoC says is stored (`soc × usable`) with the cost kept. A round trip's loss so makes the
   stored kWh fewer for the same money, which raises the average cost of the rest; it never shows as a loss of its
   own. Without a SoC or a size the AC count stands.
@@ -185,7 +186,7 @@ class StoredValue:
         self.last = bucket.start
         buy, sell = float(bucket.buy), float(bucket.sell)
         imported, exported = bucket.scaled(bucket.import_kwh), bucket.scaled(bucket.export_kwh)
-        moved = bucket.scaled(bucket.battery_kwh)
+        moved = bucket.scaled(bucket.battery_ac)
         day = bucket.start.astimezone(time_zones.require_zone(tz)).date()
         money = self.days.setdefault(day, DayMoney())
         money.quarters += 1

@@ -270,9 +270,19 @@ and sold *to the grid*. A share stands on its bar only, the money and the work i
 best the battery could have done that day in hindsight, with the measured house, sun and car and the same battery,
 against the same day with no battery. The rules that keep it fair:
   * Every way is measured against one perfect plan, under the most permissive rules any of them used, so none can
-    beat it: where selling was possible that day (the site sent energy to the grid, or the battery's own control or a
-    SpotNav mode sold) it is allowed to sell, with Max profit's rules; otherwise it does not sell either. The note
-    under the shares says which.
+    beat it: where selling was possible that day (the battery's own control or a SpotNav mode sent at least 0.1 kWh
+    from the battery to the grid; the sun's surplus and a meter's few watt-hours do not count) it is allowed to sell,
+    with Max profit's rules; otherwise it does not sell either. The note under the shares says which. A day stored
+    before these rules is read against the same plan where it can be (Max profit's, which on a day nothing was sold is
+    the plan that does not sell), not against the site's mode's.
+  * The battery is counted where the meter sees it, on the AC side. Many hybrid inverters report the battery's power
+    at the battery (DC), which leaves out the inverter's own loss on the way in and out (on a Sigenergy plant about
+    3.5 % of a charge and 6.5 % of a discharge). Counted as read, that loss would sit in the house: the day with no
+    battery and every other way would pay for losses only the real battery's running caused, and the battery's own
+    control could come out above the perfect plan. So SpotNav turns such a reading to the AC side first: with the loss
+    learnt from the plant's own house load where the plant reports one (Sigenergy), else an assumed 3 % in and 5 % out.
+    The perfect plan and SpotNav's modes then use the round trip on the AC side too (about 87 % on that plant, where
+    its own counters say 96-97 %). Batteries read on the AC side, or whose side is not known, are counted as read.
   * Every way starts the day at the same measured level, and what is left in the battery at midnight counts at the
     next day's mean buy price (with fees) less the battery's losses: a price that is known at the time, as the next
     day's prices come at about 13:00. Until they are in, the day uses its own price and says so.
@@ -280,6 +290,27 @@ against the same day with no battery. The rules that keep it fair:
   * A share is shown only where the perfect plan saves at least 5 kr a day (5 € on a euro site); below that it says
     "too small a difference to compare". A week or a month sums the savings over its whole days first and then
     divides, so a charge on one day and the discharge it pays for on the next even out.
+  * A way that cost more than no battery shows its loss ("loss 47 kr"; in the headline "The battery's own control:
+    loss 47 kr against no battery"), not a share, and a day it did so says "loss" in the day table instead of "0 %". A share above 100 % is shown as
+    100 % with a note: the model's battery has no ramps and an even loss, so it can now and then be beaten by a little.
+
+**Days counted before the AC side** (SpotNav 3.0 beta 6). On a battery read at the battery (Sigenergy, SolarEdge,
+Victron, GoodWe) the days already on the Info tab were counted with the inverter's loss in the house, which made the
+battery's own control look better than it was (on the owner's plant by about 7-13 kr a day). After the update they
+are counted again, once, in the background:
+  * the days whose quarter hours are still kept (the last two or three) are reviewed again from them;
+  * older days, up to the 30 kept, are rebuilt from Home Assistant's recorder: the grid's and the battery's power per
+    five minutes where the recorder still has them (ten days by default), else per hour. The day with no battery,
+    plain self-consumption and the perfect plan are worked out again; the battery's own control falls by the loss's
+    cost (the day with no battery counted with the battery as read less on the AC side, from the same statistics), and
+    SpotNav's modes keep their saving (the loss was in their house and in the day with no battery alike), now
+    measured against the new perfect plan. An hourly day is a little less exact: an hour that both charged and
+    discharged nets the two;
+  * a day that cannot be rebuilt keeps its old figures: no recorder statistics of the grid or the battery, no prices
+    for it, statistics covering under 90 % or over 110 % of the quarter hours the review covered (a day cut short by a
+    restart), or no perfect plan that can be worked out. It is tried again after a restart.
+So the battery's own control's share and saving drop on those days, *The battery saved* under Money drops by the same
+loss, and SpotNav's modes against self-consumption stay as they were.
 
 Before the first whole day with a perfect plan the section is *The battery's modes against self-consumption* instead:
 each of SpotNav's modes and the battery's own control in money, against the battery only storing its own sun.

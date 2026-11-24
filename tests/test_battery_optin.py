@@ -367,7 +367,7 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
 _NO_ENTITY_FIELDS = {"brand", "label", "platforms", "manufacturer", "plant_phase_sign", "plant_max_attribute", "package"}
 _ENTITY_FIELDS = {
     "facts", "modes", "grid_status", "hold", "grid_charge", "plant_max", "reserves", "plant_phase_power",
-    "cell_temperature", "soc_packs", "preheat",
+    "cell_temperature", "soc_packs", "preheat", "dc_power", "plant_load_power", "plant_pv_power",
 }
 
 
@@ -381,6 +381,7 @@ def _named_matches(adapter: Any) -> list[Any]:
     found += [source.match for source in adapter.reserves]
     found += list(adapter.plant_phase_power or ())
     found += list(adapter.cell_temperature)
+    found += [m for m in (adapter.dc_power, adapter.plant_load_power, adapter.plant_pv_power) if m is not None]
     for pack in adapter.soc_packs:
         found += [pack.soc] + ([] if pack.remaining is None else [pack.remaining])
     heater = adapter.preheat
