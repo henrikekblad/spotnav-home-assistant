@@ -144,7 +144,17 @@ a vehicle integration, charge a fixed number of kWh instead.
   top-off is not needed then: the catch-up covers a car charging to its own limit, and a top-off after it
   never runs past its three hours.
 - **Unreadable levels never stop a charge and never prevent one.** A sleeping car reports
-  nothing; the period's own end remains the guard.
+  nothing; the period's own end remains the guard. While the car's level sensor reads nothing (an expired
+  login of the car's integration, a cloud outage), the target is still planned: from the estimate carried
+  from the last reading by the energy the charger delivered since, else from the last reading the charger
+  holds, else as a full charge from empty to the target (the most the target can ask for; the car ends it
+  when full). The status says so calmly, as a notice, never as a missing setting: *The car's charge level
+  can't be read; planning from the estimated 88 %* or *…from the last known 88 % (Mon 20:30)*. It waits 15
+  minutes without a value before saying so, so a cloud poll that drops out says nothing, and it says nothing
+  while the charger shows the car unplugged. When the car's integration waits for a new login, or failed to
+  start, it is named at once (*Kia Connect needs you to sign in again, so the car's charge level can't be
+  read*) with a button to **Settings → Devices & services** for an administrator. The notice ends by itself
+  when the level reads again.
 - **Manual Start** is a decision by a person and is not vetoed by a level at or above the
   target.
 - A reached target overshoots slightly: the reading that crossed it describes where the car was

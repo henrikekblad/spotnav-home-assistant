@@ -531,9 +531,10 @@ export function issueRow(
   const row = element(doc, "div", C.issueItem);
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
-  // A charger's own setting is set back by an administrator only; the import target is set aside by anyone.
+  // A charger's own setting is set back, and Devices & services opened, by an administrator only; the import target
+  // is set aside by anyone.
   const offered =
-    fix !== null && issue.fix !== undefined && (admin || issue.fix.action !== undefined) ? issue.fix : null;
+    fix !== null && issue.fix !== undefined && (admin || issue.fix.action === "release_import_target") ? issue.fix : null;
   const text = issueText(model.language, issue);
   const hint = offered === null && issue.hintKey !== undefined ? ` ${translate(model.language, issue.hintKey)}` : "";
   row.append(element(doc, "span", C.issueText, `${text}${hint}`));

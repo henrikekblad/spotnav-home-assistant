@@ -136,6 +136,10 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
       confirmRelease(null);
       return;
     }
+    if (fix.action === "open_integrations") {
+      navigateTo(doc, fix.value);
+      return;
+    }
     input.onFixOwnMode?.(fix.entity, fix.value);
   }
 

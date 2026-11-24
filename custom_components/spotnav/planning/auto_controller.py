@@ -156,6 +156,12 @@ def _calendar_used(found: CalendarDeparture, applied: str | None) -> dict[str, A
     }
 
 
+#: What a target is planned from while the car's level cannot be read (`AutoPlannerController._soc_basis`): the
+#: estimate from the last reading and the energy delivered since, the last reading held, or a full charge.
+SOC_BASIS_ESTIMATE: Final = "estimate"
+SOC_BASIS_LAST_KNOWN: Final = "last_known"
+SOC_BASIS_FULL_CHARGE: Final = "full_charge"
+
 #: A guest car with no departure is charged within this long of the calculation (`vehicles/guest.py`).
 GUEST_WITHIN: Final = timedelta(hours=12)
 
@@ -475,6 +481,13 @@ class LiveVehicleFacts:
     soc_estimated: bool = False
     #: The car's minimum charge level (`vehicle_properties`), `None` when off.
     min_percent: float | None = None
+    #: The car's level entity resolves but reads nothing now (an expired login, a cloud outage, a sleeping car):
+    #: `soc_percent` is then an estimate, or `None`.
+    soc_unreadable: bool = False
+    #: The last real reading held for this car and when it was made (`SocReader.last_known`), for a plan made while
+    #: the level cannot be read and no estimate can be made.
+    last_known_percent: float | None = None
+    last_known_at: datetime | None = None
 
 
 def live_vehicle_facts(
@@ -493,6 +506,7 @@ def live_vehicle_facts(
     if reading is None or reading.soc_percent is None:
         # Planned without a level: the first one that arrives plans again (`SocReader.await_reading`).
         soc_source.await_reading(stored_vehicle_id or None)
+    last_known = soc_source.last_known(vehicle_id)
     return LiveVehicleFacts(
         vehicle_id=vehicle_id or "",
         soc_percent=None if reading is None else reading.soc_percent,
@@ -502,6 +516,9 @@ def live_vehicle_facts(
         soc_age_s=None if reading is None else reading.age_s,
         soc_estimated=bool(reading is not None and reading.estimated),
         min_percent=stored_properties(hass, vehicle_id).min_percent,
+        soc_unreadable=soc_source.unreadable_entity(vehicle_id) is not None,
+        last_known_percent=None if last_known is None else last_known[0],
+        last_known_at=None if last_known is None else last_known[1],
     )
 
 
@@ -545,6 +562,12 @@ class _EnergyResolution:
     #: The battery size learned from charging (`learned_energy.learned_capacity_kwh`) when nobody states one and
     #: the need was worked out with it (a target, "Fill" or a need capped at the room); `None` otherwise.
     learned_capacity_kwh: float | None = None
+    #: A target whose car's level cannot be read now: what the need was worked out from (`SOC_BASIS_*`), the level it
+    #: started from (`None` for a full charge) and when that level was read (`None` for a full charge); `None` while
+    #: the level reads.
+    soc_basis: str | None = None
+    soc_basis_percent: float | None = None
+    soc_basis_read_at: datetime | None = None
 
 
 def _departure_fields(settings: AutoSettings) -> tuple[Any, ...]:
@@ -626,6 +649,12 @@ class AutoSnapshot:
     #: The battery size learned from charging the need was worked out with, since nobody states one
     #: (`_EnergyResolution.learned_capacity_kwh`); `None` otherwise.
     learned_capacity_kwh: float | None = None
+    #: A target planned while the car's level cannot be read (`_EnergyResolution.soc_basis`): `estimate`,
+    #: `last_known` or `full_charge`, the level it was planned from and when that level was read; `None` while the
+    #: level reads.
+    soc_basis: str | None = None
+    soc_basis_percent: float | None = None
+    soc_basis_read_at: datetime | None = None
     #: The departure instant this calculation planned for, or `None` without one: a plan carries it, so
     #: a top-off past its last window never runs beyond it (`execution/top_off.py`).
     departure_at: datetime | None = None
@@ -678,6 +707,8 @@ class AutoSnapshot:
             self.room_limited,
             self.fill,
             None if self.learned_capacity_kwh is None else round(self.learned_capacity_kwh),
+            self.soc_basis,
+            None if self.soc_basis_percent is None else round(self.soc_basis_percent),
             None if self.proposal is None else self._proposal_key(self.proposal),
             None if self.catch_up is None else self.catch_up.as_dict(),
         )
@@ -1627,6 +1658,12 @@ class AutoPlannerController:
             )
         if resolved.learned_capacity_kwh is not None:
             energy["learned_capacity_kwh"] = resolved.learned_capacity_kwh
+        if resolved.soc_basis is not None:
+            energy.update(
+                soc_basis=resolved.soc_basis,
+                soc_basis_percent=resolved.soc_basis_percent,
+                soc_basis_read_at=resolved.soc_basis_read_at,
+            )
 
         if energy_kwh <= price_wait.EPSILON_KWH:
             # A manual need fully delivered: answered like `target_soc`'s `already_at_target`, since
@@ -2986,14 +3023,16 @@ class AutoPlannerController:
                 settings, await self._manual_kwh_remaining(settings, calculated_at, entry, preview=preview)
             )
         facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
-        live_soc = None if facts is None else facts.soc_percent
-        if live_soc is None:
+        if facts is None or not facts.vehicle_id:
+            # No car resolves for the target (the chosen one is gone, or several are left to choose between):
+            # choosing it in Settings is what plans it.
             return self._fresh_snapshot(
                 settings, "incomplete_settings", "target_soc_unknown", calculated_at,
-                missing=("live_soc",), entry=entry, price_snapshot=price_snapshot,
+                missing=("vehicle",), entry=entry, price_snapshot=price_snapshot,
             )
+        live_soc, basis = self._soc_basis(facts, calculated_at)
         capacity = None
-        if facts is not None and facts.reported_capacity_kwh is not None:
+        if facts.reported_capacity_kwh is not None:
             capacity = facts.reported_capacity_kwh
         planned_from = self._planned_from_floor(settings, facts, live_soc, calculated_at)
         # Energy the wall must deliver: battery need divided by charging efficiency
@@ -3024,7 +3063,8 @@ class AutoPlannerController:
                 settings, "nothing_to_charge", "already_at_target", calculated_at,
                 entry=entry, price_snapshot=price_snapshot,
             )
-        if wall_kwh is not None and facts is not None:
+        if wall_kwh is not None and basis is None:
+            # Only on a level read now: the wait is for the car's next report after a charge.
             waiting = self._vehicle_update_wait(
                 settings, facts, wall_kwh, calculated_at, entry, price_snapshot, preview=preview
             )
@@ -3035,7 +3075,36 @@ class AutoPlannerController:
         return _EnergyResolution(
             kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity,
             kwh_per_percent=learned.kwh_per_percent_for(capacity), learned_capacity_kwh=learned_capacity,
+            soc_basis=None if basis is None else basis[0],
+            soc_basis_percent=None if basis is None or basis[0] == SOC_BASIS_FULL_CHARGE else live_soc,
+            soc_basis_read_at=None if basis is None else basis[1],
         )
+
+    @staticmethod
+    def _soc_basis(
+        facts: LiveVehicleFacts, now: datetime
+    ) -> tuple[float, tuple[str, datetime | None] | None]:
+        """The level a target is planned from, and, while the car's level cannot be read now, what it is
+        (`SOC_BASIS_*`) with when that level was read.
+
+        A level read now (or an estimate carried from one while the car's sensor still reads) plans as it is, with
+        no basis. While the sensor reads nothing: the estimate from the last reading and the energy delivered since
+        (the one the target stop uses), else the last reading this charger holds, else a full charge from empty to
+        the target. A full charge is the most energy the target can ask for: the car is never left short by a level
+        nobody could read, and it ends the charge itself when full. Never a refusal: nothing in Settings fixes an
+        unreadable level (docs/target-soc.md).
+        """
+        live = facts.soc_percent
+        if live is not None:
+            if not (facts.soc_unreadable and facts.soc_estimated):
+                return live, None
+            read_at = None
+            if facts.soc_age_s is not None:
+                read_at = now - timedelta(seconds=facts.soc_age_s)
+            return live, (SOC_BASIS_ESTIMATE, read_at)
+        if facts.last_known_percent is not None:
+            return facts.last_known_percent, (SOC_BASIS_LAST_KNOWN, facts.last_known_at)
+        return 0.0, (SOC_BASIS_FULL_CHARGE, None)
 
     def _planned_from_floor(
         self, settings: AutoSettings, facts: LiveVehicleFacts | None, live_soc: float, calculated_at: datetime
