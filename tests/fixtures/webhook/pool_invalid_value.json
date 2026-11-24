@@ -1,0 +1,82 @@
+{
+  "action": "pool",
+  "api_version": 1,
+  "error": "spotnav_invalid_value",
+  "ok": false,
+  "pool": {
+    "circulation": {
+      "failures": 0,
+      "kw": 0.4,
+      "live": false,
+      "on": false,
+      "paused_until": null,
+      "reason": "cheap",
+      "state": "watched"
+    },
+    "extra": {
+      "hours": 2,
+      "until": "2026-09-23T07:00:00+00:00"
+    },
+    "heat_pump": {
+      "failures": 0,
+      "heating": false,
+      "kw": 1.6,
+      "live": false,
+      "on": true,
+      "paused_until": null,
+      "reason": "cheap",
+      "state": "watched"
+    },
+    "notes": [],
+    "planned": [
+      {
+        "end": "2026-09-22T16:00:00+00:00",
+        "reason": "cheap",
+        "start": "2026-09-22T07:00:00+00:00",
+        "what": "heat"
+      },
+      {
+        "end": "2026-09-22T19:00:00+00:00",
+        "reason": "extra",
+        "start": "2026-09-22T18:00:00+00:00",
+        "what": "extra"
+      },
+      {
+        "end": "2026-09-23T05:00:00+00:00",
+        "reason": "cheap",
+        "start": "2026-09-22T19:00:00+00:00",
+        "what": "heat"
+      },
+      {
+        "end": "2026-09-23T06:00:00+00:00",
+        "reason": "extra",
+        "start": "2026-09-23T05:00:00+00:00",
+        "what": "extra"
+      },
+      {
+        "end": "2026-09-23T07:00:00+00:00",
+        "reason": "cheap",
+        "start": "2026-09-23T06:00:00+00:00",
+        "what": "heat"
+      }
+    ],
+    "season_hint": false,
+    "season_open": true,
+    "target_c": 28.0,
+    "today": {
+      "done_h": 0.0,
+      "heat_h": 19.5,
+      "kwh": 24.4,
+      "need_h": 8.25,
+      "need_source": "water",
+      "planned_h": 13.0
+    },
+    "water_c": 24.6,
+    "water_source": "sensor",
+    "would": {
+      "action": "heat",
+      "reason": "cheap",
+      "until": "2026-09-22T16:00:00+00:00"
+    }
+  }
+}

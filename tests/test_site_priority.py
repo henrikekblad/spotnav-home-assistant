@@ -433,3 +433,46 @@ async def test_older_app_writes_in_a_row_read_back_and_order_by_class(hass: Home
         "result"
     ]
     assert _read_back(again) == "first"
+
+
+async def test_the_webhook_reads_every_row_the_site_has(hass: HomeAssistant, hass_client_no_auth) -> None:
+    """`tests/fixtures/webhook/get_site_settings_view_priority.json` (`SPOTNAV_WRITE_FIXTURES=1` rewrites it): two
+    chargers, house heat, the water heater, the home battery and the pool, as an app reads them over the webhook."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    from custom_components.spotnav.const import CONF_HEAT  # noqa: PLC0415
+
+    from .test_webhook_parity import _pin, _pinned, post  # noqa: PLC0415
+
+    controller = await _site_with(hass, "ab")
+    site = hass.config_entries.async_get_entry("prio_site")
+    for entity_id in ("switch.relay", "switch.vvb", "switch.pool_cirkulation"):
+        hass.states.async_set(entity_id, "off")
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "idle", "current_temperature": 24.0})
+    heat = {
+        "control_path": "relay",
+        "control_entity": "switch.relay",
+        "water_heater": {"entity_id": "switch.vvb", "control": False, "tank_sensor": None},
+        "pool": {"heat_pump": {"entity_id": "climate.poolpump"}, "circulation_id": "switch.pool_cirkulation"},
+    }
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    await hass.async_block_till_done()
+    # The battery's facts as read from its integration: only its entity is needed for its row.
+    shadow = controller.battery_shadow  # type: ignore[attr-defined]
+    shadow.facts = replace(shadow.facts, battery_entity_id="sensor.battery_soc")
+    client = await hass_client_no_auth()
+    status, body = await post(client, "webhook-ca", {"action": "get_site_settings_view"})
+    assert status == 200 and body["ok"] is True
+    assert body["priority"] == {
+        "order": [
+            {"id": "heat", "name": None},
+            {"id": "charger:ca", "name": "Charger a"},
+            {"id": "charger:cb", "name": "Charger b"},
+            {"id": "water_heater", "name": None},
+            {"id": "battery", "name": None},
+            {"id": "pool_circulation", "name": None},
+            {"id": "pool_heat", "name": None},
+        ],
+        "writable": False,
+    }
+    _pinned("get_site_settings_view_priority.json", _pin(body))

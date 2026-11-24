@@ -1,0 +1,7 @@
+{
+  "action": "spa",
+  "api_version": 1,
+  "error": "spotnav_not_supported",
+  "ok": false,
+  "spa": null
+}

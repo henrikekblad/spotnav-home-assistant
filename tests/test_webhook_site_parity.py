@@ -605,3 +605,102 @@ async def test_the_does_not_fit_choices_are_refused_with_the_commands_codes(
                 400, {"api_version": 1, "ok": False, "error": "spotnav_no_departure", "action": action}
             ), action
             _pinned(f"{action}_no_departure.json", body)
+
+
+#: The pool, the spa and the sauna the household controls are pinned on (`tests/test_api_pool_spa.py`'s).
+_POOL = {
+    "heat_pump": {"entity_id": "climate.poolpump"},
+    "circulation_id": "switch.pool_cirkulation",
+    "water_sensor": "sensor.pool_vatten",
+    "heat_pump_kw": 1.6,
+    "circulation_kw": 0.4,
+}
+_SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [5, 6], "time": "19:00"}]}
+_SAUNA = {"entity_id": "climate.harvia", "family": "harvia_sauna", "lock_id": "binary_sensor.harvia_door"}
+
+
+async def test_the_pool_spa_and_sauna_presses_answer_as_their_commands(
+    hass: HomeAssistant, freezer, hass_client_no_auth
+) -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.api.pool_spa import deadline_answer, pool_answer
+    from custom_components.spotnav.runtime import site_controller_for
+    from custom_components.spotnav.spa.plan import NotReady
+
+    site = await _site(hass, freezer)
+    client = await hass_client_no_auth()
+    # Without any of them: each press is not supported.
+    for action in ("pool", "spa", "sauna"):
+        status, body = await post(client, HOOK, {"action": action, f"{action}_action": "cancel_now"})
+        assert status == 409 and body["error"] == "spotnav_not_supported" and body[action] is None, action
+        if action == "pool":
+            _pinned("pool_not_supported.json", _pin(body))
+        if action == "spa":
+            _pinned("spa_not_supported.json", _pin(body))
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "idle", "current_temperature": 24.0})
+    hass.states.async_set("switch.pool_cirkulation", "off")
+    hass.states.async_set("sensor.pool_vatten", "24.6", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hass.states.async_set("climate.spa", "heat", {"current_temperature": 36.0, "temperature": 30.0, "hvac_action": "idle"})
+    hass.states.async_set("climate.harvia", "off", {"current_temperature": 21.0, "hvac_action": "off"})
+    hass.states.async_set("binary_sensor.harvia_door", "off")
+    hass.config_entries.async_update_entry(
+        site, data={**site.data, CONF_HEAT: {**(site.data.get(CONF_HEAT) or {}), "pool": _POOL, "spa": _SPA, "sauna": _SAUNA}}
+    )
+    await hass.async_block_till_done()
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    controller.pool_spa.tick(dt_util.now())
+
+    # The pool: the dial, the extra filtering, a value refused.
+    status, body = await post(client, HOOK, {"action": "pool", "pool_action": "target", "target_c": 28})
+    assert status == 200 and body["ok"] and body["pool"]["target_c"] == 28.0
+    assert body == {**pool_answer(hass, site, {"action": "target", "target_c": 28}), "action": "pool"}
+    _pinned("pool_success.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "pool", "pool_action": "extra_filtering", "hours": 2})
+    assert status == 200 and body["pool"]["extra"]["hours"] == 2
+    _pinned("pool_extra_filtering.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "pool", "pool_action": "target", "target_c": 50})
+    assert status == 400 and body["error"] == "spotnav_invalid_value" and body["pool"] is not None
+    _pinned("pool_invalid_value.json", _pin(body))
+
+    # The spa: a temperature, the weekly baths (weekdays 1 to 7, as a car's departures), "now" twice.
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "bath_c", "value": 39})
+    assert status == 200 and body["spa"]["bath_c"] == 39.0
+    assert body == {**deadline_answer(hass, site, "spa", {"action": "bath_c", "value": 39}), "action": "spa"}
+    _pinned("spa_success.json", _pin(body))
+    weekly = [{"weekdays": [1, 2, 3, 4, 5], "time": "06:30"}, {"weekdays": [6, 7], "time": "19:00"}]
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "baths", "value": weekly})
+    assert status == 200 and body["spa"]["baths"] == weekly
+    _pinned("spa_baths.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "baths", "value": [{"weekdays": [0], "time": "19:00"}]})
+    assert status == 400 and body["error"] == "spotnav_invalid_value"
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "bath_now"})
+    assert status == 200 and body["spa"]["bath_now"] is not None
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "bath_now"})
+    assert status == 429 and body["error"] == "spotnav_rate_limited"
+    _pinned("spa_bath_now_rate_limited.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "spa", "spa_action": "cancel_now"})
+    assert status == 200 and body["spa"]["bath_now"] is None
+
+    # The sauna: its temperature, a value refused.
+    status, body = await post(client, HOOK, {"action": "sauna", "sauna_action": "target_c", "value": 85})
+    assert status == 200 and body["sauna"]["target_c"] == 85.0
+    _pinned("sauna_success.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "sauna", "sauna_action": "target_c", "value": 200})
+    assert status == 400 and body["error"] == "spotnav_invalid_value"
+    _pinned("sauna_invalid_value.json", _pin(body))
+    once = (dt_util.utcnow() + timedelta(hours=5)).replace(minute=0, second=0, microsecond=0).isoformat()
+    status, body = await post(client, HOOK, {"action": "sauna", "sauna_action": "session_once", "value": once})
+    assert status == 200 and body["sauna"]["next_session"]["source"] == "once"
+
+    # A bath and a session that will not be ready, with no later hour where they fit: each load's own code.
+    for kind, action, code in (("spa", "later_bath", "spotnav_no_later_bath"), ("sauna", "later_session", "spotnav_no_later_session")):
+        part = getattr(controller.pool_spa, kind)
+        assert part.plan is not None and part.plan.next_session is not None, kind
+        at = part.plan.next_session[0]
+        stuck = NotReady(at=at, cause="rate", reach_c=30.0, short_c=8.0, short_kwh=4.0, later=None)
+        part.plan = replace(part.plan, not_ready=stuck)
+        status, body = await post(client, HOOK, {"action": kind, f"{kind}_action": action})
+        assert status == 409 and body["error"] == code, (kind, body)
+        _pinned(f"{kind}_no_later_{'bath' if kind == 'spa' else 'session'}.json", _pin(body))

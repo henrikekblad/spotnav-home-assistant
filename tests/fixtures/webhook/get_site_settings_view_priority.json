@@ -1,0 +1,83 @@
+{
+  "action": "get_site_settings_view",
+  "api_version": 1,
+  "battery": {
+    "found": true
+  },
+  "charger_ids": [
+    "ca",
+    "cb"
+  ],
+  "import_target": {
+    "available": false,
+    "reason": "needs_total_grid_power"
+  },
+  "name": "Site",
+  "ok": true,
+  "price": null,
+  "price_settings": null,
+  "priority": {
+    "order": [
+      {
+        "id": "heat",
+        "name": null
+      },
+      {
+        "id": "charger:ca",
+        "name": "Charger a"
+      },
+      {
+        "id": "charger:cb",
+        "name": "Charger b"
+      },
+      {
+        "id": "water_heater",
+        "name": null
+      },
+      {
+        "id": "battery",
+        "name": null
+      },
+      {
+        "id": "pool_circulation",
+        "name": null
+      },
+      {
+        "id": "pool_heat",
+        "name": null
+      }
+    ],
+    "writable": false
+  },
+  "setup": {
+    "items": [
+      {
+        "dismissible": false,
+        "id": "price"
+      },
+      {
+        "dismissible": true,
+        "id": "battery"
+      }
+    ]
+  },
+  "site": {
+    "active_control": {
+      "available": false,
+      "direction_hint": null,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": false
+    },
+    "charger_count": 2,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  },
+  "site_id": "prio_site",
+  "writable": true
+}

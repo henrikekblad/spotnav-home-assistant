@@ -1,0 +1,74 @@
+{
+  "action": "spa",
+  "api_version": 1,
+  "error": "spotnav_rate_limited",
+  "ok": false,
+  "spa": {
+    "bath_c": 39.0,
+    "bath_now": {
+      "until": "2026-09-22T11:00:00+00:00"
+    },
+    "bath_once": null,
+    "baths": [
+      {
+        "time": "06:30",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "time": "19:00",
+        "weekdays": [
+          6,
+          7
+        ]
+      }
+    ],
+    "control": {
+      "failures": 0,
+      "paused_until": null,
+      "reason": null,
+      "state": "watched"
+    },
+    "family": "balboa",
+    "floor_c": 10.0,
+    "heating": false,
+    "idle_c": 30.0,
+    "kw": null,
+    "live": false,
+    "next_bath": {
+      "at": "2026-09-22T00:00:00-07:00",
+      "source": "now"
+    },
+    "not_ready": null,
+    "notes": [],
+    "planned": [
+      {
+        "end": "2026-09-22T02:00:00-07:00",
+        "reason": "now",
+        "start": "2026-09-22T00:00:00-07:00",
+        "what": "heat"
+      },
+      {
+        "end": "2026-09-22T11:00:00+00:00",
+        "reason": "now",
+        "start": "2026-09-22T02:00:00-07:00",
+        "what": "hold"
+      }
+    ],
+    "rate_c_h": 1.5,
+    "rate_learned": false,
+    "ready_at": "2026-09-22T02:00:00-07:00",
+    "state": "heating",
+    "water_c": 36.0,
+    "would": {
+      "action": "heat",
+      "reason": "now",
+      "until": "2026-09-22T02:00:00-07:00"
+    }
+  }
+}

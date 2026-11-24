@@ -1,0 +1,62 @@
+{
+  "action": "sauna",
+  "api_version": 1,
+  "error": "spotnav_no_later_session",
+  "ok": false,
+  "sauna": {
+    "control": {
+      "failures": 0,
+      "paused_until": null,
+      "reason": "cloud_slow",
+      "state": "watched"
+    },
+    "family": "harvia_sauna",
+    "heating": false,
+    "kw": null,
+    "live": false,
+    "lock_id": "binary_sensor.harvia_door",
+    "locked": false,
+    "next_session": {
+      "at": "2026-09-22T12:00:00+00:00",
+      "source": "once"
+    },
+    "not_ready": {
+      "at": "2026-09-22T12:00:00+00:00",
+      "cause": "rate",
+      "later": null,
+      "reach_c": 30.0,
+      "short_c": 8.0,
+      "short_kwh": 4.0
+    },
+    "notes": [],
+    "planned": [
+      {
+        "end": "2026-09-22T12:00:00+00:00",
+        "reason": "bath",
+        "start": "2026-09-22T11:00:00+00:00",
+        "what": "heat"
+      },
+      {
+        "end": "2026-09-22T14:00:00+00:00",
+        "reason": "bath",
+        "start": "2026-09-22T12:00:00+00:00",
+        "what": "hold"
+      }
+    ],
+    "rate_c_h": 80.0,
+    "rate_learned": false,
+    "ready_at": "2026-09-22T12:00:00+00:00",
+    "safety_declared": null,
+    "session_now": null,
+    "session_once": "2026-09-22T12:00:00+00:00",
+    "sessions": [],
+    "state": "idle",
+    "target_c": 85.0,
+    "temp_c": 21.0,
+    "would": {
+      "action": "off",
+      "reason": "waiting",
+      "until": "2026-09-22T11:00:00+00:00"
+    }
+  }
+}
