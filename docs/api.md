@@ -122,7 +122,8 @@ and refusals as the charger webhook below. It answers:
 | `spotnav_not_permitted_over_webhook` | 403 | `choose_price_source`, `answer_price_duplicate` or `update_grid_tariff` without `charger_id`: the price and the grid tariff are read-only for the home itself in the beta (`get_site_settings_view` says `writable: false` on `price_settings.price_source` and `.grid_tariff`). They are allowed only with a `charger_id`: then they are that charger's own actions, answered as on its webhook (parity with the charger webhook). The control opt-ins, as on a charger's webhook. |
 
 Each refusal is `{"ok": false, "error": <code>, "action": <action>}` (`site_webhook_site_unloaded.json` for the 503). There is no `push_register` for the home
-itself: notifications are a charger's (with a `charger_id`). Examples: `tests/fixtures/webhook/site_webhook_*.json`.
+itself (an older app's, with a `charger_id`); `phone_notifications` (below) is answered on the home's webhook without
+one, as on a charger's: the phones are the installation's. Examples: `tests/fixtures/webhook/site_webhook_*.json`.
 
 **`get_site`** (`api_version` optional, `1`), read on open and now and then, not on the live loop:
 
@@ -149,11 +150,20 @@ it answers the same. Examples: `get_site_access_success.json`, `get_site_access_
 ### For administrators
 
 * `spotnav/disconnect_phones {"api_version": 1}`: Disconnect all phones (above). Every id is replaced first, all at
-  once; then the pending pairings and their approval items in Devices & services are withdrawn; then each charger's
-  phone notifications are cleared, each on its own. Answers `{"api_version": 1, "ok", "error", "chargers", "sites",
-  "notifications_not_cleared"}`: the counts of webhook ids replaced (always all) and of chargers whose notifications
-  could not be cleared (logged; press again to retry). Anyone but an administrator gets `ok: false`,
+  once; then the pending pairings and their approval items in Devices & services are withdrawn; then every phone's
+  SpotNav app wake-up reference is cleared (the phones and their choices stay, for when they pair again). Answers
+  `{"api_version": 1, "ok", "error", "chargers", "sites", "notifications_not_cleared"}`: the counts of webhook ids
+  replaced (always all) and, when the references could not be cleared, the chargers (logged; press again to retry). Anyone but an administrator gets `ok: false`,
   `error: "spotnav_not_admin"` and nothing changes.
+* `spotnav/notification_phones {"api_version": 1}`: the phones and what each hears (see
+  [Notifications](notifications.md)): `{"api_version": 1, "ok", "error", "phones": [{"id", "name", "on", "events",
+  "chargers" (null for every charger), "companion": {"service", "name", "found"} | null, "app": {"instant"} | null,
+  "route": "app" | "companion" | "none"}], "chargers": [{"id", "name"}], "loads": {"chargers", "pool", "spa", "sauna"},
+  "events"}`. A Companion phone nobody has touched is listed off with the defaults, as `"id": "notify:<service>"`.
+* `spotnav/update_notification_phone {"api_version": 1, "phone", "changes"}`: one phone's `{"on"?, "events"?,
+  "chargers"?}`, or one of `{"link": <id>}` (the Companion phone and the SpotNav app of one phone become one entry),
+  `{"unlink": true}`, `{"forget": true}`. Answers the listing again, or `ok: false` with `spotnav_unknown_phone` or
+  `spotnav_invalid_value` (nothing written).
 * `spotnav/make_home {"api_version": 1, "charger_id", "main_fuse_a"}`: "Make a home of this", the card's one action
   in the Settings of a charger whose installation has no home. The card says what it does and asks for the main fuse
   first; the home is made around that charger through the config flow with the fuse given, the default safety margin
@@ -194,7 +204,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
 | `answer_price_duplicate` | Answer the same-area question: `{"area_id", "keep_entry_id"}` (see below). |
 | `update_grid_tariff` | The electricity price's grid tariff (a percentage of spot, a high-load fee and its window): `{"expected_write_revision", "grid_tariff"}` (see below). |
-| `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
+| `push_register` | An app before SpotNav 3.0: its instant notifications, `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
+| `phone_notifications` | The app's own phone: `{"app_id", "name"?, "push_ref"?, "shows"?, "set"?}` (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `update_guest` | The guest amount a guest car's plan starts from: `{"amount_kwh"}` (see [the guest car](#the-guest-car)). |
@@ -247,7 +258,9 @@ is all three: they are locked as included in the price and nothing is added for 
 area's override says. It is withheld from the webhook like the two fields above (ask with
 `"reads": ["fiscal_included"]`); a replacement that echoes it is accepted and it is never stored.
 
-The record also carries `notifications` (see [Notifications](notifications.md)): `targets` (notify
+The record also carries `notifications`, kept for clients from before the per-phone settings (SpotNav 3.0, see
+[Notifications](notifications.md)): it is read from the phones (the Companion phones that are on and follow this
+charger, and the union of their charger events) and a write is applied to them as the change it makes. `targets` (notify
 service names such as `mobile_app_pixel_8`, at most ten), `events` (any of `plan_stopped`,
 `plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`,
 `vehicle_identify`; default `plan_stopped`, `plan_at_risk`, `charge_complete` and `vehicle_identify`; a choice
@@ -520,8 +533,27 @@ unplugged for longer than two minutes), so the app can take its notification dow
 15-minute repeat rule or the hourly limit, though both count towards the limit; a plug-in asks at most once, so
 a question wakes at most twice. One that comes while a wake-up is under way sends one more after it. Both are
 the same empty wake-up: the app tells them apart by reading `identification`. A relay answer of 404
-`unknown_ref` drops the reference. This is independent of the Companion phones chosen in
-`notifications`. Examples are in `tests/fixtures/webhook/push_register_*.json`.
+`unknown_ref` drops the reference. Since SpotNav 3.0 the reference is the phone's (an app from before is one
+phone, named "SpotNav app", following the chargers that registered it), and a phone whose app can be woken gets no
+Companion notification for the same notice. Examples are in `tests/fixtures/webhook/push_register_*.json`.
+
+**The app's own phone** (SpotNav 3.0). `phone_notifications` reads and writes the calling app's own phone only:
+
+```json
+{"action": "phone_notifications", "api_version": 1, "app_id": "<base64url, 32 to 128 characters>",
+ "name": "Pixel 8", "push_ref": "<ref>" | null, "shows": ["plan_stopped", "...", "pool_season", "heat_at_risk"],
+ "set": {"on": true, "events": ["plan_stopped", "..."], "chargers": null}}
+```
+
+`app_id` is a secret the app makes once and keeps (also sent with its pairing request); Home Assistant keeps it hashed
+and never answers or logs it. The first call makes the phone (on, the default events, every charger), adopting the
+phone of an older app whose `push_ref` is the same, and linking it to the Companion phone of the same name. `push_ref`
+sets the wake-up reference (`null` clears it); `shows` says which notices the app shows itself (a notice it cannot show
+goes to the phone's Companion service instead); `set` changes `on`, `events` and `chargers` (`null` for every charger).
+Every field but `app_id` is optional. The answer: `{"ok": true, "action", "api_version": 1, "phone": {"id", "name",
+"on", "events", "chargers", "companion": {"name"} | null, "instant"}, "chargers": [{"id", "name"}], "loads":
+{"chargers", "pool", "spa", "sauna"}, "events"}`; a body that cannot be stored HTTP 400 `{"ok": false, "error":
+"invalid_phone_notifications", "action"}`. Examples: `tests/fixtures/webhook/phone_notifications_*.json`.
 
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.
@@ -727,8 +759,8 @@ charger has no site), `solar_forecast` (the site can measure solar surplus and h
 one without the meter's total grid power; never dismissible), `grid_power_sign` and `grid_current_sign` (since 2.4.3:
 the charger's site reads its grid power, or a direct site its signed phase currents, with the sign the wrong way round,
 as the chargers' own steps show; never dismissible, and gone by itself once the steps agree or the setting is changed),
-`phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
-app has no push registration) or `app` (no charger's webhook has been used yet); for a charger in a site (SpotNav 3.0) also the site's `battery` and `heat` rows as `spotnav/get_site_settings_view` states them (never its `price`), each id once; a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
+`phase_switching` (offered for the charger and off), `phone` (no phone that is on follows the charger through the
+Companion app or a SpotNav app that can be woken) or `app` (no charger's webhook has been used yet); for a charger in a site (SpotNav 3.0) also the site's `battery` and `heat` rows as `spotnav/get_site_settings_view` states them (never its `price`), each id once; a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
 `spotnav_setup_item_not_dismissible`. A grid sign row also carries `field` (the site option, `grid_power_inverted` or
 `site_current_signed`) and `value` (what its button writes), e.g. `{"id": "grid_power_sign", "dismissible": false,

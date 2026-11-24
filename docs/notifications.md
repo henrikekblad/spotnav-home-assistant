@@ -17,9 +17,25 @@ needs no Companion app. Until either is set up, the card's *Get started* list as
 
 ## Choosing phones and events
 
-In the card: **Settings → Notifications → Change notifications**. Tick the phones that should be told
-and the events they should hear about, then **Save**. Only an administrator can change it. Each charger
-has its own choice, so the driver of each car can follow their own charger.
+Every card's settings have one **Notifications** section for the whole home: the charger card's Settings, and the
+settings of the house and heat cards. It lists the **phones**. Tap a phone to choose:
+
+- whether it gets anything at all (*Send to this phone*);
+- the events it hears about, grouped *Charging*, *Pool*, *Spa* and *Sauna* (a group shows only where the home has
+  that load);
+- with more than one charger, **which chargers it follows** (all of them by default, also a charger added later), so
+  the driver of each car can follow their own charger.
+
+Only an administrator changes the phones in the card. In the SpotNav app a person changes their own phone.
+
+**One phone, one entry.** A phone can reach Home Assistant through the Companion app, the SpotNav app, or both. With
+both, they are one entry and SpotNav tells that phone through the SpotNav app only, never twice; see
+[Which app tells the phone](#which-app-tells-the-phone). When the SpotNav app is paired, it is joined to the Companion
+phone of the same name by itself. Otherwise open the phone and choose *Same phone as …* once.
+
+**A new phone.** A phone that appears in the Companion app is listed but gets nothing until someone turns it on (a
+guest's phone stays quiet). A SpotNav app that is paired starts on, since pairing it is a choice of its own. Either
+starts with the defaults below, never with another phone's choice.
 
 | Event | On by default | When |
 |---|---|---|
@@ -30,9 +46,33 @@ has its own choice, so the driver of each car can follow their own charger.
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
 | New plan | no | a plan different from the one last told is installed, with its start, energy and estimated cost ([when](#when-a-new-plan-is-told)) |
 | Which car is plugged in? | yes | at a charger more than one car can charge at, when SpotNav cannot tell which car was plugged in: a question with one button per car ([vehicle identification](vehicle-identification.md)) |
+| Pool season | yes | once a season, when the pool's water has been cold for days ([below](#the-pool-season)) |
 
-With no phone ticked nothing is sent. A phone that is later removed from Home Assistant stays in the
+*Not ready in time* is one event for the car, the spa's bath and the sauna's session.
+
+With no phone on nothing is sent. A phone that is later removed from Home Assistant stays in the
 list, marked as not found, and is skipped.
+
+### Which app tells the phone
+
+Each notice reaches a phone one way:
+
+1. **The SpotNav app**, when the phone has it with *Instant notifications* on and the app can show that notice
+   itself: Home Assistant wakes the app, which shows it.
+2. Otherwise **the Companion app**, when the phone has it.
+
+An app from before SpotNav 3.0 shows no spa, sauna or pool notice: those go to the phone's Companion app. When the
+SpotNav server says the app's registration is gone (the app was removed, or its notifications turned off), the phone
+falls to its Companion app from the next notice on. A wake-up that is merely lost is not sent again on the Companion
+app: the SpotNav app checks Home Assistant every 15 minutes by itself, and a second copy would be a duplicate.
+
+### From the per-charger choice before SpotNav 3.0
+
+The first start of SpotNav 3.0 turns each charger's choice and the heat card's into phones, so nobody loses a
+notification they got: a phone chosen on one charger for some events and on another for others follows both chargers
+with all of those events (it may therefore hear a few more on one of them), and a phone that heard a car's *Not
+ready in time* now also hears the spa's and the sauna's. A phone only the heat card had follows no charger. The
+SpotNav app on a phone is its own entry until it is joined to its Companion phone (*Same phone as …*).
 
 ### When a new plan is told
 
@@ -132,8 +172,8 @@ instead of one per load:
 > Spa 19:00: reaches 35 °C
 > Garage 07:30: 4 kWh short under the 6.0 kW import target
 
-- **One per phone.** It goes to the phones that follow any of the loads in it: each car's charger's phones (with
-  *Not ready in time* on) and, for a bath or a session, the phones chosen in the heat card's settings. A phone that follows several of them gets it once.
+- **One per phone.** It goes to the phones with *Not ready in time* on that follow a charger in it, and, when a bath or
+  a session is in it, every phone with *Not ready in time* on. A phone gets it once.
 - **The three choices that free the most** are its buttons (Android shows at most three): *Allow the peak* (sets the
   ceiling aside for every load in the notice at once, never the main fuse), *Later bath (20:00)*, *Later session
   (20:00)*, *Later departure (08:00)* and *Take what fits*, each named by its load. At a tie the choice that costs
@@ -148,8 +188,8 @@ instead of one per load:
 
 ### The pool season
 
-When the pool's water has stayed at about 10 °C or below for three days in autumn, the heat card's phones (with *Pool
-season* on) are told once a season, in the daytime: *The water has been around 10 °C for three days: time to close the
+When the pool's water has stayed at about 10 °C or below for three days in autumn, the phones with *Pool season* on
+are told once a season, in the daytime: *The water has been around 10 °C for three days: time to close the
 pool season?*, with a *Close the season* button that closes it as the Pool tab's switch does.
 
 ## What a notification says
@@ -188,11 +228,14 @@ happened from Home Assistant, as it always does. The Home Assistant diagnostics 
 whether an app is registered and how the last wake-up went.
 
 **Testing.** The action `spotnav.send_test_notification` (Developer tools → Actions), optionally for
-one charger, sends the app a test push and the Companion phones chosen above a test message. It is
+one charger, sends each phone that is on and follows the charger a test: through its SpotNav app where the app can be
+woken, else through its Companion app. It is
 refused when no charger has the app's instant notifications turned on, and the result per charger is
 logged. Only an administrator may run it.
 
 ## For the paired app and automations
 
-The choice is the settings record's `notifications` field (see [Apps and API](api.md)). The
+The phones are read and changed with `spotnav/notification_phones` and `spotnav/update_notification_phone`, the app's
+own phone with the webhook action `phone_notifications` (see [Apps and API](api.md)). The settings record's
+`notifications` field still answers older clients, read from the phones. The
 [Charger events](api.md#home-assistant-events) entity fires for automations whatever is chosen here.
