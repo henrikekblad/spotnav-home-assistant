@@ -106,11 +106,11 @@ out through the inverter), so the midday house is not lowered by a loss it never
 gives pays the AC round trip. The part the sun's surplus gives never crosses the inverter on the way in, so a kWh of
 it stored and given back loses only about the battery's own round trip: the AC round trip turned back with the same
 loss, times (1 + the loss in) / (1 - the loss out), never above the round trip the battery's own counters show nor
-98 %, never below the AC one (about 96.7 % on the owner's plant against 87 %). Until the counters have shown it, it is
+98 %, never below the AC one (about 96.7 % on the owner's plant against 89 %). Until the counters have shown it, it is
 held to 97 % and to the assumed 90 % turned the same way, so a battery not yet learnt is not planned on a best case.
 The plan counts the stored energy as the cells hold it: a stored kWh gives the house the cells' half of the battery's
 own round trip less the inverter's loss on the way out, a kWh from the grid stores the AC round trip over that, and a
-kWh of sun the sun's round trip over it (on the owner's plant 0.92, 0.95 and 1.05: a kWh of surplus is worth a little
+kWh of sun the sun's round trip over it (on the owner's plant 0.94, 0.95 and 1.03: a kWh of surplus is worth a little
 more in the cells than on the AC side, because its AC value already lost the way-out share). The battery's rating is
 read at the battery, so the sun's part of a charge is at most the rating less the way-out loss on the AC side.
 So on a sunny day the plan, the perfect plan in the review and every mode store the sun when giving it back in the
@@ -123,8 +123,16 @@ times the AC round trip, a little below what giving it back is worth, so neither
 The same loss turns the battery's power to the AC side wherever SpotNav counts the house as the grid less the cars
 and the battery: the house load forecast, the night's review and the perfect plan (see the house card's *Share of
 perfect*). The diagnostics show it under `battery.plan.learned.conversion` (`power_dc`, `source`: `learned`,
-`assumed` or `ac`, the two losses and the quarter hours behind them). A battery read on the AC side (Enphase,
+`assumed` or `ac`, the two losses, `idle_w` and the quarter hours behind them). A battery read on the AC side (Enphase,
 sonnen) or whose side is not known is counted as read.
+
+**The inverter's standby.** The same fit has a constant: what the inverter uses standing, whatever the battery does
+(on the owner's Sigenergy plant about 190 W, with 3.5 % in and 4.3 % out; fitted without it, the standby would be
+taken for loss, 5.4 % and 8 %). It is kept between 0 and 300 W, shown as `idle_w`, and only where the plant reports
+its own house load: elsewhere nothing tells it from the house, so it is not known (`null`), never assumed. The plan
+adds nothing for it: it is a fixed load like the fridge, already in the house load forecast (the house there is the
+grid less the cars and the battery on the AC side, which holds it), so only the per-kWh losses are in the round trips.
+The house card names it beside the losses in the house pie.
 
 The card's details show it: "Round-trip efficiency: 84 %, learnt" or "assumed 90 %": the round trip the plan uses, on
 a battery read at the battery the AC one (its chart's windows turned the same way). The diagnostics

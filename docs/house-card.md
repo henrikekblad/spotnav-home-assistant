@@ -84,14 +84,12 @@ heat included, the car not) is in its circle. The car's line is drawn only while
 is dimmed. A house with the grid alone is one low row, the grid to the house.
 
 The lines add up around the house: what comes in from the sun, the grid and the battery is what the house, the car and
-the battery take. So the battery's line is the battery where the grid's meter sees it, on the AC side. On a hybrid
-inverter that reads the battery at the battery (DC: Sigenergy, SolarEdge, Victron, GoodWe) that is a little more than
-the battery's own app shows while it charges and a little less while it gives (on a Sigenergy plant about 11.2 kW
-charged for the app's 10.6 kW), the difference being the inverter's own loss, which is not the house's. Where the plant
-reports its own house load (Sigenergy), the house is that load less the car, and the battery's line is what the meters
-leave for it; elsewhere, or when the readings do not agree (a figure from another moment), the battery's reading is
-turned with the inverter's loss (learnt where it can be, else an assumed 3 % in and 5 % out) and the house is what is
-left. The sun is shown as read.
+the battery take. The battery's line is its power as read, what the battery's own app shows, and the house is what is
+left. On a hybrid inverter that reads the battery at the battery (DC: Sigenergy, SolarEdge, Victron, GoodWe) the
+inverter's own loss on the battery's way in and out and its standby are on no meter: they are in the house, as an
+appliance behind the grid's meter would be (on a Sigenergy plant about 0.6 kW while the battery gives 10 kW, and about
+0.2 kW standing). So the house is a little more than a plant's own house load (Sigenergy's app leaves the inverter
+out). The sun is shown as read.
 
 In the corners, the day so far, each figure in its part's colour (a little darker on a light card, lighter on a dark
 one): *Sun today*, *House today* (the heat included, the car not: where the site has a charger it says "without the
@@ -192,11 +190,9 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   ("Car · 35 %") and its kWh under it; a column grows as wide as its widest pill needs. Tap House (or Heat) for what
   used it. Only where no diagram can be drawn yet (nothing has flowed between two blocks) the figures stand as tiles:
   *Sun*, *House*, *Discharged*, *Charged*, *Bought*, *Sold*, *Heat* and *Car*, each only where it has energy.
-  On a battery read at the battery (a hybrid's DC side, as in *Now*) the battery's blocks and bands are on the AC side,
-  so the inverter's loss is not in the house, and one line under the diagram says how much that was ("The inverter's
-  losses today: 1.8 kWh (taken out of the house)"; for a past day, month or year without "today"), from 0.1 kWh. A
-  past day is counted with the loss known now; the battery's own app counts its battery at the battery, so its
-  charged and discharged figures differ from these by that loss.
+  On a battery read at the battery (a hybrid's DC side, as in *Now*) the battery's blocks are what its own counters
+  (and its own app) say, and the inverter's loss and standby are in the house: the house pie names them in a slice of
+  their own (see *What the house used*).
 
   ![The house card's Energy flow tab: today's energy from the sun, the battery and the grid to the battery, the house and the heat](images/house-card-flow.png)
 
@@ -292,11 +288,12 @@ against the same day with no battery. The rules that keep it fair:
     the plan that does not sell), not against the site's mode's.
   * The battery is counted where the meter sees it, on the AC side. Many hybrid inverters report the battery's power
     at the battery (DC), which leaves out the inverter's own loss on the way in and out (on a Sigenergy plant about
-    3.5 % of a charge and 6.5 % of a discharge). Counted as read, that loss would sit in the house: the day with no
+    3.5 % of a charge and 4.3 % of a discharge, beside about 0.2 kW the inverter uses standing, which stays in the
+    house: a house with the inverter and no battery would use it too). Counted as read, that loss would sit in the house: the day with no
     battery and every other way would pay for losses only the real battery's running caused, and the battery's own
     control could come out above the perfect plan. So SpotNav turns such a reading to the AC side first: with the loss
     learnt from the plant's own house load where the plant reports one (Sigenergy), else an assumed 3 % in and 5 % out.
-    The perfect plan and SpotNav's modes then use the round trip on the AC side too (about 87 % on that plant, where
+    The perfect plan and SpotNav's modes then use the round trip on the AC side too (about 89 % on that plant, where
     its own counters say 96-97 %). Batteries read on the AC side, or whose side is not known, are counted as read.
   * Every way starts the day at the same measured level, and what is left in the battery at midnight counts at the
     next day's mean buy price (with fees) less the battery's losses: a price that is known at the time, as the next
@@ -363,6 +360,12 @@ year shown:
   named slices). A meter under 1.5 % of the house, or past the eighth, goes into a light grey **Other metered** slice
   and is named under the pie. A darker grey **Unknown** slice is what no meter explains: the house less all the meters.
   There is no setting: SpotNav reads the meters the Energy dashboard already has.
+* On a hybrid inverter that reads its battery at the battery (Sigenergy, SolarEdge, Victron, GoodWe, with the Energy
+  dashboard counting the battery with the battery's own sensors), **The inverter (losses and standby)** is a slice of
+  its own, taken out of Unknown: the inverter's loss on the battery's way in and out (learnt where the plant reports
+  its own house load, Sigenergy; else an assumed 3 % in and 5 % out) and, where it is learnt, its standby (Sigenergy;
+  elsewhere nothing tells it from the house, so it stays in Unknown rather than a guess). Never more than Unknown was.
+  A battery read on the AC side has its inverter's loss in its own meters, so there is no such slice.
 * The car and the heat are not in it: the flow shows them on their own. SpotNav sorts these meters out by itself and
   counts each only there: a meter whose sensor is a charger's, the heat pump meter's or a heating zone's, or that sits on
   the same Home Assistant device as a charger or a heating zone. (The heat pump's meter is told by its sensor alone: a
