@@ -10,6 +10,9 @@ the same reading the sun's rules use for a charge they run (`solar_execution._wa
 
 An unplug is not the car ending it (the unplug ends the pause on its own), nor is a control turned off
 some other way while the car was drawing (the charger's own app, say): the charger is still the person's.
+
+A car that refuses the offered current outright may first have its charge started in the car (`car_start.py`): the
+idle clock begins again at that start (`restart_at`).
 """
 
 from __future__ import annotations
@@ -48,8 +51,10 @@ class ManualChargeWatch:
         start_pending: bool,
         connection: str | None,
         connector_status: str | None,
+        restart_at: datetime | None = None,
     ) -> bool:
-        """One look at the charge. `True` once: the car ended it by itself."""
+        """One look at the charge. `True` once: the car ended it by itself. `restart_at`: when SpotNav last started
+        the charge in the car (`car_start.py`); the car's idling counts from then at the earliest."""
         if balancing_paused:
             # Load balancing holds it back: its regulator resumes it, nothing the car did.
             self._idle_since = None
@@ -64,6 +69,8 @@ class ManualChargeWatch:
                 return False
             if self._idle_since is None:
                 self._idle_since = now
+            if restart_at is not None and self._idle_since < restart_at <= now:
+                self._idle_since = restart_at
             if (now - self._idle_since).total_seconds() < MANUAL_CAR_IDLE_S:
                 return False
             self.reset()

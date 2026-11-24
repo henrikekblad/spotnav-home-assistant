@@ -2187,6 +2187,7 @@ class AutoExecutor:
             start_pending=controller.start_pending,
             connection=controller.connection()[0],
             connector_status=controller.charge_progress_facts().connector_status,
+            restart_at=controller.car_start_at,
         )
         if ended:
             self._manual_end_pending = True

@@ -120,6 +120,15 @@ from .phase_switching import (
     STORE_KEY as PHASE_SWITCHING_STORE_KEY,
 )
 from .plan_car_ended import PlanChargeWatch
+from .car_start import (
+    CAR_START_AFTER_S,
+    CarRefusalWatch,
+    CarStartMemory,
+    LINE_REFUSES,
+    LINE_STARTED,
+    level_allows_start,
+    start_ceiling_percent,
+)
 from .switched_current import SwitchedCurrent, SwitchedCurrentValue
 from .target_stop import (
     car_ended_full,
@@ -861,6 +870,12 @@ class ChargingController:
         self._plan_watch = PlanChargeWatch()
         self._plan_watch_cancel: Callable[[], None] | None = None
         self._car_ended_observer: Callable[[str | None, bool], None] | None = None
+        # The car refusing the current the charger offers in a charge SpotNav runs (`execution/car_start.py`): since
+        # when, and this plug-in's start of the charge in the car and notice (`_look_at_car_start`); who names the car
+        # and its target outside the plan's charge (`set_car_start_target`).
+        self._car_refusal = CarRefusalWatch()
+        self._car_start = CarStartMemory()
+        self._car_start_target: Callable[[], tuple[str | None, float | None]] | None = None
         # Asks the car's integration for a fresh reading of a car (`set_reading_asker`); answers whether it could.
         self._reading_asker: Callable[[str | None], bool] | None = None
         # The car asked for a fresh reading because an estimate reached the target (`_confirm_estimate`), and the
@@ -2313,6 +2328,8 @@ class ChargingController:
     @callback
     def _look_at_plan_charge_timer(self, _now: datetime) -> None:
         self._car_plug_tick()
+        # The car refusing the offered current first: a start in the car begins the plan watch's idle clock again.
+        self._look_at_car_start()
         self._look_at_plan_charge()
 
     @callback
@@ -2339,9 +2356,180 @@ class ChargingController:
             balancing_paused=self._balancing.paused or self.balancing_stop_on_its_way,
             start_pending=self.start_pending,
             phase_switch_settling=self.phase_switch_settling,
+            restart_at=self.car_start_at,
         )
         if ended:
             self._async_spawn(self._async_plan_car_ended(), "the car's end of the plan's charge")
+
+    # ------------------------------------------------------------------ the car refusing the offered current
+
+    def set_car_start_target(self, target: Callable[[], tuple[str | None, float | None]] | None) -> None:
+        """Who names the car at this charger and its target where the plan does not (a person's Start, the sun's, a
+        plan with no target): `(vehicle id, target percent)`, either `None` when not known (`_look_at_car_start`)."""
+        self._car_start_target = target
+
+    def _car_start_memory(self) -> CarStartMemory:
+        """This plug-in's start in the car and notice: begun afresh at each plug-in and unplug."""
+        memory = self._car_start
+        if memory.generation != self._session_generation:
+            memory.begin(self._session_generation)
+            self._car_refusal.reset()
+        return memory
+
+    @property
+    def car_start_at(self) -> datetime | None:
+        """When SpotNav started the charge in the car in this plug-in (`execution/car_start.py`), or `None`: the car's
+        end of a charge counts its idling from then at the earliest."""
+        return self._car_start_memory().started_at
+
+    @property
+    def car_start_status(self) -> dict[str, Any] | None:
+        """The status line of the car refusing the offered current, or `None`: `{"state": "started"}` from the start
+        in the car while the car still refuses, `{"state": "refuses", "soc_percent", "target"}` once the person is told,
+        until the car draws or is unplugged (the level and the target, capped by the car's own limit, it was told
+        with)."""
+        memory = self._car_start_memory()
+        if memory.line is None:
+            return None
+        return {"state": memory.line, "soc_percent": memory.level_percent, "target": memory.target_percent}
+
+    @property
+    def car_refuses_notice(self) -> dict[str, Any] | None:
+        """The "the car takes no current" notice of this plug-in, to be told once (`notifications/notifier.py`):
+        `{"at", "soc_percent", "target"}`, or `None` (none, or told before a restart)."""
+        memory = self._car_start_memory()
+        if memory.told_at is None:
+            return None
+        return {"at": memory.told_at, "soc_percent": memory.level_percent, "target": memory.target_percent}
+
+    def _car_start_subject(self) -> tuple[str | None, float | None]:
+        """The car at this charger and its target: the plan's, for the plan's charge, else what the settings name
+        (`set_car_start_target`)."""
+        vehicle_id: str | None = None
+        target: float | None = None
+        if self._car_start_target is not None:
+            try:
+                vehicle_id, target = self._car_start_target()
+            except Exception:  # noqa: BLE001 - an unreadable setting names no car
+                _LOGGER.debug("car_start_subject: ignored failure (an unreadable setting names no car)", exc_info=True)
+        plan = self.plan
+        if plan is not None and self._is_plan_charge:
+            vehicle_id = plan.vehicle_id or vehicle_id
+            target = plan.target_soc_percent
+        return vehicle_id, target
+
+    @callback
+    def _look_at_car_start(self) -> None:
+        """One look at a charge SpotNav runs for the car refusing the offered current (`execution/car_start.py`): once
+        per plug-in the charge is started in the car through its charge switch; a car that still refuses, or has no
+        switch, is told once per plug-in. Never anything turned off."""
+        if self._shut_down:
+            return
+        memory = self._car_start_memory()
+        now = dt_util.utcnow()
+        facts = self.charge_progress_facts()
+        drawing = top_off.car_drawing(
+            connector_status=facts.connector_status,
+            current_a=facts.current_import_a,
+            power_mode=facts.power_mode,
+            power_w=facts.power_w,
+            idle_power_w=facts.idle_power_w,
+        )
+        if drawing is True and memory.line is not None:
+            _LOGGER.info("SpotNav charger %s: the car takes the charge", self.entry_id)
+            memory.line = None
+            self._notify()
+        refused_s = self._car_refusal.observe(
+            now=now,
+            owned=self._owner_origin is not None and not self._target_stopping,
+            control_on=self._control_on,
+            drawing=drawing,
+            connector_status=facts.connector_status,
+            held=self.adapter.held_by_charger(),
+            balancing_paused=self._balancing.paused or self.balancing_stop_on_its_way,
+            start_pending=self.start_pending,
+            phase_switch_settling=self.phase_switch_settling,
+        )
+        if refused_s is None and memory.line == LINE_STARTED:
+            # The start's moment is over (the charge ended, or the charger holds it): no line for it.
+            memory.line = None
+            self._notify()
+        if refused_s is None or refused_s < CAR_START_AFTER_S or memory.told:
+            return
+        if memory.line == LINE_STARTED:
+            _LOGGER.info(
+                "SpotNav charger %s: the car still takes no current %.0f s after the charge was started in it",
+                self.entry_id,
+                refused_s,
+            )
+            self._car_refuses(memory, now)
+            return
+        vehicle_id, target = self._car_start_subject()
+        reading: SocReading | None = None
+        if self._soc_reader is not None:
+            try:
+                reading = self._soc_reader(vehicle_id)
+            except Exception:  # noqa: BLE001 - an unreadable car is a level not known
+                _LOGGER.debug("look_at_car_start: ignored failure (an unreadable car is a level not known)", exc_info=True)
+        level = None if reading is None else reading.soc_percent
+        limit = self.vehicle_limit_percent(vehicle_id)
+        if not level_allows_start(level, target, limit):
+            # Full, at its own limit, or a level not known: the car refuses rightly, or nobody can say.
+            return
+        memory.vehicle_id = vehicle_id
+        memory.level_percent = level
+        memory.target_percent = start_ceiling_percent(target, limit)
+        memory.plug_in = None if self._plugged_in_at is None else self._plugged_in_at.isoformat()
+        from ..vehicles.vehicle_charge_start import (  # noqa: PLC0415 - it reaches `runtime`, which imports us
+            async_start_charge_in_car,
+            charge_start_skip_reason,
+            SKIP_SAME_PLUG_IN,
+        )
+
+        reason = SKIP_SAME_PLUG_IN if memory.started_at is not None else None
+        if reason is None:
+            reason = charge_start_skip_reason(self.hass, vehicle_id, memory.plug_in)
+        if reason is None and vehicle_id is not None:
+            memory.started_at = now
+            memory.line = LINE_STARTED
+            self._car_refusal.reset()
+            _LOGGER.info(
+                "SpotNav charger %s: the car took no current for %.0f s at %.0f %% (target %.0f %%); starting the "
+                "charge in the car",
+                self.entry_id,
+                refused_s,
+                level,
+                memory.target_percent,
+            )
+            self._async_spawn(
+                async_start_charge_in_car(self.hass, vehicle_id, memory.plug_in), "the start of the charge in the car"
+            )
+            self._notify()
+            return
+        _LOGGER.info(
+            "SpotNav charger %s: the car took no current for %.0f s at %.0f %% (target %.0f %%); the charge is not "
+            "started in the car (%s)",
+            self.entry_id,
+            refused_s,
+            level,
+            memory.target_percent,
+            reason,
+        )
+        self._car_refuses(memory, now)
+
+    def _car_refuses(self, memory: CarStartMemory, now: datetime) -> None:
+        """The car refuses though SpotNav could not (or did not get it to) take the charge: the status line until it
+        draws or is unplugged, and the notice once per plug-in (kept across a restart)."""
+        from ..vehicles.vehicle_charge_start import async_note_notice, notice_told  # noqa: PLC0415 - see above
+
+        memory.line = LINE_REFUSES
+        memory.told = True
+        if not notice_told(self.hass, memory.vehicle_id, memory.plug_in):
+            memory.told_at = now
+            self._async_spawn(
+                async_note_notice(self.hass, memory.vehicle_id, memory.plug_in), "noting the car's notice"
+            )
+        self._notify()
 
     async def _async_plan_car_ended(self, *, by_probe: bool = False) -> None:
         """The car stopped taking the plan's charge by itself in an open window (`PlanChargeWatch`), or refused load
