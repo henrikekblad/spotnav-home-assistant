@@ -2945,3 +2945,18 @@ async def test_a_routine_step_that_could_not_be_judged_is_tried_again_at_a_later
     assert control.status()["needs"] == []
     assert control.notes == []
     await control.async_stop()
+
+
+async def test_a_bumped_recipe_revision_keys_every_report_read_with_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    bumped = replace(commands_module.SIGENERGY_CONTROL, recipe_rev=2)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: bumped.with_hold(variant))
+    control = await _started(hass, site, controller, plan_source=_hold)
+    key = control.firmware_key()
+    assert key.endswith(" r2") and gate.firmware_known(key)
+    # The per-phase mapping is read from the report under that key, as the report itself is.
+    _passed(control, per_phase="obeyed")
+    assert control.state() == "on" and control._phases_mapped()
+    await control.async_stop()

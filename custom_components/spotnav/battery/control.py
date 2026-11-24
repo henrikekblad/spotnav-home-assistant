@@ -850,9 +850,12 @@ class BatteryControl:
         ):
             # An integration not loaded (yet) is no change of version: the key read before is kept.
             self._key = gate.firmware_key(facts.firmware, facts.integration, version)
-        key = self._key or gate.firmware_key(None, facts.integration, version)
-        control = control_for(facts.brand)
-        # A recipe changed since its first revision is checked again, as a firmware update is.
+        return self._with_revision(self._key or gate.firmware_key(None, facts.integration, version))
+
+    def _with_revision(self, key: str) -> str:
+        """A report key with the recipe's revision: a recipe changed since its first revision is checked again, as
+        a firmware update is (`BrandControl.recipe_rev`, ` r<rev>` from 2)."""
+        control = control_for(self.facts.brand)
         return key if control is None or control.recipe_rev <= 1 else f"{key} r{control.recipe_rev}"
 
     def firmware_known(self) -> bool:
@@ -881,7 +884,7 @@ class BatteryControl:
         key = self._key
         if key is None or not gate.firmware_known(key):
             return False
-        report = self.reports.get(key)
+        report = self.reports.get(self._with_revision(key))
         return isinstance(report, dict) and gate.per_phase(report) == "verified"
 
     def state(self, options: gate.Options | None = None) -> str:
