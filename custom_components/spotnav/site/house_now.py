@@ -11,30 +11,25 @@ Pure: the shell (`api/house_now.py`) reads each figure and hands it over; nothin
   `RECENT_MAX` old); `null` (and `sun_from` `null`) without either, or without the sun (`has.sun` false).
 * `battery_kw`: the home battery's power as read (+ charging, − discharging), what the battery's own app shows;
   `soc_pct` its level; `null` unread.
-* `battery_ac_kw` (added 2026-11-24): the battery on the AC side, where the grid meter sees it; the line the card
-  draws, so the schematic adds up. For a battery read on the AC side it is `battery_kw`. For one read at the battery
-  (the DC side of a hybrid, `battery/conversion_loss.py`) it holds the inverter's loss: with the plant's own house
-  load (`house_from: "plant"`) it is what the meters leave for it, `grid + sun - house - cars`; otherwise
-  `battery_kw` turned with the learnt (else assumed) loss, `conversion_loss.ac_kw` with the grid's share of a charge.
-  `null` unread or without a battery.
+* `battery_ac_kw` (added 2026-11-24): the battery on the AC side, where the grid meter sees it, as the review and
+  the plan count it. For a battery read on the AC side it is `battery_kw`; for one read at the battery (the DC side
+  of a hybrid, `battery/conversion_loss.py`) `battery_kw` turned with the learnt (else assumed) loss,
+  `conversion_loss.ac_kw` with the grid's share of a charge. `null` unread or without a battery. Since 2026-11-25
+  the card draws `battery_kw` (see `house_kw`).
 * `car_kw`: what the site's chargers draw now; `null` unread or without chargers. `car_connected`: whether a car is
   plugged into any of them (`null` without chargers or unread); `car_soc_pct` the plugged-in car's level where its
   plan's vehicle can be read (the first charger's with one).
 * `heat_kw`: the heat pump's meter where it is a power sensor (`heat_from: "power"`), else the last period read
   (`"recent"`); part of the house, never added to it.
-* `house_kw`: the whole house (the heat included), never below 0; `null` when a figure it needs is unread.
-  `house_from` says how it is had:
-  * `"plant"`: the plant's own AC load (`adapters`: `plant_load_power`, Sigenergy's `plant_total_load_power`, which
-    holds the chargers on the plant's side) less the cars. Taken only while the battery's line the meters leave
-    (`battery_ac_kw`) lies within `PLANT_SLACK_KW` + `PLANT_SLACK_SHARE` of the battery's power read (else the
-    readings are from different moments, the sun's last period standing in for a live one, say): then
-    `"balance"`.
-  * `"balance"`: the grid and the sun less the battery on the AC side (`battery_ac_kw`) and the cars, so the
-    inverter's loss on a DC-side battery is not counted into the house (about 0.6 kW while the owner's plant
-    discharges 10 kW).
-  Either way the lines add up: `grid + sun = house + cars + battery_ac` (before the house's floor of 0). The sun is
-  as read: a hybrid's solar power read on its DC side keeps the solar side's own conversion in the house, as before
-  (no adapter marks its sun as DC).
+* `house_kw`: the whole house (the heat included), never below 0; `null` when a figure it needs is unread: the grid
+  and the sun less the battery as read (`battery_kw`) and the cars, so the lines the card draws add up,
+  `grid + sun = house + cars + battery` (before the house's floor of 0). On a hybrid that reads its battery at the
+  battery the house so holds the inverter's loss and standing use (2026-11-25, as the energy flow's house does,
+  `site/energy_flow.py`): the inverter uses that energy behind the grid's meter like an appliance (on the owner's
+  Sigenergy plant about 0.6 kW while it discharges 10 kW, 0.2 kW standing). So it is a little more than a plant's
+  own house load (Sigenergy's `plant_total_load_power`, which leaves the inverter out), and the battery's line is
+  what its own app shows. `house_from` is `"balance"` (`null` unread): a plant's own load is no longer taken (it was,
+  as `"plant"`, from 2026-11-24 in a 3.0 beta). The sun is as read.
 * `has`: which parts the site has, so the card draws only those (a part that is had but unread is drawn without a
   figure).
 """
@@ -71,13 +66,7 @@ NOW_KEYS: Final = (
 RECENT_MAX: Final = timedelta(minutes=20)
 FROM_POWER: Final = "power"
 FROM_RECENT: Final = "recent"
-HOUSE_FROM_PLANT: Final = "plant"
 HOUSE_FROM_BALANCE: Final = "balance"
-#: How far the battery's line the plant's own load leaves may lie from the battery's power read (kW, plus a share of
-#: it) for the plant's load to count: wider than any inverter's loss (`conversion_loss.LOSS_RANGE`), narrower than a
-#: reading from another moment.
-PLANT_SLACK_KW: Final = 0.05
-PLANT_SLACK_SHARE: Final = 0.1
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,8 +90,6 @@ class HouseNowInputs:
     #: The inverter's `(charge, discharge)` loss for a battery read at the battery (`conversion_loss.ConversionLoss
     #: .loss`), `None` for one read on the AC side.
     battery_loss: tuple[float, float] | None = None
-    #: The plant's own house load now (kW, the chargers on its side included), where the adapter reads it.
-    plant_load_kw: float | None = None
 
 
 def recent_kw(kwh: float | None, minutes: int, end: datetime, now: datetime) -> float | None:
@@ -140,15 +127,10 @@ def figures(inputs: HouseNowInputs) -> tuple[float | None, float | None, str | N
             return None, battery, None
         parts.append(-inputs.car_kw)
     if inputs.has_battery:
-        if battery is None or inputs.battery_kw is None:
+        if inputs.battery_kw is None:
             return None, battery, None
-        if inputs.plant_load_kw is not None:
-            cars = inputs.car_kw if inputs.has_car and inputs.car_kw is not None else 0.0
-            house = max(0.0, inputs.plant_load_kw - cars)
-            left = sum(parts) - house
-            if abs(left - inputs.battery_kw) <= PLANT_SLACK_KW + PLANT_SLACK_SHARE * abs(inputs.battery_kw):
-                return house, left, HOUSE_FROM_PLANT
-        parts.append(-battery)
+        # As read: the inverter's loss and standing use stay in the house (see the module).
+        parts.append(-inputs.battery_kw)
     return max(0.0, sum(parts)), battery, HOUSE_FROM_BALANCE
 
 

@@ -3,7 +3,7 @@
 `{api_version: 1, charger_id | site_id}`, any user who can see the card. The answer is
 `site/house_now.py:house_now` (its docstring has the shape), from what the site already reads every recompute: the
 net grid power and the chargers' draw as solar reads them (`execution/solar_execution.py`), the battery's facts
-(`battery/facts.py`: its power, whether it is read on the DC side, the plant's own house load) with the inverter's
+(`battery/facts.py`: its power and whether it is read on the DC side) with the inverter's
 loss the battery plan knows (`battery/conversion_loss.py`), the Energy dashboard's solar power sensors (`stat_rate`) and the heat pump's meter where it is a
 power sensor. Without a power sensor the sun and the heat take the last period of today's energy flow (cached per
 5-minute row, `api/house.py:async_cached_day_flow`), so the card polls this every 30 s cheaply.
@@ -174,7 +174,6 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             car_connected=plugged,
             car_soc_pct=car_soc,
             battery_loss=battery_loss(controller) if has_battery else None,
-            plant_load_kw=facts.plant_load_kw if has_battery else None,
         )
     )
 

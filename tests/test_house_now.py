@@ -73,37 +73,22 @@ def test_the_house_is_the_balance_of_the_readings() -> None:
     assert house_now(villa(grid_kw=-3.0, battery_kw=0.0, sun_kw=1.0))["house_kw"] == 0.0
 
 
-def test_a_battery_read_at_the_battery_is_counted_on_the_ac_side() -> None:
-    # The owner's plant at night, discharging 10 kW (DC) with 6.5 % lost on the way out: the house gets 9.35 kW of it.
-    night = villa(grid_kw=0.2, sun_kw=0.0, battery_kw=-10.0, car_kw=0.0, battery_loss=(0.0366, 0.065))
+def test_a_battery_read_at_the_battery_is_drawn_as_read_and_the_inverter_stays_in_the_house() -> None:
+    # The owner's plant at night, discharging 10 kW (DC) with 4.3 % lost on the way out: the house holds the loss.
+    night = villa(grid_kw=0.2, sun_kw=0.0, battery_kw=-10.0, car_kw=0.0, battery_loss=(0.0346, 0.0431))
     answer = house_now(night)
-    assert answer["battery_kw"] == -10.0 and answer["battery_ac_kw"] == pytest.approx(-9.35)
-    assert answer["house_kw"] == pytest.approx(9.55) and answer["house_from"] == "balance"
-    # Charging from the grid: the way-in loss on top of what the cells take.
-    charging = house_now(villa(grid_kw=13.7, sun_kw=0.0, battery_kw=10.57, car_kw=0.0, battery_loss=(0.0366, 0.065)))
-    assert charging["battery_ac_kw"] == pytest.approx(10.96, abs=0.01)
-    assert charging["house_kw"] == pytest.approx(2.74, abs=0.01)
+    assert answer["battery_kw"] == -10.0 and answer["battery_ac_kw"] == pytest.approx(-9.57)
+    assert answer["house_kw"] == pytest.approx(10.2) and answer["house_from"] == "balance"
+    # Charging from the grid: the battery's AC side has the way-in loss on top; the house is the balance as read.
+    charging = house_now(villa(grid_kw=13.7, sun_kw=0.0, battery_kw=10.57, car_kw=0.0, battery_loss=(0.0346, 0.0431)))
+    assert charging["battery_ac_kw"] == pytest.approx(10.94, abs=0.01)
+    assert charging["house_kw"] == pytest.approx(3.13, abs=0.01)
+    # The lines add up with the battery as read.
+    assert charging["grid_kw"] + charging["sun_kw"] == pytest.approx(charging["house_kw"] + charging["battery_kw"])
     # Read on the AC side: as read.
     assert house_now(villa())["battery_ac_kw"] == -1.5
     assert house_now(villa(has_battery=False, battery_kw=None))["battery_ac_kw"] is None
-
-
-def test_the_plants_own_load_is_the_house_while_the_lines_add_up() -> None:
-    # The owner's plant charging from the grid: its own load 2.57 kW, the cars 0; the battery's line is what is left.
-    answer = house_now(
-        villa(grid_kw=13.73, sun_kw=0.0, battery_kw=10.57, car_kw=0.0, battery_loss=(0.0366, 0.065), plant_load_kw=2.57)
-    )
-    assert answer["house_from"] == "plant" and answer["house_kw"] == pytest.approx(2.57)
-    assert answer["battery_ac_kw"] == pytest.approx(11.16)
-    assert answer["battery_kw"] == 10.57
-    # The plant's load holds the car: taken out of it.
-    car = house_now(villa(grid_kw=11.0, sun_kw=0.0, battery_kw=0.0, car_kw=7.4, plant_load_kw=10.98))
-    assert car["house_from"] == "plant" and car["house_kw"] == pytest.approx(3.58)
-    # Lines that do not add up near the battery's reading (the sun's last period standing in): the balance.
-    off = house_now(villa(grid_kw=0.2, sun_kw=4.0, sun_from="recent", battery_kw=0.0, car_kw=0.0, plant_load_kw=2.0))
-    assert off["house_from"] == "balance" and off["house_kw"] == pytest.approx(4.2) and off["battery_ac_kw"] == 0.0
-    # Unread parts leave the house unread whichever way.
-    assert house_now(villa(grid_kw=None, plant_load_kw=2.0))["house_from"] is None
+    assert house_now(villa(grid_kw=None))["house_from"] is None
 
 
 def test_a_part_had_but_unread_leaves_the_house_unread_and_a_part_not_had_is_left_out() -> None:
@@ -208,7 +193,7 @@ def test_contract_fixtures() -> None:
         "villa_dc_battery.json",
         house_now(
             villa(grid_kw=0.2, sun_kw=0.0, sun_from="recent", battery_kw=-10.0, soc_pct=62.0, car_kw=0.0, heat_kw=1.4,
-                  car_connected=False, battery_loss=(0.0366, 0.065), plant_load_kw=9.5)
+                  car_connected=False, battery_loss=(0.0346, 0.0431))
         ),
     )
     _fixture(
