@@ -870,7 +870,8 @@ title, `null` for the other rows. `writable` is true for an administrator's sock
 only. `spotnav/update_site_settings` takes `priority` in `changes`: exactly the ids of `order` in a new order (else
 `spotnav_invalid_value`), with `expected.priority` the order last read (another is `spotnav_conflict`); naming
 `solar_priority` beside it is `spotnav_invalid_value`. Stored without a reload; rows of loads the site does not have
-keep their places; the old `solar_priority` and each charger's `charger_priority` are dropped. The answer carries
+keep their places; the old `solar_priority` and each charger's `charger_priority` are written as derived from the list
+(read only while no list is stored, so going back to an older release keeps the order). The answer carries
 `priority` (as the view states it) beside `site`. Over the webhook it is `spotnav_not_permitted_over_webhook`. The
 `site` block's `solar_priority` stays, derived from the list: `battery_first` where the battery stands above every
 car (with no car, above the water heater), else `car_first`; a write of it moves the battery's row. Example with
