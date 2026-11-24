@@ -143,6 +143,8 @@ class PoolSpaShadow:
         self.water_c: float | None = None
         self.water_source: str | None = None
         self.would: dict[str, Any] | None = None
+        #: When `would` was last decided (the control holds what is there once it is older than a few minutes).
+        self.would_at: datetime | None = None
         # ---- the spa and the sauna
         self.spa = new_spa()
         self.sauna = new_sauna()
@@ -536,16 +538,19 @@ class PoolSpaShadow:
             action = state.attributes.get("hvac_action")
             heating = action == "heating" if action is not None else state.state not in ("off", "idle")
         locked: bool | None = None
+        unreadable = False
         max_on: timedelta | None = None
         if isinstance(config, SaunaConfig):
             if config.lock_id is not None:
+                # Never bypassed: anything but a readable "off" (closed, not locked) keeps the sauna from starting.
                 lock = self.hass.states.get(config.lock_id)
-                locked = None if lock is None or lock.state in _UNREADABLE else lock.state == "on"
+                unreadable = lock is None or lock.state not in ("on", "off")
+                locked = unreadable or lock.state == "on"  # type: ignore[union-attr]
             if config.family == FAMILY_TYLO and state.attributes.get("door_fault_pending") is True:
                 locked = True
             if config.family == FAMILY_HARVIA:
                 max_on = self._harvia_on_time(config.entity_id)
-        return Reading(current, heating, locked, max_on)
+        return Reading(current, heating, locked, max_on, unreadable)
 
     def _harvia_on_time(self, entity_id: str) -> timedelta | None:
         """Harvia's own on time (its `on_time` number on the sauna's device, minutes), where it reads."""
@@ -674,8 +679,17 @@ class PoolSpaShadow:
             would = None
             self._last_filter = False
         elif plan is None or (not plan.circulation_hours and not plan.heat_hours and not self._prices(now)):
-            would = {"action": ACTION_OFF, "until": None, "reason": REASON_NO_PRICES}
-            self._last_filter = False
+            # No prices: the day's filtering need is still run, in any hours (moved, never dropped; review S5).
+            from .plan import filter_need_h  # noqa: PLC0415
+
+            need_h = plan.need_h if plan is not None else filter_need_h(pool, self._day_water(now))[0]
+            day_start = self._local(now).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
+            short = pool.circulation_id is not None and self.history.on_seconds(day_start, now) / 3600.0 < need_h
+            if short:
+                would = {"action": ACTION_FILTER, "until": None, "reason": "need"}
+            else:
+                would = {"action": ACTION_OFF, "until": None, "reason": REASON_NO_PRICES}
+            self._last_filter = short
         else:
             if hour in plan.heat_hours:
                 action, reason, runs = ACTION_HEAT, plan.heat_hours[hour], plan.heat
@@ -691,6 +705,7 @@ class PoolSpaShadow:
             self._last_filter = action in (ACTION_HEAT, ACTION_FILTER) and pool.circulation_id is not None
         changed = (self.would or {}).get("action"), (self.would or {}).get("reason")
         self.would = would
+        self.would_at = now
         if would is not None and changed != (would["action"], would["reason"]):
             self.book.record(
                 ShadowEntry(

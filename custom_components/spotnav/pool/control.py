@@ -55,7 +55,7 @@ from ..const import DOMAIN
 from ..core.parse import finite_number, number_from_state
 from ..heat.automations import steering_automations
 from ..heat.config import HeatConfig
-from ..loads.hold import KIND_SETTING, KIND_SWITCH, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
+from ..loads.hold import KIND_SETTING, KIND_SWITCH, OBSERVED_FOREIGN, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
 from ..loads.hold_part import (
     REASON_AUTOMATION,
     REASON_CLOUD,
@@ -112,6 +112,12 @@ REASON_INTERLOCK: Final = "interlock"
 #: A climate that cannot be set to `heat` and `off`.
 REASON_UNSUPPORTED: Final = "unsupported"
 REASON_RUN_ON: Final = "run_on"
+#: The heat pump is not SpotNav's and does not say whether it runs.
+REASON_PUMP_NOT_OURS: Final = "pump_not_ours"
+#: The person's heat is written back once the circulation runs (an exit with the water still).
+REASON_RESTORE_WAITS: Final = "restore_waits"
+#: What the pool would do is older than this: the control holds what is there.
+STALE_PLAN: Final = timedelta(minutes=5)
 
 KEY_CIRC: Final = "circulation"
 KEY_HP: Final = "heat_pump"
@@ -185,6 +191,12 @@ class PoolPart:
         self.fault_until: datetime | None = None
         self.circ_read: str | None = None
         self.hp_read: str | None = None
+        self.has_pump = False
+        #: Whether the pump's state holds the circulation on (`None`: unreadable), when it last went idle, and a pump
+        #: SpotNav does not control that does not say whether it runs.
+        self.hp_holds: bool | None = None
+        self.hp_idle_at: datetime | None = None
+        self.pump_not_ours = False
         # Kept: the dial last written to the pump (°C).
         self.dial_written: float | None = None
 
@@ -285,14 +297,23 @@ class PoolPart:
         """Whether the heat pump may run: any mode but off (another mode may run the compressor too)."""
         return self.hp_read is not None and self.hp_read != "off"
 
-    def _run_on(self, now: datetime) -> bool:
-        """The heat pump runs, or went off less than `RUN_ON_MIN` ago (or a write to start it is in flight): the
-        circulation must run."""
+    def _run_on(self, now: datetime, pool: PoolConfig | None = None) -> bool:
+        """The circulation must run: the heat pump runs (or a write to start it is in flight), or stopped less than
+        `RUN_ON_MIN` ago. A heat pump SpotNav controls runs while its mode is not off; one it does not control runs
+        while its `hvac_action` says so, and only a stop seen starts its run-on (review S2). An unreadable pump counts
+        as running unless its last reading was off for the run-on (review B4)."""
         held = self.hp.helds.get(KEY_HP)
         starting = held is not None and held.pending is not None and held.pending.value in ("heat", "on")
-        if starting or (self.hp_read is not None and self.hp_read != "off"):
+        if starting or self.hp_holds is True:
             return True
-        return self.hp_off_since is not None and now - self.hp_off_since < timedelta(minutes=RUN_ON_MIN)
+        run_on = timedelta(minutes=RUN_ON_MIN)
+        if self.hp_holds is None and self.has_pump:
+            return not (self.hp_off_since is not None and now - self.hp_off_since >= run_on)
+        controlled = pool is not None and pool.control_heat_pump
+        if controlled:
+            return self.hp_off_since is not None and now - self.hp_off_since < run_on
+        stops = [moment for moment in (self.hp_stopped_at, self.hp_idle_at) if moment is not None]
+        return bool(stops) and now - max(stops) < run_on
 
     # ---- each look
 
@@ -308,14 +329,36 @@ class PoolPart:
             self.circ_off_since = self.circ_off_since or now
         hp_read, _set, _unit, _range = self._hp_values(pool)
         self.hp_read = hp_read
+        pump = pool.heat_pump
+        self.has_pump = pump is not None
         if hp_read is not None and hp_read != "off":
             self.hp_on_since = self.hp_on_since or now
-            self.hp_off_since = None
         elif hp_read is not None:
             if self.hp_on_since is not None:
                 self.hp_stopped_at = now
             self.hp_on_since = None
+        # Whether the pump's state holds the circulation on (`_run_on`).
+        action = None
+        if pump is not None and pump.shape == SHAPE_CLIMATE and (state := self._state(pump.entity_id)) is not None:
+            action = state.attributes.get("hvac_action")
+        self.pump_not_ours = False
+        if hp_read is None:
+            holds: bool | None = None
+        elif pool.control_heat_pump or action is None and hp_read == "off":
+            holds = hp_read != "off"
+        elif action is not None:
+            holds = str(action) not in ("idle", "off")
+        else:
+            # A pump SpotNav does not control and that does not say whether it runs: its own flow switch protects it.
+            holds = False
+            self.pump_not_ours = True
+        if holds is True:
+            self.hp_off_since = None
+        elif holds is False:
+            if self.hp_holds is True:
+                self.hp_idle_at = now
             self.hp_off_since = self.hp_off_since or now
+        self.hp_holds = holds
 
     def _faulted(self, pool: PoolConfig, now: datetime) -> bool:
         pump = pool.heat_pump
@@ -345,7 +388,9 @@ class PoolPart:
         read_back_circ = READ_BACK_CLOUD if self.circ_cloud(pool) else READ_BACK_LOCAL
         self.circ.observe(KEY_CIRC, self.circ_read, now, read_back_circ)
         self.hp.observe(KEY_HP, self.hp_read, now, read_back_hp)
-        self.hp.observe(KEY_HP_SET, hp_set_read, now, read_back_hp)
+        if self.hp.observe(KEY_HP_SET, hp_set_read, now, read_back_hp) == OBSERVED_FOREIGN:
+            # The person's setpoint at the panel is theirs: only a change of the dial writes again (review S1).
+            self.dial_written = pool.target_c
         if not pool.season_open:
             # No writes at all: what SpotNav held is the person's as it stands.
             for part, keys in ((self.hp, (KEY_HP, KEY_HP_SET)), (self.circ, (KEY_CIRC,))):
@@ -368,8 +413,16 @@ class PoolPart:
         order = self.control.shed_until
         shed_heat = order(LOAD_POOL_HEAT, now) is not None
         shed_circ = order(LOAD_POOL_CIRCULATION, now) is not None
-        want_hp = action == "heat" and not shed_heat and not shed_circ
-        want_circ = action in ("heat", "filter") and not shed_circ
+        if action is None:
+            # No plan, or one gone stale (a look that failed): what is there is held, never read as off (review S5).
+            hp_held, circ_held = self.hp.helds.get(KEY_HP), self.circ.helds.get(KEY_CIRC)
+            keeping_hp = (self.hp_read if hp_held is None else hp_held.target(self.hp_read)) not in (None, "off")
+            keeping_circ = (self.circ_read if circ_held is None else circ_held.target(self.circ_read)) == "on"
+            want_hp = keeping_hp and not shed_heat and not shed_circ
+            want_circ = keeping_circ and not shed_circ
+        else:
+            want_hp = action == "heat" and not shed_heat and not shed_circ
+            want_circ = action in ("heat", "filter") and not shed_circ
         await self._async_heat_pump(now, pool, want_hp, hp_set_read)
         await self._async_circulation(now, pool, want_circ)
 
@@ -480,9 +533,13 @@ class PoolPart:
             part.state, part.reason = STATE_PAUSED, REASON_UNAVAILABLE
             return
         part.state, part.reason = STATE_CONTROLLED, REASON_CLOUD if self.circ_cloud(pool) else None
+        if self.pump_not_ours:
+            # The heat pump is the person's and does not say when it runs: the circulation follows the plan only, the
+            # pump's own flow switch protects it (turn on the heat pump's control too).
+            part.reason = REASON_PUMP_NOT_OURS
         held = part.held(KEY_CIRC)
         heading_on = held.target(self.circ_read) == "on"
-        run_on = self._run_on(now)
+        run_on = self._run_on(now, pool)
         if (want or run_on) and not heading_on:
             if run_on:
                 # The heat pump needs the water moving: on at once.
@@ -532,6 +589,17 @@ class PoolPart:
             # holds at an exit too); the person's on is then not written back.
             await self.hp.async_write(KEY_HP, self._hp_call(pool, "off"), "off", now, kind=KIND_SWITCH, limit=None)  # type: ignore[arg-type]
             return False
+        if (
+            held is not None
+            and held.pending is None
+            and held.ours(self.hp_read)
+            and held.person not in (None, "off")
+            and not circulating
+        ):
+            # The person's heat waits for the water to move: kept, shown, and written back at the first look the
+            # circulation reads on (never dropped; review S3).
+            self.hp.state, self.hp.reason = STATE_PAUSED, REASON_RESTORE_WAITS
+            return False
 
         def mode_call(value: Value) -> tuple[str, str, dict[str, Any]] | None:
             if value != "off" and not circulating:
@@ -540,7 +608,7 @@ class PoolPart:
 
         done = await self.hp.async_give_back(KEY_HP, self.hp_read, mode_call, now)
         done = await self.hp.async_give_back(KEY_HP_SET, self._hp_values(pool)[1], lambda v: self._set_call(pool, v), now) and done
-        if done:
+        if done and not pool.control_heat_pump:
             self.dial_written = None
         return done
 
@@ -552,7 +620,7 @@ class PoolPart:
                 held.drop(None)
             return True
         held = self.circ.helds.get(KEY_CIRC)
-        if held is not None and held.person == "off" and held.ours(self.circ_read) and self._run_on(now):
+        if held is not None and held.person == "off" and held.ours(self.circ_read) and self._run_on(now, pool):
             return False
         return await self.circ.async_give_back(KEY_CIRC, self.circ_read, lambda v: self._circ_call(pool, v), now)
 
@@ -584,11 +652,14 @@ class PoolPart:
                     live=True, ready=ready, give_w=hp_give if running else 0.0, drawing=running,
                     why=None if ready else ("min_on" if running else "off"),
                 )
+        # A live circulation step would turn a cloud heat pump off with it: never (review S4).
+        cloud_pump_on = pool.control_heat_pump and self.hp_cloud(pool) and running
         if (
             pool.season_open
             and pool.control_circulation
             and self.circ.state == STATE_CONTROLLED
             and not self.circ_cloud(pool)
+            and not cloud_pump_on
         ):
             on = self.circ_read == "on"
             give = (pool.circulation_kw or DEFAULT_CIRCULATION_KW) * 1000.0 + (hp_give if running else 0.0)
@@ -725,7 +796,7 @@ class PoolSpaControl:
             config = None
         jobs = []
         if config is not None:
-            if self.pool.hp.holds() or self.pool.circ.holds():
+            if (self.pool.hp.holds() or self.pool.circ.holds()) and config.pool is not None and config.pool.season_open:
                 jobs.append(self._async_settle(lambda: self.pool._async_exit(now, config.pool)))
             for part, block in ((self.spa, config.spa), (self.sauna, config.sauna)):
                 if part.part.holds():
@@ -803,7 +874,9 @@ class PoolSpaControl:
             return
         shadow = self.shadow
         would = getattr(shadow, "would", None)
-        action = None if would is None else would.get("action")
+        would_at = getattr(shadow, "would_at", None)
+        stale = would_at is not None and now - would_at > STALE_PLAN
+        action = None if would is None or stale else would.get("action")
         looks = (
             ("pool", lambda: self.pool.async_look(now, config.pool, action)),
             ("spa", lambda: self.spa.async_look(now, config.spa)),
