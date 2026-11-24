@@ -54,6 +54,7 @@ from custom_components.spotnav.battery.monitor import GRACE_S, Monitor
 from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S
 from tests.battery_control_fakes import (
     HUAWEI_STATES,
+    LIMIT_HOLD_CONTROL,
     SIGENERGY_STATES,
     SOLAREDGE_STATES,
     SOLAX_STATES,
@@ -68,7 +69,8 @@ from tests.battery_control_fakes import (
 
 
 def _sigenergy(**kwargs) -> tuple[Executor, FakeBattery]:
-    return Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), **kwargs)
+    """Sigenergy's roles with a hold whose peak cover lifts a limit (`LIMIT_HOLD_CONTROL`): the mechanics below."""
+    return Executor(LIMIT_HOLD_CONTROL), FakeBattery(LIMIT_HOLD_CONTROL, dict(SIGENERGY_STATES), **kwargs)
 
 
 def _held(executor: Executor, battery: FakeBattery) -> object:
@@ -414,7 +416,7 @@ def test_a_real_management_change_blocks_and_the_block_clears_by_itself_after_a_
     now, results = run(executor, battery, now + timedelta(hours=1), 3, "hold")
     assert executor.state.phase == "blocked" and written(results) == []
     # It survives a restart, and clears by itself after MANAGEMENT_BLOCK_S without anything calling reset.
-    executor = Executor(SIGENERGY_CONTROL, state=ExecState.from_dict(executor.state.as_dict()))
+    executor = Executor(LIMIT_HOLD_CONTROL, state=ExecState.from_dict(executor.state.as_dict()))
     assert executor.restart(now) == [] and executor.state.phase == "blocked"
     _now, results = run(executor, battery, now + timedelta(seconds=MANAGEMENT_BLOCK_S), 6, "hold")
     assert executor.state.phase == "active" and written(results)
@@ -1366,7 +1368,7 @@ def test_a_restart_restores_the_stored_snapshot_before_anything_else() -> None:
     now = _held(executor, battery)
     stored = executor.as_dict()
     again = Executor(
-        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        LIMIT_HOLD_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
         ExecState.from_dict(stored["state"]),
     )
     assert again.restart(now)[0]["reason"] == "restart"
@@ -1556,22 +1558,22 @@ def test_solax_sends_its_remote_control_on_the_trigger_and_sends_disabled_on_the
 
 
 def test_the_preview_is_the_executors_own_writes_and_hand_back_without_writing() -> None:
-    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES) | {"discharge_limit": "unknown"})
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
 
     seen = preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold"))
 
     assert seen.blocker is None
     assert [(op.role, op.value) for op in seen.writes] == [
-        ("discharge_limit", 0.0), ("remote_ems", True), ("control_mode", "Maximum Self Consumption")
+        ("charge_limit", 0.0), ("remote_ems", True), ("control_mode", "Command Charging (PV First)")
     ]
-    # Handing back: the limit it wrote first, as the rating (it read unknown: never set), so the battery covers a
-    # peak at once, then the mode and the switch.
+    # Handing back: the mode first, so the battery covers a peak at once, then the switch, then the limit it wrote,
+    # as the rating (it read unknown: never set).
     assert [(op.role, op.value) for op in seen.restores] == [
-        ("discharge_limit", 10.0), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
+        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("charge_limit", 10.0)
     ]
     assert all(op.restore for op in seen.restores)
-    assert seen.snapshot == {"charge_limit": "unknown", "discharge_limit": "unknown"}
-    assert battery.writes == [] and battery.states["discharge_limit"] == "unknown"
+    assert seen.snapshot == {"charge_limit": "unknown", "discharge_limit": "23.04"}
+    assert battery.writes == [] and battery.states["charge_limit"] == "unknown"
 
 
 def test_the_preview_refuses_as_the_executor_does() -> None:
@@ -1626,13 +1628,14 @@ def test_an_unknown_reading_before_a_write_is_no_evidence_and_the_write_goes_ahe
 def test_the_sigenergy_mode_texts_are_the_options_of_typqxq_s_remote_ems_control_mode_select() -> None:
     """TypQxQ/Sigenergy-Local-Modbus, custom_components/sigen/select.py lines 109-112 (options) and 120-123 (map),
     register 40031 values in modbusregisterdefinitions.py lines 164-167: 2 Maximum Self Consumption,
-    3 Command Charging (Grid First), 5 Command Discharging (PV First)."""
+    3 Command Charging (Grid First), 4 Command Charging (PV First), 5 Command Discharging (PV First)."""
     def mode(action: str) -> object:
         return SIGENERGY_CONTROL.wanted(action, 4.0, 0)["control_mode"]
 
     assert mode("grid_charge") == "Command Charging (Grid First)"  # register value 3
     assert mode("export_discharge") == "Command Discharging (PV First)"  # register value 5
-    assert mode("hold") == "Maximum Self Consumption"  # register value 2
+    assert mode("hold") == "Command Charging (PV First)"  # register value 4
+    assert mode("discharge_house") == "Maximum Self Consumption"  # register value 2
 
 
 # --- every hand-back ends -------------------------------------------------------------------------------------------
@@ -1705,7 +1708,7 @@ def test_a_restore_write_pending_across_a_restart_ends_once_the_role_needs_no_wr
     assert executor.state.phase == "restoring" and executor.state.in_flight
     stored = executor.as_dict()
     again = Executor(
-        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        LIMIT_HOLD_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
         ExecState.from_dict(stored["state"]),
     )
     later = now + timedelta(seconds=READBACK_DEADLINE_S + 60)

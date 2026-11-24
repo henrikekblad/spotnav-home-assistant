@@ -63,15 +63,17 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
   phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
   hold: one write, the brand's `peak_first` roles back to the value found or to the brand's normal value
-  (Sigenergy: the discharge limit, lifted in Maximum Self Consumption, where the plant covers each phase itself;
-  with the mode-4 hold variant `pv_first` the control mode back to Maximum Self Consumption), Remote EMS left on. A
+  (Sigenergy's mode-4 hold, `pv_first`: the control mode back to Maximum Self Consumption, where the plant covers
+  each phase itself), Remote EMS left on. A
   mode change may take the plant longer than a limit (its Remote EMS entities blink around a mode change, TypQxQ
   issue #427; the plant's output ramps at its active power regulation gradient, register 40049); `PEAK_RECOVER_S`
   bounds either, then the full hand-back follows. If the headroom is not back at or above
   `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
   Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
   writes the `peak_first` roles first (a grid charge: the mode that stops it), as does a change of action away from a
-  grid charge (`ExecState.lead`): no limit is loosened while the plant still charges from the grid. A hand-back
+  grid charge (`ExecState.lead`): no limit is loosened while the plant still charges from the grid. Where the
+  recipe names limits that act in its modes (`BrandControl.mode_limits`, Sigenergy), every change of action lowers
+  those that fall first and raises those that rise last, around the mode (`_lead`). A hand-back
   for the fuse writes all its roles in one look, without waiting for each read-back (each is still read back, and
   one not confirmed is retried as any restore); other hand-backs keep one write at a time. The cover's write is never held back
   by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
@@ -85,7 +87,15 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has that guard only where its
   recipe asks for it (`BrandControl.hold_grid_guard`: a hold that is a floor at the SoC, which the plant may reach
   from the grid), judged on the lesser of the battery's charge and the site's import, so the sun it stores does not
-  count.
+  count. A hold that follows a sun surplus has that guard too.
+* **A hold that follows a sun surplus** (`HoldVariant.surplus`, `commands.HoldSurplus`): its charge limit is set
+  to the sun's surplus now (`house_net_kw` below zero), so the sun is stored and nothing is taken from the grid
+  (`_follow_surplus`). A new limit is written past the deadband or at 0, a raise no sooner than the recipe's gap
+  after the last one, a fall at once; only once the hold's own writes are in, never under a peak cover, while
+  priming or in the expiry test. A limit left standing grid-charges once the sun goes, so it never exceeds the
+  HA-down grid charge cap the shell gives (`ExecInputs.hold_charge_cap_kw`; unbounded only where the plant's import
+  limit guards the fuse). Without the house's load the limit goes to 0, and once the day's setting writes reach the
+  grid charge's reserve it goes to 0 and stays there. Each write is a counted setting write.
 * **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
@@ -202,6 +212,7 @@ from .commands import (
     answered,
     fixed_rate_kw,
     forbidden_read,
+    native,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -426,6 +437,10 @@ class ExecInputs:
     #: that runs targets per phase (`BrandControl.phased`) charges each phase on its own; `None`: the brand's own
     #: balanced charge.
     phase_caps_kw: Phases | None = None
+    #: The most a hold that follows a sun surplus (`BrandControl.hold_surplus`) may leave its charge limit at (kW):
+    #: the HA-down grid charge cap, since a limit left standing grid-charges once the sun goes; `math.inf` where the
+    #: plant's own import limit guards the fuse instead. 0 (no follow) unless the shell gives it.
+    hold_charge_cap_kw: float = 0.0
     #: Each phase's headroom now (A), `None` when one is unknown.
     phase_headroom_a: Phases | None = None
     #: The plant's own power on each phase now (kW, + output; the adapter's `plant_phase_power`), `None` when it is
@@ -533,6 +548,11 @@ class ExecState:
     #: Roles that go idle with the switch (`Role.idle_when`) whose hand-back write was never read back (a fuse
     #: hand-back writes the switch off at once): the plant may still hold the command. The next enter primes first.
     unsure: tuple[str, ...] = ()
+    #: A silence SpotNav wrote (`Expiry.silence`, EcoFlow's Modbus Control off) still stands, or is not yet undone
+    #: and read back: every hand-back first takes the plant back as the inverter's own self-consumption (the
+    #: discharge to the house, the integration renewing again) and only then hands back, so a dead-man that did not act
+    #: leaves no command standing. Stored: a restart in the silence takes the plant back too.
+    retake: bool = False
     #: An enter that writes the brand's `prime` values first, until every role reads its target; not stored (a
     #: restart hands back, and `unsure` primes the next enter again).
     priming: bool = False
@@ -609,6 +629,7 @@ class ExecState:
             "writes_today": self.writes_today,
             "variant": self.variant,
             "unsure": list(self.unsure),
+            "retake": self.retake,
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
@@ -716,6 +737,7 @@ class ExecState:
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
             variant=text("variant"),
             unsure=names("unsure"),
+            retake=data.get("retake") is True,
             phased=data.get("phased") is True,
             phase_kw=phase_kw,
             setpoint_writes_today=(
@@ -1184,7 +1206,12 @@ class Executor:
         #: a restart ends the test.
         self.expired: tuple[str, ...] = ()
         self.diverged: tuple[str, ...] = ()
+        #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
+        #: integration renews, stopped by a write); not stored: a restart ends the test.
+        self.silenced = False
         self._absent: frozenset[str] = frozenset()
+        #: When a hold's surplus follow last raised its limit (`_follow_surplus`); not stored.
+        self._surplus_raised_at: datetime | None = None
 
     def _sense(self, inputs: ExecInputs) -> None:
         facts = inputs.facts
@@ -1280,6 +1307,9 @@ class Executor:
         probing = self._probing(inputs)
         if not probing:
             self.expired = self.diverged = ()
+            if self.silenced or (self.state.retake and self._silence_in_target()):
+                # Also after a restart in the silence (`ExecState.retake` is stored, `silenced` is not).
+                self._unsilence()
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1305,6 +1335,7 @@ class Executor:
         ):
             events += self._begin_restore(now, "restore_again")
         events += self._settle(inputs)
+        self._retaken(inputs)
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -1819,7 +1850,8 @@ class Executor:
         power = inputs.facts.power_kw
         grid = inputs.grid_import_kw if inputs.measurement_ok else None
         from_grid = (
-            self.control.hold_grid_guard and power is not None and grid is not None and math.isfinite(grid)
+            (self.control.hold_grid_guard or self.control.hold_surplus is not None)
+            and power is not None and grid is not None and math.isfinite(grid)
             and min(power, grid) > HOLD_CHARGE_KW
         )
         charging = (
@@ -1868,15 +1900,7 @@ class Executor:
         if state.phase == "restoring" or (state.phase != "active" and not state.holds_snapshot):
             return []
         self.monitor.stop(now)
-        target: dict[str, Native] = {}
-        normal = NORMAL.get(self.control.brand, {})
-        for role in self.control.roles:
-            if role.name in state.given_up:
-                continue
-            if role.restored and role.name in state.restore_values:
-                target[role.name] = state.restore_values[role.name]
-            elif role.name in normal and role.name in state.entities:
-                target[role.name] = normal[role.name]
+        target = self._retake_target(state) if state.retake else self._restore_target(state)
         blocked = reason if _blocking(reason) else state.blocked
         if reason in _FUSE_REASONS and state.pending is not None:
             # A write still awaiting its read-back (the peak cover's lift) does not hold the rest back.
@@ -1888,6 +1912,48 @@ class Executor:
         )
         self._release_unset()
         return [_event(now, "hand_back", reason)]
+
+    def _restore_target(self, state: ExecState) -> dict[str, Native]:
+        """What a hand-back writes: each role's value as found, or the brand's normal one for a role without one."""
+        target: dict[str, Native] = {}
+        normal = NORMAL.get(self.control.brand, {})
+        for role in self.control.roles:
+            if role.name in state.given_up:
+                continue
+            if role.restored and role.name in state.restore_values:
+                target[role.name] = state.restore_values[role.name]
+            elif role.name in normal and role.name in state.entities:
+                target[role.name] = normal[role.name]
+        return target
+
+    def _silence_in_target(self) -> bool:
+        """Whether the target still holds a silence's values (`Expiry.silence`)."""
+        target = self.state.target
+        return any(name in target and target[name] == value for name, value in self.control.expiry.silence)
+
+    def _can_retake(self) -> bool:
+        """Whether a silence of this control can be undone by its own discharge to the house (`retake`)."""
+        return bool(self.control.expiry.silence) and self.control.supports(ACTION_DISCHARGE_HOUSE)
+
+    def _retake_target(self, state: ExecState) -> dict[str, Native]:
+        """A hand-back's first stage after a silence (`ExecState.retake`): the discharge to the house, written in the
+        enter order (EcoFlow: Modbus Control on, then Automatic), with no role idle counted as done."""
+        wanted = self._wanted(ACTION_DISCHARGE_HOUSE, 0.0, state.restore_values)
+        return {name: value for name, value in wanted.items() if name not in state.given_up}
+
+    def _retaken(self, inputs: ExecInputs) -> None:
+        """A silence undone while the action runs: once every silenced role reads the action's value again, nothing
+        is owed for it (`ExecState.retake`)."""
+        state = self.state
+        if not state.retake or self.silenced or state.phase != "active":
+            return
+        for name, _value in self.control.expiry.silence:
+            wanted = state.target.get(name)
+            if wanted is None or not self._satisfied(
+                self.control.role(name), wanted, inputs.reads.get(name), restoring=False
+            ):
+                return
+        self.state = replace(state, retake=False)
 
     def _settle_retries(self, inputs: ExecInputs) -> None:
         """Drop the retry of a restore write that is no longer needed: the role now reads what the hand-back wants
@@ -1922,6 +1988,10 @@ class Executor:
         if self._next_role(state, inputs) is not None:
             return []
         now = inputs.now
+        if state.retake:
+            # Taken back after a silence: now the hand-back proper.
+            self.state = replace(state, retake=False, target=self._restore_target(state), sent=(), confirmed=())
+            return [_event(now, "retaken", state.reason or "")]
         for name, entity_id in state.entities.items():
             if name not in state.unrestored:
                 self.ledger.release(entity_id)
@@ -2335,15 +2405,36 @@ class Executor:
                     in_flight=_without(state.in_flight, name),
                 )
 
-    def _lead(self, previous: str | None) -> tuple[str, ...]:
+    def _lead(
+        self, previous: str | None, before: Mapping[str, Native] | None = None,
+        after: Mapping[str, Native] | None = None,
+    ) -> tuple[str, ...]:
         """The roles a change of action away from `previous` writes first: a grid charge's stop (its `peak_first`
         roles; Sigenergy: the control mode), so a limit the next action loosens never acts in the grid charge's mode
         (the charge limit back at the rating in Command Charging would charge from the grid at full power). A button
-        is never moved ahead of the values it sends."""
-        if previous != ACTION_GRID_CHARGE:
-            return ()
-        first = self.control.peak_first.get(previous, ())
-        return tuple(name for name in first if self.control.role(name).method != "button")
+        is never moved ahead of the values it sends. Where the recipe names its mode limits (`mode_limits`), the
+        order is the whole of it: those that fall from `before` to `after` first, then the stop and the brand's
+        order, then those that rise."""
+        stop: tuple[str, ...] = ()
+        if previous == ACTION_GRID_CHARGE:
+            first = self.control.peak_first.get(previous, ())
+            stop = tuple(name for name in first if self.control.role(name).method != "button")
+        if not self.control.mode_limits or before is None or after is None:
+            return stop
+
+        def moved(name: str) -> float:
+            old, new = before.get(name), after.get(name)
+            if any(isinstance(value, bool) or not isinstance(value, int | float) for value in (old, new)):
+                return 0.0
+            return float(new) - float(old)  # type: ignore[arg-type]
+
+        limits = [name for name in self.control.mode_limits if name in after]
+        falling = tuple(name for name in limits if moved(name) < 0)
+        rising = tuple(name for name in limits if moved(name) > 0)
+        middle = tuple(dict.fromkeys(
+            name for name in (*stop, *self.control.enter_order) if name not in falling and name not in rising
+        ))
+        return (*falling, *middle, *rising)
 
     def _watch(self, inputs: ExecInputs, action: str, rate: float) -> None:
         """The monitor watches the new command; a discharge for the house only when the house's deficit is known."""
@@ -2375,8 +2466,8 @@ class Executor:
         if self._probing(inputs):
             # The expiry test: the command stands as written, nothing renews it and nothing changes it.
             if state.renew:
-                self.state = replace(state, renew=())
-            return []
+                self.state = state = replace(state, renew=())
+            return self._silence(now)
         events: list[dict[str, Any]] = []
         if state.priming and state.pending is None and self._next_role(state, inputs) is None:
             # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
@@ -2431,8 +2522,8 @@ class Executor:
                 house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
                 sent=(), renew=renew, rate_changed_at=now, watchdog_at=watchdog_at, covered_at=None,
                 peak_low_since=None,
-                lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
-                phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
+                lead=self._lead(state.action, state.target, target), phase_kw=phases, phase_bad=(),
+                phase_judged_at=None, phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.
                 entered_at=now if phases is not None else state.entered_at,
             )
@@ -2458,6 +2549,7 @@ class Executor:
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
+        events += self._follow_surplus(inputs)
         events += self._renew_block(inputs)
         state = self.state
         if not self._fast_renewal():
@@ -2483,6 +2575,46 @@ class Executor:
             self.state = replace(state, renew=renewed, watchdog_at=now)
             events.append(_event(now, "renew", ",".join(renewed)))
         return events
+
+    def _follow_surplus(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A running hold that follows a sun surplus (`BrandControl.hold_surplus`): its charge limit set to the
+        surplus now, past the deadband (see the module)."""
+        follow = self.control.hold_surplus
+        state = self.state
+        if (
+            follow is None or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD
+            or state.covered_at is not None or state.priming
+            # Only once the hold's own writes are in: its limit at 0 first, then Remote EMS and the mode.
+            or state.pending is not None or self._next_role(state, inputs) is not None
+        ):
+            return []
+        standing = state.target.get(follow.role)
+        if not isinstance(standing, int | float) or isinstance(standing, bool):
+            return []
+        now = inputs.now
+        net = house_net_kw(inputs) if inputs.measurement_ok else None
+        surplus = 0.0 if net is None else max(-net, 0.0)
+        rated = inputs.facts.max_charge_kw
+        if rated is not None and math.isfinite(rated):
+            surplus = min(surplus, rated)
+        surplus = min(surplus, max(inputs.hold_charge_cap_kw, 0.0))
+        new = math.floor(surplus / follow.step_kw + 1e-9) * follow.step_kw
+        if new < follow.deadband_kw or _writes_today(state, inputs) >= self._daily_cap - self._charge_reserve:
+            # Too little to follow, or the day's writes are nearly spent: the limit back at 0 and kept there.
+            new = 0.0
+        new = native(self.control.role(follow.role), new)
+        if new == standing or (new != 0.0 and abs(new - standing) < follow.deadband_kw):
+            return []
+        raised = self._surplus_raised_at
+        if new > standing and raised is not None and (now - raised).total_seconds() < follow.raise_gap_s:
+            return []
+        if new > standing:
+            self._surplus_raised_at = now
+        self.state = replace(
+            state, target={**state.target, follow.role: new},
+            sent=tuple(name for name in state.sent if name != follow.role),
+        )
+        return [_event(now, "surplus", ACTION_HOLD, role=follow.role, kw=new, was_kw=standing)]
 
     def _renew_block(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A grid charge commanded in blocks (`BrandControl.charge_block_s`): once a block has run, its ceiling is
@@ -2685,7 +2817,12 @@ class Executor:
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
         restoring = state.phase == "restoring"
-        if restoring:
+        retaking = restoring and state.retake
+        if retaking:
+            # After a silence: the plant taken back in the enter order (the switch before the roles it makes
+            # available), no idle role counted as done (`ExecState.retake`).
+            order = self.control.enter_order
+        elif restoring:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
@@ -2709,7 +2846,9 @@ class Executor:
                 if name in state.renew:
                     renewals.append(name)
                 continue
-            if not self._satisfied(self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring):
+            if not self._satisfied(
+                self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring and not retaking
+            ):
                 return name
             if name in state.renew:
                 renewals.append(name)
@@ -2721,7 +2860,7 @@ class Executor:
             return []
         restoring = state.phase == "restoring"
         name = self._next_role(state, inputs)
-        if name is None or self._capped(state, inputs, name):
+        if name is None or self._capped(state, inputs, name) or (restoring and self._limit_waits(state, inputs, name)):
             return []
         role = self.control.role(name)
         value = state.target[name]
@@ -2761,6 +2900,39 @@ class Executor:
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
 
+    def _limit_waits(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
+        """In a hand-back, whether a limit that acts in the plant's modes (`BrandControl.mode_limits`) must wait before
+        it is raised: until every role the hand-back writes before it (the mode, the switch) reads back what it
+        should (a mode idle once the switch is off counts: the plant is out of its Command modes). A fuse hand-back
+        writes its roles in one look; were the mode write lost or given up while the
+        raised limit landed, Sigenergy would sit in Command Charging (PV First) at its full charge limit just as the
+        fuse is closest. Waiting, the limit stays where the hold left it (0) and the next look tries again."""
+        if name not in self.control.mode_limits:
+            return False
+        role = self.control.role(name)
+        wanted = state.target[name]
+        read = inputs.reads.get(name)
+        now_read = reading(role, None if read is None else read.state)
+        if (
+            isinstance(wanted, bool) or not isinstance(wanted, (int, float))
+            or (isinstance(now_read, (int, float)) and not isinstance(now_read, bool) and wanted <= now_read)
+        ):
+            return False  # not raised: lowering a limit never waits
+        for before in restore_order(self.control, state.action):
+            if before == name:
+                return False
+            if before in self.control.mode_limits or before not in state.target:
+                continue
+            if not self._satisfied(
+                self.control.role(before), state.target[before], inputs.reads.get(before), restoring=True
+            ):
+                if (before in state.unrestored or before in state.given_up) and name not in state.unrestored:
+                    # The role it waits for will not be written again here: the limit is left where it is (low) and
+                    # counted as not handed back, so the hand-back ends and the person is told what to set by hand.
+                    self.state = replace(self.state, unrestored=(*self.state.unrestored, name))
+                return True
+        return False
+
     def _readback_s(self, state: ExecState, name: str) -> float:
         """How long this write may take to read back: the role's longer wait (`Role.readback_s`) only for a write
         that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link dropped
@@ -2789,6 +2961,42 @@ class Executor:
         if state.action == ACTION_HOLD and state.phase_kw is None:
             return True
         return state.action == ACTION_GRID_CHARGE and state.phase_kw is not None and max(state.phase_kw) <= 0.0
+
+    def _silence(self, now: datetime) -> list[dict[str, Any]]:
+        """In the expiry test, for a dead-man an integration renews (`Expiry.silence`): once, the writes that stop
+        that renewal go into the target (EcoFlow: Modbus Control off), every other role left as written. A role that
+        goes idle with them (`Role.idle_when`) leaves the target and is given back to the ledger: it reads nothing
+        until the silence ends, and then whatever the integration shows, which is no one else's change."""
+        silence = self.control.expiry.silence
+        if self.silenced or not silence:
+            return []
+        state = self.state
+        target = dict(state.target)
+        for name, value in silence:
+            target[name] = value
+        for role in self.control.roles:
+            if not role.idle_when or role.name in target and any(name == role.name for name, _value in silence):
+                continue
+            # Idle with the silence: neither written nor judged until it ends.
+            target.pop(role.name, None)
+            entity_id = state.entities.get(role.name)
+            if entity_id is not None:
+                self.ledger.release(entity_id)
+        self.silenced = True
+        self.state = replace(state, target=target, sent=(), retake=self._can_retake())
+        return [_event(now, "silenced", ",".join(name for name, _value in silence))]
+
+    def _unsilence(self) -> None:
+        """The expiry test's silence is over: a running action wants its own state again (the next looks write it
+        back, the silenced roles first in the brand's order), whatever the test found."""
+        self.silenced = False
+        state = self.state
+        if state.phase != "active" or state.action is None:
+            return
+        self.state = replace(state, sent=(), target=self._wanted(
+            state.action, state.rate_kw, state.restore_values, state.phase_kw, house_kw=state.house_kw,
+            behind=state.phase_behind_kw,
+        ))
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval

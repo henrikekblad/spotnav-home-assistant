@@ -57,7 +57,10 @@
     "not_ready.load.sauna": "Sauna",
     "pool_season.title": "SpotNav · Pool",
     "pool_season.message": "Das Wasser liegt seit drei Tagen bei etwa 10 °C – Zeit, die Poolsaison zu schließen?",
-    "pool_season.close": "Saison schließen"
+    "pool_season.close": "Saison schließen",
+    "hardware_test.title": "SpotNav · Speicher",
+    "hardware_test.message": "Der Hardwaretest des Speichers läuft jetzt (etwa {minutes} Min.).",
+    "hardware_test.stop": "Test stoppen"
   },
   "add_charger": {
     "hint": "Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."

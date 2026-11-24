@@ -905,11 +905,13 @@ OVERVIEW: tuple[Overview, ...] = (
         "`foxess_modbus`, HACS (nathanmarlor/foxess_modbus). The cloud integration (`foxess`) is not read",
         keys=("foxess_modbus",),
         adapter="foxess",
-        control="Not mapped: read only. Remote control (force charge and discharge), work mode, charge periods and "
-        "SoC limits exist locally, depending on the model",
-        note="Only the three-phase H3 family reports the grid per phase; H1 and KH need their own grid meter. The "
-        "size is learnt everywhere, and the ratings too except on H1 and KH with the two BMS rate sensors enabled. "
-        "The H3-Pro and H3-Smart report a level per battery pack, which SpotNav combines.",
+        note="Control is limits only: a hold sets the battery's max discharge current to 0, a discharge for the house "
+        "its max charge current, both handed back as found. No grid charge or sale yet: the integration's force "
+        "charge falls back to Back-up mode, which charges at full power, when Home Assistant stops. Nothing is "
+        "written until a hardware test has passed on the plant's firmware. Only the three-phase H3 family reports "
+        "the grid per phase; H1 and KH need their own grid meter. The size is learnt everywhere, and the ratings too "
+        "except on H1 and KH with the two BMS rate sensors enabled. The H3-Pro and H3-Smart report a level per "
+        "battery pack, which SpotNav combines.",
     ),
     Overview(
         "SMA",
@@ -1071,10 +1073,12 @@ OVERVIEW: tuple[Overview, ...] = (
         "(shuette42/ecoflow-energy-ha)",
         keys=("ef_powerocean_tcpmodbus", "ecoflow_energy"),
         adapter="ecoflow",
-        control="Not mapped: read only. Local Modbus has a battery power setpoint under a heartbeat the inverter drops "
-        "after a minute, and it locks the EcoFlow app meanwhile; Modbus is first enabled by EcoFlow's support or the "
-        "installer",
-        note="The ratings are learnt. The size is read over Modbus only.",
+        note="Control is mapped for `ef_powerocean_tcpmodbus` only (Modbus Control, Battery Mode and its power; "
+        "`ecoflow_energy` is read only) and runs only after the site's own hardware test passed on its firmware. "
+        "Modbus is first enabled by EcoFlow's support or the installer; the EcoFlow app is locked while SpotNav "
+        "controls the battery. The inverter drops a command about a minute after the integration's heartbeat stops "
+        "(when Home Assistant stops, not when SpotNav alone stalls); the hardware test times it. The ratings are "
+        "learnt. The size is read over Modbus only.",
     ),
     Overview(
         "Kostal (Plenticore plus)",
@@ -1093,10 +1097,13 @@ OVERVIEW: tuple[Overview, ...] = (
         "power has no direction",
         keys=("marstek_local_api", "marstek_modbus"),
         adapter="marstek",
-        control="Not mapped: read only. The local API has Passive mode (a power with a countdown) and Manual time "
-        "slots; Modbus has RS485 control with force charge and discharge and charge and discharge limits",
-        note="The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with several "
-        "batteries in one entry it is not read at all.",
+        control="Mapped for the Modbus integration only",
+        note="Control needs the Modbus integration: a hold sets the maximum discharge power to 0, a grid charge is an "
+        "RS485 force charge, which the battery keeps if Home Assistant stops (no dead-man), so SpotNav caps it as all "
+        "on the battery's one phase. Nothing is written until a hardware test has passed on the battery's firmware. "
+        "The local API has no control SpotNav uses. A battery run by Omnibattery is only "
+        "watched. The ratings are learnt. Over the local API the battery's mode is read every 5 minutes, and with "
+        "several batteries in one entry it is not read at all.",
     ),
 )
 

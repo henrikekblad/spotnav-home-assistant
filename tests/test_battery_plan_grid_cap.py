@@ -152,6 +152,7 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
 
     class Fake:
         executor = SimpleNamespace(control=SimpleNamespace(phased=True))
+        facts = SimpleNamespace(brand="sigenergy")
 
         def options(self) -> Any:
             return SimpleNamespace(accept_ha_down=False)
@@ -171,6 +172,9 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
 
         def _fixed_charge_kw(self) -> None:
             return None
+
+        def _within_charge_power(self, cap: float | None) -> float | None:
+            return cap  # the plant's charge power entity says nothing here
 
     assert BatteryControl.plan_grid_charge_cap(Fake(), NOW) == (4.5, "conservative")  # type: ignore[arg-type]
     assert seen == {"phased": True}
@@ -226,11 +230,15 @@ def test_the_planned_charge_is_at_most_the_cap_in_all_and_never_below_the_suns_s
 # ---- where control runs no grid charge at all ------------------------------------------------------------------------
 
 
-def _control(cap: float | None, *, caps: Any = None, per_phase_only: bool = False, fixed: float | None = None) -> Any:
+def _control(
+    cap: float | None, *, caps: Any = None, per_phase_only: bool = False, fixed: float | None = None,
+    brand: str = "sigenergy",
+) -> Any:
     from custom_components.spotnav.battery import gate
 
     class Fake:
         executor = None
+        facts = SimpleNamespace(brand=brand)
 
         def options(self) -> Any:
             return SimpleNamespace(accept_ha_down=False)
@@ -249,6 +257,9 @@ def _control(cap: float | None, *, caps: Any = None, per_phase_only: bool = Fals
 
         def _fixed_charge_kw(self) -> float | None:
             return fixed
+
+        def _within_charge_power(self, cap: float | None) -> float | None:
+            return cap  # the plant's charge power entity says nothing here
 
     assert gate.MIN_RATE_KW == 0.5
     return Fake()
@@ -269,6 +280,8 @@ def _control(cap: float | None, *, caps: Any = None, per_phase_only: bool = Fals
         ({"cap": 4.0, "per_phase_only": True}, 0.0),  # shown only per phase, no caps per phase: the balanced one never runs
         ({"cap": None, "per_phase_only": True}, 0.0),
         ({"cap": 4.0, "per_phase_only": True, "caps": (1.0, 1.0, 2.0)}, 4.0),
+        ({"cap": 4.0, "brand": "foxess"}, 0.0),  # a limits-only recipe: no grid charge at all
+        ({"cap": None, "brand": "foxess"}, 0.0),
     ],
 )
 def test_the_plans_cap_is_zero_where_control_runs_no_grid_charge(kwargs: dict[str, Any], expected: float | None) -> None:

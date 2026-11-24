@@ -16,7 +16,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.spotnav.battery import gate
 from custom_components.spotnav.const import DOMAIN
 from custom_components.spotnav.runtime import site_controller_for
-from tests.test_battery_control import DISCHARGE, SWITCH, _site
+from tests.test_battery_control import CHARGE, DISCHARGE, SWITCH, _site
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -70,7 +70,7 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
     assert answer["trial"]["action"] == "hold" and plant.calls
     for index in range(4):
         await control.async_look(dt_util.now() + timedelta(seconds=10 * (index + 1)))
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(SWITCH).state == "on"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(SWITCH).state == "on"
     assert control.options() == gate.Options(enabled=True, shadow_only=True), "the test action changes no setting"
     answer = await hass.services.async_call(
         DOMAIN, "battery_control_test", {"action": "stop"}, blocking=True, context=admin, return_response=True,

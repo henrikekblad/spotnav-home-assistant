@@ -79,6 +79,11 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("select", "remotecontrol_power_control"),
         ("button", "remotecontrol_trigger"),
     ),
+    # FoxESS (`foxess_modbus`): the battery's current limits, enabled by default.
+    "foxess": (
+        ("number", "max_discharge_current"),
+        ("number", "max_charge_current"),
+    ),
     # The Solinteg plugin of `solax_modbus` (enabled by default but for the three phase numbers).
     "solinteg": (
         ("select", "working_mode"),
@@ -127,6 +132,21 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "backup_reserve_percent"),
         ("switch", "components_disallow_charge_from_grid_with_solar_installed"),
         ("sensor", "total_pack_energy"),
+    ),
+    # `ef_powerocean_tcpmodbus` enables its controls by default; listed so a person's own disable is offered.
+    "ecoflow": (
+        ("switch", "modbus_control"),
+        ("number", "charge_battery_power"),
+        ("number", "discharge_battery_power"),
+        ("select", "battery_mode"),
+    ),
+    # `marstek_modbus` ships every control entity disabled. The RS485 control switch is also read by the adapter's
+    # mode rule (someone else's force commands).
+    "marstek": (
+        ("number", "max_discharge_power"),
+        ("switch", "rs485_control_mode"),
+        ("number", "set_charge_power"),
+        ("select", "force_mode"),
     ),
 }
 

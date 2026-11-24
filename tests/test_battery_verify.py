@@ -4,11 +4,13 @@ a report per firmware string."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 
 from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SOLAREDGE_CONTROL
 from custom_components.spotnav.battery.executor import Executor
-from custom_components.spotnav.battery.gate import mode_verdict
+from custom_components.spotnav.battery.gate import merge_report, mode_verdict, modes_to_run, needs_run
+from custom_components.spotnav.battery.plan_model import ACTION_EXPORT_DISCHARGE, ACTION_GRID_CHARGE
 from custom_components.spotnav.battery.monitor import Capability
 from custom_components.spotnav.battery.verify import (
     MAX_REPORTS,
@@ -17,6 +19,7 @@ from custom_components.spotnav.battery.verify import (
     Timing,
     Verification,
     keep_report,
+    supported_modes,
 )
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
 
@@ -335,3 +338,27 @@ def test_the_expiry_is_never_tried_unless_a_run_names_it_and_never_without_a_hol
     battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
     verification = _verify(Executor(SOLAREDGE_CONTROL), battery, modes=("expiry",))
     assert _outcomes(verification)["expiry"] == "not_judgeable:not_supported"
+
+
+def test_a_recipe_without_a_grid_charge_skips_the_charge_step_and_its_routine_never_waits_for_it() -> None:
+    # A limits-only recipe (FoxESS's): hold and the discharge for the house, no grid charge and no sale.
+    control = replace(SIGENERGY_CONTROL, states={
+        action: build for action, build in SIGENERGY_CONTROL.states.items()
+        if action not in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE)
+    })
+    battery = FakeBattery(control, dict(SIGENERGY_STATES))
+    executor = Executor(control)
+    verification = _verify(executor, battery, quick=True)
+    assert verification.done
+    assert _outcomes(verification) == {
+        "hold": "obeyed", "charge": "skipped", "discharge_house": "obeyed", "normal": "restored",
+    }
+    # Nothing of a charge was ever written.
+    assert all(op.role != "control_mode" or op.value != "Command Charging (Grid First)" for op in battery.writes)
+    supported = supported_modes(control)
+    assert "charge" not in supported and {"hold", "discharge_house", "normal"} <= supported
+    report = merge_report(None, verification.report(), key="k", attempts=1, now=T0)
+    assert modes_to_run(report, supported) == () and not needs_run(report, supported)
+    # Without the recipe's modes the routine would keep trying the charge (every other brand: unchanged).
+    assert modes_to_run(report) == ("charge",)
+    assert supported_modes(SIGENERGY_CONTROL) >= {"hold", "charge", "discharge_house", "normal"}

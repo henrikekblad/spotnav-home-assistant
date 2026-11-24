@@ -23,12 +23,14 @@ from custom_components.spotnav.battery.hold import (
 from tests.battery_control_fakes import SIGENERGY_STATES, FakeBattery
 
 T0 = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
-LIMIT = "number.sigenergy_discharge_limit"
-HOLD_WRITES = {"discharge_limit": 0.0, "remote_ems": True, "control_mode": "Maximum Self Consumption"}
+LIMIT = "number.sigenergy_charge_limit"
+HOLD_WRITES = {"charge_limit": 0.0, "remote_ems": True, "control_mode": "Command Charging (PV First)"}
+RESTORE = {"control_mode": "Maximum Self Consumption", "remote_ems": False, "charge_limit": 20.6}
 
 
 def _reads(**states: str) -> dict[str, RoleRead]:
-    return FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES) | states).reads()
+    """The owner's plant: its charge limit set to 20.6 kW."""
+    return FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES) | {"charge_limit": "20.6"} | states).reads()
 
 
 def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes) -> BatteryFacts:
@@ -76,11 +78,10 @@ def test_a_discharge_into_a_grid_charge_would_run_the_executors_hold_after_it_la
     memory, [decision] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S)))
 
     assert decision.action == "would_write" and decision.entity_id == LIMIT and decision.value == HOLD_WRITES
-    assert decision.read == "23.04"
-    assert [(row["role"], row["value"]) for row in decision.detail["restore"]] == [
-        ("discharge_limit", 23.04), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
-    ]
-    assert memory.held and memory.snapshot == {"discharge_limit": "23.04"} and memory.writes_today == 3
+    assert decision.read == "20.6"
+    # The mode first: the battery covers a peak again before anything else.
+    assert [(row["role"], row["value"]) for row in decision.detail["restore"]] == list(RESTORE.items())
+    assert memory.held and memory.snapshot == {"charge_limit": "20.6"} and memory.writes_today == 3
     assert requested_action(memory) == "hold"
 
 
@@ -101,19 +102,19 @@ def test_a_restore_hands_back_what_the_executor_wrote_when_the_car_stops() -> No
     memory, [decision] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 10), grid_charging=False))
 
     assert decision.action == "would_restore" and decision.reason == "car_not_charging_from_grid"
-    assert decision.value == {"control_mode": "Maximum Self Consumption", "remote_ems": False, "discharge_limit": 23.04}
+    assert decision.value == RESTORE
     assert not memory.held and memory.writes_today == 3, "a restore is not counted, as the executor counts"
 
 
 def test_a_sigenergy_limit_that_reads_unknown_is_restored_as_the_rating_never_as_unknown() -> None:
-    reads = _reads(discharge_limit="unknown")
+    reads = _reads(charge_limit="unknown")
     memory, [decision] = _run(HoldMemory(), _inputs(T0, reads=reads), _inputs(T0 + timedelta(seconds=ARM_S), reads=reads))
     assert decision.action == "would_write" and decision.read == "unknown"
-    assert memory.restore["discharge_limit"] == 23.04 and memory.snapshot == {"discharge_limit": "unknown"}
+    assert memory.restore["charge_limit"] == 23.04 and memory.snapshot == {"charge_limit": "unknown"}
 
     _memory, [back] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 5), grid_charging=False, reads=reads))
 
-    assert back.value["discharge_limit"] == 23.04
+    assert back.value["charge_limit"] == 23.04
     assert "unknown" not in back.value.values()
 
 
@@ -134,7 +135,7 @@ def test_a_brand_without_executor_commands_cannot_be_held_even_in_shadow() -> No
         ({"measurement_ok": False}, "measurement_lost"),
         ({"headroom_a": 0.5}, "headroom_low"),
         ({"facts": _facts(management="self_managed")}, "self_managed:EMS work mode:ai_mode"),
-        ({"reads": {}}, "control_not_found:discharge_limit"),
+        ({"reads": {}}, "control_not_found:charge_limit"),
     ],
 )
 def test_each_restore_trigger_releases_at_once(changes: dict, reason: str) -> None:
@@ -166,7 +167,7 @@ def test_a_battery_that_runs_itself_is_left_alone_once_per_grid_charge() -> None
 
     [decision] = decisions
     assert decision.action == "left_alone" and decision.reason == "self_managed:EMS work mode:ai_mode"
-    assert decision.detail["would_write"]["discharge_limit"] == 0.0 and decision.entity_id == LIMIT
+    assert decision.detail["would_write"]["charge_limit"] == 0.0 and decision.entity_id == LIMIT
     assert not memory.held and memory.writes_today == 0
 
     # The next grid charge says it again.
@@ -212,7 +213,7 @@ def _without(role: str) -> dict[str, RoleRead]:
         ({"reads": _without("remote_ems")}, "control_not_found:remote_ems"),
         ({"reads": _reads() | {"remote_ems": replace(_reads()["remote_ems"], enabled=False)}}, "control_disabled:remote_ems"),
         ({"reads": _reads(remote_ems="on")}, "remote_ems_already_on"),
-        ({"reads": _reads(discharge_limit="unavailable")}, "no_restore_value:discharge_limit"),
+        ({"reads": _reads(charge_limit="unavailable")}, "no_restore_value:charge_limit"),
         ({"facts": _facts(on_grid=False)}, "off_grid"),
         ({"measurement_ok": False}, "stale_data"),
         ({"headroom_a": None}, "headroom_unknown"),
@@ -251,7 +252,7 @@ def test_a_restart_restores_first() -> None:
     released, decision = restart(stored, _facts(), T0 + timedelta(hours=1))
 
     assert decision is not None and decision.action == "would_restore" and decision.reason == "restart"
-    assert decision.value == {"control_mode": "Maximum Self Consumption", "remote_ems": False, "discharge_limit": 23.04}
+    assert decision.value == RESTORE
     assert not released.held
     assert restart(released, _facts(), T0 + timedelta(hours=1)) == (released, None)
 

@@ -10,7 +10,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
   for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
-  runs only once that passed, under every fuse rule.
+  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (FoxESS, EcoFlow,
+  Marstek) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
+  on the plant's firmware key (`hardware_test_passed`, kept by the shell per key); the checklist says so
+  (`hardware_test_first`) and the test itself runs.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
@@ -287,6 +290,36 @@ def shadow_default(*, field_tested: bool, beta: bool) -> bool:
     return not (field_tested or beta)
 
 
+def _step_status(outcome: Any) -> str:
+    """One mode's outcome as the hardware test's step shows it: `passed`, `failed`, `not_judgeable`, `skipped` (an
+    action the recipe does not have, `verify.Verification.unsupported`) or `open` (not run, or stopped)."""
+    if outcome == "skipped":
+        return "skipped"
+    if isinstance(outcome, str) and outcome.startswith("not_judgeable:"):
+        return "not_judgeable"
+    return {"pass": "passed", "fail": "failed"}.get(mode_verdict(outcome), "open")
+
+
+def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
+    """Whether a person's finished hardware test (its verification's report) shows the battery doing as told: what a
+    recipe with `BrandControl.hardware_test_first` waits for before anything is written outside a test. The hold and
+    the hand-back (`normal`) passed; the grid charge passed where the recipe has one (`supported`, the modes it has
+    an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, or
+    `expiry:<phase>` per phase, where the test times one) passed or could not be judged; every other step passed,
+    could not be judged or was skipped. A step stopped or still open is no pass."""
+    if not isinstance(report, Mapping):
+        return False
+    modes = _modes(report)
+    status = {name: _step_status((row or {}).get("outcome")) for name, row in modes.items()}
+    must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
+    if any(status.get(name) != "passed" for name in must):
+        return False
+    deadman = [value for name, value in status.items() if name.split(":", 1)[0] == MODE_EXPIRY]
+    if any(value not in ("passed", "not_judgeable") for value in deadman):
+        return False
+    return all(value in ("passed", "not_judgeable", "skipped") for value in status.values())
+
+
 def _mode(config: Mapping[str, Any]) -> str:
     """The stored mode; none stored, or anything unknown, is Balanced (a legacy sell option is migrated at load)."""
     value = config.get(CONF_MODE)
@@ -409,19 +442,22 @@ def failed_mode(report: Mapping[str, Any] | None) -> str | None:
     return None
 
 
-def modes_to_run(report: Mapping[str, Any] | None) -> tuple[str, ...]:
+def modes_to_run(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> tuple[str, ...]:
     """The battery modes a next run tries: those still pending (normal ends every run by itself). When only normal is
-    left, hold runs again, so that the hand-back normal judges is one of something written."""
+    left, hold runs again, so that the hand-back normal judges is one of something written. `supported`: the modes the
+    plant's recipe has an action for (`verify.supported_modes`; a limits-only recipe has no grid charge), `None` all."""
     modes = _modes(report)
-    pending = tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    names = BATTERY_MODES if supported is None else tuple(name for name in BATTERY_MODES if name in set(supported))
+    pending = tuple(name for name in names if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
     if not pending and mode_verdict((modes.get(MODE_NORMAL) or {}).get("outcome")) == "pending":
         return ("hold",)
     return pending
 
 
-def needs_run(report: Mapping[str, Any] | None) -> bool:
-    """Whether the routine has anything left to try for this key: never after `MAX_ATTEMPTS` runs, also once hold
-    and normal passed (each run writes to the plant; a mode still pending then stays off)."""
+def needs_run(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
+    """Whether the routine has anything left to try for this key: a mode still pending (one that could not be judged
+    is tried again at a later suitable moment by itself, also once hold and normal passed), never after `MAX_ATTEMPTS`
+    runs (each run writes to the plant; a mode still pending then stays off). `supported` as for `modes_to_run`."""
     status = report_status(report)
     if status == "failed":
         return False
@@ -430,7 +466,9 @@ def needs_run(report: Mapping[str, Any] | None) -> bool:
     attempts = (report or {}).get("attempts")
     if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
         return False
-    return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
+    return bool(modes_to_run(report, supported)) or (
+        mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
+    )
 
 
 def allowed_actions(
@@ -499,6 +537,22 @@ def variants_tried(report: Mapping[str, Any] | None) -> tuple[Mapping[str, Any],
     row = _modes(report).get("hold")
     rows = row.get("variants") if isinstance(row, Mapping) else None
     return tuple(item for item in rows if isinstance(item, Mapping)) if isinstance(rows, list) else ()
+
+
+def without_removed_hold(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> Mapping[str, Any] | None:
+    """The report with a hold that passed in a variant the recipe no longer has (`names`; Sigenergy's Maximum Self
+    Consumption hold before 2026-11-23) taken back to pending, its variants tried kept: the routine checks the
+    recipe's hold on that plant again before control relies on it. The same report when nothing is stale."""
+    passed = hold_variant(report)
+    if report is None or passed is None or not names or passed in names:
+        return report
+    row = dict(_modes(report).get("hold") or {})
+    for name in ("outcome", "variant", "commanded_at", "decided_at"):
+        row.pop(name, None)
+    # A check to run again, not one that ran out of attempts: its count starts over, and no gap is owed to its last
+    # run (`report_status`, `needs_run`, `RETRY_GAP_S`).
+    migrated = {key: value for key, value in report.items() if key != "last_run_at"}
+    return {**migrated, "attempts": 0, "modes": {**_modes(report), "hold": row}}
 
 
 def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> str | None:
@@ -801,6 +855,19 @@ def expiry_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
     the live clamp can lower. An integration's own renewal or nobody's is never tried (a field test recorded in the
     recipe is its only route, and it still never lifts)."""
     return expiry_lifts(expiry, measured=True, slow=slow, fixed_charge=fixed_charge)
+
+
+def deadman_testable(expiry: Expiry, *, slow: bool, fixed_charge: bool) -> bool:
+    """Whether a person's hardware test times this expiry (the verification's mode `expiry`, after its hold): a
+    dead-man an integration renews that SpotNav can silence with a write of its own (`Expiry.silence`, EcoFlow's
+    Modbus Control off), within `SILENCE_FALLBACK_MAX_S`. Its result is the tester's evidence for the recipe
+    (`Expiry.measured_on`); like every hardware test row it never counts for the routine, and an integration's
+    renewal never lifts a cap (`expiry_lifts`)."""
+    window = expiry.window_s
+    return (
+        expiry.kind == "device_deadman" and expiry.renewer == "integration" and bool(expiry.silence)
+        and not slow and not fixed_charge and window is not None and 0 < window <= SILENCE_FALLBACK_MAX_S
+    )
 
 
 def expiry_lifts(expiry: Expiry, *, measured: bool, slow: bool, fixed_charge: bool) -> bool:

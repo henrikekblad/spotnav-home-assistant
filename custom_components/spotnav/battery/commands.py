@@ -29,23 +29,23 @@ The entity keys, options and services below were checked against each integratio
   never written here) "3, 4, 5 or 6". V2.9 (2026-05-13), Table 5-2-1 rows 1-3 (`sig29.txt` lines 1120-1138): all
   three "take effect globally regardless of the EMS operating mode". The grid import and export limits (40038/40040)
   act in every mode in both (`SIGENERGY_LIMIT_MODES`). A grid charge (mode 3, charge limit) and an export discharge
-  (mode 5, discharge limit) keep to both generations. A hold has two variants (`SIGENERGY_HOLDS`), tried in order
-  by the verification: `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0 (valid on
-  V2.9-era firmware and seen obeyed on SPC117 with Remote EMS on, TypQxQ discussion #424; the sun is still stored;
-  its peak cover lifts the limit), then `pv_first`, mode 4 with the charge limit at 0. Appendix 6 names mode 4
-  "Command charging (consume PV power first)" (`sig27.txt` lines 2180-2183, `sig29.txt` line 3346): a charge at the
-  charge limit, from the sun first and then the grid (haeo's Sigenergy walkthrough and Roving-Ronin's
-  EMS-Events-Card use it so). At a limit of 0 it charges nothing, and the discharge limit does not act in it under
-  V2.7 (it acts only in 5 and 6) while the plant discharges in no Command Charging mode: the battery stands idle and
-  a sun surplus is exported. That is within V2.7's scope and V2.9's, and it is also what a command left standing
-  after Home Assistant died does. Its peak cover writes the mode back to Maximum Self Consumption, where the plant
-  balances each phase itself. A `pv_first` hold whose battery charges anyway is handed back
-  (`executor.HOLD_CHARGE_S`) and fails its verification. A discharge to the house has no mode in V2.7 ("cover the
-  house, store nothing"): it stays Maximum Self Consumption with the charge limit at 0, valid under V2.9 and at
-  worst ignored under V2.7 (the battery then also stores a sun surplus, as in self-consumption). V2.8 removed 41500
-  (Remote EMS dispatch enable, never used here); V2.9 added
-  0x08 V2G to 40031. 40049, Active power regulation gradient (%/s of the rated power, V2.8+), bounds how fast the
-  plant changes its output and so its reaction to a mode or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
+  (mode 5, discharge limit) keep to both generations. The hold (`SIGENERGY_HOLDS`) is `pv_first`, mode 4 with the
+  charge limit at 0, the only one that keeps the plant's own peak cover under the import limit (40040) with Home
+  Assistant down (on site 2026-11-23; `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0,
+  failed it and is no longer used). Appendix 6 names mode 4 "Command charging (consume PV power first)" (`sig27.txt`
+  lines 2180-2183, `sig29.txt` line 3346): a charge at the charge limit, from the sun first and then the grid (haeo's
+  Sigenergy walkthrough and Roving-Ronin's EMS-Events-Card use it so). At a limit of 0 it charges nothing, and the
+  discharge limit does not act in it under V2.7 (it acts only in 5 and 6) while the plant discharges in no Command
+  Charging mode: the battery stands idle and a sun surplus is exported. That is within V2.7's scope and V2.9's, and it
+  is also what a command left standing after Home Assistant died does. Its peak cover writes the mode back to Maximum
+  Self Consumption, where the plant balances each phase itself. A `pv_first` hold whose battery charges anyway is
+  handed back (`executor.HOLD_CHARGE_S`) and fails its verification. A discharge to the house has no mode in V2.7
+  ("cover the house, store nothing"): it stays Maximum Self Consumption with the charge limit at 0, valid under V2.9
+  and at worst ignored under V2.7 (the battery then also stores a sun surplus, as in self-consumption). V2.8 removed
+  41500 (Remote EMS dispatch enable, never used here); V2.9 added 0x08 V2G to 40031. 40049, Active power regulation
+  gradient (%/s of the rated power, V2.8+), bounds how fast the plant changes its output and so its reaction to a mode
+  or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s
+  mode rule), or in AI mode once the
   person acknowledged the takeover (`BrandControl.takeover`); turning Remote EMS off lands in Maximum Self
   Consumption either way (research §2.2), so the hand-back is clean and a plant taken from AI mode is not put back
   in it (the person is reminded to set it again in the app). The discharge cut-off SoC is never
@@ -300,6 +300,86 @@ The entity keys, options and services below were checked against each integratio
     written back; a negative number is written as 65535 plus the value (`number.py` `async_set_native_value`), one
     off from two's complement; and its ESS mode select names Hub4Mode's values 1 and 2 `SELF_CONSUMPTION` and
     `KEEP_CHARGED`. It has no entity for the maximum charge power.
+* **FoxESS**, `foxess_modbus`, nathanmarlor/foxess_modbus `94252f0` (read 2026-11-20 and 2026-11-24,
+  `plans/v3_foxess.md`). **Never run on a device; limits only.** Numbers `max_charge_current` and
+  `max_discharge_current` (A, 0-50, step 0.1; holding 41007/41008 on H1, KH and H3, 46607/46608 on H3-Pro,
+  H3-Smart, EVO and 1KOMMA5's `1K5-HI`, `entities/entity_descriptions.py` `_configuration_entities`; a sensor of the
+  same key exists beside each and is not a role). Each write goes to the inverter at once (`modbus_number.py`
+  `async_set_native_value`, which raises on a Modbus error); the entity shows the value written for a few seconds
+  (`written_value`) and then the register as polled, so a value the inverter refused shows at the next poll as a
+  change by someone else. A **hold** is the discharge current at 0 (the battery covers nothing; a sun surplus is still
+  stored), a **discharge for the house** the charge current at 0 (it covers the house and stores nothing). Both are
+  only lower limits in the work mode the owner runs ("Self Use", `adapters.FOXESS`'s mode rule: a plant found in any
+  other mode is someone else's), and a limit left standing never adds import, so if Home Assistant stops the battery
+  only covers less: no fuse cap is needed and nothing expires (`NO_EXPIRY`). The hand-back writes both back as found.
+  **No grid charge and no sale.** The integration's only way to charge from the grid on H3, H3-Pro and 1K5 is its
+  remote control (the work mode select's "Force Charge" / "Force Discharge" with the numbers `force_charge_power` /
+  `force_discharge_power`, `remote_control_manager.py`). It renews the inverter's remote control on every poll and
+  the inverter drops it 2 x poll rate after the last renewal, but before enabling it the integration writes a
+  fallback work mode, **Back-up for a charge** (it charges as hard as it can) and Feed-in First for a discharge, and
+  after a restart it never writes the mode back (`_disable_remote_control` with no mode, "let the watchdog catch it"):
+  a Home Assistant that stops mid-charge would leave a plant charging at its maximum with no fuse cap of SpotNav's.
+  So it is not mapped until a supervised test on a plant has shown what the inverter does after the watchdog and
+  after a restart (`tools/foxess_watchdog_test.py`, which bounds that charge by a low max charge current first).
+  Whether 41007/41008 and 46607/46608 are kept in flash is not stated anywhere: settings, 96 writes a day. Live writes
+  wait for a person's hardware test on the plant's firmware (`hardware_test_first`).
+* **EcoFlow PowerOcean** (`ECOFLOW_CONTROL`; **never run on a plant**), `ef_powerocean_tcpmodbus`, MaxGrmm/EF-PowerOcean-
+  TcpModbus `56331de` (2.10.1, read 2026-11-24; `plans/research_integrations/ecoflow_control_2026-11-23.md`), local
+  Modbus TCP, which EcoFlow support or the installer must first enable on the inverter. Unique id `<config entry
+  id>_<key>` (`entity.py`). Switch `modbus_control` (`switch.py`: the integration's own flag, kept over a restart,
+  that starts and stops its heartbeat), select `battery_mode` (`select.py`, options `ControlFeature` in
+  `powerocean/models.py`: `automatic`, `hold_battery`, `charge_battery`, `discharge_battery`, `export_to_grid`,
+  `import_from_grid`, `export_solar_first`; its state is the integration's selected mode, with the inverter's
+  progress in the attribute `status`) and numbers `charge_battery_power` / `discharge_battery_power` (`number.py`,
+  W, 0 up to the integration's ceiling, step 100: the power of those two modes, kept by the integration and sent only
+  while that mode is selected). The select and the numbers are available only while the heartbeat holds control
+  (`requires_modbus_control`). The integration writes control command 40534 (method 0 for Automatic, method 3
+  "battery limits" for the rest) and the battery's signed setpoint 40571 (W, **positive charges**; Hold is 1 W, since
+  0 is "no limit" to the inverter), and the heartbeat 40608 every 20 s. **The dead-man is the inverter's**: "the
+  inverter runs on its app settings and merely stores the commands it is sent, until this register is written; each
+  write buys it a minute of obeying them" (`powerocean/const.py`). So a command ends by itself within about a minute
+  of Home Assistant stopping, but **not** while Home Assistant runs and SpotNav alone stalls: the integration keeps
+  beating (`Expiry` renewer `integration`, which never lifts a cap). Turning the switch off writes nothing but stops
+  the heartbeat, so a hand-back writes Automatic first (sent at once) and the switch off after; the person's hardware
+  test writes the switch off alone (`Expiry.silence`) to time the inverter's own fallback. Hold: `hold_battery`
+  (idle; at 100 % it curtails the panels, MaxGrmm #83); grid charge: the charge power, then `charge_battery`
+  (a battery setpoint: sun on the DC side counts towards it); discharge to the house: `automatic` with the switch on;
+  discharge to the grid: the discharge power, then `discharge_battery`. A plant is taken only in the app's
+  self-consumption with Modbus Control off (`adapters.ECOFLOW`'s mode rules); the app is locked while the switch is
+  on and for about a minute after. The inverter serves one Modbus client: `ecoflow_energy`'s local mode, evcc or an
+  installer tool on the same inverter lock the integration out. Not mapped: `ecoflow_energy` (its local controls
+  write the same registers with a client cap of 600 W by default) and every cloud route (no power setpoint on a
+  PowerOcean). How a three-phase unit spreads a grid charge over its phases is not stated: `grid_charge_phases` 1.
+* **Marstek** (Venus E v1/v2/v3, C, D, A), `marstek_modbus`, ViperRNMC/marstek_venus_modbus 2026.10.1 (`cb5a241`,
+  `registers/e_v12.yaml`, `e_v3.yaml`, `a.yaml`, `d.yaml`, same keys in each) and 2026.11.1 (`f1db53b`, the rewrite:
+  same keys, same `<config entry id>_<key>` unique ids, `entity.py` line 77, `venus/components.py` `Control`); read
+  2026-11-24 (`plans/research_integrations/marstek_control_2026-11-23.md` has the background). **Never run on a
+  device.** Switch `rs485_control_mode` (42000: on 0x55AA, off 0x55BB), select `force_mode` (42010: `standby`,
+  `charge`, `discharge`), numbers `set_charge_power` (42020, W, 0-2500 on the Venus E, 0-1500 on the A, step 50) and
+  `max_discharge_power` (44003, W, same range). All four are disabled by default. Registers 42000-42999 act only with
+  RS485 control on (the integration's README); 44002/44003 do not need it. Every write is read back from the
+  register (the integration polls the control block again a few seconds after a write, and every 10 s).
+  **Limits first, and no dead-man.** No timeout or watchdog register is documented on any route but the local API's
+  Passive countdown, which is unreliable in the field and has no read-back (research §3, §5.2): not used. So the hold
+  is a limit that is safe if left standing (evcc's `holddischarge`): the maximum discharge power at 0, with the
+  battery's own self-consumption (`user_work_mode` `anti_feed`) still storing a sun surplus. A grid charge is a force
+  command that stays until changed (RS485 control on, the charge power, then the force mode `charge`), so it runs
+  only under the HA-down cap (`gate.grid_charge_cap_kw`, all of it on the one phase the battery is on:
+  `grid_charge_phases` 1); the battery's own `charge_to_soc` (42011) is never written, as nothing shows it ends a
+  force charge. The hand-back is the force mode back to `standby`, then RS485 control off,
+  which lands the battery back in its own work mode (evcc's templates note that turning it off "resets the device":
+  to be seen in the hardware test); the discharge limit goes back to its value found. The charge power is never
+  written back: it acts only in a force charge, a 42xxx write needs RS485 control on, and a change of action turns
+  that off in the same pass; the next charge writes its own before the mode. A discharge to the house is
+  the battery's own self-consumption, written as nothing; a discharge to the grid and the battery's maximum charge
+  power (44002) are not mapped. A plant is taken only in `anti_feed` with RS485 control off (`adapters.MARSTEK`'s
+  mode rules) and with the force mode at `standby` (`requires`: a force mode left standing would run the moment
+  RS485 control goes on). evcc #36110 saw the maximum powers reset to 800 W after its own stop until toggled in the
+  app: the limit's read-back and the hand-back's settle check show such a change. The local API (`marstek_local_api`)
+  and Marstek's own `marstek` have none of these entities: the status names this integration as the one needed
+  (`hacs_roles`). A battery run by Omnibattery is not this recipe's: Omnibattery is the Modbus client itself (one
+  client at a time), so no `marstek_modbus` entity exists, and its presence marks the battery as run by someone else
+  (`coexist.OUTSIDE_INTEGRATIONS`), never written over.
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -315,7 +395,8 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    FERROAMP, GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter, Match, _goodwe, _key, _tesla,
+    ECOFLOW, FERROAMP, FOXESS, GOODWE, HUAWEI, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, TESLA, VICTRON, Adapter,
+    Match, _goodwe, _key, _tesla,
 )
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -421,8 +502,15 @@ class Expiry:
     #: only such a reading in the verification's silence is the device's own (`expired`); any other change of a
     #: renewed role there is another writer. Empty: the device leaves them as written (Victron's setpoints).
     fallback_values: tuple[tuple[str, str], ...] = ()
+    #: For a dead-man the integration renews: the writes that stop its renewal and leave the command standing
+    #: (`(role, value)`; EcoFlow: Modbus control off stops the integration's heartbeat and writes nothing else), so
+    #: the device's own fallback can be timed. Only a person's hardware test writes them (`gate.deadman_testable`,
+    #: the verification's mode `expiry`). Empty: SpotNav cannot make the silence itself.
+    silence: tuple[tuple[str, Native], ...] = ()
 
     def __post_init__(self) -> None:
+        if self.silence and (self.kind != "device_deadman" or self.renewer != "integration"):
+            raise ValueError("a silence is written only for a dead-man an integration renews")
         renews = self.renewer == "spotnav" and self.kind in _RENEWED_KINDS
         if bool(self.renewed_roles) != renews:
             raise ValueError("renewed_roles are set exactly for an expiry SpotNav renews")
@@ -533,6 +621,22 @@ class Want:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldSurplus:
+    """A hold whose charge limit follows the sun's measured surplus (`executor`'s surplus follow), so the sun is
+    stored while the hold still takes nothing from the grid; the hold's own build writes the limit at 0. Data only.
+
+    The new limit is the surplus now (the house's net load, `executor.house_net_kw`, below zero), in `step_kw`, and
+    0 under `deadband_kw`. It is written when it differs from the limit standing by at least `deadband_kw` or is 0,
+    a raise no sooner than `raise_gap_s` after the last one; a fall at once, so the grid takes at most about the
+    deadband while the sun fades."""
+
+    role: str
+    deadband_kw: float = 0.4
+    step_kw: float = 0.1
+    raise_gap_s: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
 class HoldVariant:
     """One way a brand can hold (no discharge): its writes and the roles that let the battery cover a peak again.
     The verification tries a brand's variants in order and control uses the first that passed."""
@@ -544,6 +648,8 @@ class HoldVariant:
     #: The battery stands idle (it stores no sun either): a battery that charges under it did not take the hold
     #: (`monitor.judge`, `executor.HOLD_CHARGE_S`). `False`: the sun is still stored.
     idle: bool = False
+    #: The charge limit follows a sun surplus (`HoldSurplus`); the hold then stores the sun and is no longer idle.
+    surplus: HoldSurplus | None = None
 
 
 #: A power per phase in the order of the site's meter: L1, L2, L3 (kW).
@@ -810,6 +916,11 @@ class BrandControl:
     hold_variants: tuple[HoldVariant, ...] = ()
     #: The hold variant this control runs (`None`: the brand has one hold).
     variant: str | None = None
+    #: Limits that act in the plant's modes (`executor`'s change of action): on a change, one whose value falls is
+    #: written before every other role and one whose value rises after them all, so a new mode never runs on the old
+    #: action's looser limit, nor the old mode on the new one's (Sigenergy: Command Charging (PV First) at the charge
+    #: limit a grid charge left at the rating would charge from the grid at full power until the limit follows).
+    mode_limits: tuple[str, ...] = ()
     #: Values written first, before the switch, on an enter after a hand-back whose write to a role that goes idle
     #: with the switch (`Role.idle_when`) was never read back: the plant may still hold the command it had, and these
     #: keep that command from acting until the role is written again (`executor.ExecState.unsure`).
@@ -872,10 +983,29 @@ class BrandControl:
     #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
     #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
     field_tested: bool = False
+    #: Until the recipe is `field_tested`, nothing is written by the routine or by control (shadow only, whatever the
+    #: site's option says, beta site or not) until a person's hardware test (the card's Support box,
+    #: `hardware_test.py`) passed on the firmware the plant runs (`gate.firmware_key`, `gate.hardware_test_passed`): a
+    #: recipe never run on a device, whose first writes should be supervised. The checklist says so
+    #: (`hardware_test_first`). The test itself and every hand-back still run. `False`: the routine alone.
+    hardware_test_first: bool = False
+    #: The recipe's revision: bumped with any change to what the recipe writes or in which order. From 2 it is part
+    #: of the report key (`BatteryControl.firmware_key`), so the routine checks a changed recipe on each plant again
+    #: before control relies on it, as after a firmware update; `blocked` can hold one revision back.
+    recipe_rev: int = 1
+    #: The role whose entity's own range bounds a grid charge (its `max`, over the role's scale): for a recipe whose
+    #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
+    #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
+    charge_power_bound: str | None = None
 
     def __post_init__(self) -> None:
+        if self.charge_power_bound is not None and self.charge_power_bound not in {role.name for role in self.roles}:
+            raise ValueError(f"{self.brand}: the charge power bound names a role of the control's own")
         if self.import_limit is not None and self.import_limit_trust is None:
             raise ValueError(f"{self.brand}: an import limit needs to say where it was shown to act")
+        names = {role.name for role in self.roles}
+        if any(role not in names for role, _value in self.expiry.silence):
+            raise ValueError(f"{self.brand}: a silence writes the control's own roles")
 
     @property
     def watchdog_roles(self) -> tuple[str, ...]:
@@ -935,8 +1065,16 @@ class BrandControl:
         return tuple(variant.name for variant in self.hold_variants)
 
     def hold_idle(self) -> bool:
-        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`)."""
-        return any(variant.idle for variant in self.hold_variants if variant.name == self.variant)
+        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`); a hold that follows a sun
+        surplus (`hold_surplus`) is not."""
+        return any(
+            variant.idle and variant.surplus is None for variant in self.hold_variants if variant.name == self.variant
+        )
+
+    @property
+    def hold_surplus(self) -> HoldSurplus | None:
+        """How this control's hold follows a sun surplus (`HoldVariant.surplus`); `None`: its hold writes are fixed."""
+        return next((variant.surplus for variant in self.hold_variants if variant.name == self.variant), None)
 
     def with_hold(self, name: str | None) -> BrandControl:
         """This control with the hold variant `name` (its writes and its peak cover); itself for `None`, for a name
@@ -1227,10 +1365,8 @@ SIGENERGY_LIMIT_MODES: Final[Mapping[str, Mapping[str, frozenset[str] | None]]] 
     "V2.9": {"charge_limit": None, "discharge_limit": None},
 }
 #: Writes outside V2.7's scope, each on purpose: (action or `hold:<variant>`, limit). Acted on where the firmware
-#: follows V2.9; ignored where it follows V2.7 (the hold's verification then fails and tries `pv_first`).
-SIGENERGY_OUT_OF_SCOPE_V27: Final = frozenset(
-    {("hold:msc_no_discharge", "discharge_limit"), (ACTION_DISCHARGE_HOUSE, "charge_limit")}
-)
+#: follows V2.9; ignored where it follows V2.7 (the battery then also stores a sun surplus, as in self-consumption).
+SIGENERGY_OUT_OF_SCOPE_V27: Final = frozenset({(ACTION_DISCHARGE_HOUSE, "charge_limit")})
 
 
 def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int], tuple[Want, ...]]:
@@ -1241,20 +1377,32 @@ def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int
     return build
 
 
-#: Sigenergy's holds, in the order the verification tries them.
+#: Whether Sigenergy's hold follows a sun surplus with its charge limit (`SIGENERGY_HOLD_SURPLUS`). Off until the
+#: owner's on-site `pv_first_surplus` step (`tools/sigen_hold_peak_test.py`) has passed in sunshine (at least
+#: 0.5 kW of surplus for 5 minutes); until then the hold keeps the charge limit at 0, the proven hold, and a sun
+#: surplus is exported. One line; the recipe and the executor need nothing else.
+SIGENERGY_SURPLUS_TRACKING: Final = False
+#: The surplus follow of Sigenergy's hold (owner decision 2026-11-23, variant B): mode 4 charges at its charge limit
+#: from the sun first, so a limit at the sun's surplus stores it and takes nothing from the grid. A limit left
+#: standing when Home Assistant stops and the sun goes grid-charges at that limit (on site 2026-11-23,
+#: `pv_first_stale_charge`: 1.0 kW, as written), and the import limit (40040) still takes the plant down to it (it
+#: discharged and held 0.20 kW a phase at 0.6 kW): that costs money, never the fuse.
+SIGENERGY_HOLD_SURPLUS: Final = HoldSurplus("charge_limit", deadband_kw=0.4, step_kw=0.1, raise_gap_s=60.0)
+
+#: Sigenergy's hold: mode 4, "Command Charging (PV First)", with the charge limit at 0 (owner decision 2026-11-23,
+#: variant B, the only hold). Nothing charges or discharges, a sun surplus is exported (stored once the surplus follow
+#: is on, `SIGENERGY_SURPLUS_TRACKING`). It keeps to both protocol generations: the charge limit acts in mode 4 under
+#: V2.7 and V2.9. It also keeps the plant's own peak cover with Home Assistant down: on site 2026-11-23 (SPC117, sigen
+#: 2.0.3, no sun, house ~2.1 kW) the import limit (40040) lowered to 0.6 kW made the plant discharge 1.5-3.2 kW within
+#: ~25-30 s and hold the grid at 0.60 kW, 0.20 kW on every phase, also through a 1.6 kW step on B. The hold it replaced,
+#: Maximum Self Consumption with the discharge limit at 0 (`msc_no_discharge`), failed that test: the discharge limit
+#: won over the import limit and the grid took the whole house. While Home Assistant runs, the peak cover writes the
+#: mode back to Maximum Self Consumption, where the plant balances each phase itself.
 SIGENERGY_HOLDS: Final = (
-    # The discharge limit at 0 in Maximum Self Consumption: acts on V2.9-era firmware (and on SPC117 with Remote EMS
-    # on, TypQxQ discussion #424). The peak cover lifts the limit; the plant balances each phase itself in MSC.
-    HoldVariant(
-        "msc_no_discharge", _sig(_SIG_MSC, discharge_limit=lambda _rate: 0.0), ("discharge_limit",),
-        "Maximum Self Consumption with the discharge limit at 0",
-    ),
-    # For firmware that follows V2.7 (no limit acts in mode 2): mode 4 with the charge limit at 0, where that limit
-    # acts; nothing charges or discharges, a sun surplus is exported. The peak cover writes the mode back to Maximum
-    # Self Consumption.
     HoldVariant(
         "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: 0.0), ("control_mode",),
         "Command Charging (PV First) with the charge limit at 0", idle=True,
+        surplus=SIGENERGY_HOLD_SURPLUS if SIGENERGY_SURPLUS_TRACKING else None,
     ),
 )
 
@@ -1371,6 +1519,8 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # written before the switch): both limits at 0 make a Command Charging or Discharging mode left there do nothing
     # (V2.7: 40032 acts in 3 and 4, 40034 in 5 and 6; V2.9: everywhere) until the mode is written.
     prime={"charge_limit": 0.0, "discharge_limit": 0.0},
+    # Both limits act in the Command modes (V2.7) or everywhere (V2.9): lowered before a mode changes, raised after.
+    mode_limits=("charge_limit", "discharge_limit"),
     phase_control=SIGENERGY_PHASES,
     # A target left standing would run in the seconds of PCS Remote Control a Remote EMS on passes through.
     watched=tuple((role, 0.0, "stale_target") for role in (_SIG_TOTAL_TARGET, *_SIG_PHASE_TARGETS)),
@@ -1927,6 +2077,194 @@ FERROAMP_CONTROL: Final = BrandControl(
     note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
 )
 
+# --- FoxESS (limits only; see the module) --------------------------------------------------------------------------
+
+# The battery's own current limits (A, holding registers written at once; read back as polled). Restored as found.
+_FX_DISCHARGE = Role("discharge_current", "number", _key("max_discharge_current", "number"), step=0.1)
+_FX_CHARGE = Role("charge_current", "number", _key("max_charge_current", "number"), step=0.1)
+
+FOXESS_CONTROL: Final = BrandControl(
+    brand="foxess",
+    adapter=FOXESS,
+    roles=(_FX_DISCHARGE, _FX_CHARGE),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (not an idle hold).
+        ACTION_HOLD: lambda _rate, _w: (Want("discharge_current", 0.0),),
+        # It covers the house and stores nothing (a sun surplus is exported).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_current", 0.0),),
+        # No grid charge and no sale: the integration's remote control falls back to Back-up (see the module).
+    },
+    enter_order=("discharge_current", "charge_current"),
+    restore_order=("discharge_current", "charge_current"),
+    # A hold's peak cover gives the discharge current back.
+    peak_first={ACTION_HOLD: ("discharge_current",)},
+    # Lower limits never add import, so nothing needs to end by itself (`NO_EXPIRY`, the default).
+    hardware_test_first=True,
+    note="Limits only: the battery's max discharge current at 0 to hold, its max charge current at 0 to cover the"
+    " house without storing. No grid charge or sale yet. Never run on a device; writes only after a passed hardware"
+    " test.",
+)
+
+# --- EcoFlow PowerOcean (see the module) ---------------------------------------------------------------------------
+
+#: The option of `ef_powerocean_tcpmodbus`'s `battery_mode` select (`ControlFeature`, `powerocean/models.py`) each
+#: state writes: the inverter's own self-consumption (control method 0), and method 3 with the battery's setpoint at
+#: 1 W (a hold: 0 W is "no limit" to the inverter), at plus or at minus the mode's power.
+_EF_AUTOMATIC: Final = "automatic"
+_EF_HOLD: Final = "hold_battery"
+_EF_CHARGE: Final = "charge_battery"
+_EF_DISCHARGE: Final = "discharge_battery"
+#: The integration's heartbeat window (s): the inverter obeys the commands it stored for this long after the last
+#: heartbeat, which the integration writes every 20 s while Modbus Control is on (`powerocean/const.py`).
+ECOFLOW_HEARTBEAT_WINDOW_S: Final = 60.0
+
+# Modbus Control: the integration's own switch, which starts and stops its heartbeat (persisted by the integration;
+# its state is the integration's flag, so its read-back is that flag, and the battery's power judges the effect).
+_EF_SWITCH = Role("modbus_control", "switch", _key("modbus_control", "switch"), restored=False, readback="echo")
+# The mode and the two powers are available only while the heartbeat holds control: idle (unavailable) otherwise.
+# `ecoflow_energy`'s `<sn>_local_battery_mode` ends in the same key and is not this select.
+_EF_MODE = Role(
+    "battery_mode", "select", _key("battery_mode", "select", reject=r"local_battery_mode$"), restored=False,
+    idle_when=frozenset({"unavailable"}), readback="echo",
+)
+# The power of the integration's own Charge Battery and Discharge Battery modes (W, step 100), kept by it and sent
+# only while that mode is selected. Never handed back: unavailable before the switch is on, so there is no value to
+# snapshot, and harmless in every other mode.
+_EF_CHARGE_POWER = Role(
+    "charge_power", "number", _key("charge_battery_power", "number"), scale=1000.0, step=100.0, restored=False,
+    idle_when=frozenset({"unavailable"}), write_class="setpoint", readback="echo",
+)
+_EF_DISCHARGE_POWER = Role(
+    "discharge_power", "number", _key("discharge_battery_power", "number"), scale=1000.0, step=100.0,
+    restored=False, idle_when=frozenset({"unavailable"}), write_class="setpoint", readback="echo",
+)
+
+
+def _ef(mode: str, power: str | None = None) -> Callable[[float, int], tuple[Want, ...]]:
+    """Modbus Control on, the mode's power (W) where it has one, then the mode. A power that rounds to 0 W is a hold
+    instead: the inverter reads a setpoint of 0 as no limit at all (the integration does the same)."""
+
+    def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+        if power is None:
+            return (Want("modbus_control", True), Want("battery_mode", mode))
+        size = native(_EF_CHARGE_POWER, rate_kw)
+        if size <= 0:
+            return (Want("modbus_control", True), Want("battery_mode", _EF_HOLD))
+        return (Want("modbus_control", True), Want(power, size), Want("battery_mode", mode))
+
+    return build
+
+
+#: EcoFlow's one hold: Hold Battery, the battery idle (it stores no sun either; at 100 % it curtails the panels,
+#: MaxGrmm #83). Its peak cover writes Automatic, where the inverter covers the house itself.
+ECOFLOW_HOLDS: Final = (
+    HoldVariant("hold_battery", _ef(_EF_HOLD), ("battery_mode",), "Hold Battery (setpoint 1 W)", idle=True),
+)
+
+ECOFLOW_CONTROL: Final = BrandControl(
+    brand="ecoflow",
+    adapter=ECOFLOW,
+    roles=(_EF_SWITCH, _EF_CHARGE_POWER, _EF_DISCHARGE_POWER, _EF_MODE),
+    states={
+        ACTION_HOLD: ECOFLOW_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _ef(_EF_CHARGE, "charge_power"),
+        # The inverter's own self-consumption under Modbus Control: it covers the house (and stores a sun surplus).
+        ACTION_DISCHARGE_HOUSE: _ef(_EF_AUTOMATIC),
+        ACTION_EXPORT_DISCHARGE: _ef(_EF_DISCHARGE, "discharge_power"),
+    },
+    # The switch first (the rest is unavailable until its heartbeat holds control), the power before the mode that
+    # sends it. Back: Automatic first, which the live heartbeat sends at once (method 0), then the switch off, which
+    # only stops the heartbeat: the inverter returns to the app's settings within its window.
+    enter_order=("modbus_control", "charge_power", "discharge_power", "battery_mode"),
+    restore_order=("battery_mode", "modbus_control"),
+    own_states={"Modbus control": frozenset({"on"})},
+    requires=(("modbus_control", frozenset({"off"}), "modbus_control_already_on"),),
+    peak_first={ACTION_HOLD: ECOFLOW_HOLDS[0].peak_first, ACTION_GRID_CHARGE: ("battery_mode",)},
+    # The inverter's own heartbeat dead-man, renewed by the integration (not by SpotNav): it ends the command when Home
+    # Assistant stops, never when SpotNav alone stalls, so it never lifts a cap (`gate.expiry_lifts`). Stated by the
+    # integration and measured by another integration's author on one HJ31 (30-65 s); not yet seen by SpotNav. The
+    # switch off is the silence its hardware test times it with.
+    expiry=Expiry(
+        "device_deadman", "integration", ECOFLOW_HEARTBEAT_WINDOW_S, integration="ef_powerocean_tcpmodbus",
+        note="heartbeat 40608, written by the integration every 20 s while Modbus Control is on",
+        silence=(("modbus_control", False),),
+    ),
+    # A three-phase PowerOcean balances its phases itself, but how it spreads a grid charge is not stated anywhere:
+    # the HA-down cap takes the whole charge on one phase until a plant has shown the split.
+    grid_charge_phases=1,
+    hold_variants=ECOFLOW_HOLDS,
+    variant=ECOFLOW_HOLDS[0].name,
+    # The controls are the HACS integration `ef_powerocean_tcpmodbus`'s; `ecoflow_energy` (read only here) has its own.
+    hacs_roles=("charge_power", "discharge_power", "battery_mode"),
+    hacs_repo="MaxGrmm/EF-PowerOcean-TcpModbus",
+    # The protocol (EcoFlow Open Modbus V1.0, a trial version) says nothing of how often the setpoint may be written.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    hardware_test_first=True,
+    note="Modbus Control through ef_powerocean_tcpmodbus: the EcoFlow app is locked while it is on and for about a"
+    " minute after. Untested on a plant: runs only after the site's hardware test passed on its firmware.",
+)
+
+# --- Marstek Venus (marstek_modbus, see the module) ------------------------------------------------------------------
+
+#: The Venus E's largest charge power (kW; the entity's own maximum, 2500 W): a rate above it is written as it, never
+#: refused by the entity. The Venus A's is 1500 W: a write above it is refused and handed back.
+MARSTEK_MAX_KW: Final = 2.5
+_MS_RS485 = Role("rs485_control", "switch", _key("rs485_control_mode", "switch"))
+_MS_FORCE = Role("force_mode", "select", _key("force_mode", "select"), write_class="setpoint")
+# 42020 acts only in a force charge with RS485 control on, and is written only with it on: never written back (a
+# change of action turns RS485 control off before it would come in turn), the next charge writes it before the mode.
+_MS_CHARGE = Role(
+    "charge_power", "number", _key("set_charge_power", "number"), scale=1000.0, step=50.0, restored=False,
+    write_class="setpoint",
+)
+_MS_MAX_DISCHARGE = Role(
+    "max_discharge_power", "number", _key("max_discharge_power", "number"), scale=1000.0, step=50.0
+)
+
+
+def _ms_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    return (
+        Want("rs485_control", True), Want("charge_power", native(_MS_CHARGE, min(rate_kw, MARSTEK_MAX_KW))),
+        Want("force_mode", "charge"),
+    )
+
+
+MARSTEK_CONTROL: Final = BrandControl(
+    brand="marstek",
+    adapter=MARSTEK,
+    roles=(_MS_MAX_DISCHARGE, _MS_RS485, _MS_CHARGE, _MS_FORCE),
+    states={
+        # A limit safe to keep: the battery's own self-consumption, discharging nothing (the sun is still stored).
+        ACTION_HOLD: lambda _rate, _w: (Want("max_discharge_power", 0.0),),
+        ACTION_GRID_CHARGE: _ms_charge,
+        # The battery's own self-consumption covers the house.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
+    },
+    # RS485 control first (42xxx act only with it on), the power before the mode, so the mode never runs at a power
+    # left there. Back: the force mode to standby first (it stops the charge), then RS485 control off.
+    enter_order=("max_discharge_power", "rs485_control", "charge_power", "force_mode"),
+    restore_order=("force_mode", "rs485_control", "max_discharge_power"),
+    # RS485 control that SpotNav turned on is not someone else's while it runs.
+    own_states={"RS485 control": frozenset({"on"})},
+    requires=(("force_mode", frozenset({"standby"}), "force_mode_left_standing"),),
+    peak_first={ACTION_HOLD: ("max_discharge_power",), ACTION_GRID_CHARGE: ("force_mode",)},
+    # A single-phase battery: the whole charge on its one phase.
+    grid_charge_phases=1,
+    # No dead-man on any Modbus route (the module): a force charge stays until changed.
+    expiry=NO_EXPIRY,
+    hacs_roles=("max_discharge_power", "rs485_control", "charge_power", "force_mode"),
+    hacs_repo="ViperRNMC/marstek_venus_modbus",
+    # Nothing says whether the force registers are kept in flash: the moderate cap.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    # Never run on a device: nothing is written until a person's hardware test passed on the plant's firmware.
+    hardware_test_first=True,
+    # A Venus A's Set Charge Power stops at 1500 W (and refuses a write above it), a Venus E's at 2500 W.
+    charge_power_bound="charge_power",
+    note="Needs the Modbus integration (ViperRNMC/marstek_venus_modbus). Hold: the maximum discharge power at 0. Grid"
+    " charge: RS485 control with a force charge, which the battery keeps if Home Assistant stops (no dead-man), so it"
+    " runs under the HA-down cap. Never run on a device; writes only after a passed hardware test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -1935,11 +2273,12 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "solax": {"trigger": True},
     "solinteg": _SOLINTEG_NORMAL,
     "ferroamp": {"command": "auto"},
+    "ecoflow": {"modbus_control": False, "battery_mode": _EF_AUTOMATIC},
 }
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
-    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL,
+    VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL, ECOFLOW_CONTROL, MARSTEK_CONTROL,
 )
 
 
@@ -1973,6 +2312,39 @@ def field_tested(brand: str | None) -> bool:
     """Whether the brand's recipe (its battery control, else its export control) was tested on a real plant."""
     control = next((control for control in CONTROLS if control.brand == brand), None) or export_control_for(brand)
     return control is not None and control.field_tested
+
+
+@dataclass(frozen=True, slots=True)
+class Blocked:
+    """A recipe this release holds back (shadow only, whatever a site passed): the brand, and where given only on a
+    firmware key containing `firmware` or only at the recipe revision `recipe_rev`."""
+
+    brand: str
+    firmware: str | None = None
+    recipe_rev: int | None = None
+    #: Why, for the log and the release notes.
+    note: str = ""
+
+
+#: The release's block list (`blocked`): empty while no brand, firmware or revision is known to misbehave.
+BLOCKED: Final[tuple[Blocked, ...]] = ()
+
+
+def blocked(control: BrandControl, firmware_key: str, entries: tuple[Blocked, ...] | None = None) -> bool:
+    """Whether this release holds the recipe back on a plant with this firmware key (`BLOCKED`)."""
+    return any(
+        entry.brand == control.brand
+        and (entry.firmware is None or entry.firmware in firmware_key)
+        and (entry.recipe_rev is None or entry.recipe_rev == control.recipe_rev)
+        for entry in (BLOCKED if entries is None else entries)
+    )
+
+
+def hardware_test_first(brand: str | None) -> bool:
+    """Whether the brand's recipe writes only once a person's hardware test passed on the plant's firmware (not yet
+    `field_tested`)."""
+    control = next((control for control in CONTROLS if control.brand == brand), None)
+    return control is not None and control.hardware_test_first and not control.field_tested
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:

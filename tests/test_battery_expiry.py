@@ -90,8 +90,10 @@ def test_read_back_kinds_per_brand_keep_the_old_control_facts() -> None:
     assert kinds["solax"] == {"autorepeat": "echo", "active_power": "echo", "power_control": "echo", "trigger": "none"}
     assert set(kinds["goodwe"].values()) == {"echo"} and set(kinds["tesla"].values()) == {"echo"}
     assert kinds["ferroamp"] == {"command": "answer"}
+    # EcoFlow's controls are the integration's own state: the battery's power judges the effect.
+    assert set(kinds["ecoflow"].values()) == {"echo"}
     local = {control.brand for control in CONTROLS if control.local_readback}
-    assert local == {"solax", "goodwe", "tesla", "ferroamp"}
+    assert local == {"solax", "goodwe", "tesla", "ferroamp", "ecoflow"}
 
 
 def test_a_recipe_measurement_of_a_phase_expiry_names_its_phases() -> None:

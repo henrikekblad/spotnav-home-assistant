@@ -11,7 +11,7 @@ import json
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -121,11 +121,14 @@ class Plant:
 
     def power_kw(self) -> float:
         """The battery's power as the plant runs it now (kW, + charging): it covers the house in Maximum Self
-        Consumption, stops under a hold (discharge limit 0), charges at its limit in Command Charging."""
+        Consumption, stops under a hold (discharge limit 0), charges at its limit in Command Charging (no sun: the
+        hold, PV First at a charge limit of 0, charges nothing)."""
         if not self.obeys:
             return -HOUSE_KW
         state = self.hass.states.get
-        if state(SWITCH).state == "on" and state(MODE).state == "Command Charging (Grid First)":
+        if state(SWITCH).state == "on" and state(MODE).state in (
+            "Command Charging (Grid First)", "Command Charging (PV First)"
+        ):
             return float(state(CHARGE).state)
         if state(DISCHARGE).state == "0":
             return 0.0
@@ -237,7 +240,7 @@ async def test_shadow_only_is_the_default_and_refuses_every_write_while_it_logs_
     assert plant.calls == []
     would = [row for row in control.log if row["kind"] == "would_do"]
     assert len(would) == 1 and would[0]["reason"] == "hold" and would[0]["blocker"] is None
-    assert [write["role"] for write in would[0]["writes"]] == ["discharge_limit", "remote_ems", "control_mode"]
+    assert [write["role"] for write in would[0]["writes"]] == ["charge_limit", "remote_ems", "control_mode"]
     with pytest.raises(ControlNotReachable):
         await control.async_tick()
     with pytest.raises(ControlNotReachable):
@@ -297,8 +300,8 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     assert [(domain, service) for domain, service, _data in plant.calls] == [
         ("number", "set_value"), ("switch", "turn_on"), ("select", "select_option")
     ]
-    assert plant.calls[0][2] == {"entity_id": DISCHARGE, "value": 0.0}
-    assert plant.calls[2][2]["option"] == "Maximum Self Consumption"
+    assert plant.calls[0][2] == {"entity_id": CHARGE, "value": 0.0}
+    assert plant.calls[2][2]["option"] == "Command Charging (PV First)"
     # The snapshot was on disk before the first write.
     assert plant.stored_at_first_call["state"]["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
     assert control.executor.state.phase == "active"
@@ -315,13 +318,14 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     again = BatteryControl(hass, controller, plan_source=_hold)
     plant.calls.clear()
     await again.async_start()
-    # The discharge limit first: the battery covers a peak again before Remote EMS goes off.
+    # The mode first: the battery covers a peak again before Remote EMS goes off; the charge limit's "never set" is
+    # restored as the rating.
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("number", "set_value"), ("switch", "turn_off")
+        ("select", "select_option"), ("switch", "turn_off"), ("number", "set_value")
     ]
     assert hass.states.get(SWITCH).state == "off"
-    assert hass.states.get(DISCHARGE).state == "23.04"
-    assert hass.states.get(CHARGE).state == "unknown", "a limit it never wrote is left as found"
+    assert hass.states.get(CHARGE).state == "20.6"
+    assert hass.states.get(DISCHARGE).state == "23.04", "a limit it never wrote is left as found"
     assert again.executor.state.phase == "idle"
     assert again.log[0]["reason"] == "restart"
     assert site.entry_id
@@ -351,7 +355,7 @@ async def test_a_restart_waits_for_a_late_integration_before_it_restores(
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("number", "set_value"), ("switch", "turn_off")
+        ("select", "select_option"), ("switch", "turn_off"), ("number", "set_value")
     ]
     assert not any(row["kind"] in ("not_taken", "service_failed") for row in again.log)
     assert again.executor.state.phase == "idle" and hass.states.get(SWITCH).state == "off"
@@ -401,9 +405,11 @@ async def test_a_read_only_plant_drops_the_write_and_the_control_blocks_without_
     now = dt_util.now()
     for index in range(12):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert len(plant.calls) == 1
-    assert control.executor.state.phase == "blocked"
-    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit")
+    # The hold's write once, never again; its hand-back writes the limit's "never set" back as the rating (a write
+    # sent may have landed), and that restore is retried on its own backoff until it is given up and blocked.
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6]
+    assert control.executor.state.phase == "restoring"
+    assert control.executor.state.blocked.startswith("write_not_taken:charge_limit")
 
 
 async def test_a_write_that_raises_is_not_taken_and_handed_back(
@@ -415,9 +421,9 @@ async def test_a_write_that_raises_is_not_taken_and_handed_back(
     now = dt_util.now()
     for index in range(4):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
+    assert control.executor.state.blocked.startswith("write_not_taken:charge_limit:service_failed")
     assert any(row["kind"] == "service_failed" for row in control.log)
-    assert len(plant.calls) == 1
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6], "the hold, then its hand-back"
 
 
 async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_look_ends(
@@ -433,11 +439,11 @@ async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_lo
             await control.async_look(now + timedelta(seconds=10 * index))
     assert not control._lock.locked()
     # Its own reason: the block clears by itself (`executor.CALL_TIMEOUT_BLOCK_S`), no reset needed.
-    assert control.executor.state.blocked == "call_timeout:discharge_limit"
+    assert control.executor.state.blocked == "call_timeout:charge_limit"
     failed = [row for row in control.log if row["kind"] == "service_failed"]
     assert failed and "no answer" in failed[0]["error"]
     assert any(row["kind"] == "not_taken" and row["why"] == "call_timeout" for row in control.log)
-    assert len(plant.calls) == 1
+    assert [data["value"] for _domain, _service, data in plant.calls] == [0.0, 20.6], "the hold, then its hand-back"
     assert control._failed_looks == 0, "a write given up on is a write not taken, not a failed look"
 
 
@@ -660,11 +666,11 @@ async def test_a_stop_and_a_restart_hand_the_battery_back_before_the_export_limi
     now = dt_util.now()
     for index in range(6):
         await control.async_tick(now + timedelta(seconds=10 * index))
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
 
     def order() -> tuple[int, int]:
         ids = [data.get("entity_id") for _domain, _service, data in plant.calls]
-        battery = max(index for index, entity_id in enumerate(ids) if entity_id in (SWITCH, MODE, DISCHARGE))
+        battery = max(index for index, entity_id in enumerate(ids) if entity_id in (SWITCH, MODE, CHARGE))
         return battery, ids.index(EXPORT)
 
     plant.calls.clear()
@@ -674,7 +680,7 @@ async def test_a_stop_and_a_restart_hand_the_battery_back_before_the_export_limi
     # Again, now as a restart finds both snapshots stored.
     for index in range(6):
         await control.async_tick(dt_util.now() + timedelta(hours=1, seconds=10 * index))
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
     plant.calls.clear()
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
@@ -798,6 +804,8 @@ async def test_no_check_runs_while_the_firmware_was_never_read(
     assert control.verification is None and plant.calls == []
     assert status["state"] == "waiting" and status["line"] == "waiting:firmware_unknown"
     assert "firmware_unknown" in status["needs"]
+    # Nor a hardware test: a pass on an unknown firmware could never be kept.
+    assert control.hardware_test_refusal() == "needs:firmware_unknown"
     # The firmware reads: the check starts.
     hass.states.async_set(FIRMWARE, "V100R001C21SPC117")
     await _looks(control, dt_util.now() + timedelta(minutes=5), 1)
@@ -819,7 +827,7 @@ async def test_normal_left_open_is_judged_on_a_hold_written_again(
     assert [result.mode for result in control.verification.results] == ["hold", "normal"]
     await _looks(control, now, 200)
     assert control.report()["modes"]["normal"]["outcome"] == "restored" and control.state() == "on"
-    assert any(call[2].get("entity_id") == DISCHARGE and call[2].get("value") == 0.0 for call in plant.calls)
+    assert any(call[2].get("entity_id") == CHARGE and call[2].get("value") == 0.0 for call in plant.calls)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
 
 
@@ -927,7 +935,7 @@ async def test_looks_that_keep_failing_hand_the_plant_back(
 
     monkeypatch.setattr(BatteryControl, "_control_slot", boom)
     now = await _looks(control, now, control_module.FAILED_LOOKS_HAND_BACK - 1)
-    assert hass.states.get(DISCHARGE).state == "0", "a failure or two is waited out"
+    assert hass.states.get(CHARGE).state == "0", "a failure or two is waited out"
     await _looks(control, now, 6)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert not control.executor.state.holds_snapshot
@@ -992,7 +1000,7 @@ async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_le
     control = await _started(hass, site, controller, plan_source=_hold)
     _options(hass, site, ai_takeover_ack=True)
     now = await _looks(control, dt_util.now(), 6)
-    assert control.executor.state.phase == "active" and hass.states.get(DISCHARGE).state == "0"
+    assert control.executor.state.phase == "active" and hass.states.get(CHARGE).state == "0"
     assert control.took_from_ai
     status = await control.async_update_options({gate.CONF_ENABLED: False})
     # Handed back before the answer, to Maximum Self Consumption (Remote EMS off), with the reminder for the card.
@@ -1013,7 +1021,7 @@ async def test_withdrawing_the_acknowledgement_hands_an_ai_mode_takeover_back(
     control = await _started(hass, site, controller, plan_source=_hold)
     _options(hass, site, ai_takeover_ack=True)
     now = await _looks(control, dt_util.now(), 6)
-    assert control.took_from_ai and hass.states.get(DISCHARGE).state == "0"
+    assert control.took_from_ai and hass.states.get(CHARGE).state == "0"
     status = await control.async_update_options({gate.CONF_AI_TAKEOVER_ACK: False})
     now = await _looks(control, now, 6)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
@@ -1100,6 +1108,82 @@ async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_sho
     await _looks(control, dt_util.now(), 16)
     assert hass.states.get(CHARGE).state[:len(written)] == written
     assert any(row["kind"] == "restricted" for row in control.log) is (written != "13.2")
+
+
+def _bounded_sigenergy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The owner's Sigenergy as a recipe whose charge limit entity bounds a grid charge (as Marstek's does)."""
+    bounded = replace(commands_module.SIGENERGY_CONTROL, charge_power_bound="charge_limit")
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: bounded.with_hold(variant))
+
+
+async def test_a_live_grid_charge_and_the_plans_cap_never_pass_the_batterys_own_charge_power_entity(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # The plan asks 15 kW, the fuse would allow 13.2 kW, the plant's charge limit entity stops at 1.5 kW.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
+    _import_limit(hass, "7.5")
+    old = hass.states.get(CHARGE)
+    hass.states.async_set(CHARGE, old.state, {**old.attributes, "max": 1.5})
+    # The shipping recipe names no bound: the entity's range is never read.
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    assert control.plan_grid_charge_cap(dt_util.now())[0] != 1.5
+    _bounded_sigenergy(monkeypatch)
+    control._look_id += 1
+    assert control.plan_grid_charge_cap(dt_util.now()) == (1.5, control_module.RULE_CHARGE_POWER_ENTITY)
+    await _looks(control, dt_util.now(), 16)
+    assert hass.states.get(CHARGE).state == "1.5"
+    assert any(row["kind"] == "restricted" and row["reason"] == "charge_power_entity" for row in control.log)
+    # A bound under the least rate control commands (a range left at Home Assistant's default) is no bound.
+    hass.states.async_set(CHARGE, hass.states.get(CHARGE).state, {**old.attributes, "max": 0.1})
+    control._look_id += 1
+    assert control.plan_grid_charge_cap(dt_util.now())[0] != 0.1
+    await control.async_stop()
+
+
+def _bare_control(brand: str, entities: dict[str, tuple[str, dict[str, Any]]], monkeypatch: pytest.MonkeyPatch) -> Any:
+    """A control with only what `_within_charge_power` reads: the brand and the plant's entities by key."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        control_module, "plant_entity_id",
+        lambda _hass, _config, match: next(
+            (entity_id for key, (entity_id, _attrs) in entities.items() if match.matches("number", f"ab12_{key}")), None
+        ),
+    )
+    states = {entity_id: SimpleNamespace(attributes=attrs) for entity_id, attrs in entities.values()}
+    control = BatteryControl.__new__(BatteryControl)
+    control.hass = SimpleNamespace(states=SimpleNamespace(get=states.get))  # type: ignore[assignment]
+    control.site = SimpleNamespace(config={})  # type: ignore[assignment]
+    control.facts = SimpleNamespace(brand=brand)  # type: ignore[assignment]
+    control.executor = None
+    control._look_id, control._charge_bound = 0, None
+    return control
+
+
+def test_a_venus_a_s_1500_w_set_charge_power_caps_a_marstek_grid_charge_at_1_5_kw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    control = _bare_control(
+        "marstek", {"set_charge_power": ("number.venus_set_charge_power", {"max": 1500, "min": 0})}, monkeypatch
+    )
+    assert control._charge_entity_max_kw(commands_module.MARSTEK_CONTROL) == 1.5
+    assert control._within_charge_power(None) == 1.5 and control._within_charge_power(1.0) == 1.0
+    # A Venus E's 2500 W leaves the recipe's own 2.5 kW.
+    control = _bare_control("marstek", {"set_charge_power": ("number.venus_set_charge_power", {"max": 2500})}, monkeypatch)
+    assert control._within_charge_power(4.0) == 2.5
+
+
+@pytest.mark.parametrize("brand", ["solax", "victron", "solaredge"])
+def test_no_other_recipe_is_bounded_by_its_entitys_range(brand: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A W role on an integration that leaves Home Assistant's default range (0..100) would read as 0.1 kW.
+    control = commands_module.control_for(brand)
+    assert control is not None and control.charge_power_bound is None
+    bare = _bare_control(brand, {"any": ("number.any", {"min": 0, "max": 100})}, monkeypatch)
+    # Every entity of the plant answers with that range.
+    monkeypatch.setattr(control_module, "plant_entity_id", lambda _hass, _config, _match: "number.any")
+    assert bare._within_charge_power(5.0) == 5.0 and bare._within_charge_power(None) is None
+    assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek"]
 
 
 async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(
@@ -1939,7 +2023,7 @@ async def test_removing_the_site_hands_a_stored_snapshot_back_before_the_store_g
     _export_limit(hass)
     control = await _started(hass, site, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
     key = store_key(site.entry_id)
     # The unload's hand-back did not finish (the plant did not answer): the snapshots are stored.
     plant.raises = True
@@ -1960,7 +2044,7 @@ async def test_removing_the_site_is_not_held_by_a_plant_that_never_answers(
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=_hold)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     key = store_key(site.entry_id)
     plant.hangs = True
     monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
@@ -2112,7 +2196,7 @@ async def test_the_test_action_waits_for_hold_and_normal_to_pass_unless_forced(
     # Forced: the owner's on-site test runs before the verification.
     await control.async_trial("hold", None, 5, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
 
 
 async def test_a_forced_test_action_ends_and_hands_back_when_the_opt_in_is_turned_off(
@@ -2124,7 +2208,7 @@ async def test_a_forced_test_action_ends_and_hands_back_when_the_opt_in_is_turne
     _options(hass, site, enabled=True)  # shadow only stays on
     await control.async_trial("hold", None, 60, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     await control.async_update_options({gate.CONF_ENABLED: False})
     assert control.trial is None
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
@@ -2154,7 +2238,7 @@ async def test_back_to_shadow_only_hands_the_plant_back_and_a_write_that_is_no_r
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=_hold)
     await _looks(control, dt_util.now(), 6)
-    assert hass.states.get(DISCHARGE).state == "0"
+    assert hass.states.get(CHARGE).state == "0"
     await control.async_update_options({gate.CONF_SHADOW_ONLY: True})
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert control.state() == "shadow_only" and control.executor.state.phase == "idle"
@@ -2286,16 +2370,34 @@ async def test_a_forced_test_hold_is_refused_when_every_variant_failed(
     assert control.trial is not None
 
 
-async def test_without_a_passed_variant_the_executor_runs_the_first(
+async def test_a_report_that_passed_a_hold_the_recipe_no_longer_has_checks_the_recipe_s_hold_again(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
-    control, _plant = await _forced_hold_site(hass, monkeypatch, hass_storage, None)
-    executor = control._executor()
-    assert executor.use_variant("pv_first")  # left from an earlier verification
+    # A report stored before Sigenergy's hold became PV First only (2026-11-23): its passed Maximum Self Consumption
+    # hold is never written again, and counts for nothing: the routine checks PV First before control holds.
+    control, _plant = await _forced_hold_site(
+        hass, monkeypatch, hass_storage, [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
+    )
+    stored = control.reports[control.firmware_key()]
+    stored["modes"]["normal"] = {"mode": "normal", "outcome": "restored"}
+    # The owner's plant ran its routine often (per phase, expiry): out of attempts, last run just now.
+    stored |= {"attempts": gate.MAX_ATTEMPTS, "last_run_at": dt_util.now().isoformat()}
+    assert control.hold_variant() == "pv_first"
+    report = control.report()
+    assert report is not None and gate.report_status(report) == "pending" and control.state() == "waiting"
+    assert "hold" in gate.modes_to_run(report) and gate.needs_run(report)
+    # A check to run again at the next suitable moment, never one that failed or waits out a gap.
+    assert report["attempts"] == 0 and "last_run_at" not in report
+    assert report["modes"]["hold"]["variants"] == [{"variant": "msc_no_discharge", "outcome": "obeyed"}]
+    # The routine's pass of PV First makes control run again.
+    report["modes"]["hold"] |= {"outcome": "obeyed", "variant": "pv_first"}
+    assert control.state() == "on"
+    # A forced test action holds as PV First meanwhile.
     await control.async_trial("hold", None, 5, force=True)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert control.executor.control.variant == "msc_no_discharge"
-    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(MODE).state == "Maximum Self Consumption"
+    assert control.executor.control.variant == "pv_first"
+    assert hass.states.get(CHARGE).state == "0" and hass.states.get(MODE).state == "Command Charging (PV First)"
+    assert hass.states.get(DISCHARGE).state == "23.04"
 
 
 async def test_the_shadow_shows_the_hold_variant_the_verification_passed(
@@ -2403,6 +2505,32 @@ async def test_a_hardware_test_runs_under_shadow_only_in_minutes_and_leaves_the_
     assert control.reports == {}, "the test never counts as the verification routine"
     assert control.state() == "shadow_only"
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
+async def test_a_hardware_test_charges_no_harder_than_the_batterys_own_charge_power_entity_takes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # A Venus A's Set Charge Power stops at 1500 W where the recipe allows 2500 W: the test's charge (2 kW) asks for
+    # no more than the entity takes. Here the owner's plant's charge limit says 1.5 kW.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    old = hass.states.get(CHARGE)
+    hass.states.async_set(CHARGE, old.state, {**old.attributes, "max": 1.5})
+    _bounded_sigenergy(monkeypatch)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert control._charge_entity_max_kw(control._executor().control) == 1.5
+    assert await control.async_hardware_test_start() is None
+    started = now = dt_util.now()
+    while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
+        now = await _looks(control, now, 1)
+    # The charge step's limit is the last one written before Command Charging (Grid First); the others are a hold's 0
+    # and the hand-backs to the limit as found.
+    grid_first = next(index for index, call in enumerate(plant.calls) if "Grid First" in str(call[2].get("option")))
+    charged = [call[2]["value"] for call in plant.calls[:grid_first] if call[2].get("entity_id") == CHARGE]
+    assert charged[-1] == 1.5 < TEST_CHARGE_KW
+    assert control.hardware_test_progress()["report"]["modes"]["charge"]["outcome"] == "obeyed"
 
 
 async def test_a_hardware_test_stopped_hands_the_plant_back_at_once(
@@ -2633,3 +2761,223 @@ async def test_a_refused_change_writes_nothing_to_the_plant_first(
         hass, site, {"battery_mode": "nonsense"}, admin=True, set_import_limit=True
     )
     assert answer["error"] == "spotnav_invalid_value" and written == []
+
+
+class _Run:
+    """A finished hardware test's verification with these outcomes."""
+
+    done = True
+    results: list[Any] = []
+
+    def __init__(self, **outcomes: str) -> None:
+        self.outcomes = outcomes
+
+    def report(self) -> dict[str, Any]:
+        return {"brand": "sigenergy", "started_at": dt_util.now().isoformat(), "modes": {
+            mode: {"mode": mode, "outcome": outcome} for mode, outcome in self.outcomes.items()
+        }}
+
+
+def _hardware_test_ends(control: BatteryControl, **outcomes: str) -> None:
+    control.verification, control._hw_run = _Run(**outcomes), True  # type: ignore[assignment]
+    control._end_verification(dt_util.now())
+
+
+_LIMITS_ONLY_PASS: Final = {"hold": "obeyed", "charge": "skipped", "discharge_house": "obeyed", "normal": "restored"}
+
+
+async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold):
+    """The owner's plant with a recipe that writes only after a hardware test and has no grid charge (FoxESS's limits
+    only: its hardware test skips the charge step), opted in with shadow only stored off and the routine passed."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    waiting = replace(commands_module.SIGENERGY_CONTROL, hardware_test_first=True)
+    waiting = replace(waiting, states={
+        action: build for action, build in waiting.states.items() if action != commands_module.ACTION_GRID_CHARGE
+    })
+    recipe = {"control": waiting}
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
+    control = await _started(hass, site, controller, plan_source=plan_source)
+    return site, controller, plant, control, recipe
+
+
+async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only_until_the_plants_first_pass(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    # Still shadow only, and the checklist says why.
+    assert control.options().shadow_only and control.state() == "shadow_only"
+    assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
+    # The hardware test itself is what it waits for: never refused for it.
+    assert control.hardware_test_refusal() is None
+    # A forced test action (the owner's service) is refused too: the gate is not shadow only's to override.
+    for action in ("hold", "discharge_house"):
+        with pytest.raises(TrialRefused) as refused:
+            await control.async_trial(action, None, 5, force=True)
+        assert refused.value.code == "hardware_test_first"
+    now = dt_util.now()
+    for index in range(3):
+        await control.async_look(now + timedelta(seconds=10 * index))
+    assert plant.calls == []
+    assert any(row["kind"] == "would_do" for row in control.log)
+    # A test that did not pass records nothing.
+    _hardware_test_ends(control, hold="ignored", normal="restored")
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
+    # One that passed is the plant's first pass and stands as the routine's check on this key: control runs.
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_test_due() is None and control.state() == "on"
+    assert control._data()["gate"]["hardware_brands"] == ["sigenergy"]
+    assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
+    # Now a forced test action runs ...
+    await control.async_trial("hold", None, 5, force=True)
+    assert control.trial is not None and control._trial_allowed(control.trial, control.options())
+    # ... until a later test on the same firmware fails: shadow only on that key, the test asked for again.
+    _hardware_test_ends(control, **(_LIMITS_ONLY_PASS | {"discharge_house": "ignored"}))
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_AGAIN
+    assert control.state() == "shadow_only" and not control._trial_allowed(control.trial, control.options())
+    await control.async_look(now + timedelta(seconds=60))
+    assert control.trial is None
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "hardware_test_again"
+    # A test that passes again lets control run again.
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_test_due() is None and control.state() == "on"
+    await control.async_stop()
+
+
+@pytest.mark.parametrize("change", ["firmware", "integration", "recipe"])
+async def test_after_the_first_pass_a_change_is_checked_by_the_routine_and_only_its_failure_asks_for_the_test_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], change: str
+) -> None:
+    site, controller, plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    first = control.firmware_key()
+    assert control.state() == "on"
+    if change == "firmware":
+        hass.states.async_set(FIRMWARE, "V100R001C21SPC118")
+    elif change == "integration":
+        monkeypatch.setattr(BatteryControl, "_integration_version", lambda self, domain: "9.9.9")
+    else:
+        recipe["control"] = replace(recipe["control"], recipe_rev=2)
+    control.facts = control._read_facts()
+    assert control.firmware_key() != first
+    # No person needed: the routine checks the new key at the next suitable evening, writing as it does.
+    assert control.hardware_test_due() is None and not control.options().shadow_only
+    assert control.state() == "waiting"
+    assert not any(need.startswith("hardware_test") for need in control._needs())
+    evening = dt_util.as_local(dt_util.now()).replace(hour=19, minute=0)
+    await _looks(control, evening, 1)
+    assert control.state() == "verifying"
+    await control.async_stop()
+    # Its pass: control goes on.
+    control.verification = None
+    _passed(control, charge="skipped")
+    assert control.state() == "on" and control.hardware_test_due() is None
+    # Its failure: shadow only and one line asking for the hardware test again, however many looks.
+    _passed(control, hold="ignored", charge="skipped")
+    assert control.state() == "shadow_only"
+    for index in range(5):
+        await control.async_look(evening + timedelta(hours=1, seconds=10 * index))
+    needs = control.status()["needs"]
+    assert needs.count(control_module.NEED_HARDWARE_TEST_AGAIN) == 1
+    assert not any(need == control_module.NEED_HARDWARE_TEST_FIRST for need in needs)
+    assert len(control.notes) == 0, "a checklist line that clears itself, never a note piling up"
+    # The hardware test run again and passed on the new key: control goes on.
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.state() == "on" and control_module.NEED_HARDWARE_TEST_AGAIN not in control.status()["needs"]
+    await control.async_stop()
+
+
+async def test_a_recipe_on_the_releases_block_list_is_shadow_only_whatever_was_passed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.state() == "on"
+    monkeypatch.setattr(control_module, "blocked", lambda control, key: commands_module.blocked(
+        control, key, (commands_module.Blocked("sigenergy", firmware="SPC117"),)
+    ))
+    assert control.recipe_blocked() and control.state() == "shadow_only"
+    assert control_module.NEED_RECIPE_BLOCKED in control._needs()
+    assert control.hardware_test_refusal() == "needs:recipe_blocked"
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "recipe_blocked"
+    # Another firmware, or a revision the entry does not name, is not held back.
+    entry = commands_module.Blocked("sigenergy", recipe_rev=2)
+    assert not commands_module.blocked(recipe["control"], control.firmware_key(), (entry,))
+    assert commands_module.blocked(replace(recipe["control"], recipe_rev=2), control.firmware_key(), (entry,))
+    assert commands_module.BLOCKED == ()
+    await control.async_stop()
+
+
+async def test_a_hold_that_follows_the_sun_is_given_the_ha_down_cap_and_the_shipping_hold_none(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    now = dt_util.now()
+    shipping = commands_module.SIGENERGY_CONTROL
+    assert control.inputs(now, shipping, slot=("hold", 0.0, None)).hold_charge_cap_kw == 0.0
+    variant = replace(commands_module.SIGENERGY_HOLDS[0], surplus=commands_module.SIGENERGY_HOLD_SURPLUS)
+    following = replace(shipping, hold_variants=(variant,))
+    # The balanced grid charge's HA-down cap, or no bound where the plant's import limit guards the fuse.
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (2.5, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == 2.5
+    monkeypatch.setattr(BatteryControl, "_charge_limits", lambda self, now, options, **_kw: (None, None))
+    assert control.inputs(now, following, slot=("hold", 0.0, None)).hold_charge_cap_kw == math.inf
+    assert control.inputs(now, following, slot=("grid_charge", 2.0, None)).hold_charge_cap_kw == 0.0
+
+
+async def test_a_routine_step_that_could_not_be_judged_is_tried_again_at_a_later_suitable_moment_without_a_prompt(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    _passed(control, charge="not_judgeable:grid_charge_cap")
+    report = control.report()
+    # Control runs on what passed; the charge is tried again by the routine by itself, and nothing is asked.
+    assert control.state() == "on" and "charge" in gate.modes_to_run(report)
+    assert gate.report_status(report) == "passed" and gate.needs_run(report)
+    assert control.status()["needs"] == []
+    assert control.notes == []
+    await control.async_stop()
+
+
+async def test_a_bumped_recipe_revision_keys_every_report_read_with_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    bumped = replace(commands_module.SIGENERGY_CONTROL, recipe_rev=2)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: bumped.with_hold(variant))
+    control = await _started(hass, site, controller, plan_source=_hold)
+    key = control.firmware_key()
+    assert key.endswith(" r2") and gate.firmware_known(key)
+    # The per-phase mapping is read from the report under that key, as the report itself is.
+    _passed(control, per_phase="obeyed")
+    assert control.state() == "on" and control._phases_mapped()
+    await control.async_stop()
+
+
+async def test_roles_a_hand_back_could_not_write_are_named_with_what_to_set_by_hand_until_they_read_so(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    executor = control._executor()
+    assert executor is not None
+    executor.state = replace(
+        executor.state, phase="blocked", blocked="restore_failed:control_mode,charge_limit", action="hold",
+        unrestored=("charge_limit", "control_mode"), entities={"control_mode": MODE, "charge_limit": CHARGE},
+        restore_values={"charge_limit": 20.6}, snapshot={"charge_limit": "20.6"},
+    )
+    needs = control.status()["needs"]
+    # In the hand-back's order: the mode (the brand's normal) before the limit (as found).
+    assert f"restore_by_hand:{MODE}=Maximum Self Consumption|{CHARGE}=20.6" in needs
+    # Gone once the executor no longer holds them (written again, or set by hand and read so).
+    executor.state = replace(executor.state, phase="idle", blocked=None, unrestored=())
+    assert not any(need.startswith("restore_by_hand") for need in control.status()["needs"])
+    await control.async_stop()

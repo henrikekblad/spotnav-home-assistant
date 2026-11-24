@@ -1,5 +1,5 @@
-"""Marstek through `marstek_local_api` (jaapp `624881c`) or `marstek_modbus` (ViperRNMC 2026.10.1): read only, found
-by the key at the end of the unique id.
+"""Marstek through `marstek_local_api` (jaapp `624881c`) or `marstek_modbus` (ViperRNMC 2026.10.1): the reader, found
+by the key at the end of the unique id (the control recipe is tested in `test_battery_marstek_control.py`).
 
 The local API's registry is the fixture `marstek` in `tests/fixtures/battery/brands.json` (`<mac>_<key>`), with a
 "Marstek System" device (`<macs sorted, joined>_<key>`) built here where an entry holds two batteries; the Modbus
@@ -38,8 +38,9 @@ def test_both_marstek_integrations_are_the_marstek_adapter() -> None:
     assert adapter_for("marstek_modbus", None) is MARSTEK
 
 
-def test_marstek_is_read_only() -> None:
-    assert all(control.brand != "marstek" for control in commands.CONTROLS)
+def test_marstek_has_the_modbus_recipe_and_the_adapter_maps_no_control_of_its_own() -> None:
+    # The recipe is `commands.MARSTEK_CONTROL` (tests/test_battery_marstek_control.py); the adapter stays the reader.
+    assert commands.control_for("marstek") is commands.MARSTEK_CONTROL
     assert MARSTEK.hold is None and MARSTEK.grid_charge is None
 
 

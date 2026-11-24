@@ -46,7 +46,8 @@ card's gear or the charging card's **Settings** (administrators only). The secti
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
   why, on, stopped, or only watching while the AI mode, or a battery's own strategy SpotNav cannot read, is not yet accepted);
 * the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
-  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
+  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy, or, for a brand that waits for one, run
+  the hardware test first), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended;
@@ -89,12 +90,17 @@ administrators can confirm, and never over the webhook. The entities per brand:
 * Solinteg (the Solinteg plugin of SolaX Modbus): Working Mode and EMS BattCtrl Charge Discharge Power Target, and for
   the per-phase control EMS ACCtrl AC Power Scheduling Mode, Grid Unbalanced Output (read by SpotNav) and the EMS
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
+* Marstek (the Marstek Venus Modbus integration; all four are disabled by default): Max Discharge Power, RS485 Control
+  Mode, Set Charge Power and Force Mode.
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
+* FoxESS (FoxESS Modbus; both enabled by default): Max Charge Current and Max Discharge Current.
 * Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
   limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
   disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
   power L1, L2 and L3.
+* EcoFlow PowerOcean (the HACS EF-PowerOcean-TcpModbus integration; all enabled by default): Modbus Control, Battery
+  Mode, and the Charge Battery and Discharge Battery power.
 
 **GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
 the same routine as the others, and both are untested.
@@ -162,15 +168,46 @@ integration (level and power, and what each states of its size and floor: see
 battery plan can run in shadow. It has no control for them and writes nothing to them. Both are read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
-**Read only: FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also the 1KOMMA5 `1K5-HI` units).** SpotNav reads these
-through the FoxESS Modbus integration (`foxess_modbus`): the battery's power and level, its floor (*Min SoC (On Grid)*)
-and, on the three-phase H3 family, the grid per phase for the site's meter. The H3-Pro and H3-Smart (and 1KOMMA5's
-units, which the integration reads as an H3-Smart) report a level per battery pack and none for the whole battery:
-SpotNav combines the packs, weighted by the energy each holds. The size is learnt; the ratings are learnt too, except
-on the H1 and KH once you enable their two sensors *BMS Charge Rate* and *BMS Discharge Rate* (disabled in Home
-Assistant by default). SpotNav has no control for FoxESS and writes nothing to it: the integration's force charge and
-discharge, work mode and charge periods stay yours. Read from the integration's source and not yet tested on a
-battery: [tell us](supported.md) how yours reads.
+**FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also the 1KOMMA5 `1K5-HI` units): limits only, never run on a
+device.** SpotNav reads these through the FoxESS Modbus integration (`foxess_modbus`): the battery's power and level,
+its floor (*Min SoC (On Grid)*) and, on the three-phase H3 family, the grid per phase for the site's meter. The H3-Pro
+and H3-Smart (and 1KOMMA5's units, which the integration reads as an H3-Smart) report a level per battery pack and none
+for the whole battery: SpotNav combines the packs, weighted by the energy each holds. The size is learnt; the ratings
+are learnt too, except on the H1 and KH once you enable their two sensors *BMS Charge Rate* and *BMS Discharge Rate*
+(disabled in Home Assistant by default).
+
+Its control only lowers the battery's own current limits, read from the integration's source:
+
+* **Hold:** *Max Discharge Current* to 0 A. The battery covers nothing; a sun surplus is still stored. When the house
+  needs the battery to keep under the fuse, the limit is given back for that time.
+* **Cover the house:** *Max Charge Current* to 0 A. The battery covers the house and stores nothing (a sun surplus is
+  exported).
+* **Hand back:** both limits to the values they had.
+* **No grid charge and no sale.** The integration's only way to charge from the grid is its remote control (*Force
+  Charge* in the work mode). Before it starts that, it sets the work mode to *Back-up*, and the inverter runs Back-up
+  once Home Assistant stops renewing the command (after 20 to 30 seconds). Back-up charges at full power, and the
+  integration does not set the mode back after a restart. A Home Assistant that stopped mid-charge could leave the plant
+  charging at full power from the grid, so SpotNav does not use it until a plant has shown what happens. The plan
+  therefore plans no grid charge on FoxESS.
+
+What to know before you turn it on:
+
+* **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
+  passed once on this inverter; until then control only logs what it would do, whatever the test-mode setting says,
+  and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
+  if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
+  lets the check run again, as for every brand).
+* **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
+  *Back-up*, *Peak Shaving* or the integration's *Force Charge* and *Force Discharge* it only watches.
+* **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home Assistant
+  is back and hands it back. It never takes more from the grid because of it.
+* **Writes a day:** 96. Nobody states whether the inverter keeps these limits in flash.
+* **Restore by hand:** set *Max Charge Current* and *Max Discharge Current* back to your values (often the battery's
+  maximum).
+
+Please [tell us](supported.md) what the hardware test says on yours. To help decide about a grid charge, a supervised
+script (`tools/foxess_watchdog_test.py` in the repository) shows what your inverter does when the remote control stops
+being renewed, with the charge current capped low first; ask before you run it.
 
 **Read only: Solis (hybrid inverters such as the S6-EH3P).** SpotNav reads these through the Solis Modbus integration
 (`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor (*Overdischarge SOC*, the on-grid one)
@@ -182,7 +219,8 @@ SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not r
 writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
-**Read only: Marstek (Venus E, C, D, A).** SpotNav reads these through either the Marstek Local API integration
+**Marstek (Venus E, C, D, A): read through both integrations, control mapped for the Modbus one, never run on a
+device.** SpotNav reads these through either the Marstek Local API integration
 (`marstek_local_api`, Marstek's own local API, which you switch on in the Marstek app) or the Marstek Venus Modbus
 integration (`marstek_modbus`, RS485 or Modbus TCP): the battery's power and level and its size (*Rated capacity*, or
 *Battery Total Energy* over Modbus). With several batteries in one Local API entry SpotNav reads them whole, from the
@@ -192,9 +230,58 @@ learnt. Over Modbus it also reads the battery's lifetime charge and discharge co
 only in the *Operating mode* "Auto" (local API; "AI", "Manual", "Passive" and "UPS" are someone else's), or in the
 *User Work Mode* "Self Consumption" with *RS485 Control Mode* off (Modbus). The local API reports the mode every
 5 minutes, and the *Marstek System* device has none, so with several batteries in one entry SpotNav cannot tell who
-runs them. SpotNav has no control for Marstek and writes nothing to it: the mode, Passive mode, the time slots and the
-RS485 control stay yours. The official Marstek integration (`marstek`) is not read: it reports the battery's power as a number with no direction. Read from the integrations'
-source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+runs them. The official Marstek integration (`marstek`) is not read: it reports the battery's power as a number with
+no direction. Read from the integrations' source and not yet tested on a battery: [tell us](supported.md) how yours
+reads.
+
+SpotNav's control for Marstek goes through the **Modbus integration only** (the local API has no limit to set, and its
+Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
+local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
+the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery: until
+then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
+too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
+only if that check fails does the checklist ask for the hardware test again.
+
+* A **hold** sets *Max Discharge Power* to 0. The battery stays in its own self-consumption: it still stores a sun
+  surplus and covers nothing. This is a limit that is safe if it is left standing. On a Venus A or D with its own
+  solar input, a hold at 100 % may also stop its own panels (evcc issue 36206).
+* A **grid charge** turns *RS485 Control Mode* on, sets *Set Charge Power* (in steps of 50 W, at most 2500 W, and
+  never more than the entity itself takes: 1500 W on a Venus A) and then *Force Mode* to charge. The battery keeps a
+  force charge until it is told otherwise: there is **no dead-man**, so if Home Assistant stops, the charge goes on
+  until the battery is full. SpotNav therefore caps a grid charge for that case, counting all of it on the one phase
+  the battery is plugged into (see the grid charge cap below). *Charge to SoC* is never written.
+* A **discharge for the house** is the battery's own self-consumption: nothing is written. Discharging to the grid and
+  the battery's *Max Charge Power* are not used.
+* Every **hand-back** sets *Force Mode* back to standby, turns *RS485 Control Mode* off (the battery is then in its own
+  work mode again) and sets *Max Discharge Power* back to what it was. *Set Charge Power* is left as SpotNav last wrote
+  it: it does nothing without a force charge.
+* SpotNav does not start while *Force Mode* reads anything but standby, or *RS485 Control Mode* is on (someone else's
+  force commands, such as evcc), or the work mode is not "Self Consumption".
+* **Batteries run by Omnibattery** (ffunes/Omnibattery) are not this integration's: Omnibattery is the battery's one
+  Modbus client and its own controller, so the Modbus integration's entities do not exist. SpotNav reads the
+  Omnibattery system and only watches it; it never writes to a battery Omnibattery runs.
+
+**The Marstek hardware test** (Settings → Support → Hardware test in the card, with battery control switched on and
+the four entities enabled; at most ten minutes). Press Start: it runs by itself at a suitable moment, and nothing else
+is needed from you. If you like to follow it in the Marstek app, the steps and what it shows:
+
+1. **Hold** (about a minute): *Max Discharge Power* reads 0 within some seconds; the battery stops discharging
+   (*Battery Power* near 0, or positive if the sun charges it). *RS485 Control Mode* stays off.
+2. **Charge from the grid** (a few minutes, at most 2 kW, never more than *Set Charge Power* takes (1500 W on a Venus
+   A), and less if the fuse needs it): *RS485 Control Mode* on, *Set Charge Power* at the test's power, *Force Mode*
+   charge; *Battery Power* positive at about that power, and the grid import up by about as much on the battery's
+   phase.
+3. **Cover the house**: *Force Mode* standby, *RS485 Control Mode* off, *Max Discharge Power* back; the battery covers
+   the house again.
+4. **Hand back**: everything as it was before the test.
+
+The test stops at once and hands back if a write does not read back, if the battery does not do what it was told, or
+if a phase comes near the main fuse. If something is left behind (Home Assistant restarted mid-test, say), restore by
+hand: *Force Mode* to standby, *RS485 Control Mode* off, *Max Discharge Power* to your value (often 2500 W, or 800 W in
+Germany), then turn SpotNav's switch off. If the battery's maximum powers read 800 W after the test, toggle them in the
+Marstek app (evcc issue 36110 saw that after its own stop). Send the result: it tells which firmware the control worked
+on. The test passes when the hold, the charge and the hand-back passed and nothing failed; only then does SpotNav
+write outside the test.
 
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
@@ -247,30 +334,31 @@ and 80 % and discharging (so a hold can be seen), no car charging, room under th
 typical. A step the battery cannot show at the moment (nothing to stop, nearly full) is tried again at a later
 suitable moment, not counted as a failure; after five runs without an answer the check gives up.
 
-**Two ways to hold a Sigenergy plant.** Which of the plant's limits act in which Remote EMS mode depends on the
-firmware: Sigenergy's Modbus Protocol V2.7 says the charge limit acts only in Command Charging (modes 3 and 4) and the
-discharge limit only in Command Discharging (5 and 6); V2.9 (May 2026) says both act in every mode. So the check
-tries the hold two ways, one at a time, and keeps the first that works:
+**How SpotNav holds a Sigenergy plant: Command Charging (PV First) with the charge limit at 0.** The protocol's
+Appendix 6 names this mode "Command charging (consume PV power first)": a charge at the charge limit, from the sun
+first and then from the grid. With the limit at 0 it charges nothing, and no Command Charging mode discharges, so the
+battery stands idle and a sun surplus is exported while the hold lasts. It works on both protocol generations
+(Sigenergy's Modbus Protocol V2.7 says the charge limit acts only in Command Charging, modes 3 and 4; V2.9, May 2026,
+says in every mode). It is also what the plant keeps doing if Home Assistant stops in the middle of a hold, and then
+the plant's own grid import limit still covers a peak: tested on site in November 2026 with Home Assistant writing
+nothing, the plant started to discharge about 25-30 seconds after the import limit was lowered under the house's
+load and held the grid there, the same on every phase. An earlier hold, Maximum Self Consumption with the discharge
+limit at 0, failed that test (the grid took the whole house) and is no longer used. Under a peak while Home Assistant
+runs, SpotNav switches the mode back to Maximum Self Consumption; a mode change can take the plant a little longer
+than a limit (the plant's *active power regulation gradient*, register 40049, sets how fast it ramps; SpotNav only
+reads about it, never writes it). If the headroom is not back within 30 seconds the battery is handed back. On every
+change between SpotNav's commands the charge and discharge limits are lowered before the mode changes and raised
+only after it, so the plant never runs a Command mode on the previous command's limit.
 
-1. **Maximum Self Consumption with the discharge limit at 0** (current firmware). Under a peak SpotNav lifts the
-   limit and the plant covers each phase itself.
-2. **Command Charging (PV First) with the charge limit at 0** (older firmware, where the discharge limit does
-   nothing in Maximum Self Consumption). The protocol's Appendix 6 names this mode "Command charging (consume PV
-   power first)": a charge at the charge limit, from the sun first and then from the grid. With the limit at 0 it
-   charges nothing, and no Command Charging mode discharges, so the battery stands idle and a sun surplus is
-   exported while the hold lasts. That is also what the plant keeps doing if Home Assistant stops in the middle of a
-   hold. Under a peak SpotNav switches the mode back to Maximum Self Consumption; a mode change can take the plant a
-   little longer than a limit (the plant's *active power regulation gradient*, register 40049, sets how fast it
-   ramps; SpotNav only reads about it, never writes it). If the headroom is not back within 30 seconds the battery is
-   handed back.
+Storing the sun during a hold (the charge limit following the measured surplus, never above the grid charge's
+Home-Assistant-down cap) is built but switched off until it has been tested on a sunny day; until then the hold
+exports a sun surplus.
 
-The hold is judged on what the battery does while the house draws: it must not discharge, and with the first way it
-should still store sun. With the second way the battery must stand idle: if it charges more than 0.5 kW for a
-minute, the plant did not take the limit and the hold is handed back at once, in the check and in control alike
-(judged on the battery's own power, so it works without a grid reading). The check then fails; in control the block
-clears by itself after six hours. The check moves on to the second way only when the first was simply ignored, and
-only once the battery discharges again. The check's result says which way passed; control uses that one. A firmware
-update runs the check again, both ways if needed. A discharge to the house stays Maximum Self Consumption with the
+The hold is judged on what the battery does while the house draws: it must not discharge and must stand idle. If it
+charges more than 0.5 kW for a minute, the plant did not take the limit and the hold is handed back at once, in the
+check and in control alike (judged on the battery's own power, so it works without a grid reading). The check then
+fails; in control the block clears by itself after six hours. A firmware update runs the check again. A discharge to
+the house stays Maximum Self Consumption with the
 charge limit at 0 (V2.7 has no mode for "cover the house, store nothing"; where the limit is ignored the battery
 also stores a sun surplus, as it does normally). Other protocol changes worth knowing: V2.8 removed register 41500
 (Remote EMS dispatch enable, not used by SpotNav) and V2.9 added V2G (0x08) to the Remote EMS control modes.
@@ -314,7 +402,8 @@ The cap answers one question: how much may the battery draw from the grid so tha
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
 house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
 Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
-plant not known to balance its charge, all of it on that one phase.
+plant not known to balance its charge, all of it on that one phase. On a Marstek a grid charge, planned or running,
+is also never more than the battery's own *Set Charge Power* takes (its maximum in Home Assistant).
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no
@@ -658,6 +747,47 @@ flags included (the card's section leaves those out). Neither is meant for every
 
 The site's diagnostics show it all under `battery_control`: the options, the state, the check's report per firmware,
 the actions allowed, what is missing, the notes, and the log of every write, refusal and would-do.
+
+### EcoFlow PowerOcean (mapped, not yet tested on a plant)
+
+For a PowerOcean through the HACS integration **EF-PowerOcean-TcpModbus** (`ef_powerocean_tcpmodbus`), which talks
+Modbus TCP to the inverter on your network. Modbus must first be enabled on the inverter by EcoFlow's support or
+your installer, and the inverter answers one Modbus client at a time: the other EcoFlow integration's local mode,
+evcc or an installer's tool on the same inverter lock this one out. The other integration (`ecoflow_energy`) and
+EcoFlow's cloud are read only in SpotNav; the cloud has no power setpoint for a PowerOcean at all.
+
+SpotNav takes the battery only while the EcoFlow app runs it in self-consumption and the integration's **Modbus
+Control** switch is off. It then uses the integration's own controls: it turns Modbus Control on, sets the power of
+the mode it wants and then **Battery Mode**: *Hold Battery* for a hold (the battery stands idle; at 100 % this also
+curtails the panels), *Charge Battery* at the rate for a grid charge, *Automatic* (the inverter's own
+self-consumption) to cover the house, and *Discharge Battery* at the rate to sell. The power is the battery's own,
+positive charging. A hand-back sets Battery Mode to Automatic first, which the inverter takes at once, then turns
+Modbus Control off. **While Modbus Control is on the EcoFlow app is locked**, and it stays locked for about a minute
+after: the inverter keeps obeying what it was last sent until its heartbeat runs out.
+
+**The heartbeat.** The integration writes a heartbeat to the inverter every 20 seconds while Modbus Control is on,
+and the inverter obeys commands only while it is fresh: about a minute after the last one it goes back to the app's
+own settings by itself. So a command ends on its own when Home Assistant stops. It does **not** end while Home
+Assistant runs and only SpotNav is stuck, since the integration keeps beating; SpotNav hands back actively when it
+stops or unloads, and its fuse cap for a grid charge is reckoned as for Sigenergy (the house at its learned peak,
+the whole charge on one phase, since EcoFlow does not say how a three-phase unit spreads it). The integration's
+default powers are kept by the integration; SpotNav leaves the last rate it used in Charge Battery and Discharge
+Battery, which matters only if you select those modes yourself.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
+do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed once on the battery; after a firmware or integration update SpotNav checks the battery
+again by itself, and asks for the hardware test again only if that check fails. The checklist says so. Press Start:
+the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
+(hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
+battery, turns Modbus Control off and nothing else, and watches how long the inverter keeps the hold before it
+covers the house by itself (a minute or so is expected); then it turns Modbus Control on again (the integration
+sends Automatic) and hands back. That step adds a few minutes, and the charge step shows the sign: the battery must
+charge when told to. If the inverter keeps the hold past the window the step fails, and the battery is still taken
+back.
+
+**If something goes wrong, restore by hand:** in Home Assistant set Battery Mode to Automatic, then turn Modbus
+Control off; after a minute the EcoFlow app works again. Then turn SpotNav's switch off.
 
 ## The signal
 

@@ -51,7 +51,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
 * FoxESS, `foxess_modbus` (nathanmarlor/foxess_modbus `94252f0`, read 2026-11-20, `plans/v3_foxess.md`): unique id
-  `foxess_modbus_[<prefix>_]<key>`, read only (no control is mapped). One integration for the H1 (G1, G2, LAN), AC1,
+  `foxess_modbus_[<prefix>_]<key>`, control is limits only (`commands.FOXESS_CONTROL`). One integration for the H1 (G1, G2, LAN), AC1,
   KH, H3, AC3, AIO-H3, H3-Pro and H3-Smart families; the 1KOMMA5 `1K5-HI-<kW>-V1` is read as an H3-Smart. The
   level is `battery_soc` on H1, KH and H3; the H3-Pro and H3-Smart (and 1K5) have no total, only `battery_soc_1` and
   `battery_soc_2` per battery input, which are combined (`soc_packs`, weighted by each pack's `bms_kwh_remaining`;
@@ -97,8 +97,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
   (`battery_power_combined`, discharge-positive, `site_detection.BATTERY_ROWS`). The inverter's "AC Grid Port Active
   Power Phase A-C" (33512/33515/33518, S16, lines 1799-1823) states no sign, so there is no `plant_phase_power`.
-* Marstek (Venus E, C, D, A), read 2026-11-23 (`plans/v3_marstek_adapter.md`), one adapter for two integrations, read
-  only (no control is mapped). Each finds only its own entities (the battery entity's platform), so the keys of both
+* Marstek (Venus E, C, D, A), read 2026-11-23 (`plans/v3_marstek_adapter.md`), one adapter for two integrations
+  (the control recipe, `commands.MARSTEK_CONTROL`, is `marstek_modbus`'s only). Each finds only its own entities (the battery entity's platform), so the keys of both
   sit in one match where they differ:
   * `marstek_local_api` (jaapp/ha-marstek-local-api `624881c`, manifest 1.2.0.rc7; Marstek's local Open API over UDP,
     Rev 1.0; line numbers in `sensor.py`): unique ids are `<mac>_<key>` per battery (lines 644, 694) and, when one
@@ -139,8 +139,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     site row reads), so no battery entity of it is found. Read 2026-11-23 (`plans/research_integrations/marstek_control_2026-11-23.md`).
 
 * EcoFlow PowerOcean, read 2026-11-23 (`plans/research_integrations/ecoflow_control_2026-11-23.md`), one adapter for two
-  integrations, read only (no control is mapped; both write a battery setpoint under a heartbeat that SpotNav does not
-  send). `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
+  integrations; the adapter reads only, and the control (`commands.ECOFLOW_CONTROL`) writes `ef_powerocean_tcpmodbus`'s
+  own controls, whose heartbeat the integration sends. `ef_powerocean_tcpmodbus` (MaxGrmm/EF-PowerOcean-TcpModbus `56331de`, 2.10.1, local Modbus TCP): unique id
   `<config entry id>_<key>` (`entity.py` line 38), one entry per inverter, the keys from `definitions.py`: the level
   `battery_soc` (line 200), the size `battery_capacity` (40552, Wh, line 241), the counters `bat_charged_total` and
   `bat_discharged_total` (lines 585, 594), the app's reserve as the integration holds it `battery_reserve_effective`
@@ -158,7 +158,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   (`battery_power`, 40525: the control's own sign is +1 for charge, `powerocean/const.py` line 170; `batt_w`, 0x020C:
   "positive = charging", `stream_proto.py` line 28; `site_detection.BATTERY_ROWS`). The firmware is the device's
   `sw_version`. The inverter has a heartbeat dead-man of its own (60 s) and the EcoFlow app locks while Modbus control
-  is on; none of it is written here.
+  is on (`commands.ECOFLOW_CONTROL`).
 
 * Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
   one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
@@ -1146,7 +1146,7 @@ def _any_key(*keys: str, domains: tuple[str, ...] = ("sensor",)) -> Match:
     return Match(domains, re.compile(rf"(?:^|_)(?:{'|'.join(re.escape(key) for key in keys)})$"))
 
 
-#: Marstek through `marstek_local_api` or `marstek_modbus` (see the module): read only.
+#: Marstek through `marstek_local_api` or `marstek_modbus` (see the module); controlled only through the latter.
 MARSTEK: Final = Adapter(
     brand="marstek",
     label="Marstek",
@@ -1170,7 +1170,7 @@ MARSTEK: Final = Adapter(
     reserves=(ReserveSource(_key("discharging_cutoff_capacity", "number")),),
 )
 
-#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module): read only. The
+#: EcoFlow PowerOcean through `ef_powerocean_tcpmodbus` or `ecoflow_energy` (see the module). The
 #: `ecoflow_energy` keys follow the device's serial, which has no underscore, so `unit_` and `inverter_<n>_` are not them.
 _ECOFLOW_SN: Final = r"^[^_]+_"
 ECOFLOW: Final = Adapter(

@@ -97,12 +97,14 @@ from . import gate, optin
 from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    NORMAL,
     OUTPUT_TYPE_PHASES,
     BrandControl,
     Expiry,
     Phases,
     answered,
     control_for,
+    blocked,
     export_control_for,
     field_tested as recipe_field_tested,
     fixed_rate_kw,
@@ -111,6 +113,7 @@ from .commands import (
 )
 from .executor import (
     BATTERY_MAX_AGE_S,
+    restore_order,
     HEADROOM_MARGIN_A,
     ExecInputs,
     ExecState,
@@ -145,6 +148,7 @@ from .verify import (
     Timing,
     Verification,
     phase_charge_step,
+    supported_modes,
 )
 
 if TYPE_CHECKING:
@@ -209,6 +213,12 @@ _UNSET: Final = object()
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_control.{entry_id}"
+
+
+def _least(first: float | None, second: float | None) -> float | None:
+    """The smaller of two bounds, either missing (`None`) or not positive counting as no bound."""
+    bounds = [value for value in (first, second) if value is not None and value > 0]
+    return min(bounds) if bounds else None
 
 
 def _float(value: Any) -> float | None:
@@ -374,8 +384,25 @@ def _accept_applies(control: BrandControl | None) -> bool:
     itself charge from the grid there (`hold_charges_without`) stays under the HA-down cap with it."""
     return control is not None and not (control.slow or control.fixed_charge)
 
+#: The checklist's step where the plant's recipe writes only after a person's hardware test passed on its firmware
+#: (`commands.BrandControl.hardware_test_first`): shadow only until then.
+NEED_HARDWARE_TEST_FIRST: Final = "hardware_test_first"
+#: The checklist's step where such a recipe passed a person's hardware test once on this plant, and the automatic
+#: check after a change of firmware, integration or recipe revision failed (or a later hardware test did): shadow
+#: only until a hardware test passes again on the key now.
+NEED_HARDWARE_TEST_AGAIN: Final = "hardware_test_again"
+#: The checklist's step where this SpotNav release holds the brand's recipe back on the plant's firmware or the
+#: recipe's revision (`commands.blocked`): shadow only, whatever was passed.
+NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
+#: The checklist's step where a hand-back could not write roles back: what to set by hand (`_restore_by_hand`).
+NEED_RESTORE_BY_HAND: Final = "restore_by_hand"
+#: The needs a hardware test is what answers (never a reason to refuse one).
+_HARDWARE_TEST_NEEDS: Final = frozenset({NEED_HARDWARE_TEST_FIRST, NEED_HARDWARE_TEST_AGAIN})
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
 RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
+#: The plan's cap rule where the battery's own charge power entity holds the charge below the fuse's cap
+#: (`BrandControl.charge_power_bound`).
+RULE_CHARGE_POWER_ENTITY: Final = "charge_power_entity"
 
 #: Refusals of the per-phase import-limit rule that leave it a way for the person (`BatteryControl._phase_path_open`):
 #: none, a step they can take (enable the Output Type or the grid sensor status, turn the phase switch on), or the
@@ -422,6 +449,15 @@ class BatteryControl:
         #: one's report (never merged into `reports`).
         self._hw_run = False
         self.hardware_report: dict[str, Any] | None = None
+        #: The firmware keys a person's hardware test passed on (hold and the hand-back passed, nothing failed): a
+        #: recipe that writes only after one (`commands.BrandControl.hardware_test_first`) stays shadow only elsewhere.
+        #: The brands a person's hardware test passed with on this plant (`commands.BrandControl.hardware_test_first`):
+        #: the first pass needs the person; after it, the routine checks each firmware, integration version and recipe
+        #: revision by itself, as for every brand.
+        self.hardware_brands: list[str] = []
+        #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
+        #: one passes again.
+        self.hardware_failed: list[str] = []
         #: The key and attempt the running verification counts for.
         self._verify_key: str | None = None
         self._verify_attempt = 0
@@ -466,6 +502,8 @@ class BatteryControl:
         self._sources: tuple[datetime, str | None] | None = None
         #: The look (or status read) being answered, and `_phase_missing` as read in it.
         self._look_id = 0
+        #: The charge power entity's bound as read in the look `(look id, brand)` (`_charge_entity_max_kw`).
+        self._charge_bound: tuple[tuple[int, str | None], float | None] | None = None
         self._missing: tuple[int, str | None] | None = None
         #: For a recipe whose targets per phase are the grid's: the load behind each point and the power at it, read
         #: once a look (`_grid_phases`).
@@ -575,6 +613,11 @@ class BatteryControl:
         self.took_from_ai = data.get("took_from_ai") is True
         notes = data.get("notes")
         self.notes = [dict(note) for note in notes if isinstance(note, dict)] if isinstance(notes, list) else []
+        brands, failed = data.get("hardware_brands"), data.get("hardware_failed")
+        self.hardware_brands = [brand for brand in brands if isinstance(brand, str)] if isinstance(brands, list) else []
+        self.hardware_failed = (
+            [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
+        )
 
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
@@ -706,13 +749,45 @@ class BatteryControl:
 
     def options(self) -> gate.Options:
         """The site's options, from its entry as stored now (a settings write needs no reload). The acceptance of
-        the HA-down risk counts only for the setup it was given for (`gate.ha_down_setup_state`)."""
+        the HA-down risk counts only for the setup it was given for (`gate.ha_down_setup_state`). A recipe that
+        writes only after a person's hardware test (`BrandControl.hardware_test_first`) runs as shadow only until one
+        passed on this firmware (`hardware_test_due`), whatever is stored and on a beta site too; the test itself and
+        every hand-back still run (`_writes_allowed_now`)."""
+        options = self._stored_options()
+        if not options.shadow_only and (self.hardware_test_due() is not None or self.recipe_blocked()):
+            options = replace(options, shadow_only=True)
+        return options
+
+    def _stored_options(self) -> gate.Options:
+        """The options as the site stored them (what the card's switches show)."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
         data = entry.data if entry is not None else self.site.config
         options = gate.Options.from_config(data, shadow_default=self.shadow_default())
         if options.accept_ha_down and self._ha_down_setup_state(data) != "same":
             options = replace(options, accept_ha_down=False)
         return options
+
+    def hardware_test_due(self) -> str | None:
+        """What a recipe that writes only after a person's hardware test (`BrandControl.hardware_test_first`, not yet
+        `field_tested`) waits for now, `None` when nothing: `hardware_test_first` before its first pass on this plant;
+        after it, `hardware_test_again` once the routine's check on the key now failed (or gave up), or a later
+        hardware test failed on it. A change of firmware, integration version or recipe revision after the first
+        pass is checked by the routine by itself, and control goes on once that passed."""
+        control = control_for(self.facts.brand)
+        if control is None or not control.hardware_test_first or control.field_tested:
+            return None
+        if control.brand not in self.hardware_brands:
+            return NEED_HARDWARE_TEST_FIRST
+        key = self.firmware_key()
+        if key in self.hardware_failed or gate.report_status(self.reports.get(key)) == "failed":
+            return NEED_HARDWARE_TEST_AGAIN
+        return None
+
+    def recipe_blocked(self) -> bool:
+        """Whether this SpotNav release holds the recipe back on the plant's firmware key or the recipe's revision
+        (`commands.blocked`): shadow only, whatever was passed."""
+        control = control_for(self.facts.brand)
+        return control is not None and blocked(control, self.firmware_key())
 
     def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
         return gate.ha_down_setup_state(data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP), self._main_fuse_a(), self.facts.brand)
@@ -779,7 +854,13 @@ class BatteryControl:
         ):
             # An integration not loaded (yet) is no change of version: the key read before is kept.
             self._key = gate.firmware_key(facts.firmware, facts.integration, version)
-        return self._key or gate.firmware_key(None, facts.integration, version)
+        return self._with_revision(self._key or gate.firmware_key(None, facts.integration, version))
+
+    def _with_revision(self, key: str) -> str:
+        """A report key with the recipe's revision: a recipe changed since its first revision is checked again, as
+        a firmware update is (`BrandControl.recipe_rev`, ` r<rev>` from 2)."""
+        control = control_for(self.facts.brand)
+        return key if control is None or control.recipe_rev <= 1 else f"{key} r{control.recipe_rev}"
 
     def firmware_known(self) -> bool:
         """Whether the plant's firmware was ever read (the last reading is kept while it blinks): without it a later
@@ -789,8 +870,16 @@ class BatteryControl:
     def report(self) -> dict[str, Any] | None:
         if not self.firmware_known():
             return None
-        report = self.reports.get(self.firmware_key())
-        return report if isinstance(report, dict) else None
+        key = self.firmware_key()
+        report = self.reports.get(key)
+        if not isinstance(report, dict):
+            return None
+        control = control_for(self.facts.brand)
+        current = report if control is None else gate.without_removed_hold(report, control.variant_names())
+        if current is not report:
+            # A hold passed in a variant the recipe no longer has: pending again, so the routine checks it.
+            report = self.reports[key] = dict(current)
+        return report
 
     def _phases_mapped(self) -> bool:
         """Whether the plant's phases A, B and C are shown to be the meter's L1, L2 and L3: only the verification's
@@ -799,7 +888,7 @@ class BatteryControl:
         key = self._key
         if key is None or not gate.firmware_known(key):
             return False
-        report = self.reports.get(key)
+        report = self.reports.get(self._with_revision(key))
         return isinstance(report, dict) and gate.per_phase(report) == "verified"
 
     def state(self, options: gate.Options | None = None) -> str:
@@ -818,7 +907,20 @@ class BatteryControl:
         options = options or self.options()
         if self.state(options) != "on":
             return frozenset()
-        return gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge())
+        return self._supported(gate.allowed_actions(
+            self.report(), options, export_needs_charge=self._export_needs_charge()
+        ))
+
+    def _supported(self, actions: frozenset[str]) -> frozenset[str]:
+        """The actions the plant's recipe has (a limits-only recipe has no grid charge or sale): a report never allows
+        what the executor would refuse."""
+        control = control_for(self.facts.brand)
+        return frozenset() if control is None else frozenset(action for action in actions if control.supports(action))
+
+    def _supported_modes(self) -> frozenset[str] | None:
+        """The battery modes the plant's recipe has an action for (`verify.supported_modes`), `None` without one."""
+        control = control_for(self.facts.brand)
+        return None if control is None else supported_modes(control)
 
     def _export_needs_charge(self) -> bool:
         """Whether this brand's discharge to the grid needs the charge step passed (`gate.allowed_actions`)."""
@@ -1342,7 +1444,7 @@ class BatteryControl:
         attempt = (previous or {}).get("attempts")
         self._verify_attempt = (attempt if isinstance(attempt, int) else 0) + 1
         self._verify_key = key
-        modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous)
+        modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous, self._supported_modes())
         if self._per_phase_due(previous):
             modes = (*modes, gate.MODE_PER_PHASE)
         expiry = self._expiry_to_test(previous) if self._expiry_due(previous) else None
@@ -1375,6 +1477,7 @@ class BatteryControl:
             # The hardware test's report is its own; the routine's per firmware is untouched.
             self._hw_run = False
             self.hardware_report = {**verification.report(), "completed": verification.done}
+            self._keep_hardware_verdict(verification.done, now)
             self._log([{"at": now.isoformat(), "kind": "hardware_test_done" if verification.done else
                         "hardware_test_stopped", "modes": {
                             result.mode: result.outcome for result in verification.results}}])
@@ -1394,6 +1497,57 @@ class BatteryControl:
         self.verification = None
         self._verify_key = None
 
+    def _within_charge_power(self, cap: float | None) -> float | None:
+        """A grid charge cap (`None`: none) lowered to what the plant's own charge power entity takes
+        (`_charge_entity_max_kw`), for a live charge, a test action and the plan alike; never raised."""
+        control = control_for(self.facts.brand)
+        entity_kw = None if control is None else self._charge_entity_max_kw(control)
+        if entity_kw is None:
+            return cap
+        return entity_kw if cap is None else min(cap, entity_kw)
+
+    def _charge_entity_max_kw(self, control: BrandControl) -> float | None:
+        """The largest grid charge the recipe's charge power entity takes (kW: its `max` over the role's scale), only
+        for a recipe that names one (`BrandControl.charge_power_bound`: Marstek, whose Venus A stops at 1500 W where
+        the recipe allows 2500 W); `None` for every other recipe, where none is read, and where the entity says
+        nothing or less than the least rate control commands (a range left at Home Assistant's default). Read once
+        a look (`_look_id`). It bounds the check's charge step, a live grid charge, a test action and the plan's
+        cap (`_within_charge_power`)."""
+        name = control.charge_power_bound
+        if name is None:
+            return None
+        cached = self._charge_bound
+        if cached is not None and cached[0] == (self._look_id, control.brand):
+            return cached[1]
+        role = next(role for role in control.roles if role.name == name)
+        entity_id = plant_entity_id(self.hass, self.site.config, role.match)
+        state = None if entity_id is None else self.hass.states.get(entity_id)
+        bound = None if state is None else _float(state.attributes.get("max"))
+        found = None if bound is None or not role.scale else bound / role.scale
+        if found is not None and found < gate.MIN_RATE_KW:
+            found = None
+        self._charge_bound = ((self._look_id, control.brand), found)
+        return found
+
+    def _keep_hardware_verdict(self, done: bool, now: datetime) -> None:
+        """What a person's finished hardware test means for a recipe that writes only after one
+        (`gate.hardware_test_passed`): a pass is the plant's first pass with the brand (`hardware_brands`) and stands
+        as the routine's check on the key now, so control runs at once; a test that failed after the first pass holds
+        control in shadow only on that key (`hardware_failed`) until one passes again. A stopped test without a
+        failure changes nothing."""
+        key = self.firmware_key()
+        control = control_for(self.facts.brand)
+        if control is None or not control.hardware_test_first or not gate.firmware_known(key):
+            return
+        report = self.hardware_report or {}
+        if done and gate.hardware_test_passed(report, self._supported_modes()):
+            if control.brand not in self.hardware_brands:
+                self.hardware_brands.append(control.brand)
+            self.hardware_failed = [known for known in self.hardware_failed if known != key]
+            self._keep_report(key, gate.merge_report(None, report, key=key, attempts=1, now=now))
+        elif (done or gate.failed_mode(report) is not None) and control.brand in self.hardware_brands:
+            self.hardware_failed = [*(known for known in self.hardware_failed if known != key), key][-MAX_REPORTS:]
+
     async def _async_verify(self, now: datetime) -> StepResult | None:
         verification = self.verification
         executor = self.executor
@@ -1408,7 +1562,9 @@ class BatteryControl:
             headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
             volts_between_phases=inputs.volts_between_phases,
         )
-        action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
+        # The charge step never asks for more than the battery's rating or its own charge power entity takes.
+        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control))
+        action, rate = verification.command(now, sample, charge_max_kw)
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
@@ -1428,7 +1584,7 @@ class BatteryControl:
                 else:
                     # No grid charge fits under the HA-down cap now: tried again at a later run.
                     verification.not_judgeable(now, "grid_charge_cap")
-                action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
+                action, rate = verification.command(now, sample, charge_max_kw)
                 probe = verification.probe()
             rate = rate if cap is None or probe is not None else min(rate, cap)
         # The probe of `per_phase` is a discharge on one phase (`Verification.probe`), which needs no cap; `charge`
@@ -1460,7 +1616,7 @@ class BatteryControl:
         report = self.report()
         state = self.state(options)
         if state not in ("waiting", "on") or not (
-            gate.needs_run(report) or self._per_phase_due(report) or self._expiry_due(report)
+            gate.needs_run(report, self._supported_modes()) or self._per_phase_due(report) or self._expiry_due(report)
         ):
             self.waiting_for = None
             return
@@ -1504,6 +1660,18 @@ class BatteryControl:
 
     # ---- a person's hardware test
 
+    def hardware_test_moment(self, now: datetime) -> str | None:
+        """Why the battery part of a hardware test should wait now, `None` when the moment suits every step: the
+        routine's own rule (`gate.suitable`: a fresh reading, the battery between `SUITABLE_SOC_PCT` and covering the
+        house, so a hold and a discharge can be judged and a charge seen; no car charging; the fuse with room; the
+        plant SpotNav's to take). The test waits for such a moment by itself: nothing is asked of the person."""
+        executor = self._executor()
+        if executor is None:
+            return "no_battery_control"
+        # The test takes the plant over from control itself (`async_hardware_test_start`): a running executor is no
+        # reason to wait.
+        return gate.suitable(replace(self._moment(now, executor), executor_idle=True), evening=False)
+
     def hardware_test_refusal(self) -> str | None:
         """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the
         person still has to do (`_needs`: an acknowledgement, a control to enable), a known firmware, nothing else
@@ -1514,7 +1682,8 @@ class BatteryControl:
             return "no_battery_control"
         if not self.options().enabled:
             return "not_enabled"
-        needs = self._needs()
+        # The hardware test is what a recipe that writes only after one waits for: never its own refusal.
+        needs = [need for need in self._needs() if need not in _HARDWARE_TEST_NEEDS]
         if needs:
             return f"needs:{needs[0]}"
         if self.trial is not None:
@@ -1525,8 +1694,9 @@ class BatteryControl:
 
     async def async_hardware_test_start(self) -> str | None:
         """Start the battery part of a person's hardware test (`verify.Timing.quick`, `stop_on_fail`): hold, a small
-        grid charge under the HA-down cap, a discharge for the house and the hand-back, through the executor with
-        every rule. Answers the refusal code, `None` once it started."""
+        grid charge under the HA-down cap, a discharge for the house, the plant's own dead-man timed where SpotNav can
+        silence it (`_hardware_test_deadman`), and the hand-back, through the executor with every rule. Answers the
+        refusal code, `None` once it started."""
         why = self.hardware_test_refusal()
         if why is not None:
             return why
@@ -1535,10 +1705,12 @@ class BatteryControl:
             executor = self._executor()
             if executor is None:
                 return "no_battery_control"
+            deadman = self._hardware_test_deadman(executor.control)
             self.verification = Verification(
-                executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
+                executor, now, firmware=self.facts.firmware,
+                modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if deadman is not None else ())),
                 tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
-                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
+                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
             )
             self._hw_run = True
             self._verify_key = None
@@ -1547,6 +1719,19 @@ class BatteryControl:
             _LOGGER.info("SpotNav battery control: a hardware test started (%s)", self.firmware_key())
             await self._async_look(now)
         return None
+
+    def _hardware_test_deadman(self, control: BrandControl) -> Expiry | None:
+        """The dead-man a hardware test times after its hold (`gate.deadman_testable`: one the integration renews and
+        SpotNav can silence, EcoFlow's), `None` for every other recipe."""
+        base = control.with_phases(False)
+        expiry = base.expiry
+        return expiry if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge) else None
+
+    def hardware_test_deadman(self) -> bool:
+        """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
+        more: `hardware_test.DEADMAN_EXTRA`)."""
+        control = control_for(self.facts.brand)
+        return control is not None and self._hardware_test_deadman(control) is not None
 
     async def async_hardware_test_stop(self, reason: str) -> None:
         """End a running hardware test at once and hand the plant back (its deadline, an anomaly elsewhere, an
@@ -1654,6 +1839,12 @@ class BatteryControl:
             raise TrialRefused("starting")
         if not options.enabled:
             raise TrialRefused("not_enabled")
+        if self.recipe_blocked():
+            raise TrialRefused(NEED_RECIPE_BLOCKED)
+        due = self.hardware_test_due()
+        if due is not None:
+            # A recipe that writes only after a person's hardware test: not even a forced test action before one.
+            raise TrialRefused(due)
         if options.shadow_only and not force:
             raise TrialRefused("shadow_only")
         if not force and gate.report_status(self.report()) != "passed":
@@ -1680,7 +1871,7 @@ class BatteryControl:
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
                 rate = self._bounded_rate(action, abs(power_kw) if power_kw is not None else TEST_CHARGE_KW)
             if action == ACTION_GRID_CHARGE:
-                cap = self._charge_limits(now, options)[0]
+                cap = self._within_charge_power(self._charge_limits(now, options)[0])
                 if cap is not None and cap < gate.MIN_RATE_KW:
                     raise TrialRefused("grid_charge_cap")
                 rate = rate if cap is None else min(rate, cap)
@@ -1712,7 +1903,7 @@ class BatteryControl:
         self-consumption while the cap leaves no grid charge."""
         rate = self._bounded_rate(trial.action, trial.rate_kw)
         if trial.action == ACTION_GRID_CHARGE:
-            cap = self._charge_limits(now, options)[0]
+            cap = self._within_charge_power(self._charge_limits(now, options)[0])
             if cap is not None and cap < gate.MIN_RATE_KW:
                 return (ACTION_SELF_CONSUME, 0.0, trial.until)
             rate = rate if cap is None else min(rate, cap)
@@ -1723,11 +1914,14 @@ class BatteryControl:
             rate = min(rate, cap)
         return (trial.action, round(rate, 3), trial.until)
 
-    @staticmethod
-    def _trial_allowed(trial: Trial, options: gate.Options) -> bool:
+    def _trial_allowed(self, trial: Trial, options: gate.Options) -> bool:
         """Whether a running test action may go on under these options: the opt-in on, and shadow only off unless
-        the action was forced (`force_test` overrides shadow only and the verification, nothing else)."""
-        return options.enabled and (not options.shadow_only or trial.force)
+        the action was forced (`force_test` overrides shadow only and the verification, nothing else), and never
+        while the recipe waits for a person's hardware test (`hardware_test_due`, a pass withdrawn ends it)."""
+        return (
+            options.enabled and (not options.shadow_only or trial.force) and self.hardware_test_due() is None
+            and not self.recipe_blocked()
+        )
 
     # ---- shadow only
 
@@ -1786,8 +1980,9 @@ class BatteryControl:
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         report = self.report()
-        allowed = gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge())
-        cap, caps = self._charge_limits(now, options)
+        allowed = self._supported(gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge()))
+        fuse_cap, caps = self._charge_limits(now, options)
+        cap = self._within_charge_power(fuse_cap)
         if caps is None and gate.charge_by_phases(report):
             # The charge was shown only per phase: the balanced one is never run on that.
             allowed = allowed - {ACTION_GRID_CHARGE}
@@ -1795,6 +1990,8 @@ class BatteryControl:
             self._merged_slot(now), allowed, cap, self._export_cap_kw(), self._fixed_charge_kw(),
             hold_charges=self._hold_charges(),
         )
+        if why == "grid_charge_cap" and cap is not None and (fuse_cap is None or cap < fuse_cap):
+            why = RULE_CHARGE_POWER_ENTITY  # the battery's own charge power entity, not the fuse
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
             self._restricted = why
@@ -2397,11 +2594,19 @@ class BatteryControl:
         command can never disagree. `cap_kw` `None` with the rule `import_limit` is no cap of this kind (the plant's
         own import limit guards the fuse); a cap that cannot be worked out is 0 with the rule `error`, never no cap."""
         try:
+            control = control_for(self.facts.brand)
+            if control is not None and not control.supports(ACTION_GRID_CHARGE):
+                return 0.0, RULE_NO_GRID_CHARGE  # a limits-only recipe: control never charges from the grid
             options = self.options()
             executor = self.executor
             phased = executor is not None and executor.control.phased
             cap, caps = self._charge_limits(now, options, phased=phased)
             rule = self._cap_rule(options, cap, False, self._learned(now))
+            # Never more than the plant's own charge power entity takes, as `_control_slot`: its own rule where it
+            # is what holds the charge.
+            bounded = self._within_charge_power(cap)
+            if bounded is not None and (cap is None or bounded < cap):
+                cap, rule = bounded, RULE_CHARGE_POWER_ENTITY
             # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
             if caps is None and gate.charge_by_phases(self.report()):
                 return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run
@@ -2778,6 +2983,12 @@ class BatteryControl:
             slot = self._control_slot(now, options)
         car_first, car_held = self._shedding(now, config)
         phase_caps: Phases | None = None
+        hold_cap = 0.0
+        if slot is not None and slot[0] == ACTION_HOLD and control.hold_surplus is not None:
+            # A hold that follows the sun leaves a charge limit standing, a grid charge once the sun goes: the
+            # balanced grid charge's HA-down cap bounds it (none where the plant's import limit guards the fuse).
+            cap, _caps = self._charge_limits(now, options, phased=False)
+            hold_cap = math.inf if cap is None else cap
         if slot is not None and slot[0] == ACTION_GRID_CHARGE:
             # The cap of the control that will run it, again: a slot capped for a charge per phase is never run as
             # the balanced one above the balanced cap (the control changes only while it holds nothing).
@@ -2801,6 +3012,7 @@ class BatteryControl:
             facts=facts,
             reads=self._reads(control),
             phase_caps_kw=phase_caps,
+            hold_charge_cap_kw=hold_cap,
             phase_headroom_a=self._phase_headroom_a(),
             plant_phase_kw=plant_phase_kw,
             plant_phases_mapped=self._phases_mapped(),
@@ -3038,7 +3250,8 @@ class BatteryControl:
         data: dict[str, Any] = {
             "reports": dict(self.reports),
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
-                     "notes": [dict(note) for note in self.notes]},
+                     "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
+                     "hardware_failed": list(self.hardware_failed)},
         }
         if executor is not None:
             data |= {
@@ -3097,7 +3310,38 @@ class BatteryControl:
             needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
+        restore = self._restore_by_hand()
+        if restore is not None:
+            needs.append(restore)
+        if self.recipe_blocked():
+            needs.append(NEED_RECIPE_BLOCKED)
+        else:
+            due = self.hardware_test_due()
+            if due is not None:
+                needs.append(due)
         return needs
+
+    def _restore_by_hand(self) -> str | None:
+        """The checklist's line where a hand-back could not write some roles back (`restore_failed`): each entity and
+        the value to set by hand, in the hand-back's order (`restore_by_hand:<entity_id>=<value>|...`). It clears by
+        itself once they read so (the executor tries them again, `executor.BLOCKED_RESTORE_S`)."""
+        executor = self.executor
+        if executor is None or executor.state.phase != "blocked" or not executor.state.unrestored:
+            return None
+        state = executor.state
+        normal = NORMAL.get(executor.control.brand, {})
+        order = [name for name in restore_order(executor.control, state.action) if name in state.unrestored]
+        order += [name for name in state.unrestored if name not in order]
+        rows = []
+        for name in order:
+            entity_id = state.entities.get(name)
+            value = state.restore_values.get(name, normal.get(name))
+            if entity_id is not None and value is not None:
+                text = ("on" if value else "off") if isinstance(value, bool) else (
+                    f"{value:g}" if isinstance(value, float) else str(value)
+                )
+                rows.append(f"{entity_id}={text}")
+        return f"{NEED_RESTORE_BY_HAND}:{'|'.join(rows)}" if rows else None
 
     def _settings_device(self) -> str | None:
         """The device that holds the first control the person must enable (`control_disabled`), so the card can open
@@ -3177,7 +3421,9 @@ class BatteryControl:
         return {
             # Whether the site's battery facts name a battery: without one a client hides its battery card (additive).
             "battery_found": bool(self.facts.battery_entity_id),
-            "options": options.as_dict(),
+            # As stored: a recipe still waiting for its hardware test runs as shadow only whatever the switch says,
+            # and the checklist says why (`hardware_test_first`).
+            "options": self._stored_options().as_dict(),
             "state": self.state(options),
             "line": self._line(options),
             "key": self.firmware_key(),

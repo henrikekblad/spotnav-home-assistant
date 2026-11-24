@@ -92,7 +92,10 @@ class World:
             if not self.follows:
                 return (0.0, 0.0, 0.0)
             return tuple(self.sign * target for target in self.targets())  # type: ignore[return-value]
-        if state(SWITCH).state == "on" and state(MODE).state == "Command Charging (Grid First)":
+        if state(SWITCH).state == "on" and state(MODE).state in (
+            "Command Charging (Grid First)", "Command Charging (PV First)"
+        ):
+            # No sun: PV First charges from the grid at its limit too (the hold's limit is 0).
             each = -float(state(CHARGE).state) / 3
             return (each, each, each)
         if state(DISCHARGE).state == "0":

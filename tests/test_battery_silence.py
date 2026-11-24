@@ -23,13 +23,22 @@ from custom_components.spotnav.battery.gate import FAILING_ABORTS
 from custom_components.spotnav.battery.hold import HoldInputs, HoldMemory, step as hold_step
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S
 from custom_components.spotnav.battery.plan_shadow import PlanActuals
-from tests.battery_control_fakes import SIGENERGY_STATES, T0, TICK, FakeBattery, events, inputs, run
+from tests.battery_control_fakes import (
+    LIMIT_HOLD_CONTROL,
+    SIGENERGY_STATES,
+    T0,
+    TICK,
+    FakeBattery,
+    events,
+    inputs,
+    run,
+)
 
 SILENT_MANAGEMENT = Management("unknown", "unreadable", {"EMS work mode": "unavailable"})
 
 
 def _sigenergy() -> tuple[Executor, FakeBattery]:
-    return Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    return Executor(LIMIT_HOLD_CONTROL), FakeBattery(LIMIT_HOLD_CONTROL, dict(SIGENERGY_STATES))
 
 
 def _running(action: str, rate_kw: float = 0.0) -> tuple[Executor, FakeBattery, datetime]:
@@ -98,13 +107,15 @@ def test_the_fuse_still_hands_back_at_once_during_a_silence() -> None:
     assert events(results, "hand_back")[0]["reason"] == "stale_data"
 
 
-def test_a_fuse_hand_back_during_a_silence_writes_every_role_at_once() -> None:
-    # Under `RESTORE_HEADROOM_A` the fuse's reason wins over the stale reading: all roles in the first look.
+def test_a_fuse_hand_back_during_a_silence_writes_at_once() -> None:
+    # Under `RESTORE_HEADROOM_A` the fuse's reason wins over the stale reading: the hand-back's writes in the first
+    # look, all but a limit it raises, which waits for the mode and the switch to read back (`Executor._limit_waits`).
     for action, rate_kw in (("hold", 0.0), ("grid_charge", 3.0)):
         executor, battery, now = _running(action, rate_kw)
         result = executor.step(_silent(battery, now, action, rate_kw, headroom_a=RESTORE_HEADROOM_A - 0.1))
         assert [event["reason"] for event in result.events if event["kind"] == "hand_back"] == ["fuse_headroom"]
-        assert len(result.ops) > 1 and all(op.restore for op in result.ops)
+        assert result.ops and all(op.restore for op in result.ops)
+        assert "remote_ems" in [op.role for op in result.ops]
     # In the middle of a ridden-out silence too.
     executor, battery, now = _running("hold")
     now, results = _quiet(executor, battery, now, 40.0, "hold")
