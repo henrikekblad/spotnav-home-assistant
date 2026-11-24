@@ -421,14 +421,24 @@ class PoolSpaShadow:
             self._sun_task = self.hass.async_create_background_task(
                 self._async_read_sun(now), name=f"{DOMAIN} pool sun {self.site.entry_id}"
             )
+        # One look each, on its own: one that fails leaves the others' plans fresh (a stale one is not followed).
+        failed = False
         if config.pool is not None:
-            self._pool_tick(now, config.pool)
+            try:
+                self._pool_tick(now, config.pool)
+            except Exception:  # noqa: BLE001 - the spa and the sauna look all the same
+                failed = True
         if config.spa is not None or config.sauna is not None:
             hours = self._heat_hours(now)
-            if config.spa is not None:
-                self.spa.look(now, self.tz, config.spa, self._read_deadline(config.spa), hours)
-            if config.sauna is not None:
-                self.sauna.look(now, self.tz, config.sauna, self._read_deadline(config.sauna), hours)
+            for part, block in ((self.spa, config.spa), (self.sauna, config.sauna)):
+                if block is None:
+                    continue
+                try:
+                    part.look(now, self.tz, block, self._read_deadline(block), hours)
+                except Exception:  # noqa: BLE001 - the other looks go on
+                    failed = True
+        if failed:
+            self._look_failed()
         self._tell_not_ready(config)
         self._account_energy(now, config)
         self._save()
