@@ -526,9 +526,12 @@ the WebSocket by an administrator.
 **Charger priority.** Since 3.0 a charger's place is its row in the site's
 [priority list](site-and-load-balancing.md#the-priority-list), and `charger_priority` is kept for older apps only:
 its value is derived from the list (the top car `"first"`, the bottom one `"last"`, the others and a car alone
-`"normal"`; before the list is first saved, the value stored on the charger), and a write moves the charger's row
-("first" to the top of the cars, "last" to their bottom, "normal" by its class among the others), storing the list
-and dropping every old value. `update_charger_priority` takes `priority` and `expected`, each `"first"`,
+`"normal"`; before the list is first saved, the value stored on the charger). A write whose value differs from the
+one shown moves the charger's row ("first" to the top of the cars, "last" to their bottom, "normal" by its class
+among the others) and always stores the list, also where the order stays the same, with every member's value as
+the app was shown it and this one as written (the site's `priority_classes`): the app reads back what it wrote, and
+the order follows those classes. Saving the list itself drops them, and the values are derived from the positions
+again. `update_charger_priority` takes `priority` and `expected`, each `"first"`,
 `"normal"` or `"last"`, and an optional `api_version` (`1`); `expected` is the value the caller last
 saw (the dashboard's `charger_priority.value`). It is validated and written by the same core as
 `spotnav/update_entity_config`'s `charger_priority` field, and the charger is not reloaded for it. The

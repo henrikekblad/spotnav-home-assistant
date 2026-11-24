@@ -422,24 +422,24 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         {"action": "update_charger_priority", "api_version": 1, "expected": "normal", "priority": "first"},
     )
     assert status == 200 and success["ok"] is True and success["error"] is None
-    # No longer stored on the charger: the site's priority list holds the order, and a charger alone on its site
-    # reads "normal" there whatever an older app writes (`site/priority.derived_charger_priorities`).
-    assert success["charger_priority"] == {"value": "normal", "choices": ["first", "normal", "last"], "writable": True}
+    # No longer stored on the charger: the site's priority list holds the order, beside the value the app wrote, which
+    # it reads back (`const.CONF_PRIORITY_CLASSES`).
+    assert success["charger_priority"] == {"value": "first", "choices": ["first", "normal", "last"], "writable": True}
     assert CONF_CHARGER_PRIORITY not in charger.data
     # A priority alone is read live by the site: the charger is not reloaded for it.
     assert charger.runtime_data.controller is controller_before
 
     status, dashboard = await post(client, "webhook-entry_prio", {"action": "dashboard", "api_version": 1})
-    assert status == 200 and dashboard["charger_priority"]["value"] == "normal"
+    assert status == 200 and dashboard["charger_priority"]["value"] == "first"
 
     status, conflict = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "last"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "last"}
     )
     assert status == 409 and conflict["error"] == "spotnav_conflict"
-    assert conflict["charger_priority"]["value"] == "normal" and CONF_CHARGER_PRIORITY not in charger.data
+    assert conflict["charger_priority"]["value"] == "first" and CONF_CHARGER_PRIORITY not in charger.data
 
     status, invalid = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "top"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "top"}
     )
     assert status == 400 and invalid["error"] == "spotnav_invalid_value"
     assert invalid["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
@@ -449,7 +449,7 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
         assert status == 400 and refused["error"] == "spotnav_invalid_value"
         assert refused["field_errors"] == [{"field": "expected", "code": "invalid_value"}]
     status, missing = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first"}
     )
     assert status == 400 and missing["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
 
@@ -467,7 +467,7 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
 
     # Back to the default: stored as nothing, as the socket stores it.
     status, back = await post(
-        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "normal"}
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "normal"}
     )
     assert status == 200 and back["charger_priority"]["value"] == "normal"
     assert CONF_CHARGER_PRIORITY not in charger.data

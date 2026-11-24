@@ -22,7 +22,13 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_CHARGER_PRIORITY, CONF_PRIORITY, CONF_SOLAR_PRIORITY, DEFAULT_CHARGER_PRIORITY
+from ..const import (
+    CONF_CHARGER_PRIORITY,
+    CONF_PRIORITY,
+    CONF_PRIORITY_CLASSES,
+    CONF_SOLAR_PRIORITY,
+    DEFAULT_CHARGER_PRIORITY,
+)
 from .priority import (
     charger_entry_of,
     charger_id,
@@ -81,7 +87,10 @@ def charger_priority_value(hass: HomeAssistant, site: ConfigEntry, charger_entry
     if stored(config) is None:
         entry = hass.config_entries.async_get_entry(charger_entry_id)
         return str((None if entry is None else entry.data.get(CONF_CHARGER_PRIORITY)) or DEFAULT_CHARGER_PRIORITY)
-    return derived_charger_priorities(effective_order(config)).get(charger_entry_id, DEFAULT_CHARGER_PRIORITY)
+    classes = config.get(CONF_PRIORITY_CLASSES)
+    return derived_charger_priorities(effective_order(config), classes if isinstance(classes, dict) else None).get(
+        charger_entry_id, DEFAULT_CHARGER_PRIORITY
+    )
 
 
 def present_ids(hass: HomeAssistant, site: ConfigEntry) -> set[str]:
@@ -151,14 +160,25 @@ def priority_block(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) ->
     return {"order": rows, "writable": bool(writable)}
 
 
-def store_order(hass: HomeAssistant, site: ConfigEntry, order: Sequence[str]) -> None:
-    """Store the whole list (see the module): the site entry, the running site's config, the old keys dropped."""
+_KEEP: Any = object()
+
+
+def store_order(
+    hass: HomeAssistant, site: ConfigEntry, order: Sequence[str], classes: Mapping[str, str] | None = _KEEP
+) -> None:
+    """Store the whole list (see the module): the site entry, the running site's config, the old keys dropped.
+    `classes`: the old values an older app reads back (`const.CONF_PRIORITY_CLASSES`): set by an older app's
+    `charger_priority` write, `None` drops them (the list itself saved), left out keeps what is stored."""
     from ..runtime import site_controller_for  # noqa: PLC0415
 
     order = list(order)
     data = dict(site.data)
     data[CONF_PRIORITY] = order
     data.pop(CONF_SOLAR_PRIORITY, None)
+    if classes is None:
+        data.pop(CONF_PRIORITY_CLASSES, None)
+    elif classes is not _KEEP:
+        data[CONF_PRIORITY_CLASSES] = dict(classes)
     hass.config_entries.async_update_entry(site, data=data)
     for entry_id in members(site.data):
         entry = hass.config_entries.async_get_entry(entry_id)
@@ -170,4 +190,8 @@ def store_order(hass: HomeAssistant, site: ConfigEntry, order: Sequence[str]) ->
     if controller is not None:
         controller.config[CONF_PRIORITY] = order
         controller.config.pop(CONF_SOLAR_PRIORITY, None)
+        if CONF_PRIORITY_CLASSES in data:
+            controller.config[CONF_PRIORITY_CLASSES] = dict(data[CONF_PRIORITY_CLASSES])
+        else:
+            controller.config.pop(CONF_PRIORITY_CLASSES, None)
         controller._schedule_recompute()

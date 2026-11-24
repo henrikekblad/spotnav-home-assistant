@@ -433,7 +433,11 @@ async def _update_locked(
 
     if new_order != full_order:
         # The list in the entry's data and the running site's config, with no reload (`priority_store.store_order`).
-        store_order(hass, site_entry, new_order)
+        if _PRIORITY in changes:
+            # The list itself saved: the old classes an older app wrote no longer say anything.
+            store_order(hass, site_entry, new_order, None)
+        else:
+            store_order(hass, site_entry, new_order)
 
     if new_forecast != current_forecast:
         updated_data = dict(site_entry.data)
