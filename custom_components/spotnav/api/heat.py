@@ -788,6 +788,36 @@ def _choice(hass: HomeAssistant, entity_id: str, **extra: Any) -> dict[str, Any]
     return {"entity_id": entity_id, "name": _name(hass, entity_id), "value": value, **extra}
 
 
+#: A climate is left out of the zones as a pool heat pump from this score: a known integration or a pool brand's
+#: manufacturer (0.8 and up). Below it the pool detection lists any thermostat with a pool-like range (0.1 per
+#: support, 0.2 offered), which would leave out every ordinary thermostat. A spa and a sauna are named or a
+#: known integration's at any score, so every candidate they list counts.
+POOL_PUMP_SURE: Final = 0.8
+
+
+def leisure_climates(hass: HomeAssistant, config: HeatConfig) -> set[str]:
+    """The climates and water heaters that are the pool's heat pump, a spa or a sauna: the ones the pool, spa and sauna
+    detection would offer (any candidate they list, `ask` or not: the lowest score they list is a named, ranged one
+    and a spa is not a room) and the ones chosen in the pool, spa and sauna config. They are never suggested as a
+    zone or the setpoint; one the person already saved stays (`heat_choices` lists what is chosen first)."""
+    out: set[str] = set()
+    pool, spa, sauna = config.pool, config.spa, config.sauna
+    if pool is not None and pool.heat_pump is not None:
+        out.update(i for i in (pool.heat_pump.entity_id, pool.heat_pump.switch_id, pool.heat_pump.number_id) if i)
+    if spa is not None:
+        out.add(spa.entity_id)
+    if sauna is not None:
+        out.add(sauna.entity_id)
+    try:
+        seen = read_seen(hass)
+        out.update(c.entity_id for c in heat_pumps(seen) if c.score >= POOL_PUMP_SURE)
+        out.update(c.entity_id for c in spas(seen))
+        out.update(c.entity_id for c in saunas(seen))
+    except Exception:  # noqa: BLE001 - detection is extra: the choices stand without it
+        _LOGGER.debug("SpotNav heat: the pool, spa and sauna could not be detected for the zones", exc_info=True)
+    return out
+
+
 def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | None, meter: MeterInputs | None) -> dict[str, Any]:
     """What each setting may be set to, for an administrator (see `heat/view.py`): Home Assistant's entities that fit,
     never a configuration or diagnostic entity nor SpotNav's own, and always what is chosen now."""
@@ -802,6 +832,7 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
             and entry.hidden_by is None
         )
 
+    leisure = leisure_climates(hass, config)
     groups: dict[str, list[str]] = {
         name: [] for name in ("indoor", "outdoor", "zones", "relay", "offset", "setpoint", "hot_water", "meter", "water_heater", "tank_sensor")
     }
@@ -819,6 +850,8 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
         elif domain == "weather":
             groups["outdoor"].append(entity_id)
         elif domain == "climate" and "heat" in (state.attributes.get("hvac_modes") or ()):
+            if entity_id in leisure:
+                continue
             if state.state != "unavailable":
                 groups["zones"].append(entity_id)
             groups["setpoint"].append(entity_id)
