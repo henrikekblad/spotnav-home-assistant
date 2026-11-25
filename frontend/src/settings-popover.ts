@@ -553,7 +553,10 @@ export function batteryOutsideClearable(need: string): boolean {
 /** The tester stages the card has words for (`BatteryControl.tester_view`); another reads as `none`. */
 const TESTER_STAGES = ["none", "asked", "tested", "control_code"];
 const TESTER_EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const BRAND_NAMES: Record<string, string> = { foxess: "FoxESS", ecoflow: "EcoFlow", marstek: "Marstek", solis: "Solis" };
+const BRAND_NAMES: Record<string, string> = {
+  foxess: "FoxESS", ecoflow: "EcoFlow", marstek: "Marstek", solis: "Solis",
+  solaredge: "SolarEdge", solax: "SolaX", goodwe: "GoodWe", tesla: "Tesla Powerwall",
+};
 
 /** A recipe's brand id as people write it (`foxess` → FoxESS); an unknown one capitalised. */
 export function brandName(brand: string): string {
