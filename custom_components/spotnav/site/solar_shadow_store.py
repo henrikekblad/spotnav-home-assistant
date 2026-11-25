@@ -330,11 +330,15 @@ class SolarHistory:
 # ------------------------------------------------------------------------------------------------ the review
 
 
-def dead_days(history: SolarHistory, zone: Any) -> set[date]:
-    """The local days measured at about zero under a forecast of real sun (see the module)."""
+def dead_days(history: SolarHistory, zone: Any, first: int | None = None) -> set[date]:
+    """The local days measured at about zero under a forecast of real sun (see the module). `first`: only the hours
+    from this hour key on are looked at (a caller that asks about a few late days: the history is up to
+    `KEEP_DAYS` days, and each hour looked at costs a time-zone conversion)."""
     measured: dict[date, list[float]] = {}  # day -> [hours, kWh, forecast Wh/m2]
     for run in RUNS:  # run 1's radiation where it has one, else run 2's
         for key, ghi in history.weather[run]["g"].items():
+            if first is not None and key < first:
+                continue
             if run != RUNS[0] and key in history.weather[RUNS[0]]["g"]:
                 continue
             pv = history.pv_kwh(key)
@@ -444,7 +448,14 @@ class IssueLog:
         zone = time_zones.require_zone(self.tz)
         today = now.astimezone(zone).date()
         made: list[tuple[LogKey, DayScore]] = []
-        dead = dead_days(history, zone)
+        # Only the days still to review are looked at for a dead day (most nights one: this runs on the event loop).
+        waiting = [
+            day for day in (date.fromisoformat(key[2]) for key in self.forecasts if key not in self.reviews)
+            if day < today
+        ]
+        if not waiting:
+            return made
+        dead = dead_days(history, zone, hour_key(datetime.combine(min(waiting), datetime.min.time(), zone)))
         for key, (first, values) in sorted(self.forecasts.items()):
             if key in self.reviews:
                 continue

@@ -306,7 +306,13 @@ class HardwareTest:
         self.sent_ref = raw.get("sent_ref") if isinstance(raw.get("sent_ref"), str) else None
         waiting = raw.get("waiting")
         if isinstance(waiting, dict) and _time(waiting.get("until")) is not None:
-            self.waiting = waiting
+            # Storage is untrusted: a retry count that is no number is none, a version that is no text is unknown.
+            retry, version = waiting.get("retry"), waiting.get("version")
+            self.waiting = {
+                **waiting,
+                "retry": retry if isinstance(retry, int) and not isinstance(retry, bool) and retry > 0 else 0,
+                "version": version if isinstance(version, str) else None,
+            }
             self._wait()
 
     def _save(self) -> None:

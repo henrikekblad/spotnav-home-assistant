@@ -1038,3 +1038,24 @@ async def test_stop_on_a_phone_ends_the_first_pass(hass: HomeAssistant, monkeypa
     assert runner.record is not None and runner.record["stopped"] == "phone"
     assert [data["message"] for _service, data in sent[2:]] == ["clear_notification", "clear_notification"]
 
+
+
+async def test_a_stored_wait_with_a_damaged_retry_count_still_runs_at_its_moment(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Storage is untrusted: a `retry` that is no number counts as none, and the waiting test runs as pressed."""
+    battery = _FakeBattery()
+    now = dt_util.now()
+    key = hardware_test.store_key("site_1")
+    for damaged in ("abc", ["x"], {"n": 1}, True, None):
+        hass_storage[key] = {"version": 1, "key": key, "data": {"waiting": {
+            "since": now.isoformat(), "until": (now + timedelta(hours=1)).isoformat(), "version": ["3.0.0"],
+            "retry": damaged,
+        }}}
+        runner = await _runner(hass, battery, _FakeHeat())
+        assert runner.waiting is not None and runner.waiting["retry"] == 0 and runner.waiting["version"] is None
+        runner.look_waiting(dt_util.now())
+        await _finished(runner)
+        assert runner.waiting is None and runner.record is not None, damaged
+        await runner.async_shutdown()
+        await hass.async_block_till_done()

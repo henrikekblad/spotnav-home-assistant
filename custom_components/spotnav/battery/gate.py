@@ -396,8 +396,12 @@ def mode_verdict(outcome: Any) -> Verdict:
 
 
 def _modes(report: Mapping[str, Any] | None) -> Mapping[str, Any]:
-    modes = None if report is None else report.get("modes")
-    return modes if isinstance(modes, Mapping) else {}
+    """A report's mode rows. Storage is untrusted: a report that is no mapping has none, and a row that is no
+    mapping is left out (read as a step not run)."""
+    modes = report.get("modes") if isinstance(report, Mapping) else None
+    if not isinstance(modes, Mapping):
+        return {}
+    return {name: row for name, row in modes.items() if isinstance(row, Mapping)}
 
 
 def merge_report(
@@ -456,7 +460,7 @@ def _expiry_row(row: Mapping[str, Any], kept: Mapping[str, Any] | None) -> dict[
 
 def report_status(report: Mapping[str, Any] | None) -> ReportStatus:
     """`passed` once hold and normal passed; `failed` once either failed, or the routine gave up; else `pending`."""
-    if report is None:
+    if not isinstance(report, Mapping):
         return "none"
     modes = _modes(report)
     needed = [mode_verdict((modes.get(name) or {}).get("outcome")) for name in ("hold", MODE_NORMAL)]

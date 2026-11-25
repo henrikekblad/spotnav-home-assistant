@@ -1947,3 +1947,29 @@ def test_a_plants_own_import_comes_off_the_room_a_hold_starts_on_and_its_peak_co
     now = _held(executor, battery)
     _now, results = run(executor, battery, now, 2, "hold", headroom_a=PEAK_COVER_A + 1.0, own_import_a=1.5)
     assert events(results, "peak_cover")
+
+
+def test_a_stored_retake_on_a_control_that_cannot_retake_is_dropped_and_the_snapshot_handed_back() -> None:
+    """Storage is untrusted: `retake` stored true for a control with no silence to undo (every export limit recipe,
+    most battery recipes) must not stop the restart's hand-back or write a discharge first."""
+    from datetime import timezone
+
+    from custom_components.spotnav.battery import commands
+
+    now = datetime(2026, 11, 25, 12, tzinfo=timezone.utc)
+    for control in (*commands.CONTROLS, *commands.EXPORT_CONTROLS):
+        stored = ExecState().as_dict()
+        stored.update({
+            "brand": control.brand, "phase": "active", "action": "hold", "snapshot_at": now.isoformat(), "retake": True,
+            "snapshot": {role.name: "1" for role in control.roles},
+            "restore_values": {role.name: 1.0 for role in control.roles},
+            "entities": {role.name: f"number.{role.name}" for role in control.roles},
+            "target": {role.name: 0.0 for role in control.roles},
+        })
+        executor = Executor(control, state=ExecState.from_dict(stored))
+        can = executor._can_retake()
+        events = executor.restart(now)
+        assert executor.state.phase == "restoring" and events, control.brand
+        assert executor.state.retake is can, control.brand
+        if not can:
+            assert executor.state.target == executor._restore_target(executor.state), control.brand

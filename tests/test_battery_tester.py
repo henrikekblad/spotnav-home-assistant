@@ -533,3 +533,103 @@ def test_the_brands_gated_after_running_are_gated_and_not_field_tested() -> None
         control.brand for control in commands.CONTROLS if commands.hardware_test_first(control.brand)
     }
     assert "sigenergy" not in commands.GATED_AFTER_RUNNING and not commands.hardware_test_first("sigenergy")
+
+
+async def test_a_damaged_report_in_the_store_never_stops_the_start_or_decides_the_grandfathering(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Storage is untrusted: a report that is no mapping, or one whose mode rows are not, is read as no report. The
+    start goes on to its hand-back, and the plant's real pass still counts."""
+    _gated_after_running(monkeypatch)
+    _site, controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    key = control.firmware_key()
+    await control.async_look(dt_util.now())
+    await control.async_stop()
+    stored = next(
+        item["data"] for item in hass_storage.values()
+        if isinstance(item.get("data"), dict) and isinstance(item["data"].get("reports"), dict) and "gate" in item["data"]
+    )
+    good = stored["reports"][key]
+    stored["reports"] = {
+        "V0 | broken 1": {"brand": "sigenergy", "modes": {"hold": "x", "normal": 7}},
+        "V0 | broken 2": ["not", "a", "report"],
+        "V0 | broken 3": {"brand": "sigenergy", "modes": ["hold"]},
+        key: good,
+    }
+    stored["gate"]["grandfather_checked"] = []
+    stored["gate"]["control_codes"] = {}
+    stored["gate"]["hardware_brands"] = []
+    again = control_module.BatteryControl(hass, controller, plan_source=control._plan_source)
+    await again.async_start()
+    assert again._started
+    assert again.control_codes["sigenergy"]["grandfathered"] is True
+    assert again.hardware_test_due() is None
+    # Every look reads them too.
+    await again.async_look(dt_util.now() + timedelta(seconds=10))
+    assert again.status()["state"] is not None
+    await again.async_stop()
+
+
+def test_a_report_that_is_no_mapping_reads_as_none_and_a_damaged_mode_row_as_not_run() -> None:
+    from custom_components.spotnav.battery import gate
+
+    damaged = {"modes": {"hold": "x", "normal": 7, "charge": ["y"]}}
+    assert gate.report_status(damaged) == "pending"
+    assert gate.failed_mode(damaged) is None
+    assert gate.hardware_test_passed(damaged) is False
+    assert gate.report_status(["not", "a", "report"]) == "none"  # type: ignore[arg-type]
+    assert gate.failed_mode("x") is None  # type: ignore[arg-type]
+
+
+async def test_the_bundle_a_tester_sends_carries_no_address_no_code_text_and_no_car_identity(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """What leaves the installation in a tester's reports and in diagnostics: never the tester's address, the control
+    code's text, a car's VIN or the home's longitude beyond the bundle's own rounding."""
+    import json
+
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.spotnav.debug_bundle import async_build_debug_bundle
+    from custom_components.spotnav.vehicles import vehicle_charge_start
+
+    hass.config.latitude, hass.config.longitude = 55.7234567, 13.0567891
+    site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _relay(monkeypatch)
+    await tester.async_signup(hass, control, "tester@example.com", "my note")
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    code = await _code(hass)
+    assert await tester.async_enter_code(hass, control, code) is None
+    # A car with a charge switch SpotNav started once: its record is in diagnostics.
+    vin = "5YJ3E7EB0KF000001"
+    tesla = MockConfigEntry(domain="tessie", title="Tessie")
+    tesla.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=tesla.entry_id, identifiers={("tessie", vin)}, name="Car", serial_number=vin
+    )
+    switch = er.async_get(hass).async_get_or_create(
+        "switch", "tessie", f"{vin}-charge_state_charge_enable_request", device_id=device.id, config_entry=tesla,
+        suggested_object_id="car_charge",
+    )
+    hass.states.async_set(switch.entity_id, "off")
+    await domain_data(hass).decision_store.async_confirm(
+        vehicle_charge_start.DECISION_DOMAIN_VEHICLE_CHARGE_START, device.id,
+        {"at": dt_util.utcnow().isoformat(), "integration": "tessie", "entity_id": switch.entity_id,
+         "plug_in": "p1", "result": "ok"},
+    )
+    extra = {"battery_test": {"log": list(control.log), "history": {}}}
+    bundle = await async_build_debug_bundle(hass, extra=extra)
+    text = json.dumps({"bundle": bundle, "status": control.status(), "snapshot": control.snapshot()}, default=str)
+    assert "vehicle_charge_start" in text and "battery_test" in text
+    letters = codes.normalise(code)
+    for secret in ("tester@example.com", code, letters, letters[:40], vin, "13.0567891", "55.7234567"):
+        assert secret not in text, secret
+    # The code's text is kept in the store (checked again at every start), and only there.
+    stored_code = control._data()["gate"]["control_codes"]["sigenergy"]["code"]
+    assert codes.normalise(stored_code) == letters and stored_code not in text
+    record = bundle["entries"] if "entries" in bundle else bundle
+    assert device.id in json.dumps(record, default=str), "the car's start record is in the bundle"
+    assert site.entry_id in text
+    await control.async_stop()
