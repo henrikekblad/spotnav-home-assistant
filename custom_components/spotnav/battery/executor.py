@@ -2336,7 +2336,9 @@ class Executor:
             if inputs.action in self.control.house_states and house_net_kw(inputs) is None:
                 # The brand sets the grid's power: without the house's load now there is nothing to write.
                 return 0.0, None, "house_unknown"
-            rate, why = self._rate(inputs, 0.0 if starting else state.rate_kw)
+            # The rate commanded counts only while the same action runs: another action's rate (a sale's) is no
+            # charge the battery runs, and a change into the charge is judged as its start.
+            rate, why = self._rate(inputs, 0.0 if starting or state.action != inputs.action else state.rate_kw)
             return rate, None, why
         if self._grid_kind() and not _finite3(inputs.phase_behind_kw):
             return 0.0, None, "phase_load_unknown"

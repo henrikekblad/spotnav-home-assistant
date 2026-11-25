@@ -503,6 +503,18 @@ def test_with_car_first_the_battery_yields_to_a_held_car_and_with_battery_first_
     assert executor.state.rate_kw == 4.0
 
 
+@pytest.mark.parametrize("sale_looks", [3, 12], ids=["a_young_sale", "an_old_sale"])
+def test_a_change_from_a_sale_into_a_charge_never_takes_the_sales_rate_from_a_held_car(sale_looks: int) -> None:
+    """With "car first" and a car held, a grid charge yields to the car from the battery's measured charge. A sale's
+    rate is no charge the battery already runs: however old the sale, the change is judged as a charge's start."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, sale_looks, "export_discharge", 3.0)
+    assert executor.state.action == "export_discharge" and executor.state.rate_kw == 3.0
+    _now, results = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True)
+    assert not events(results, "change"), "no charge at the sale's 3 kW"
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+
+
 def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last_command() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
