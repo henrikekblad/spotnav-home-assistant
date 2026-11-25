@@ -2224,11 +2224,12 @@ class BatteryControl:
         read from its entity where it has one, else the recipe's figure; neither known: infinite (no grid charge, no
         hold start). For the HA-down caps whatever the trigger (the SoC drifts while Home Assistant is down); `live`
         (the executor's room now): only while the trigger may fire (`below_reserve`: the SoC within
-        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read). 0 for a recipe that declares none."""
+        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read; so too for the HA-down caps where the recipe says
+        its top-up can only start that low, `AutonomousImport.near_reserve_only`). 0 for a recipe that declares none."""
         spec = None if control is None else control.autonomous_import
         if control is None or spec is None:
             return 0.0
-        if live and spec.trigger == "below_reserve":
+        if (live or spec.near_reserve_only) and spec.trigger == "below_reserve":
             soc = self.facts.soc_pct
             reserve = _float(read_plant_entity(self.hass, self.site.config, spec.reserve)) if spec.reserve else None
             reserve = reserve if reserve is not None else self.facts.reserve_soc_pct

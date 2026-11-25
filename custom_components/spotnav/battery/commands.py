@@ -412,7 +412,10 @@ The entity keys, options and services below were checked against each integratio
   nothing more is written to the force, the powers or the timeout (`command_role`, `mode_limits`), and it marks the
   battery as run by someone else (`outside_control.REASON_FOREIGN_COMMAND`). Below its Force Charge SOC (43018) the
   inverter charges from the grid by itself at its Force-charge Power Limitation (43027): declared as its own import
-  (`AutonomousImport`, from the research, unverified). Remote Dispatch (44100) and SolisCloud's strategy are not read.
+  (`AutonomousImport`, from the research, unverified), counted only while the SoC is near 43018
+  (`near_reserve_only`). A power set from outside under SpotNav's own force (the same kind, another power) is left
+  standing, nothing written, and stopped by SpotNav only for the fuse (`executor`'s `altered`); after a restart a
+  hand-back waits for a reading of the force first (`_command_unread`). Remote Dispatch (44100) and SolisCloud's strategy are not read.
   How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
   on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
@@ -887,6 +890,11 @@ class AutonomousImport:
     #: For `below_reserve`: the reserve (%) it tops up to, where the plant shows it (else the facts' own reserve).
     reserve: Match | None = None
     why: str = ""
+    #: For `below_reserve`: counted in the HA-down caps too only while the SoC is within
+    #: `outside_control.RESERVE_MARGIN_PCT` of the reserve (or not read): a top-up that can only start that low, far
+    #: under the levels SpotNav charges at (Solis's own force charge below its Force Charge SOC). `False`: counted in
+    #: them whatever the SoC (the SoC drifts while Home Assistant is down).
+    near_reserve_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -2467,7 +2475,7 @@ SOLIS_CONTROL: Final = BrandControl(
     autonomous_import=AutonomousImport(
         entity=_key("solis_modbus_inverter_battery_force_charge_limit", "number", "sensor"), scale=0.001,
         trigger="below_reserve", reserve=_key("solis_modbus_inverter_force_charge_soc", "number", "sensor"),
-        why="the inverter's own force charge below its Force Charge SOC (unverified)",
+        why="the inverter's own force charge below its Force Charge SOC (unverified)", near_reserve_only=True,
     ),
     # How a three-phase S6-EH3P spreads a grid charge is not stated: the whole charge on one phase.
     grid_charge_phases=1,
