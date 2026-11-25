@@ -895,14 +895,15 @@ OVERVIEW: tuple[Overview, ...] = (
         "integration (`solis`)",
         keys=("solis_modbus",),
         adapter="solis",
-        note="Control is the inverter's RC force (a force charge at 0 W to hold, at the rate to charge from the grid, "
-        "a force discharge to sell) and runs only after the site's own hardware test passed on its firmware. It needs "
-        "the integration's full sensor set (not \"essential sensors only\"); a battery whose force another system "
-        "drives (an EMS, SolisCloud) is only watched. The force ends by itself a minute after SpotNav's last renewal "
-        "(the RC Timeout; stated, not yet measured: the hardware test times it), and a grid charge is held within the "
-        "BMS's present charge limit. The meter may sit on the load or the PV side: check that it measures the main "
-        "feed. The size is learnt; the ratings are estimated from the BMS's charge and discharge limits and its "
-        "voltage.",
+        note="Control is the inverter's RC force through the integration's services (a force charge at 0 W to hold, "
+        "at the rate to charge from the grid, a force discharge to sell, each with its power and a 5-minute RC "
+        "Timeout, renewed every 2 minutes) and runs only after the site's own hardware test passed on its firmware; "
+        "one inverter per Home Assistant. It needs the integration's full sensor set (not \"essential sensors "
+        "only\"); a battery whose force another system drives (an EMS, SolisCloud) or with a time-of-use period on "
+        "is only watched, and one force seen that SpotNav did not write marks it for 48 hours unless cleared. A "
+        "grid charge is held within the BMS's present charge limit. The meter may sit on the load or the PV side: "
+        "check that it measures the main feed. The size is learnt; the ratings are estimated from the BMS's charge "
+        "and discharge limits and its voltage.",
     ),
     Overview(
         "FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also 1KOMMA5)",
