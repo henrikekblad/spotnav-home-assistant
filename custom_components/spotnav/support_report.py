@@ -5,11 +5,15 @@ with the administrator's message and, if they gave one, an e-mail address to ans
 `POST /v1/support/report` as gzip-compressed JSON:
 
     {"version": 1, "install": "<sha256 hex>", "message": "...", "email": "..." | null,
-     "spotnav_version": "...", "ha_version": "...", "bundle": {...}, "kind": "beta_daily" | "beta_test"}
+     "spotnav_version": "...", "ha_version": "...", "bundle": {...},
+     "kind": "beta_daily" | "beta_test" | "battery_tester" | "battery_test_result", "battery": {...}}
 
 `kind` is left out for a report a person sends (the relay reads it as `support`); the beta tester mode (`beta.py`)
 sends `beta_daily` (once a night for its 14 days) and `beta_test` (a finished hardware test, `hardware_test.py`),
-with an empty message. A failed hardware test shows in the bundle's top-level `hardware_test.result`.
+with an empty message. A failed hardware test shows in the bundle's top-level `hardware_test.result`. A battery
+tester (`battery/tester.py`) sends `battery_tester` at the sign-up (the note as the message, the address required)
+and `battery_test_result` at a test's end (the test's log and history in the bundle's `battery_test`); both carry
+the top-level `battery` block (brand, model, firmware key, recipe revision...: what the relay's meta lists).
 
 `install` is the SHA-256 of Home Assistant's instance id followed by a fixed SpotNav salt, so the relay can count
 one installation's reports without ever being sent the id itself. The relay answers `201 {"ref": "SN-XXXX"}`, or
@@ -73,7 +77,9 @@ ERROR_SERVER: Final = "spotnav_report_server"
 KIND_SUPPORT: Final = "support"
 KIND_BETA_DAILY: Final = "beta_daily"
 KIND_BETA_TEST: Final = "beta_test"
-KINDS: Final = (KIND_SUPPORT, KIND_BETA_DAILY, KIND_BETA_TEST)
+KIND_BATTERY_TESTER: Final = "battery_tester"
+KIND_BATTERY_TEST_RESULT: Final = "battery_test_result"
+KINDS: Final = (KIND_SUPPORT, KIND_BETA_DAILY, KIND_BETA_TEST, KIND_BATTERY_TESTER, KIND_BATTERY_TEST_RESULT)
 
 _REF = re.compile(r"^SN-[A-Z0-9]{4}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -149,12 +155,15 @@ async def async_send_report(
     *,
     kind: str = KIND_SUPPORT,
     base_url: str = DEFAULT_BASE_URL,
+    battery: dict[str, Any] | None = None,
+    bundle_extra: dict[str, Any] | None = None,
 ) -> ReportResult:
     """Build the bundle, send it once, and say what came of it. Never raises for the relay's answer. `kind`: a
-    person's report (`support`, sent without the field) or one of the beta tester mode's."""
+    person's report (`support`, sent without the field) or one of the beta tester mode's or a battery tester's.
+    `battery`: the report's top-level `battery` block; `bundle_extra`: parts added to the bundle (redacted with it)."""
     if kind not in KINDS:
         raise ValueError(f"unknown report kind {kind!r}")
-    bundle = await async_build_debug_bundle(hass)
+    bundle = await async_build_debug_bundle(hass, extra=bundle_extra)
     if client is not None:
         bundle["client"] = client
     version = await async_manifest_version(hass)
@@ -169,6 +178,8 @@ async def async_send_report(
     }
     if kind != KIND_SUPPORT:
         payload["kind"] = kind
+    if battery is not None:
+        payload["battery"] = battery
     body = await hass.async_add_executor_job(encode_report, payload)
     if len(body) > MAX_BODY_BYTES:
         _LOGGER.info("The debug report was not sent: %d bytes compressed is more than the server takes", len(body))

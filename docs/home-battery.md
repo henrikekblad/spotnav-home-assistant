@@ -193,8 +193,9 @@ Its control only lowers the battery's own current limits, read from the integrat
 What to know before you turn it on:
 
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
-  passed once on this inverter; until then control only logs what it would do, whatever the test-mode setting says,
-  and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
+  passed once on this inverter and its result was approved with a control code (see
+  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); until then control only logs what it would do,
+  whatever the test-mode setting says, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
   if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
   lets the check run again, as for every brand).
 * **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
@@ -236,7 +237,8 @@ reads.
 SpotNav's control for Marstek goes through the **Modbus integration only** (the local API has no limit to set, and its
 Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
 local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
-the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery: until
+the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery and its
+result was approved with a control code ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)): until
 then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
 too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
 only if that check fails does the checklist ask for the hardware test again.
@@ -775,8 +777,10 @@ Battery, which matters only if you select those modes yourself.
 
 **The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
-hardware test) has passed once on the battery; after a firmware or integration update SpotNav checks the battery
-again by itself, and asks for the hardware test again only if that check fails. The checklist says so. Press Start:
+hardware test) has passed once on the battery and its result was approved with a control code
+([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); after a firmware or integration update SpotNav checks
+the battery again by itself, and asks for the hardware test again only if that check fails. The checklist says so.
+Press Start:
 the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
 (hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
 battery, turns Modbus Control off and nothing else, and watches how long the inverter keeps the hold before it
@@ -842,6 +846,47 @@ written by someone else.
 **If something goes wrong, restore by hand:** in Home Assistant set *RC Force Charge/Discharge* to *None*, then *RC
 Force Battery Charge Power*, *RC Force Battery Discharge Power* and *RC Timeout* to your values (the timeout's default
 is 5 minutes). Then turn SpotNav's switch off.
+
+### Becoming a tester (FoxESS, EcoFlow, Marstek, Solis)
+
+Control of FoxESS, EcoFlow, Marstek and Solis batteries has not yet run on a real plant. It is tested together with users,
+one plant at a time, so an untried recipe is never switched on by mistake and every early plant is known and looked
+at. Sigenergy and the other brands need none of this.
+
+1. **Become a tester.** In the card's Settings, the home battery section shows a **Tester** row for these brands
+   (administrators only): *SpotNav can read this battery. Control is being tested together with users.* Tap it, give
+   an e-mail address (required here), tick the consent line and send. That sends a report with the debug file and
+   the battery's brand, model, firmware, integration and version, recipe revision, phases and main fuse, and turns
+   [beta testing](beta-testing.md) on with that address. Until the sign-up the hardware test is not offered for the
+   battery (Support → Hardware test says why).
+2. **Run the hardware test.** Settings → Support → Hardware test, then Start, once. Nothing else is asked of you: the
+   test waits for a suitable moment by itself, runs only in waking hours (08–21), tells your phones while it runs
+   (with a Stop button) and always hands the battery back. Its result is sent by itself when it ends, with the
+   battery's log and history over the test, while Beta tester is on. The card then says *The result has been sent. You get an answer by
+   e-mail.*
+3. **Enter the control code.** SpotNav's developer reads the test's log and answers by e-mail: with a **control code**
+   when the test passed and looks right, otherwise with what was seen (and possibly a fix in a later release). Paste
+   the code under Support → Hardware test (spaces and line breaks do not matter); it is taken only once the hardware
+   test has passed on this battery. Control needs both: the passed hardware test on this plant and the code. Then switch control on as for any brand.
+
+The code works only on this Home Assistant installation and this battery brand; it is checked in Home Assistant
+itself (it is signed), nothing is asked of a server, and again at each start of Home Assistant (a code that no
+longer checks out is dropped, and control waits for a code again). One code per plant and brand is enough: after a firmware,
+integration or recipe update SpotNav checks the battery by itself, as for every brand, and only if that check fails
+does the checklist ask for the hardware test again (no new code). SpotNav is open source, so the code is no copy
+protection: it is a safety belt.
+
+**Stopping.** Untick Beta tester under Support at any time: from then on nothing more is sent, not even a hardware
+test's result, and the sign-up ends (a first test then waits for a new sign-up). A beta period that runs out by
+itself ends the sign-up the same way. A code already entered keeps working (it is your battery), and control can be
+switched off as always. While beta testing is on, its nightly reports
+run until 30 days after the code was entered, then stop by themselves.
+
+**A problem found later.** There is no remote switch-off. If a problem shows up after codes went out, the next
+release holds that brand, firmware or recipe revision back (the checklist then says *recipe blocked*), which also
+voids the plant's stored pass: once the block is lifted the hardware test must pass again (the code already entered
+stays). One code serves every SpotNav site of the same brand on one Home Assistant; each still needs its own passed
+test.
 
 ## The signal
 

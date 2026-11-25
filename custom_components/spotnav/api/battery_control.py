@@ -41,6 +41,24 @@ the outside-control verdict found by the battery's own settings or behaviour end
 (the diagnostics' `outside_control.history`), and the changes counted so far are forgotten. A verdict from an
 integration or a planner lasts while it is there: `spotnav_not_clearable`, as when none stands. It runs before
 `changes`.
+
+The status carries `tester` for a plant whose recipe writes only after a person's hardware test and the developer's
+control code (`commands.BrandControl.hardware_test_first`, not yet `field_tested`; `null` for every other):
+`{stage: none | asked | tested | control_code, brand, sent_at, result_sent_at, test_passed, code_entered_at}`
+(`BatteryControl.tester_view`, `battery/tester.py`). Two actions for it (administrators only, never over the
+webhook), each before `changes`:
+
+* `tester_signup: {email, note?}`: the card's "Become a tester": a `battery_tester` report with the address
+  (required) and the note, beta mode on with the address, the hardware test unlocked for the brand. Refusals:
+  `spotnav_tester_not_needed` (the plant takes no code), `spotnav_report_invalid_email`,
+  `spotnav_report_invalid_message`, or the report's own codes (`spotnav_report_rate_limited`,
+  `spotnav_report_network`, ...) when the relay did not take it (nothing is unlocked then).
+* `enter_code: {code}`: the developer's control code (`battery/codes.py`). Refusals: `spotnav_code_invalid` (no
+  code, a typo, not signed by the developer), `spotnav_code_other_install`, `spotnav_code_other_brand`,
+  `spotnav_code_blocked` (this release holds the recipe back on the plant), `spotnav_code_not_needed` (the plant's
+  recipe takes no code), `spotnav_code_test_first` (no hardware test passed on the plant with the brand yet: the
+  code approves a passed test's result). A sign-up is refused with `spotnav_code_blocked` too while the recipe is
+  held back. Both in one request, or a wrong shape, is refused.
 """
 
 from __future__ import annotations
@@ -102,6 +120,8 @@ async def async_battery_control_answer(
     enable_facts: bool = False,
     clear_outside_control: bool = False,
     set_import_limit: bool = False,
+    tester_signup: Any = None,
+    enter_code: Any = None,
 ) -> dict[str, Any]:
     """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
     writing `changes` when given. `over_webhook`: only `WEBHOOK_WRITABLE` may be named; another option is
@@ -110,6 +130,27 @@ async def async_battery_control_answer(
     if controller is None:
         return _answer(error=ERROR_NO_SITE)
     control = controller.battery_control
+    if tester_signup is not None or enter_code is not None:
+        # A tester's sign-up or a control code: never over the webhook, never without an administrator.
+        if over_webhook or not admin:
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        if tester_signup is not None and enter_code is not None:
+            # One at a time: neither is silently dropped.
+            return _answer(error=ERROR_INVALID_VALUE)
+        from ..battery import tester  # noqa: PLC0415 - it imports the bundle, which imports every part
+
+        if tester_signup is not None:
+            if not isinstance(tester_signup, dict) or any(key not in ("email", "note") for key in tester_signup):
+                return _answer(error=ERROR_INVALID_VALUE)
+            error, _ref = await tester.async_signup(hass, control, tester_signup.get("email"), tester_signup.get("note"))
+        else:
+            if not isinstance(enter_code, dict) or set(enter_code) != {"code"}:
+                return _answer(error=ERROR_INVALID_VALUE)
+            error = await tester.async_enter_code(hass, control, enter_code.get("code"))
+        if error is not None:
+            return _answer(control.status(), error)
+        if changes is None:
+            return _answer(control.status())
     if (
         changes is not None
         and (set_import_limit or enable_facts or enable_entities or clear_outside_control)
@@ -185,6 +226,8 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("enable_fact_entities"): bool,
         vol.Optional("clear_outside_control"): bool,
         vol.Optional("set_import_limit"): bool,
+        vol.Optional("tester_signup"): {vol.Required("email"): str, vol.Optional("note"): str},
+        vol.Optional("enter_code"): {vol.Required("code"): str},
     }
 )
 @websocket_api.async_response
@@ -205,6 +248,8 @@ async def websocket_battery_control(
         enable_facts=msg.get("enable_fact_entities") is True,
         clear_outside_control=msg.get("clear_outside_control") is True,
         set_import_limit=msg.get("set_import_limit") is True,
+        tester_signup=msg.get("tester_signup"),
+        enter_code=msg.get("enter_code"),
     )
     connection.send_result(msg["id"], answer)
 

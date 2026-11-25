@@ -28,6 +28,14 @@ is listed.
   **Send**. Kept 30 days. See [Troubleshooting](troubleshooting.md#send-debug-info).
 - **Beta tester** (administrators, off by default). The same file once a night for 14 days, then it stops by itself.
   Beta reports and an optional e-mail address are kept 90 days. See [Beta testing](beta-testing.md).
+- **Battery tester** (administrators, only for a battery brand whose control is still being tested: FoxESS, EcoFlow,
+  Marstek). Signing up sends the same file with the battery's brand, model, firmware and fuse, and your e-mail address
+  (required here), and turns beta testing on with it. While Beta tester stays on, the hardware test's result, with
+  the battery's log and history over the test, is then sent by itself. The address is used only to send you the
+  control code or an answer about your test. It is kept with the reports for 90 days, never in a log, and the nightly
+  beta reports run until 30 days after the control code. Untick Beta tester to stop: from then on nothing more is
+  sent, not even a test's result, and the sign-up ends. See
+  [Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek-solis).
 
 The file holds versions, settings, entity names and recent logs. It never holds passwords, tokens, e-mail addresses
 or your exact location. The solar forecast's review states only the latitude in whole degrees.

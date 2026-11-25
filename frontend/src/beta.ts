@@ -7,8 +7,14 @@
 // "Skicka resultatet till utvecklaren" when beta is off (beta sends a finished test by itself). The backend decides
 // everything; the card only shows the answer; a missing or mistyped known key is no answer, an unknown key is ignored
 // (see `contract.ts`).
+//
+// For a battery brand whose control is still being tested (`spotnav/battery_control`'s `tester`), the hardware test
+// box also says where the tester stands (the result sent, the code entered) and takes the developer's control code
+// (`enter_code`); the request goes through the same `BetaCall` (`action: "tester"`), which names the same site.
 
 import { translate, type Language, type TranslationKey } from "./i18n";
+import type { BatteryTesterAction } from "./api";
+import { decodeBatteryControl, type BatteryTester } from "./site-model";
 import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { PRIVACY_URL, MAX_EMAIL_CHARS, sendFailureText } from "./send-debug";
 import { BETA_API_VERSION } from "./types";
@@ -44,8 +50,12 @@ export type BetaAnswer = {
   retryAfterS: number | null;
 };
 
-/** One request: `action` and, for `set`, the changes. The card adds the site or charger. */
-export type BetaRequest = { action: "get" | "set" | "start_test" | "stop_test" | "send_test"; changes?: Record<string, unknown> };
+/** One request: `action` and, for `set`, the changes; or a battery tester's (`spotnav/battery_control`: the stage when
+ * `tester` is `null`, else the sign-up or a control code). The card adds the site or charger. */
+export type BetaRequest =
+  | { action: "get" | "set" | "start_test" | "stop_test" | "send_test"; changes?: Record<string, unknown> }
+  | { action: "tester"; tester: BatteryTesterAction | null };
+type BoxRequest = Exclude<BetaRequest, { action: "tester" }>;
 export type BetaCall = (request: BetaRequest) => Promise<unknown>;
 
 const ANSWER_KEYS = ["api_version", "ok", "error", "beta", "test", "ref", "retry_after_s"];
@@ -208,6 +218,8 @@ export function blockedText(language: Language, test: TestState): string | null 
       return translate(language, "test.blocked.runElsewhere");
     case "waiting":
       return null;
+    case "tester_signup":
+      return translate(language, "test.blocked.testerSignup");
     default:
       return translate(language, "test.blocked.later");
   }
@@ -308,14 +320,16 @@ export function testEditor(input: BetaBoxInput, onClose: () => void): HTMLFormEl
 interface Session {
   answer: () => BetaAnswer | null;
   busy: () => boolean;
-  request: (body: BetaRequest, failure?: TranslationKey) => Promise<BetaAnswer | null>;
+  request: (body: BoxRequest, failure?: TranslationKey) => Promise<BetaAnswer | null>;
 }
 
 /**
  * One box's link to `spotnav/beta`: the first read, a read after each action, and every `TEST_POLL_MS` while a test
  * runs, every `TEST_WAIT_POLL_MS` while a pressed one waits (until the box leaves the page). `paint` draws the box from the answer; `error` holds a failed action's line.
  */
-function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, paint: () => void): Session {
+function session(
+  input: BetaBoxInput, root: HTMLElement, error: HTMLElement, paint: () => void, onRead?: (answer: BetaAnswer) => void,
+): Session {
   const say = (key: TranslationKey): string => translate(input.language, key);
   let answer: BetaAnswer | null = null;
   let busy = false;
@@ -337,7 +351,7 @@ function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, pai
     }
   }
 
-  function errorText(body: BetaRequest, decoded: BetaAnswer): string {
+  function errorText(body: BoxRequest, decoded: BetaAnswer): string {
     if (body.action === "send_test") {
       return sendFailureText(input.language, decoded.error, decoded.retryAfterS);
     }
@@ -350,7 +364,7 @@ function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, pai
     return say("beta.error.failed");
   }
 
-  async function request(body: BetaRequest, failure: TranslationKey = "beta.error.failed"): Promise<BetaAnswer | null> {
+  async function request(body: BoxRequest, failure: TranslationKey = "beta.error.failed"): Promise<BetaAnswer | null> {
     busy = body.action !== "get";
     paint();
     let decoded: BetaAnswer | null = null;
@@ -363,6 +377,7 @@ function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, pai
     if (decoded !== null && decoded.beta !== null) {
       answer = decoded;
       input.onAnswer?.(decoded);
+      onRead?.(decoded);
     }
     if (decoded === null) {
       error.textContent = say(failure);
@@ -536,11 +551,83 @@ export function testBox(input: BetaBoxInput): HTMLElement {
   const sendActions = element(doc, "div", C.settingsSupportActions);
   sendActions.append(send);
   const error = errorLine(doc);
-  root.append(intro, testActions, blocked, steps, result, sendActions, error);
+  // A battery tester's line and the developer's control code (`spotnav/battery_control`'s `tester`, `enter_code`).
+  const testerLine = element(doc, "p", C.muted);
+  testerLine.dataset["beta"] = "tester";
+  testerLine.setAttribute("role", "status");
+  const code = doc.createElement("input");
+  code.type = "text";
+  code.id = `${input.idPrefix}-tester-code`;
+  code.className = C.settingsInput;
+  code.autocomplete = "off";
+  code.spellcheck = false;
+  code.maxLength = CODE_MAX_CHARS;
+  code.dataset["betaField"] = "code";
+  const codeLabel = element(doc, "label", C.settingsLabel, say("test.code.label"));
+  codeLabel.setAttribute("for", code.id);
+  const enter = element(doc, "button", C.button, say("test.code.enter")) as HTMLButtonElement;
+  enter.type = "button";
+  enter.dataset["beta"] = "enterCode";
+  const codeRow = element(doc, "div", C.settingsInputRow);
+  codeRow.append(code, enter);
+  const codeHelp = element(doc, "p", C.muted, say("test.code.help"));
+  const codeField = element(doc, "div", C.settingsField);
+  codeField.dataset["beta"] = "codeField";
+  codeField.append(codeLabel, codeRow, codeHelp);
+  const codeError = errorLine(doc);
+  codeError.dataset["beta"] = "codeError";
+  codeError.hidden = true;
+  root.append(intro, testActions, blocked, steps, result, sendActions, error, testerLine, codeField, codeError);
 
-  const link = session(input, root, error, paint);
+  let tester: BatteryTester | null = null;
+  let testerBusy = false;
+  let lastState: string | null = null;
+
+  async function testerCall(action: BatteryTesterAction | null): Promise<string | null | undefined> {
+    testerBusy = action !== null;
+    paint();
+    let failure: string | null | undefined = undefined;
+    try {
+      const decoded = decodeBatteryControl(await input.call({ action: "tester", tester: action }));
+      if (decoded.ok && decoded.value.status !== null) {
+        tester = decoded.value.status.tester;
+        failure = decoded.value.error;
+      }
+    } catch {
+      failure = undefined;
+    }
+    testerBusy = false;
+    paint();
+    return failure;
+  }
+
+  // The tester's stage moves when a test ends (its result went): read it again then.
+  const link = session(input, root, error, paint, (answer) => {
+    const state = answer.test?.state ?? null;
+    if (lastState !== null && state !== lastState && state === "done") {
+      void testerCall(null);
+    }
+    lastState = state;
+  });
+
+  function paintTester(): void {
+    const lines: string[] = [];
+    if (tester?.stage === "asked") {
+      lines.push(say("test.tester.asked", { brand: tester.brand }));
+    } else if (tester?.stage === "tested") {
+      lines.push(say("test.tester.sent"));
+    } else if (tester?.stage === "control_code") {
+      lines.push(say("test.tester.code"));
+    }
+    testerLine.textContent = lines.join(" ");
+    testerLine.hidden = lines.length === 0;
+    codeField.hidden = !codeWanted(tester);
+    code.disabled = testerBusy;
+    enter.disabled = testerBusy;
+  }
 
   function paint(): void {
+    paintTester();
     const answer = link.answer();
     const busy = link.busy();
     const test = answer?.test ?? null;
@@ -611,10 +698,49 @@ export function testBox(input: BetaBoxInput): HTMLElement {
   send.addEventListener("click", () => {
     void link.request({ action: "send_test" });
   });
+  enter.addEventListener("click", () => {
+    const text = code.value.trim();
+    if (text === "") {
+      codeError.textContent = say("test.code.error.invalid");
+      codeError.hidden = false;
+      return;
+    }
+    void testerCall({ enter_code: { code: text } }).then((failure) => {
+      codeError.textContent = failure === null ? "" : codeErrorText(language, failure ?? null);
+      codeError.hidden = codeError.textContent === "";
+      if (failure === null) {
+        code.value = "";
+      }
+    });
+  });
 
   paint();
   void link.request({ action: "get" });
+  void testerCall(null);
   return root;
+}
+
+/** The longest text the code field takes (a code is about 175 characters with its dashes; a paste may add spaces). */
+export const CODE_MAX_CHARS = 400;
+
+/** Whether the hardware test box offers the control code field: a brand still being tested whose code is not in yet,
+ * once its hardware test passed on the plant (the code approves that result; before it the backend refuses one). */
+export function codeWanted(tester: BatteryTester | null): boolean {
+  return tester !== null && tester.stage !== "control_code" && tester.test_passed;
+}
+
+const CODE_ERRORS: Record<string, TranslationKey> = {
+  spotnav_code_invalid: "test.code.error.invalid",
+  spotnav_code_other_install: "test.code.error.otherInstall",
+  spotnav_code_other_brand: "test.code.error.otherBrand",
+  spotnav_code_blocked: "test.code.error.blocked",
+  spotnav_code_not_needed: "test.code.error.notNeeded",
+  spotnav_code_test_first: "test.code.error.testFirst",
+};
+
+/** A refused control code in one sentence (`null`: the answer could not be read). */
+export function codeErrorText(language: Language, error: string | null): string {
+  return translate(language, CODE_ERRORS[error ?? ""] ?? "test.code.error.failed");
 }
 
 export interface BetaRowsInput {

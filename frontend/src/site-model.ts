@@ -136,6 +136,20 @@ export interface BatteryStatus {
   /** The plan's two figures (the wear may be the site's own); `null` while the site has no price area, and from a Home Assistant that
    * does not send it yet. */
   plan_costs: PlanCosts | null;
+  /** The tester stage for a battery brand whose control is still being tested (`BatteryControl.tester_view`); `null`
+   * for every other brand, and from a Home Assistant that does not send it yet. */
+  tester: BatteryTester | null;
+}
+
+/** A battery brand still being tested: whether the person signed up (`asked`), the test's result went (`tested`) or
+ * the developer's control code was entered (`control_code`). */
+export interface BatteryTester {
+  stage: string;
+  brand: string;
+  sent_at: string | null;
+  result_sent_at: string | null;
+  test_passed: boolean;
+  code_entered_at: string | null;
 }
 
 /** The battery section's preheating line: the cells' temperature now and the switch to turn on (or enable). */
@@ -395,6 +409,16 @@ const STATUS: Spec = O({
       minor_unit: "string",
     }),
   ),
+  tester: N(
+    O({
+      stage: "string",
+      brand: "string",
+      sent_at: N("string"),
+      result_sent_at: N("string"),
+      test_passed: "boolean",
+      code_entered_at: N("string"),
+    }),
+  ),
 });
 
 const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
@@ -479,7 +503,8 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
  * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.enable_facts`, `status.battery_found` (`true`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
  * `entity_id`, `status.grid_charge_cap.ha_down`, `status.options.battery_control_accept_ha_down` (`false`),
- * `status.options.battery_wear_minor_per_kwh` and `status.plan_costs.wear_default_minor_per_kwh` (`null`).
+ * `status.options.battery_wear_minor_per_kwh` and `status.plan_costs.wear_default_minor_per_kwh` (`null`),
+ * `status.tester` (`null`).
  * Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
@@ -504,6 +529,7 @@ function withLaterBlocks(raw: unknown): unknown {
       preheat: block["preheat"] ?? null,
       enable_facts: block["enable_facts"] ?? null,
       battery_found: block["battery_found"] ?? true,
+      tester: block["tester"] ?? null,
     },
   };
 }

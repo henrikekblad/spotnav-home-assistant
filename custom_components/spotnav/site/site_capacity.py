@@ -292,6 +292,10 @@ class ChargerRequest:
     #: A charger whose current cannot be set, only switched on and off: `requested_current_a` and `min_current_a`
     #: are its switched current, and the regulator only pauses it whole (`regulator.decide_switched_load`).
     switch_only: bool = False
+    #: The room (A per phase it draws on) kept free below the fuse by a write to a charger that takes the next write
+    #: only after its rate-limit interval (`regulator.rate_limit_margin_a`): a raise stops this short of the room the
+    #: phase has, a lowering for an overload goes this much further (never below the charger's minimum). 0 elsewhere.
+    write_margin_a: float = 0.0
 
     def phases_used(self) -> tuple[PhaseName, ...] | None:
         """The phases this request draws from, or `None` if that's unknown (an "Automatic" single-phase
