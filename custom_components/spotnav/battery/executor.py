@@ -146,7 +146,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   action nor on a hand-back, and a role the running action no longer sets has its claim released
   (`_release_unset`), so the plant's own writes to it are never read as someone else's change.
 * **A fast watchdog** (`BrandControl.watchdog_renew_s`): its roles are renewed on that interval while the action
-  sets them, a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
+  sets them (not one it leaves at its value found: no command stands there), a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
   writes the value the role holds and is not counted; one whose value changed meanwhile is a change, and is. A
   watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX) is renewed as before: every role every
   round, on time whatever is still owed, a role a look, never counted.
@@ -2564,7 +2564,14 @@ class Executor:
             return events
         # A fast watchdog (`BrandControl.watchdog_renew_s`): only what the running action sets is renewed (a
         # watchdog of the charge per phase has nothing to keep alive under a hold).
-        renewed = tuple(name for name in self.control.watchdog_roles if name in state.target)
+        # A renewed role the action leaves at its value found holds no command (Solis's force select back at "None",
+        # in the inverter's own Self-Use or under a hold's peak cover): nothing to keep alive, so not written again.
+        renewed = tuple(
+            name for name in self.control.watchdog_roles
+            if name in state.target and not (
+                name in state.restore_values and state.target[name] == state.restore_values[name]
+            )
+        )
         if (
             renewed and state.watchdog_at is not None and state.pending is None
             and (now - state.watchdog_at).total_seconds() >= (self.control.watchdog_renew_s or WATCHDOG_RENEW_S)
