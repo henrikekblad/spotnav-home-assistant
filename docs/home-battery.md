@@ -954,13 +954,15 @@ another box) is someone else's too.
 * **Hold:** *Block Discharge* on. The battery covers nothing and still stores a sun surplus. The integration holds
   it through the discharge limit by default; since the firmware of October 2026 the inverter's own standby draw (about
   200 W) may still come from the battery until the integration also holds the minimum SoC.
-* **Grid charge:** *Set Charge Rate* at the rate (in steps of 100 W, always one step below its maximum, which means
-  "follow the battery's maximum"), then *Charge Start*. The power is the battery's own (DC on a hybrid), so the sun
-  counts towards it. *EMS Grid Protection*, if you turned it on, may lower it further.
+* **Grid charge:** *Set Charge Rate* at the rate (in steps of 100 W, at least 5 % below its maximum, which means
+  "follow the battery's maximum" and moves with the battery's voltage), then *Charge Start*. A rate the integration
+  took as "follow the maximum" anyway does not count as written, and *Charge Start* is then not turned on. The power
+  is the battery's own (DC on a hybrid), so the sun counts towards it. *EMS Grid Protection*, if you turned it on,
+  may lower it further.
 * **Cover the house:** the inverter's own control; nothing is written.
 * **No sale:** *Discharge Start* is never used.
-* **Hand back:** the switch SpotNav turned on, off. *Set Charge Rate* stays as SpotNav last wrote it; it does nothing
-  without *Charge Start*. Set it back if you use it yourself.
+* **Hand back:** the switch SpotNav turned on, off, then *Set Charge Rate* as SpotNav found it (a rate that followed
+  the battery's maximum follows it again), so your own *Charge Start* runs as before.
 
 The integration turns its other switches off when one goes on; SpotNav always turns its old switch off first, so it
 never mistakes that for someone else. After *Charge Start* goes off the integration waits the timeout and 15 seconds
