@@ -495,6 +495,27 @@ async def test_a_battery_run_by_something_else_refuses_the_test_and_asks_to_paus
     assert runner.view()["blocked"] == "not_ready"
 
 
+async def test_a_waiting_test_gives_up_once_something_else_runs_the_battery(hass: HomeAssistant) -> None:
+    """A test pressed and waiting for its moment: an outside EMS that takes the battery meanwhile ends the wait (no
+    start in a gap of the other system's); the record names why."""
+    car = _FakeCharger(on=True)
+    battery = _FakeBattery()
+    runner = await _runner(hass, battery, _FakeHeat(), {"car": car})
+    assert await runner.async_start() is None and runner.waiting is not None
+    battery.refusal = "needs:outside_control:foreign_command"
+    car.charging = car.charge_control_on = False
+    runner.look_waiting(dt_util.now())
+    assert runner.waiting is None and not runner.running and battery.started == 0
+    assert runner.record is not None and runner.record["result"] == "skipped"
+    assert runner.record["steps"][0]["reason"] == "needs:outside_control:foreign_command"
+
+
+async def test_the_tester_sign_up_is_asked_before_the_battery_run_elsewhere(hass: HomeAssistant) -> None:
+    """A recipe not yet unlocked says so first: the sign-up, then pausing the other system."""
+    runner = await _runner(hass, _FakeBattery(refusal="tester_signup"), _FakeHeat(refusal="busy"))
+    assert runner.view()["blocked"] == "tester_signup"
+
+
 async def test_nothing_to_test_comes_before_the_days_slot(hass: HomeAssistant) -> None:
     """A site where nothing can be tested says so, even when a test ran today: the day's slot is no reason there."""
     battery, heat = _FakeBattery(), _FakeHeat()

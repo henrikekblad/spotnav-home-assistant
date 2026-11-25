@@ -285,3 +285,19 @@ def test_the_verdict_marks_the_facts_and_keeps_their_settings() -> None:
     assert with_outside_control(BatteryFacts(), True, "settings_changed").management.state == "unknown"
     planner = replace(facts, management=Management("externally_controlled", "planner:predbat"))
     assert with_outside_control(planner, True, "settings_changed") is planner
+
+
+def test_one_foreign_command_marks_at_once_is_news_and_a_person_may_clear_it() -> None:
+    from custom_components.spotnav.battery.outside_control import REASON_FOREIGN_COMMAND, TOLD_REASONS  # noqa: PLC0415
+
+    watch = OutsideControlWatch()
+    events = watch.observe(_obs(T0, foreign_command=True))
+    assert [event["kind"] for event in events] == ["started"]
+    assert watch.verdict.active and watch.verdict.reason == REASON_FOREIGN_COMMAND == "foreign_command"
+    assert watch.verdict.told and REASON_FOREIGN_COMMAND in TOLD_REASONS and watch.clearable
+    # While it stands it keeps the verdict; once gone it lasts `CLEAR_AFTER` unless a person clears it.
+    _run(watch, T0 + timedelta(minutes=1), 600, step=60.0, foreign_command=True)
+    assert watch.clear_by_person(T0 + timedelta(hours=1)) is not None and not watch.verdict.active
+    # SpotNav's own command is never a sighting.
+    watch = OutsideControlWatch()
+    assert watch.observe(_obs(T0, foreign_command=True, spotnav_acting=True)) == [] and not watch.verdict.active

@@ -497,6 +497,12 @@ class HardwareTest:
             self.waiting, self._wait_touched = None, True
             self._give_up(now, "no_suitable_moment" if "battery" in parts else str(parts.get("battery") or "absent"))
             return
+        if parts["battery"] is not None and parts["battery"].startswith(_RUN_ELSEWHERE):
+            # Something else took the battery over while the test waited: it gives up rather than start in a gap of
+            # the other system's (the card then says to pause it, `batteryRunElsewhere`).
+            self.waiting, self._wait_touched = None, True
+            self._give_up(now, parts["battery"])
+            return
         if parts["battery"] is not None:
             waiting["why"] = parts["battery"]  # starting, verifying, a trial: not yet
             return

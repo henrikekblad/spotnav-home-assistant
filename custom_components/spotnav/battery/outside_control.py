@@ -21,6 +21,9 @@ The signals, each judged on what the shell hands over (`Observation`):
   (one or two changes are a person trying a mode). A reading that is `unavailable` or `unknown` is no change: the
   next readable value is compared with the last readable one. Under the battery's own optimiser (`self_managed`)
   only mode changes count, since the optimiser may move its own limits.
+* **A foreign command** (`foreign_command`): a recipe that holds its whole command in one place
+  (`commands.BrandControl.command_role`, Solis's RC force) reads one of its own command states while SpotNav acts on
+  nothing: another system's command, marked at once (SpotNav never leaves one of its own standing).
 * **Behaviour** (`grid_charge_behaviour`, `export_discharge_behaviour`): in plain self-consumption (`free`), the
   battery charges by more than `BEHAVIOUR_KW` while the site imports more than that, or discharges by more than
   that while the site exports more than that, for `BEHAVIOUR_S` in a row, and its level moved at least
@@ -73,10 +76,13 @@ CLEAR_AFTER: Final = timedelta(hours=48)
 HISTORY_MAX: Final = 10
 
 REASON_SETTINGS: Final = "settings_changed"
+#: A command standing on the plant that SpotNav did not write (its recipe's own command states read while SpotNav
+#: acts on nothing, `Observation.foreign_command`): another system runs the battery, marked at once.
+REASON_FOREIGN_COMMAND: Final = "foreign_command"
 REASON_GRID_CHARGE: Final = "grid_charge_behaviour"
 REASON_EXPORT_DISCHARGE: Final = "export_discharge_behaviour"
 #: The reasons that are news, `Verdict.told` (the others are set up by the person).
-TOLD_REASONS: Final = frozenset({REASON_SETTINGS, REASON_GRID_CHARGE, REASON_EXPORT_DISCHARGE})
+TOLD_REASONS: Final = frozenset({REASON_SETTINGS, REASON_GRID_CHARGE, REASON_EXPORT_DISCHARGE, REASON_FOREIGN_COMMAND})
 
 _NO_READING: Final = frozenset({"", "unavailable", "unknown", "none"})
 
@@ -110,6 +116,9 @@ class Observation:
     #: The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
     #: (`commands.AutonomousImport`, trigger `below_reserve`): a charge near it is the device's own as well.
     top_up_reserve_pct: float | None = None
+    #: A command SpotNav did not write stands on the plant now (`commands.BrandControl.command_role`: one of the
+    #: recipe's own command states read while SpotNav acts on nothing; SpotNav never leaves one standing).
+    foreign_command: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +173,9 @@ class OutsideControlWatch:
         signal: str | None = None
         if not obs.spotnav_acting:
             signal = self._settings(obs) or self._behaviour_signal(obs)
+            if obs.foreign_command:
+                # One sighting is enough: SpotNav never leaves a command of its own standing.
+                signal = REASON_FOREIGN_COMMAND
         else:
             # SpotNav's own writes are no one else's; the baselines restart once it lets go.
             self._last.clear()
