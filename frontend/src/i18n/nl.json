@@ -2666,6 +2666,7 @@
   "exportCurtail.beta": "Wordt nog getest met {brand}: voorlopig alleen voor bètatesters.",
   "exportCurtail.need.controlDisabled": "De terugleverlimiet is uitgeschakeld in Home Assistant. Schakel die in om dit te gebruiken.",
   "exportCurtail.need.limitUnset": "In de omvormer is geen terugleverlimiet ingesteld. Stel er eerst een in via de eigen app van de omvormer, op het meeste dat je mag terugleveren. SpotNav verlaagt die daarna en zet de jouwe terug, en stelt er nooit zelf een in.",
+  "exportCurtail.need.importRose": "Het huis begon stroom van het net te halen toen de limiet werd ingesteld, dus SpotNav zette de limiet terug. SpotNav probeert het morgen vanzelf opnieuw.",
   "exportCurtail.need.notObeyed": "De omvormer volgde de limiet niet, dus SpotNav zette die terug en stopte. Zet dit uit en weer aan om het opnieuw te proberen.",
   "exportCurtail.need.notTaken": "De omvormer nam de instelling niet over, dus SpotNav stopte. Zet dit uit en weer aan om het opnieuw te proberen.",
   "exportCurtail.need.needsHacs": "De terugleverlimiet is niet ingeschakeld in de omvormer. Schakel die in via de eigen app van de omvormer, of installeer de HACS-integratie ({repo}) zodat SpotNav dat kan.",

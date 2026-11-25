@@ -2666,6 +2666,7 @@
   "exportCurtail.beta": "Still being tested with {brand}: for beta testers only so far.",
   "exportCurtail.need.controlDisabled": "The export limit is disabled in Home Assistant. Enable it to use this.",
   "exportCurtail.need.limitUnset": "The inverter has no export limit set. Set one in the inverter's own app first, at the most you may export. SpotNav then lowers it and puts yours back, and never sets one of its own.",
+  "exportCurtail.need.importRose": "The home started importing power when the limit was set, so SpotNav put the limit back. SpotNav tries again by itself tomorrow.",
   "exportCurtail.need.notObeyed": "The inverter did not follow the limit, so SpotNav put it back and stopped. Turn this off and on to try again.",
   "exportCurtail.need.notTaken": "The inverter did not take the setting, so SpotNav stopped. Turn this off and on to try again.",
   "exportCurtail.need.needsHacs": "The export limit is not enabled in the inverter. Enable it in the inverter's own app, or install the HACS integration ({repo}) so SpotNav can.",

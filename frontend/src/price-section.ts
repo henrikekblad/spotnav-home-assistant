@@ -570,6 +570,8 @@ export function exportCurtailNeed(language: Language, need: string | null, brand
       return translate(language, "exportCurtail.need.limitUnset");
     case "not_obeyed":
       return translate(language, "exportCurtail.need.notObeyed");
+    case "import_rose":
+      return translate(language, "exportCurtail.need.importRose");
     case "not_taken":
       return translate(language, "exportCurtail.need.notTaken");
     case "needs_hacs_integration":

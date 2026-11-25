@@ -2666,6 +2666,7 @@
   "exportCurtail.beta": "Testataan vielä merkillä {brand}: toistaiseksi vain beetatestaajille.",
   "exportCurtail.need.controlDisabled": "Vientiraja on poistettu käytöstä Home Assistantissa. Ota se käyttöön, jotta tätä voi käyttää.",
   "exportCurtail.need.limitUnset": "Invertteriin ei ole asetettu vientirajaa. Aseta se ensin invertterin omassa sovelluksessa suurimpaan sallittuun vientiisi. SpotNav laskee sitä sen jälkeen ja palauttaa sinun arvosi, eikä koskaan aseta omaansa.",
+  "exportCurtail.need.importRose": "Talo alkoi ottaa sähköä verkosta, kun raja asetettiin, joten SpotNav palautti rajan. SpotNav yrittää itse uudelleen huomenna.",
   "exportCurtail.need.notObeyed": "Invertteri ei noudattanut rajaa, joten SpotNav palautti sen ja lopetti. Kytke tämä pois ja päälle yrittääksesi uudelleen.",
   "exportCurtail.need.notTaken": "Invertteri ei ottanut asetusta vastaan, joten SpotNav lopetti. Kytke tämä pois ja päälle yrittääksesi uudelleen.",
   "exportCurtail.need.needsHacs": "Vientirajaa ei ole otettu käyttöön invertterissä. Ota se käyttöön invertterin omassa sovelluksessa tai asenna HACS-integraatio ({repo}), jotta SpotNav voi tehdä sen.",

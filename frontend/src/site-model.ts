@@ -58,7 +58,7 @@ export interface SiteView {
 }
 
 /** The site's switch for its export limit: shown only where `found`; `need` is at most one thing the person can act
- * on (`control_disabled`, `limit_unset`, `not_obeyed`, `not_taken`, `needs_hacs_integration:<repo>`, `beta_only`,
+ * on (`control_disabled`, `limit_unset`, `not_obeyed`, `import_rose`, `not_taken`, `needs_hacs_integration:<repo>`, `beta_only`,
  * `no_grid_reading`); `saving` what exporting at a negative sell price cost in the last `days`. */
 export interface SiteExportCurtail {
   found: boolean;

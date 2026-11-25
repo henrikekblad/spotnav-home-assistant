@@ -79,9 +79,10 @@ of some kind that SpotNav does not use yet.
 - **It leaves your changes alone.** If you, the inverter's app or an installer change the limit or its switch
   while SpotNav holds it at zero, SpotNav stops and does not write again that day.
 - **It checks that it works.** After two minutes the export must have stopped. If the site keeps exporting,
-  SpotNav puts the limit back and stops. If the site starts importing instead, more than the battery and the
-  cars take, the "limit" is holding back the whole inverter: SpotNav puts it back and stops. In both cases the
-  row says so; turn the switch off and on to try again.
+  SpotNav puts the limit back and stops; the row says so, and turning the switch off and on tries again. If the
+  site starts importing instead, within ten minutes and more than the battery and the cars take, the "limit" may
+  be holding back the whole inverter: SpotNav puts it back and does not set it again that day. A house load that
+  started just then looks the same, so SpotNav tries again by itself the next day; the row says so until then.
 - **It needs a signed grid reading.** Without the site's grid power with a direction, SpotNav could not see whether
   the limit works, so it does not start. A site that measures phase currents needs the meter's total grid power.
 - **Short gaps are bridged.** If the price turns positive for at most half an hour between two negative

@@ -2666,6 +2666,7 @@
   "exportCurtail.beta": "Testes stadig med {brand}: indtil videre kun for betatestere.",
   "exportCurtail.need.controlDisabled": "Eksportgrænsen er slået fra i Home Assistant. Aktivér den for at bruge dette.",
   "exportCurtail.need.limitUnset": "Vekselretteren har ingen eksportgrænse indstillet. Indstil først en i vekselretterens egen app, på det højeste du må eksportere. SpotNav sænker den derefter og sætter din tilbage, og indstiller aldrig sin egen.",
+  "exportCurtail.need.importRose": "Huset begyndte at trække strøm fra nettet, da grænsen blev sat, så SpotNav satte grænsen tilbage. SpotNav prøver igen af sig selv i morgen.",
   "exportCurtail.need.notObeyed": "Vekselretteren fulgte ikke grænsen, så SpotNav satte den tilbage og stoppede. Slå dette fra og til for at prøve igen.",
   "exportCurtail.need.notTaken": "Vekselretteren tog ikke imod indstillingen, så SpotNav stoppede. Slå dette fra og til for at prøve igen.",
   "exportCurtail.need.needsHacs": "Eksportgrænsen er ikke aktiveret i vekselretteren. Aktivér den i vekselretterens egen app, eller installér HACS-integrationen ({repo}), så SpotNav kan gøre det.",

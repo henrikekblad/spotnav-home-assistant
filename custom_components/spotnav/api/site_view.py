@@ -37,7 +37,8 @@ charger's site when a charger is named:
   nothing is written) or `no_control`; `beta` whether the brand's recipe is still untested; `need` at most one thing
   the person can act on, else `null`: `control_disabled` (the limit's entity, `entity_id`, is disabled in Home
   Assistant), `limit_unset` (the plant has no export limit set, and SpotNav never writes one in its place),
-  `not_obeyed` (the inverter did not follow the limit: switched off and on tries again), `not_taken` (a write was
+  `not_obeyed` (the inverter did not follow the limit: switched off and on tries again), `import_rose` (the site
+  imported under the limit, so it was put back: tried again by itself the next local day), `not_taken` (a write was
   not taken), `needs_hacs_integration:<owner/repository>` (the limit is not enabled on the inverter and only that
   integration can enable it), `beta_only`, `no_grid_reading` (the site measures no signed grid power, so nothing
   could judge the limit); `saving` what the site exported while the sell price was below zero in the last `days`

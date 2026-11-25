@@ -73,6 +73,9 @@ NEED_DISABLED: Final = "control_disabled"
 NEED_LIMIT_UNSET: Final = "limit_unset"
 NEED_NOT_OBEYED: Final = "not_obeyed"
 NEED_NOT_TAKEN: Final = "not_taken"
+#: The site's import rose under the limit: put back, and tried again by itself the next day (`_DAY_BLOCKS`). Said so
+#: the person knows why nothing is curtailed today; nothing to do.
+NEED_IMPORT_ROSE: Final = "import_rose"
 NEED_BETA: Final = "beta_only"
 NEED_GRID_READING: Final = "no_grid_reading"
 
@@ -412,6 +415,8 @@ class ExportShell:
             return NEED_BETA, None
         executor = self.c.export_executor
         blocked = "" if executor is None or executor.state.phase != "blocked" else (executor.state.blocked or "")
+        if blocked.startswith(_DAY_BLOCKS[1]):
+            return NEED_IMPORT_ROSE, None
         failed = self._key is not None and self.gate.check_failed(self._key)
         if blocked.startswith("not_obeyed") or failed:
             absent = [name for name in control.hacs_roles if name not in reads]

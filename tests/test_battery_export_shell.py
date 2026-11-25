@@ -574,13 +574,15 @@ async def test_a_limit_under_which_the_import_rose_is_tried_again_the_next_day(
     now = await _looks(control, start, 45)
     assert plant.calls == [SET_ZERO, SET_BACK]
     assert control.export_executor.state.blocked == "not_obeyed:curtail_export:import_rose"
+    # The card says so, and that it lifts by itself: nothing for the person to do.
+    assert control.export.status()["need"] == "import_rose"
     await _looks(control, now + timedelta(hours=6), 4)
     assert plant.calls == [SET_ZERO, SET_BACK], "nothing is written again that day"
     # The next day it is tried again by itself: the load was the house's own.
     load["kw"] = 0.0
     await _looks(control, start + timedelta(days=1), 45)
     assert plant.calls == [SET_ZERO, SET_BACK, SET_ZERO]
-    assert control.export_executor.state.phase == "active"
+    assert control.export_executor.state.phase == "active" and control.export.status()["need"] != "import_rose"
     assert [row["reason"] for row in control.log if row["kind"] == "export_unblocked"] == ["next_day"]
     await control.async_stop()
 

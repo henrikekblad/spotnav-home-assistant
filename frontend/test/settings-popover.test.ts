@@ -400,6 +400,7 @@ describe("the popover from the house card", () => {
       ["limit_unset", "Växelriktaren har ingen exportgräns inställd."],
       ["not_obeyed", "Växelriktaren följde inte gränsen"],
       ["not_taken", "Växelriktaren tog inte emot inställningen"],
+      ["import_rose", "SpotNav försöker igen av sig självt i morgon."],
       ["needs_hacs_integration:mletenay/home-assistant-goodwe-inverter", "(mletenay/home-assistant-goodwe-inverter)"],
       ["beta_only", "Med Sigenergy fungerar det här än så länge bara för betatestare."],
       ["no_grid_reading", "elmätarens totala effekt mot nätet"],
@@ -439,7 +440,7 @@ describe("the popover from the house card", () => {
         "exportCurtail.title", "exportCurtail.help", "exportCurtail.intro", "exportCurtail.saving", "exportCurtail.beta",
         "exportCurtail.need.controlDisabled", "exportCurtail.need.limitUnset", "exportCurtail.need.notObeyed",
         "exportCurtail.need.notTaken", "exportCurtail.need.needsHacs", "exportCurtail.need.betaOnly",
-        "exportCurtail.need.noGridReading",
+        "exportCurtail.need.noGridReading", "exportCurtail.need.importRose",
       ] as const) {
         expect(TRANSLATIONS[language][key], `${language} ${key}`).toBeTruthy();
       }

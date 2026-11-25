@@ -2666,6 +2666,7 @@
   "exportCurtail.beta": "Wird mit {brand} noch getestet: bisher nur für Betatester.",
   "exportCurtail.need.controlDisabled": "Die Einspeisebegrenzung ist in Home Assistant deaktiviert. Aktiviere sie, um dies zu nutzen.",
   "exportCurtail.need.limitUnset": "Im Wechselrichter ist keine Einspeisebegrenzung eingestellt. Stelle zuerst in der App des Wechselrichters eine ein, auf das Höchste, das du einspeisen darfst. SpotNav senkt sie dann und stellt deine wieder her, und setzt nie eine eigene.",
+  "exportCurtail.need.importRose": "Das Haus hat Strom aus dem Netz bezogen, als die Begrenzung gesetzt wurde, daher hat SpotNav sie zurückgestellt. SpotNav versucht es morgen von selbst erneut.",
   "exportCurtail.need.notObeyed": "Der Wechselrichter hat die Begrenzung nicht befolgt, daher hat SpotNav sie zurückgestellt und aufgehört. Schalte dies aus und wieder ein, um es erneut zu versuchen.",
   "exportCurtail.need.notTaken": "Der Wechselrichter hat die Einstellung nicht angenommen, daher hat SpotNav aufgehört. Schalte dies aus und wieder ein, um es erneut zu versuchen.",
   "exportCurtail.need.needsHacs": "Die Einspeisebegrenzung ist im Wechselrichter nicht aktiviert. Aktiviere sie in der App des Wechselrichters oder installiere die HACS-Integration ({repo}), damit SpotNav das kann.",

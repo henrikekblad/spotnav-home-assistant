@@ -937,6 +937,8 @@ and absent from an earlier Home Assistant, which a reader takes as `null`):
 - `need`: at most one thing the person can act on, else `null`: `control_disabled` (the limit's entity,
   `entity_id`, is disabled in Home Assistant), `limit_unset` (no export limit is set on the plant, and SpotNav never
   sets one), `not_obeyed` (the inverter did not follow the limit; turning the switch off and on tries again),
+  `import_rose` (the site imported under the limit, so it was put back; SpotNav tries again by itself the next
+  local day, nothing to do),
   `not_taken` (a write was not taken; the same), `needs_hacs_integration:<owner/repository>` (the limit is not
   enabled in the inverter and only that integration can enable it), `beta_only`, `no_grid_reading` (the site
   measures no grid power with a direction). A reader shows nothing for a code it does not know.
