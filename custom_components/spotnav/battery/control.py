@@ -5,7 +5,9 @@ executor returns, persists its state. One per site, owned by its `SiteCapacityCo
 person's opt-in, off by default) and `battery_control_shadow_only` off (on by default until the owner's on-site
 tests are done). With both, enabling starts the verification routine (`verify.py`); control runs the plan only once
 the routine passed for the plant's current firmware and integration version (`gate.firmware_key`), and only the
-actions the report allows (`gate.allowed_actions`). While shadow only, the shell logs what it would do
+actions the report allows (`gate.allowed_actions`). An update never stops it by itself (owner rule 2026-11-24): after
+a change of firmware, integration version or recipe revision control runs on with what last passed for the brand on
+this plant (`control_report`) until the routine has checked the new key. While shadow only, the shell logs what it would do
 (`would_do`, `executor.preview`) and writes nothing. One kind of write is never refused: handing back what SpotNav
 itself wrote (a restore), on every path, so turning anything off can always put the plant back.
 
@@ -29,8 +31,16 @@ The order on every path:
   the restore). The site shuts this down first, before its other parts.
 * **Verification**: started at the first suitable moment after enabling (`gate.suitable`: a discharging battery
   between 30 and 80 %, no car charging, the plant SpotNav's to take), a mode that could not be judged is tried again
-  at a later one; after a firmware or integration change the plant is handed back and checked again at the next
-  suitable evening. The report is kept per firmware key.
+  at a later one. The report is kept per firmware key. After a firmware, integration or recipe-revision change
+  control keeps running the actions of the brand's last passed report on this plant (`control_report`,
+  `gate.control_report`: the hold variant and the capability per phase are that report's too, a measured expiry never
+  is) and the routine checks the new key at the first suitable moment of any hour, which is one where the plan
+  leaves the battery to itself (the executor idle); control yields to the run as to the first one. A mode decided on
+  the new key counts from then on; a check that fails or gives up there stops control as on any key, and turning
+  control on again after that runs the check without the old report, as a person's failed hardware test leaves no
+  older pass to run on (`carry_after`). Never carried: another brand's
+  report, one passed on a key this release holds back (`commands.blocked`), a hold passed in a variant the recipe
+  dropped, a report older than a failed one.
 * **Sigenergy's AI mode** (owner 2026-11-16): taken over only with `battery_control_ai_takeover_ack`; whenever
   control stops running after such a takeover (turned off, back to shadow only, a failed check, a firmware change,
   the acknowledgement withdrawn) a note asks the person to set AI mode again in the app (the hand-back leaves the
@@ -530,6 +540,10 @@ class BatteryControl:
         #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
         #: one passes again.
         self.hardware_failed: list[str] = []
+        #: When the plant last failed a check that leaves no failed report behind (ISO): a failed check the person
+        #: had forgotten by turning control on again (`_transitions`), a person's failed hardware test
+        #: (`_keep_hardware_verdict`). No report passed before it is carried onto another key (`control_report`).
+        self.carry_after: str | None = None
         #: The brands gated after running (`commands.GATED_AFTER_RUNNING`) this plant was looked at for
         #: grandfathering (`_grandfather_running`), granted or not: each is decided once and never again.
         self.grandfather_checked: list[str] = []
@@ -740,6 +754,8 @@ class BatteryControl:
         self.hardware_failed = (
             [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
         )
+        carry_after = data.get("carry_after")
+        self.carry_after = carry_after if isinstance(carry_after, str) else None
         checked = data.get("grandfather_checked")
         self.grandfather_checked = (
             [brand for brand in checked if isinstance(brand, str)] if isinstance(checked, list) else []
@@ -1174,15 +1190,45 @@ class BatteryControl:
             report = self.reports[key] = dict(current)
         return report
 
+    def control_report(self, key: str | None = None) -> Mapping[str, Any] | None:
+        """The report control runs on (`gate.control_report`): the routine's own for the key now (`report`), with
+        each mode still open there answered by the brand's last passed report on this plant while the routine has
+        not finished the key, so an update never stops control by itself. The reports are this site's; one passed
+        on a key this release holds back (`commands.blocked`) is no source, nor one passed before the plant last
+        failed a check that left no failed report (`carry_after`). The routine itself, the status's `report` and a measured
+        expiry read `report`. `key`: read the stored report of that key as it stands instead (`_phases_mapped`)."""
+        if key is None:
+            if not self.firmware_known():
+                return None
+            key, own = self.firmware_key(), self.report()
+        else:
+            stored = self.reports.get(key)
+            own = stored if isinstance(stored, dict) else None
+        control = control_for(self.facts.control_brand)
+        if control is None:
+            return own
+        sources = {name: report for name, report in self.reports.items() if not blocked(control, name)}
+        since = gate.parse_time(self.carry_after)
+        if self.carry_after is not None and since is None:
+            return own  # a stored time that cannot be read: nothing is carried
+        return gate.control_report(
+            own, sources, key=key, brand=control.brand, variants=control.variant_names(), since=since
+        )
+
+    def carried_from(self) -> str | None:
+        """The key whose passed report control runs on while the routine checks the key now, `None` when control
+        runs on the key's own report (or not at all)."""
+        source = (self.control_report() or {}).get("carried_from")
+        return source if isinstance(source, str) else None
+
     def _phases_mapped(self) -> bool:
         """Whether the plant's phases A, B and C are shown to be the meter's L1, L2 and L3: only the verification's
-        mode `per_phase`, passed on the firmware last read, shows it (`gate.per_phase`). Reads the key as it stands
-        (`firmware_key` would set it from the facts of this look)."""
+        mode `per_phase`, passed on the firmware last read (or carried over an update, `control_report`), shows it
+        (`gate.per_phase`). Reads the key as it stands (`firmware_key` would set it from the facts of this look)."""
         key = self._key
         if key is None or not gate.firmware_known(key):
             return False
-        report = self.reports.get(self._with_revision(key))
-        return isinstance(report, dict) and gate.per_phase(report) == "verified"
+        return gate.per_phase(self.control_report(self._with_revision(key))) == "verified"
 
     def state(self, options: gate.Options | None = None) -> str:
         """`off`, `shadow_only`, `verifying`, `waiting` (for the routine), `on` or `failed`."""
@@ -1193,7 +1239,7 @@ class BatteryControl:
             return "shadow_only"
         if self.verification is not None and not self.verification.done:
             return "verifying"
-        status = gate.report_status(self.report())
+        status = gate.report_status(self.control_report())
         return {"passed": "on", "failed": "failed"}.get(status, "waiting")
 
     def allowed(self, options: gate.Options | None = None) -> frozenset[str]:
@@ -1201,7 +1247,7 @@ class BatteryControl:
         if self.state(options) != "on":
             return frozenset()
         return self._supported(gate.allowed_actions(
-            self.report(), options, export_needs_charge=self._export_needs_charge()
+            self.control_report(), options, export_needs_charge=self._export_needs_charge()
         ))
 
     def _supported(self, actions: frozenset[str]) -> frozenset[str]:
@@ -1383,7 +1429,9 @@ class BatteryControl:
                     executor.reset()
             key = self.firmware_key()
             if gate.report_status(self.reports.get(key)) == "failed":
+                # The check runs again; what passed before this failure is not trusted meanwhile.
                 self.reports.pop(key, None)
+                self.carry_after = now.isoformat()
             self.notes = [note for note in self.notes if note.get("code") != NOTE_AI_MODE_BACK]
             self._log([{"at": now.isoformat(), "kind": "enabled", "reason": "opt_in"}])
         elif not options.enabled and self._enabled_seen:
@@ -1428,7 +1476,7 @@ class BatteryControl:
         hold. The shadow and its previews show the same."""
         control = control_for(self.facts.control_brand)
         names = () if control is None else control.variant_names()
-        return (gate.hold_variant_to_run(self.report(), names) or names[0]) if names else None
+        return (gate.hold_variant_to_run(self.control_report(), names) or names[0]) if names else None
 
     def _control_executor(self) -> Executor | None:
         """The executor for control and trials, running the hold variant the verification passed, else the first not
@@ -1437,7 +1485,7 @@ class BatteryControl:
         executor = self._executor()
         if executor is not None and executor.control.hold_variants:
             names = executor.control.variant_names()
-            executor.use_variant(gate.hold_variant_to_run(self.report(), names) or names[0])
+            executor.use_variant(gate.hold_variant_to_run(self.control_report(), names) or names[0])
         self._sync_phases()
         return executor
 
@@ -1453,7 +1501,7 @@ class BatteryControl:
         return executor.control.phased
 
     def _phased_wanted(self) -> bool:
-        return gate.per_phase(self.report()) == "verified" and self._phase_missing() is None
+        return gate.per_phase(self.control_report()) == "verified" and self._phase_missing() is None
 
     def _phase_missing(self) -> str | None:
         """Why a grid charge per phase cannot run on this plant now, as a stable code; `None` when everything it
@@ -1611,7 +1659,7 @@ class BatteryControl:
         )
         phased = executor is not None and executor.control.phased
         return {
-            "state": "unavailable" if missing is not None else gate.per_phase(self.report()),
+            "state": "unavailable" if missing is not None else gate.per_phase(self.control_report()),
             "why": missing,
             "used": self._charge_limits(now, options, phased=phased)[1] is not None,
             "caps_kw": per_phase(self._phase_caps_kw(now)),
@@ -1871,6 +1919,8 @@ class BatteryControl:
             # A grandfathered plant's control already ran: only a mode that failed stops it, never a test that could
             # not judge (the sun, no room under the fuse).
             self.hardware_failed = [*(known for known in self.hardware_failed if known != key), key][-MAX_REPORTS:]
+            # Nor does a report passed before this failure run control on a later key (`control_report`).
+            self.carry_after = now.isoformat()
 
     async def _async_verify(self, now: datetime) -> StepResult | None:
         verification = self.verification
@@ -1954,9 +2004,7 @@ class BatteryControl:
         """Start a run at a suitable moment when the report for this firmware still needs one."""
         report = self.report()
         state = self.state(options)
-        if state not in ("waiting", "on") or not (
-            gate.needs_run(report, self._supported_modes()) or self._per_phase_due(report) or self._expiry_due(report)
-        ):
+        if state not in ("waiting", "on") or not self._check_due(report):
             self.waiting_for = None
             return
         if not self.firmware_known():
@@ -1970,23 +2018,29 @@ class BatteryControl:
         if executor is None:
             self.waiting_for = "no_battery_control"
             return
-        why = gate.suitable(self._moment(now, executor), evening=self._reverifying())
+        why = gate.suitable(self._moment(now, executor))
         self.waiting_for = why
         if why is None:
             self._begin_verification(now)
             await self._async_verify(now)
 
+    def _check_due(self, report: dict[str, Any] | None) -> bool:
+        """Whether the routine has anything left to try on the key's own report (`gate.needs_run`, the capability
+        per phase, an expiry)."""
+        return (
+            gate.needs_run(report, self._supported_modes()) or self._per_phase_due(report) or self._expiry_due(report)
+        )
+
     def _reverifying(self) -> bool:
-        """Whether this is a check after a firmware or integration change (another key passed before)."""
-        key = self.firmware_key()
-        return any(name != key and gate.report_status(report) == "passed" for name, report in self.reports.items())
+        """Whether this is the check after a firmware, integration or recipe change that control runs through on
+        the brand's last passed report (`carried_from`)."""
+        return self.carried_from() is not None
 
     def _moment(self, now: datetime, executor: Executor) -> gate.Moment:
         inputs = self.inputs(now, executor.control, slot=(ACTION_HOLD, 0.0, None))
         seen = preview(executor.control, inputs)
         chargers, _car_kw = self.site.battery_shadow.grid_charging()
         return gate.Moment(
-            local_hour=dt_util.as_local(now).hour,
             soc_pct=inputs.facts.soc_pct,
             power_kw=inputs.facts.power_kw,
             fresh=inputs.battery_age_s is not None and inputs.battery_age_s <= 120.0,
@@ -2009,7 +2063,7 @@ class BatteryControl:
             return "no_battery_control"
         # The test takes the plant over from control itself (`async_hardware_test_start`): a running executor is no
         # reason to wait.
-        return gate.suitable(replace(self._moment(now, executor), executor_idle=True), evening=False)
+        return gate.suitable(replace(self._moment(now, executor), executor_idle=True))
 
     def hardware_test_refusal(self) -> str | None:
         """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the
@@ -2233,7 +2287,7 @@ class BatteryControl:
             raise TrialRefused(due)
         if options.shadow_only and not force:
             raise TrialRefused("shadow_only")
-        if not force and gate.report_status(self.report()) != "passed":
+        if not force and gate.report_status(self.control_report()) != "passed":
             raise TrialRefused("not_verified")
         why = gate.trial_refusal(action, options)
         if why is not None:
@@ -2249,7 +2303,7 @@ class BatteryControl:
             if executor is None:
                 raise TrialRefused("no_battery_control")
             names = executor.control.variant_names()
-            if action == ACTION_HOLD and names and gate.hold_variant_to_run(self.report(), names) is None:
+            if action == ACTION_HOLD and names and gate.hold_variant_to_run(self.control_report(), names) is None:
                 # Every way to hold failed on this firmware: not even a forced test runs one again.
                 raise TrialRefused("hold_variants_failed")
             self.facts = self._read_facts()
@@ -2371,7 +2425,7 @@ class BatteryControl:
         return any((read := reads.get(name)) is None or not read.found for name in control.hold_charges_without)
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
-        report = self.report()
+        report = self.control_report()
         allowed = self._supported(gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge()))
         fuse_cap, caps = self._charge_limits(now, options)
         cap = self._within_charge_power(fuse_cap)
@@ -3001,7 +3055,7 @@ class BatteryControl:
             if bounded is not None and (cap is None or bounded < cap):
                 cap, rule = bounded, RULE_CHARGE_POWER_ENTITY
             # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
-            if caps is None and gate.charge_by_phases(self.report()):
+            if caps is None and gate.charge_by_phases(self.control_report()):
                 return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run
             fixed = self._fixed_charge_kw()
             if fixed is not None and (not math.isfinite(fixed) or (cap is not None and fixed > cap)):
@@ -3569,11 +3623,16 @@ class BatteryControl:
             return
         judged = next((event for event in result.events
                        if event["kind"] == "monitor" and str(event["reason"]) in ("phase_over", "phase_no_effect")), None)
-        report = None if judged is None else self.report()
-        if judged is None or report is None:
+        if judged is None or self.control_report() is None:
             return
         outcome = "partial" if judged["reason"] == "phase_over" else "ignored"
-        self._keep_report(self.firmware_key(), gate.per_phase_failed(report, outcome, now))
+        key = self.firmware_key()
+        # On the key's own report (started here when control ran on a report carried over an update): decided
+        # there, the capability is no longer carried.
+        control = control_for(self.facts.control_brand)
+        own = self.report() or {"key": key, "brand": None if control is None else control.brand,
+                                "firmware": self.facts.firmware, "attempts": 0, "modes": {}}
+        self._keep_report(key, gate.per_phase_failed(own, outcome, now))
         self._log([{"at": now.isoformat(), "kind": "per_phase_withdrawn", "reason": judged["reason"]}])
 
     async def _async_until_handed_back(self, reason: str) -> None:
@@ -3656,7 +3715,7 @@ class BatteryControl:
             "reports": dict(self.reports),
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
                      "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
-                     "hardware_failed": list(self.hardware_failed),
+                     "hardware_failed": list(self.hardware_failed), "carry_after": self.carry_after,
                      "grandfather_checked": list(self.grandfather_checked),
                      "tester": None if self.tester is None else dict(self.tester),
                      "control_codes": {brand: dict(code) for brand, code in self.control_codes.items()}},
@@ -3826,13 +3885,16 @@ class BatteryControl:
             outcome = None if mode is None else (report or {}).get("modes", {}).get(mode, {}).get("outcome")
             return f"failed:{mode or 'not_judgeable'}:{outcome or 'attempts'}"
         if state == "waiting":
-            return f"{'waiting_after_update' if self._reverifying() else 'waiting'}:{self.waiting_for or 'moment'}"
+            return f"waiting:{self.waiting_for or 'moment'}"
         if state == "on" and executor is not None and executor.state.phase == "blocked":
             return f"blocked:{executor.state.blocked}"
         if state == "on" and "ai_takeover_ack" in self._needs():
             return "watching:ai_mode"
         if state == "on" and "strategy_ack" in self._needs():
             return "watching:strategy"
+        if state == "on" and self._reverifying() and self._check_due(self.report()):
+            # Control runs on what passed before the update; the check of the new key waits for its moment.
+            return f"waiting_after_update:{self.waiting_for or 'moment'}"
         return state
 
     def status(self) -> dict[str, Any]:
@@ -3939,6 +4001,8 @@ class BatteryControl:
             "export_gate": self.export.snapshot(),
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
+            # The key whose passed report control runs on while the routine checks the key now (`control_report`).
+            "carried_from": self._carried_block(),
             "log": list(self.log),
             "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
@@ -3953,6 +4017,13 @@ class BatteryControl:
                 for orphan in self._orphaned
             ],
         }
+
+    def _carried_block(self) -> str | None:
+        try:
+            return self.carried_from()
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("carried_block: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
 
     def _import_limit_refusals(self) -> dict[str, str | None] | None:
         try:

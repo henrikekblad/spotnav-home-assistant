@@ -4,7 +4,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
 
 * `battery_control_enabled` (default off): the person's opt-in. Turning it on does not turn control on: it starts the
   verification routine (`verify.py`), and control is on only once that passed for the plant's current firmware and
-  integration version (`firmware_key`).
+  integration version (`firmware_key`). After a change of either, or of the recipe's revision, control runs on with
+  what last passed for the brand on this plant while the routine checks the new key (`control_report`).
 * `battery_control_shadow_only`: while on, nothing is written whatever else is set; the shell only logs what it would
   do. Its default depends on the plant (`shadow_default`): **off** for a recipe tested on a real plant
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
@@ -72,6 +73,9 @@ The verification report, per firmware key (`merge_report`): each mode's last dec
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
 fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances: the fuse, a stale reading, a stop)
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
+Control reads the report through `control_report`: on a key the routine has not finished, a mode still open keeps
+the answer of the brand's last passed report on this plant, so an update never stops control by itself; a check that
+fails or gives up on the new key stops it as on any key.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed (where it could be tried only as a charge on one phase, a charge per phase
 only, once `per_phase` is verified too: `charge_by_phases`), a discharge for the house only if `discharge_house` passed, a discharge to the
@@ -177,8 +181,6 @@ RETRY_GAP_S: Final = 3600.0
 SUITABLE_SOC_PCT: Final = (30.0, 80.0)
 SUITABLE_DISCHARGE_KW: Final = 0.3
 SUITABLE_HEADROOM_A: Final = 4.0
-#: A re-verification after a firmware or integration change waits for an evening (local hours, end excluded).
-EVENING_HOURS: Final = (17, 22)
 
 #: The phases a learned house peak is kept for (`site/phase_peaks.py`).
 PHASE_NAMES: Final = ("L1", "L2", "L3")
@@ -606,6 +608,70 @@ def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]
     return next((name for name in names if name not in failed), None)
 
 
+def _last_verdict(
+    reports: Mapping[str, Any], *, key: str, brand: str | None, variants: tuple[str, ...], since: datetime | None
+) -> Mapping[str, Any] | None:
+    """The brand's last decided report under another key (`updated_at`), when that verdict is a pass that still
+    stands with the recipe's hold variants (`without_removed_hold`) and is later than `since`; `None` otherwise,
+    also when the last verdict is a failure: an older pass says nothing of a plant that stopped obeying since."""
+    decided = [
+        report for name, report in reports.items()
+        if name != key and firmware_known(name) and isinstance(report, Mapping) and brand is not None
+        and report.get("brand") == brand and report_status(report) in ("passed", "failed")
+    ]
+    if not decided:
+        return None
+    last = max(decided, key=lambda report: str(report.get("updated_at") or ""))
+    if since is not None:
+        updated = parse_time(last.get("updated_at"))
+        if updated is None or updated <= since:
+            return None
+    return last if report_status(without_removed_hold(last, variants)) == "passed" else None
+
+
+def control_report(
+    current: Mapping[str, Any] | None, reports: Mapping[str, Any], *, key: str, brand: str | None,
+    variants: tuple[str, ...] = (), since: datetime | None = None,
+) -> Mapping[str, Any] | None:
+    """The report control runs on for `key` (owner rule 2026-11-24: control never stops because of an update).
+    `current` is the routine's own report for the key. While the routine still has runs left on it and has not
+    failed, each mode still open there keeps the answer it had in the brand's last passed report on this plant
+    (`_last_verdict` of `reports`, the site's own, never another brand's), so that a change of firmware, integration
+    version or recipe revision leaves control running what ran before until the routine has checked the new key. A
+    mode decided on the new key counts as decided there, pass or fail. `current` itself (the same object) when
+    nothing is carried: no such report, the check on the key failed or gave up (`MAX_ATTEMPTS`), every mode decided,
+    or the hold that passed before already failed on this key. `since`: when the plant last failed a check that
+    left no failed report in `reports` (a person's hardware test, a failed check forgotten by turning control on
+    again): only a pass later than that is carried. The carried report names its source
+    (`carried_from`); a measured expiry is never carried (`expiry_measured`: a cap is lifted only by a measurement
+    on the firmware read now)."""
+    if not firmware_known(key) or report_status(current) == "failed":
+        return current
+    attempts = (current or {}).get("attempts")
+    if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
+        return current
+    last = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since)
+    if last is None:
+        return current
+    held = hold_variant(last)
+    if held is not None and any(
+        row.get("variant") == held and mode_verdict(row.get("outcome")) == "fail" for row in variants_tried(current)
+    ):
+        return current
+    modes: dict[str, Any] = dict(_modes(current))
+    carried = False
+    for name, row in _modes(last).items():
+        if name.startswith(MODE_EXPIRY) or mode_verdict(row.get("outcome")) != "pass":
+            continue
+        if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending":
+            modes[name] = row
+            carried = True
+    if not carried:
+        return current
+    base = dict(current) if current is not None else {"brand": brand, "attempts": 0}
+    return {**base, "key": key, "modes": modes, "carried_from": last.get("key")}
+
+
 def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any], *, most: int) -> dict[str, Any]:
     """The reports by key with this one put in (the newest last), at most `most`, the oldest dropped first."""
     kept = {name: value for name, value in reports.items() if name != key and isinstance(value, Mapping)}
@@ -621,7 +687,6 @@ def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any]
 class Moment:
     """The site now, for whether the routine may start."""
 
-    local_hour: int
     soc_pct: float | None
     power_kw: float | None
     fresh: bool
@@ -634,12 +699,11 @@ class Moment:
     executor_idle: bool
 
 
-def suitable(moment: Moment, *, evening: bool) -> str | None:
+def suitable(moment: Moment) -> str | None:
     """Why the routine may not start now, `None` when it may: a fresh reading, the battery between
     `SUITABLE_SOC_PCT` and discharging (so a hold can be judged), no car charging, the fuse with room, the plant
-    SpotNav's to take and the executor idle; after a firmware change also an evening."""
-    if evening and not EVENING_HOURS[0] <= moment.local_hour < EVENING_HOURS[1]:
-        return "not_evening"
+    SpotNav's to take and the executor idle. At any hour, also for the check after an update (control runs on
+    meanwhile, `control_report`; it waited for an evening until 2026-11-26)."""
     if not moment.executor_idle:
         return "executor_busy"
     if moment.blocker is not None:
