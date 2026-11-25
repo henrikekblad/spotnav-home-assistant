@@ -149,7 +149,7 @@ from .verify import (
     TEST_CHARGE_KW,
     TEST_CHARGE_SOC_MAX_PCT,
     Sample,
-    Timing,
+    quick_for,
     Verification,
     expiry_long,
     expiry_max_s,
@@ -1897,7 +1897,7 @@ class BatteryControl:
         return None
 
     async def async_hardware_test_start(self) -> str | None:
-        """Start the battery part of a person's hardware test (`verify.Timing.quick`, `stop_on_fail`): hold, a small
+        """Start the battery part of a person's hardware test (`verify.quick_for`, `stop_on_fail`): hold, a small
         grid charge under the HA-down cap, a discharge for the house, the plant's own dead-man timed where SpotNav can
         silence it (`_hardware_test_deadman`), and the hand-back, through the executor with every rule. Answers the
         refusal code, `None` once it started."""
@@ -1913,7 +1913,7 @@ class BatteryControl:
             self.verification = Verification(
                 executor, now, firmware=self.facts.firmware,
                 modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if deadman is not None else ())),
-                tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+                tried=gate.variants_tried(self.report()), timing=quick_for(executor.control), stop_on_fail=True,
                 charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
             )
             self._hw_run = True

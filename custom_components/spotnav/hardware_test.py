@@ -13,12 +13,13 @@ A brand's **first** pass on the plant (the battery's recipe waits for a person's
 "the battery's hardware test is running now (about N min)" with a Stop button (`STOP_ACTION`), taken off when the run
 ends; the automatic routine after a later change tells no one.
 It runs the parts the site has, each through the engine that already writes to it, with every rule of that engine,
-in at most `MAX_TEST` all told:
+in at most `MAX_TEST` all told (a slow recipe's own `BrandControl.test_total_s`: Tesla's cloud, about an hour):
 
 * **The home battery** (`battery/control.py`, `async_hardware_test_start`): the verification routine's modes in
-  minutes (`verify.Timing.quick`): hold, a small grid charge under the HA-down fuse cap (the learned per-phase house
-  peak, or its conservative default; where that leaves the balanced charge no room and the plant takes targets per
-  phase, a charge of at most 1 kW on the phase with the most room, its sign and phase mapping judged), a discharge
+  minutes (`verify.quick_for`; a slow recipe waits for its re-arm and cloud read-backs at each mode): hold, a small
+  grid charge under the HA-down fuse cap (the learned per-phase house peak, or its conservative default; where that
+  leaves the balanced charge no room and the plant takes targets per phase, a charge of at most 1 kW on the phase
+  with the most room, its sign and phase mapping judged), a discharge
   for the house, where the plant's dead-man is the integration's and SpotNav can silence it (EcoFlow: Modbus Control
   off, `gate.deadman_testable`) a hold left to that dead-man and timed (`DEADMAN_STEP`, `DEADMAN_EXTRA` more), and
   the hand-back judged; where the dead-man is SpotNav's own renewal and the recipe waits for a hardware test
@@ -602,6 +603,13 @@ class HardwareTest:
         except Exception:  # noqa: BLE001 - no battery control: no dead-man step
             _LOGGER.debug("max_test: ignored failure (no battery control: no dead-man step)", exc_info=True)
             deadman, step_s = False, None
+        recipe_s = None
+        with contextlib.suppress(Exception):
+            recipe = self.site.battery_control.recipe()
+            recipe_s = None if recipe is None else recipe.test_total_s
+        if isinstance(recipe_s, (int, float)) and recipe_s > MAX_TEST.total_seconds():
+            # A slow recipe (Tesla's cloud): each mode waits for its re-arm and read-backs (`verify.quick_for`).
+            return timedelta(seconds=recipe_s)
         if not deadman:
             return MAX_TEST
         # A long dead-man (Solis's RC Timeout in minutes): the step's own span and two minutes for the hold before it.

@@ -1000,6 +1000,10 @@ class BrandControl:
     slow: bool = False
     min_change_s: float = 0.0
     rearm_s: float | None = None
+    #: How long a person's hardware test of the recipe may run in all (s; `hardware_test.HardwareTest._max_test`),
+    #: `None`: the test's own ten minutes. A slow recipe's modes each wait for its re-arm and its cloud read-backs
+    #: (`verify.quick_for`), so its test takes about an hour.
+    test_total_s: float | None = None
     #: The plant charges at its own rate and the recipe cannot set it (Tesla): the gate and the executor use that rate
     #: (`fixed_rate_kw`) and refuse a grid charge that does not fit under the fuse cap instead of lowering it.
     fixed_charge: bool = False
@@ -2108,6 +2112,9 @@ TESLA_CONTROL: Final = BrandControl(
     fixed_charge=True,
     fixed_charge_kw=5.0,
     write_caps={"setting": TESLA_WRITES_PER_DAY},
+    # The hardware test: three modes after one another, each after a 15-minute re-arm and two cloud read-backs of up
+    # to 7 minutes (`verify.quick_for`); about 55 minutes when the cloud is at its slowest, with room for the looks.
+    test_total_s=75 * 60.0,
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
