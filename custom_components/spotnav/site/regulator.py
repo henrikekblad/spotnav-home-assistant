@@ -29,8 +29,8 @@ Per phase:
   not modelled.
 - Active overload (margin negative) is checked first. Import overload proposes
   a lower current directly; export or unclear overload yields `None`.
-- A charger that takes a current write only every so often (`rate_limit_margin_a`) keeps room free with
-  each write: a raise stops that short of the room, an overload's lowering goes that much further, never
+- A charger that takes a current write only every so often and was stopped for it in the last week
+  (`rate_limit_margin_a`) keeps room free with each write: a raise stops that short of the room, an overload's lowering goes that much further, never
   below its minimum where the fuse alone allows it, so a house step until its next write needs no stop.
 
 Outcomes stay distinct: a legal setpoint (`0` or `>= min_current_a`), a
@@ -46,6 +46,7 @@ steps every charger it governs that draws above its minimum to that minimum
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from typing import Collection, Literal, Mapping, Sequence
 
 from .site_capacity import (
@@ -144,23 +145,55 @@ DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS = 3
 # A charger that takes a current write only every so often (its policy's `min_interval_s`, 10 s on a local Alfen or
 # Peblar, 60 s on a cloud one) cannot be lowered while that interval runs: a house load that steps up right after a
 # write overloads the fuse, and the lowering the fuse then needs is refused, so the charge is stopped (`safety_stop:
-# rate_limited`, `ChargingController.async_apply_regulated_current`). Each write of such a charger therefore keeps
-# this much room free on every phase it draws on: a typical step of a house's own loads (a kettle, an oven's element,
-# a heat pump's compressor; 1.5 kW is some 6.5 A at 230 V). A step within it fits until the next write is allowed and
-# lowers the charger then; a larger one still stops the charge (the fuse rules are never weaker). It costs the charger
-# that much current only while the fuse, not the request, is what holds it.
+# rate_limited`, `ChargingController.async_apply_regulated_current`). Where that has happened to a charger within the
+# last `RATE_LIMIT_MARGIN_DAYS` (`ChargingController.rate_limited_stop_at`, kept through restarts), each of its writes
+# keeps room free on every phase it draws on, so a house step within it fits until the next write is allowed and lowers
+# the charger then; a larger one still stops the charge (the fuse rules are never weaker). A charger never so stopped
+# charges exactly as before (no margin). The room grows with how long the charger stays locked, since more of a
+# house's own loads can step up in a longer lock: `RATE_LIMIT_MARGIN_MIN_W` (some 2.2 A at 230 V) for an interval of
+# `RATE_LIMIT_MARGIN_SHORT_S` or less, linearly up to `RATE_LIMIT_MARGIN_W` (some 6.5 A, a kettle or an oven's element)
+# at `RATE_LIMIT_MARGIN_LONG_S` and more. It costs the charger that much current only while the fuse, not the request,
+# is what holds it.
 RATE_LIMIT_MARGIN_W = 1500.0
+RATE_LIMIT_MARGIN_MIN_W = 500.0
+RATE_LIMIT_MARGIN_SHORT_S = 10.0
+RATE_LIMIT_MARGIN_LONG_S = 60.0
 # The margin is kept only where the interval is at least this long: a shorter one lets the next pass lower in time.
 RATE_LIMIT_MARGIN_FROM_S = 5.0
+# How long after a charger's last `safety_stop: rate_limited` its writes keep the margin.
+RATE_LIMIT_MARGIN_DAYS = 7.0
 
 
-def rate_limit_margin_a(min_interval_s: float, *, confirms_must_lower: bool = False, phase_v: float = 230.0) -> float:
-    """The room (A per phase) a write to a charger with this least interval keeps free (`RATE_LIMIT_MARGIN_W`): 0 for
-    an interval under `RATE_LIMIT_MARGIN_FROM_S`, and for a path whose must-lower write the rate limit never holds
-    back (`confirms_must_lower`: OCPP's `ChangeConfiguration`, read back instead)."""
-    if confirms_must_lower or not min_interval_s >= RATE_LIMIT_MARGIN_FROM_S or phase_v <= 0:
+def rate_limit_margin_w(min_interval_s: float) -> float:
+    """The room (W per phase) a write keeps free on a charger with this least interval, once it has had a
+    rate-limited stop (`RATE_LIMIT_MARGIN_MIN_W` up to `RATE_LIMIT_MARGIN_W`, linear in the interval); 0 under
+    `RATE_LIMIT_MARGIN_FROM_S`."""
+    if not min_interval_s >= RATE_LIMIT_MARGIN_FROM_S:
         return 0.0
-    return RATE_LIMIT_MARGIN_W / phase_v
+    share = (min_interval_s - RATE_LIMIT_MARGIN_SHORT_S) / (RATE_LIMIT_MARGIN_LONG_S - RATE_LIMIT_MARGIN_SHORT_S)
+    share = min(1.0, max(0.0, share))
+    return RATE_LIMIT_MARGIN_MIN_W + share * (RATE_LIMIT_MARGIN_W - RATE_LIMIT_MARGIN_MIN_W)
+
+
+def rate_limit_margin_active(last_stop_at: datetime | None, now: datetime) -> bool:
+    """Whether a charger's last rate-limited stop (`None`: never) is recent enough for the margin."""
+    return last_stop_at is not None and timedelta(0) <= now - last_stop_at < timedelta(days=RATE_LIMIT_MARGIN_DAYS)
+
+
+def rate_limit_margin_a(
+    min_interval_s: float,
+    *,
+    last_stop_at: datetime | None,
+    now: datetime,
+    confirms_must_lower: bool = False,
+    phase_v: float = 230.0,
+) -> float:
+    """The room (A per phase) a write to this charger keeps free (`rate_limit_margin_w`): 0 without a rate-limited
+    stop in the last `RATE_LIMIT_MARGIN_DAYS`, and for a path whose must-lower write the rate limit never holds back
+    (`confirms_must_lower`: OCPP's `ChangeConfiguration`, read back instead)."""
+    if confirms_must_lower or phase_v <= 0 or not rate_limit_margin_active(last_stop_at, now):
+        return 0.0
+    return rate_limit_margin_w(min_interval_s) / phase_v
 
 # How long (s) the site's measurement may stay lost on a phase a charger may draw on before load balancing steps
 # that charger to its minimum current. A reading is stale only once older than the maximum age (120 s by default),

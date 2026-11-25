@@ -155,14 +155,14 @@ async def _the_night(
     hass: HomeAssistant, monkeypatch, freezer, name: str, *, signed: bool = False, amps: int = 12, margin: bool = False
 ) -> _Night:
     """The plan's window is open (22:45 to 04:30) and its charge runs at `amps` (12 A that night). Without `margin`,
-    load balancing as it was that night: no room kept free after a write to the rate-limited charger
-    (`regulator.RATE_LIMIT_MARGIN_W`), so the night's safety stop comes as it came."""
+    load balancing as it was that night: no room kept free after a write to the rate-limited charger, even once it was
+    stopped for it (`regulator.rate_limit_margin_w`), so every safety stop comes as it came."""
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
     from custom_components.spotnav.site import regulator
 
     monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
     if not margin:
-        monkeypatch.setattr(regulator, "RATE_LIMIT_MARGIN_W", 0.0)
+        monkeypatch.setattr(regulator, "rate_limit_margin_w", lambda _interval: 0.0)
     night = _Night(hass, freezer, name, signed, amps)
     entry = make_entry(
         hass,

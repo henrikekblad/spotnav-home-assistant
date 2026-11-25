@@ -1734,8 +1734,8 @@ class SiteCapacityController:
     @staticmethod
     def _write_margin_a(charger_controller: object) -> float:
         """The room a write to this charger keeps free below the fuse (`regulator.rate_limit_margin_a`): a charger
-        that takes the next current write only after its policy's interval cannot be lowered in it. Only a charger
-        whose current SpotNav sets (`is_commandable`)."""
+        that takes the next current write only after its policy's interval cannot be lowered in it, once it was
+        stopped for that within the last week. Only a charger whose current SpotNav sets (`is_commandable`)."""
         if charger_controller is None or getattr(charger_controller, "is_commandable", False) is not True:
             return 0.0
         adapter = getattr(charger_controller, "adapter", None)
@@ -1744,7 +1744,14 @@ class SiteCapacityController:
         if not isinstance(interval, (int, float)) or isinstance(interval, bool):
             return 0.0
         confirms = getattr(getattr(adapter, "current", None), "confirms_must_lower", False) is True
-        return rate_limit_margin_a(float(interval), confirms_must_lower=confirms, phase_v=PHASE_V)
+        last_stop = getattr(charger_controller, "rate_limited_stop_at", None)
+        return rate_limit_margin_a(
+            float(interval),
+            last_stop_at=last_stop if isinstance(last_stop, datetime) else None,
+            now=dt_util.utcnow(),
+            confirms_must_lower=confirms,
+            phase_v=PHASE_V,
+        )
 
     @staticmethod
     def _is_switch_only_charger(charger_controller: object) -> bool:
