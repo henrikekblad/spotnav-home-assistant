@@ -640,7 +640,7 @@ def _bare(bms_kw: float | None, monkeypatch: pytest.MonkeyPatch) -> Any:
     control = BatteryControl.__new__(BatteryControl)
     control.hass = SimpleNamespace(states=SimpleNamespace(get=lambda _id: None))  # type: ignore[assignment]
     control.site = SimpleNamespace(config={})  # type: ignore[assignment]
-    control.facts = SimpleNamespace(brand="solis", bms_charge_kw=bms_kw)  # type: ignore[assignment]
+    control.facts = SimpleNamespace(brand="solis", control_brand="solis", bms_charge_kw=bms_kw)  # type: ignore[assignment]
     control.executor = None
     control._look_id, control._charge_bound = 0, None
     return control
