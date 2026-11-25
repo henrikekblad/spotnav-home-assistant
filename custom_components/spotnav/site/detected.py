@@ -228,6 +228,12 @@ def battery(facts: Mapping[str, Any], coexist: Mapping[str, Any] | None, offers:
     }
     if coexist is not None:
         detail["coexistence"] = dict(coexist)
+    if facts.get("read_only") is not None:
+        # Read only (`battery/mirrored.py`): mirrored from another Home Assistant, and how its brand was found.
+        detail["read_only"] = facts.get("read_only")
+    mirror = facts.get("mirror")
+    if isinstance(mirror, Mapping):
+        detail["mirror"] = dict(mirror)
     return Detected(
         "battery", "configured", f"adapter:{brand}" if brand else "device_class", chosen=(entity_id,), detail=detail,
         near_misses=tuple(misses),
