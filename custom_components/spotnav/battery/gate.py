@@ -10,8 +10,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
   for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
-  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (FoxESS, EcoFlow,
-  Marstek, Solis) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
+  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (every brand but
+  Sigenergy; a plant whose control already ran keeps it, `commands.GATED_AFTER_RUNNING`) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
   on the plant's firmware key (`hardware_test_passed`, kept by the shell per key) and the developer's control code for
   the installation and brand was entered (`codes.py`, `tester.py`: the code approves the test's result, so control
   needs both); the checklist says so (`tester_signup`, `hardware_test_first`, `control_code`) and the test itself
