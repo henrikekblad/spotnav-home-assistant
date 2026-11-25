@@ -3049,6 +3049,24 @@ async def test_roles_a_hand_back_could_not_write_are_named_with_what_to_set_by_h
     await control.async_stop()
 
 
+async def test_a_restore_that_follows_the_maximum_is_named_by_hand_as_the_entitys_maximum(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    executor = control._executor()
+    assert executor is not None
+    hass.states.async_set(CHARGE, "3000", {"max": 5200.0, "follows_max": False})
+    executor.state = replace(
+        executor.state, phase="blocked", blocked="restore_failed:charge_limit", action="hold",
+        unrestored=("charge_limit",), entities={"charge_limit": CHARGE},
+        restore_values={"charge_limit": commands_module.FOLLOWS_MAX}, snapshot={"charge_limit": "follows_max"},
+    )
+    # The number to set, never the recipe's own word for "follows its maximum".
+    assert f"restore_by_hand:{CHARGE}=5200" in control.status()["needs"]
+    await control.async_stop()
+
+
 async def test_a_mirrored_battery_has_no_dead_man_time_for_a_hardware_test(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

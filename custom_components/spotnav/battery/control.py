@@ -3643,6 +3643,12 @@ class BatteryControl:
         for name in order:
             entity_id = state.entities.get(name)
             value = state.restore_values.get(name, normal.get(name))
+            if entity_id is not None and value == FOLLOWS_MAX:
+                # Found following its own maximum (`Role.follows_max`): the number to set is that maximum, as the
+                # hand-back writes it (`resolve_follows_max`); the recipe's word stays only where none is shown.
+                shown = self.hass.states.get(entity_id)
+                maximum = None if shown is None else _float(shown.attributes.get("max"))
+                value = value if maximum is None else maximum
             if entity_id is not None and value is not None:
                 text = ("on" if value else "off") if isinstance(value, bool) else (
                     f"{value:g}" if isinstance(value, float) else str(value)
