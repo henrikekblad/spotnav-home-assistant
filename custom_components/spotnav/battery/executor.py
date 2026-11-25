@@ -1378,8 +1378,11 @@ class Executor:
             if state.phase in ("active", "restoring"):
                 self.state = replace(state, phase="idle", pending=None)
             return []
-        # A write in flight when HA stopped is no longer awaited: the restore reads every role afresh.
-        self.state = replace(state, pending=None, in_flight=(), retries={}, unrestored=())
+        # A write in flight when HA stopped is no longer awaited: the restore reads every role afresh. A stored
+        # `retake` counts only for a control that has a silence to undo (storage is untrusted).
+        self.state = replace(
+            state, pending=None, in_flight=(), retries={}, unrestored=(), retake=state.retake and self._can_retake()
+        )
         return self._begin_restore(now, "restart")
 
     def reset(self) -> None:
@@ -2132,6 +2135,8 @@ class Executor:
             entity_id = state.entities.get(state.altered)
             if entity_id is not None:
                 self.ledger.release(entity_id)
+        if state.retake and not self._can_retake():
+            state = replace(state, retake=False)
         target = self._retake_target(state) if state.retake else self._restore_target(state)
         blocked = reason if _blocking(reason) else state.blocked
         if reason in _FUSE_REASONS and state.pending is not None:
