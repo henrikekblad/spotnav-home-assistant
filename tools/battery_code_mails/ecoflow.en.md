@@ -20,9 +20,9 @@ What it does, through the EF-PowerOcean-TcpModbus integration, only while the ap
 5. Hand back: Battery Mode Automatic, then Modbus Control off.
 
 It stops at once and hands back if a write does not read back, if the battery does not do as told or if a phase
-comes near the main fuse. The result is sent to me by itself when the test ends.
+comes near the main fuse. The result is sent to me by itself when the test ends, while Beta tester is on.
 
-**Stopping.** Press "Stop the test" in the notice or in the card's hardware test, at any time. To stop testing altogether,
+**Stopping.** Press "Stop the test" in the notice or in the card's hardware test, at any time. To stop testing altogether (nothing more is sent),
 untick Beta tester under Support.
 
 **If something is left behind** (Home Assistant restarted mid-test, say), restore by hand in Home Assistant: set

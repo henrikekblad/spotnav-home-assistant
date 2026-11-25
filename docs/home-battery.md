@@ -808,26 +808,31 @@ at. Sigenergy and the other brands need none of this.
 2. **Run the hardware test.** Settings → Support → Hardware test, then Start, once. Nothing else is asked of you: the
    test waits for a suitable moment by itself, runs only in waking hours (08–21), tells your phones while it runs
    (with a Stop button) and always hands the battery back. Its result is sent by itself when it ends, with the
-   battery's log and history over the test. The card then says *The result has been sent. You get an answer by
+   battery's log and history over the test, while Beta tester is on. The card then says *The result has been sent. You get an answer by
    e-mail.*
 3. **Enter the control code.** SpotNav's developer reads the test's log and answers by e-mail: with a **control code**
-   when the test looks right, otherwise with what was seen (and possibly a fix in a later release). Paste the code
-   under Support → Hardware test (spaces and line breaks do not matter). Control needs both: the passed hardware test
-   on this plant and the code. Then switch control on as for any brand.
+   when the test passed and looks right, otherwise with what was seen (and possibly a fix in a later release). Paste
+   the code under Support → Hardware test (spaces and line breaks do not matter); it is taken only once the hardware
+   test has passed on this battery. Control needs both: the passed hardware test on this plant and the code. Then switch control on as for any brand.
 
 The code works only on this Home Assistant installation and this battery brand; it is checked in Home Assistant
-itself (it is signed), nothing is asked of a server. One code per plant and brand is enough: after a firmware,
+itself (it is signed), nothing is asked of a server, and again at each start of Home Assistant (a code that no
+longer checks out is dropped, and control waits for a code again). One code per plant and brand is enough: after a firmware,
 integration or recipe update SpotNav checks the battery by itself, as for every brand, and only if that check fails
 does the checklist ask for the hardware test again (no new code). SpotNav is open source, so the code is no copy
 protection: it is a safety belt.
 
-**Stopping.** Untick Beta tester under Support at any time: nothing more is sent. A code already entered keeps
-working (it is your battery), and control can be switched off as always. While beta testing is on, its nightly reports
+**Stopping.** Untick Beta tester under Support at any time: from then on nothing more is sent, not even a hardware
+test's result, and the sign-up ends (a first test then waits for a new sign-up). A beta period that runs out by
+itself ends the sign-up the same way. A code already entered keeps working (it is your battery), and control can be
+switched off as always. While beta testing is on, its nightly reports
 run until 30 days after the code was entered, then stop by themselves.
 
 **A problem found later.** There is no remote switch-off. If a problem shows up after codes went out, the next
 release holds that brand, firmware or recipe revision back (the checklist then says *recipe blocked*), which also
-voids the stored passes.
+voids the plant's stored pass: once the block is lifted the hardware test must pass again (the code already entered
+stays). One code serves every SpotNav site of the same brand on one Home Assistant; each still needs its own passed
+test.
 
 ## The signal
 

@@ -17,9 +17,9 @@ Vad det gör på en FoxESS, via integrationen foxess_modbus och bara medan arbet
 4. Lämna tillbaka: Max Charge Current och Max Discharge Current till de värden de hade.
 
 Testet avbryts direkt och lämnar tillbaka om en skrivning inte läses tillbaka, om batteriet inte gör som det blir
-tillsagt eller om en fas närmar sig huvudsäkringen. Resultatet skickas till mig av sig självt när testet är klart.
+tillsagt eller om en fas närmar sig huvudsäkringen. Resultatet skickas till mig av sig självt när testet är klart, så länge Betatestare är på.
 
-**Avbryta.** Tryck på "Stoppa testet" i aviseringen, eller "Avbryt testet" i kortets hårdvarutest, när som helst. Vill du sluta testa
+**Avbryta.** Tryck på "Stoppa testet" i aviseringen, eller "Avbryt testet" i kortets hårdvarutest, när som helst. Vill du sluta testa (då skickas inget mer)
 helt: avmarkera Betatestare under Support.
 
 **Om något blir kvar** (till exempel om Home Assistant startade om mitt i testet), återställ för hand i Home
