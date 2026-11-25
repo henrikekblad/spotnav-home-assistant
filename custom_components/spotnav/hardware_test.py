@@ -117,7 +117,7 @@ WAIT_MAX: Final = timedelta(days=3)
 WAIT_POLL_S: Final = 60.0
 #: How many times a run with a battery step that could not be judged runs again by itself.
 MAX_RETRIES: Final = 3
-#: The local hour a daytime wait is likely to end at (the evening's house load over the sun, `gate.EVENING_HOURS`).
+#: The local hour a daytime wait is likely to end at (the evening's house load over the sun).
 LIKELY_HOUR: Final = 17
 #: After a start, how long a stored wait keeps waiting for a battery part that is not there yet (an integration that
 #: loads after SpotNav's own start-up wait), rather than giving up.

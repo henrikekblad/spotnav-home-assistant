@@ -156,7 +156,7 @@ def test_reports_are_bounded_newest_last() -> None:
 
 
 def _moment(**changes) -> Moment:
-    base = dict(local_hour=19, soc_pct=55.0, power_kw=-1.5, fresh=True, measurement_ok=True, headroom_a=12.0,
+    base = dict(soc_pct=55.0, power_kw=-1.5, fresh=True, measurement_ok=True, headroom_a=12.0,
                 car_charging=False, blocker=None, executor_idle=True)
     return Moment(**(base | changes))
 
@@ -176,13 +176,7 @@ def _moment(**changes) -> Moment:
     ],
 )
 def test_the_routine_runs_only_at_a_suitable_moment(changes: dict, why: str | None) -> None:
-    assert suitable(_moment(**changes), evening=False) == why
-
-
-def test_a_re_verification_waits_for_an_evening() -> None:
-    assert suitable(_moment(local_hour=12), evening=True) == "not_evening"
-    assert suitable(_moment(local_hour=12), evening=False) is None
-    assert suitable(_moment(local_hour=20), evening=True) is None
+    assert suitable(_moment(**changes)) == why
 
 
 def _cap(fuse_a: float | None = 25.0, *, cars_a: float = 0.0, peak: float | None = None, phases: int = 3,

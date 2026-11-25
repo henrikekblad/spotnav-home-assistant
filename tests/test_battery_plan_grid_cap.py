@@ -167,7 +167,7 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
         def _cap_rule(self, options: Any, cap: Any, failed: bool, learned: Any) -> str:
             return "conservative"
 
-        def report(self) -> Any:
+        def control_report(self) -> Any:
             return {}
 
         def _fixed_charge_kw(self) -> None:
@@ -252,7 +252,7 @@ def _control(
         def _cap_rule(self, options: Any, cap: Any, failed: bool, learned: Any) -> str:
             return "learned"
 
-        def report(self) -> Any:
+        def control_report(self) -> Any:
             return {"modes": {"charge": {"via": "per_phase" if per_phase_only else "direct"}}}
 
         def _fixed_charge_kw(self) -> float | None:

@@ -834,19 +834,22 @@ async def test_normal_left_open_is_judged_on_a_hold_written_again(
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
 
 
-async def test_a_firmware_change_hands_back_and_checks_again_at_the_next_suitable_evening(
+async def test_a_firmware_change_keeps_the_hold_and_checks_again_once_the_plan_lets_go(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
+    """Control never stops because of an update (`tests/test_battery_reverify.py` has the rule's other cases)."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    control = await _started(hass, site, controller, plan_source=_hold)
+    plan = {"slot": _hold(None)}
+    control = await _started(hass, site, controller, plan_source=lambda _now: plan["slot"])
     noon = dt_util.as_local(dt_util.now()).replace(hour=12, minute=0)
     await _looks(control, noon, 6)
     assert control.executor.state.phase == "active"
     hass.states.async_set(FIRMWARE, "V100R001C21SPC118")
     await _looks(control, noon + timedelta(minutes=1), 6)
-    assert control.executor.state.phase == "idle" and hass.states.get(SWITCH).state == "off"
-    assert control.state() == "waiting" and control.status()["line"] == "waiting_after_update:not_evening"
-    await _looks(control, noon.replace(hour=19), 1)
+    assert control.executor.state.phase == "active" and hass.states.get(SWITCH).state == "on"
+    assert control.state() == "on" and control.status()["line"] == "waiting_after_update:executor_busy"
+    plan["slot"] = None
+    await _looks(control, noon + timedelta(minutes=2), 12)
     assert control.state() == "verifying" and control.status()["line"] == "checking_after_update"
 
 
@@ -2932,13 +2935,16 @@ async def test_after_the_first_pass_a_change_is_checked_by_the_routine_and_only_
         recipe["control"] = replace(recipe["control"], recipe_rev=2)
     control.facts = control._read_facts()
     assert control.firmware_key() != first
-    # No person needed: the routine checks the new key at the next suitable evening, writing as it does.
+    # No person needed: control runs on with what passed here, and the routine checks the new key at the first
+    # suitable moment of any hour, writing as it does.
     assert control.hardware_test_due() is None and not control.options().shadow_only
-    assert control.state() == "waiting"
+    assert control.state() == "on" and control.carried_from() == first
+    assert control.allowed() == control._supported(gate.allowed_actions(control.reports[first], control.options()))
     assert not any(need.startswith("hardware_test") for need in control._needs())
-    evening = dt_util.as_local(dt_util.now()).replace(hour=19, minute=0)
+    evening = dt_util.as_local(dt_util.now()).replace(hour=11, minute=0)
+    control._plan_source = lambda _now: None  # the plan leaves the battery to itself: the routine's moment
     await _looks(control, evening, 1)
-    assert control.state() == "verifying"
+    assert control.state() == "verifying" and control.status()["line"] == "checking_after_update"
     await control.async_stop()
     # Its pass: control goes on.
     control.verification = None

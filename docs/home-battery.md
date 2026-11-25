@@ -213,7 +213,7 @@ What to know before you turn it on:
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
   passed once on this inverter and its result was approved with a control code (see
   [Becoming a tester](#becoming-a-tester)); until then control only logs what it would do,
-  whatever the test-mode setting says, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
+  whatever the test-mode setting says, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself, and control runs on meanwhile; only
   if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
   lets the check run again, as for every brand).
 * **Only in Self Use.** SpotNav takes the battery only while its work mode reads *Self Use*. In *Feed-in First*,
@@ -297,8 +297,8 @@ local API the checklist says the Modbus integration is needed). It is behind the
 the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery and its
 result was approved with a control code ([Becoming a tester](#becoming-a-tester)): until
 then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
-too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
-only if that check fails does the checklist ask for the hardware test again.
+too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself,
+and control runs on meanwhile; only if that check fails does the checklist ask for the hardware test again.
 
 * A **hold** sets *Max Discharge Power* to 0. The battery stays in its own self-consumption: it still stores a sun
   surplus and covers nothing. This is a limit that is safe if it is left standing. On a Venus A or D with its own
@@ -417,7 +417,7 @@ exports a sun surplus.
 The hold is judged on what the battery does while the house draws: it must not discharge and must stand idle. If it
 charges more than 0.5 kW for a minute, the plant did not take the limit and the hold is handed back at once, in the
 check and in control alike (judged on the battery's own power, so it works without a grid reading). The check then
-fails; in control the block clears by itself after six hours. A firmware update runs the check again. A discharge to
+fails; in control the block clears by itself after six hours. A firmware update runs the check again (control runs on meanwhile). A discharge to
 the house stays Maximum Self Consumption with the
 charge limit at 0 (V2.7 has no mode for "cover the house, store nothing"; where the limit is ignored the battery
 also stores a sun surplus, as it does normally). Other protocol changes worth knowing: V2.8 removed register 41500
@@ -428,9 +428,25 @@ charge step passed, covering the house only if that step passed. Selling from th
 on a battery whose one power target both charges and discharges by its sign (SolaX, Solinteg) it needs the charge
 step too, since only that step shows which sign charges. A failed step leaves control off, with one line
 saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
-on again runs the check again. The result is kept per firmware and integration version: after a firmware update
-(or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening. The
-firmware is the integration's firmware entity, or, where the brand has none or it reads nothing, the software version
+on again runs the check again. The result is kept per firmware and integration version.
+
+**An update never stops control by itself.** After a firmware update, a new version of the battery's integration or
+a changed SpotNav recipe, SpotNav keeps running the battery with what last passed for that brand on your plant: the
+same steps stay allowed, nothing more. It checks the battery again at the first suitable moment, at any hour: the
+same conditions as the first check (30 to 80 %, discharging, no car charging, room under the fuse), at a time when
+the plan leaves the battery to itself. Meanwhile the card says *On: SpotNav keeps running the battery. The check
+after the update waits for a suitable moment*, with what it waits for. While the check itself runs (about 40
+minutes) control steps aside, as for the first check. Each step counts as soon as it has an answer on the new
+version: one that passes stays allowed, one the battery no longer obeys is switched off, and one that could not be
+shown yet keeps its earlier answer until a later run. If hold or the hand-back fails, or the check gives up after
+five runs, control stops exactly as after a failed first check, with the same one line (for a brand that needs the
+hardware test: the checklist asks for it again). After such a failure, or a failed hardware test, the earlier result
+is no longer used: turning the switch off and on runs the check again and control waits for it. A result is never
+carried to another battery brand, and a recipe a release holds back stays off whatever passed before. One thing is
+measured again before it counts: where the battery's own timeout lifts the grid charge limit that applies while
+Home Assistant is down, that limit is back until the timeout has been measured on the new version.
+
+The firmware is the integration's firmware entity, or, where the brand has none or it reads nothing, the software version
 of the battery's device (SolaX Modbus keeps its firmware registers internal and has only that), so control never waits
 on a firmware it cannot read.
 
@@ -840,7 +856,7 @@ Battery, which matters only if you select those modes yourself.
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
 hardware test) has passed once on the battery and its result was approved with a control code
 ([Becoming a tester](#becoming-a-tester)); after a firmware or integration update SpotNav checks
-the battery again by itself, and asks for the hardware test again only if that check fails. The checklist says so.
+the battery again by itself while control runs on, and asks for the hardware test again only if that check fails. The checklist says so.
 Press Start:
 the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
 (hold, a small grid charge, a discharge for the house, the hand-back) it **times the heartbeat**. It holds the
@@ -1070,7 +1086,7 @@ and every early plant is known and looked at. Sigenergy needs none of this.
 Powerwall or Ferroamp where SpotNav's check had ever passed for the brand when this release came counts as tested and
 as having its code: nothing changes for it, and the card shows no Tester row. It does not matter whether control was
 switched on at the update, or whether the firmware or the integration was updated at the same time: the check then
-runs on the new version by itself, as before. Every other plant of these brands goes through the steps below. A
+runs on the new version by itself, and control runs on meanwhile. Every other plant of these brands goes through the steps below. A
 plant's own hardware test stops its control only when a step fails, never when the test could not judge.
 
 1. **Become a tester.** In the card's Settings, the home battery section shows a **Tester** row for these brands
@@ -1092,7 +1108,7 @@ plant's own hardware test stops its control only when a step fails, never when t
 The code works only on this Home Assistant installation and this battery brand; it is checked in Home Assistant
 itself (it is signed), nothing is asked of a server, and again at each start of Home Assistant (a code that no
 longer checks out is dropped, and control waits for a code again). One code per plant and brand is enough: after a firmware,
-integration or recipe update SpotNav checks the battery by itself, as for every brand, and only if that check fails
+integration or recipe update SpotNav checks the battery by itself while control runs on, as for every brand, and only if that check fails
 does the checklist ask for the hardware test again (no new code). SpotNav is open source, so the code is no copy
 protection: it is a safety belt.
 

@@ -106,6 +106,15 @@ describe("the battery's words", () => {
     expect(batteryLine("sv", "waiting:car_charging")).toBe(
       "Väntar på ett lämpligt tillfälle för kontrollen. Den väntar tills bilen slutar ladda.",
     );
+    // Control runs on while the check after an update waits: the line says both.
+    expect(batteryLine("sv", "waiting_after_update:car_charging")).toBe(
+      "På: SpotNav fortsätter styra batteriet. Kontrollen efter uppdateringen väntar på ett lämpligt tillfälle."
+        + " Den väntar tills bilen slutar ladda.",
+    );
+    expect(batteryLine("en", "waiting_after_update:executor_busy")).toBe(
+      "On: SpotNav keeps running the battery. The check after the update waits for a suitable moment."
+        + " It waits while the battery control is busy.",
+    );
     expect(batteryLine("sv", "waiting:start_wait")).toBe(
       "Väntar på ett lämpligt tillfälle för kontrollen. Väntar några minuter efter start innan SpotNav styr batteriet.",
     );
