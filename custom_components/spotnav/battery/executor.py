@@ -1267,9 +1267,10 @@ class Executor:
         #: Since when a hand-back has waited for a first reading of the command role (`BrandControl.command_role`):
         #: nothing is written blind (after a restart the integration may not have polled yet); `_command_unread`.
         self.command_wait_since: datetime | None = None
-        #: Since when a hand-back has waited for a first reading of a role it would write back
-        #: (`BrandControl.restore_own_only`, `_restore_unread`); not stored.
-        self.restore_wait_since: datetime | None = None
+        #: Since when the running hand-back has waited for a first reading of each role it would write back
+        #: (`BrandControl.restore_own_only`, `_restore_unread`), every unread role from the look it was first seen
+        #: unread: they wait together, not one after the other; not stored.
+        self.restore_wait_since: dict[str, datetime] = {}
         #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
         #: integration renews, stopped by a write); not stored: a restart ends the test.
         self.silenced = False
@@ -2121,6 +2122,8 @@ class Executor:
             charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(), house_kw=None,
         )
         self._release_unset()
+        # A new hand-back waits for its own first readings (`_restore_unread`), never on an earlier one's wait.
+        self.restore_wait_since = {}
         return [_event(now, "hand_back", reason)]
 
     def _restore_target(self, state: ExecState) -> dict[str, Native]:
@@ -3160,16 +3163,19 @@ class Executor:
         (`BrandControl.restore_own_only`): after a restart the integration may not have read the inverter yet, and a
         value found then may be someone else's (`_precheck` judges it once it reads). Never for the fuse; at most
         `RESTORE_READ_WAIT_S`, then written as before."""
-        if not self._restores_own_only(state, name) or state.reason in _FUSE_REASONS:
-            self.restore_wait_since = None
+        if state.reason in _FUSE_REASONS:
+            self.restore_wait_since = {}
             return False
-        read = inputs.reads.get(name)
-        if reading(self.control.role(name), None if read is None else read.state) is not None:
-            self.restore_wait_since = None
-            return False
-        since = self.restore_wait_since or inputs.now
-        self.restore_wait_since = since
-        return (inputs.now - since).total_seconds() < RESTORE_READ_WAIT_S
+        waits: dict[str, datetime] = {}
+        for other in state.target:
+            if not self._restores_own_only(state, other):
+                continue
+            read = inputs.reads.get(other)
+            if reading(self.control.role(other), None if read is None else read.state) is None:
+                waits[other] = self.restore_wait_since.get(other, inputs.now)
+        self.restore_wait_since = waits
+        since = waits.get(name)
+        return since is not None and (inputs.now - since).total_seconds() < RESTORE_READ_WAIT_S
 
     def _limit_waits(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
         """In a hand-back, whether a limit that acts in the plant's modes (`BrandControl.mode_limits`) must wait before
