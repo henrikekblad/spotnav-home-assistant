@@ -1084,6 +1084,10 @@ class BrandControl:
     slow: bool = False
     min_change_s: float = 0.0
     rearm_s: float | None = None
+    #: How long a person's hardware test of the recipe may run in all (s; `hardware_test.HardwareTest._max_test`),
+    #: `None`: the test's own ten minutes. A slow recipe's modes each wait for its re-arm and its cloud read-backs
+    #: (`verify.quick_for`), so its test takes about an hour.
+    test_total_s: float | None = None
     #: The plant charges at its own rate and the recipe cannot set it (Tesla): the gate and the executor use that rate
     #: (`fixed_rate_kw`) and refuse a grid charge that does not fit under the fuse cap instead of lowering it.
     fixed_charge: bool = False
@@ -1733,6 +1737,9 @@ def _se(mode: str, **limits: Callable[[float], float]) -> Callable[[float, int],
 
 SOLAREDGE_CONTROL: Final = BrandControl(
     brand="solaredge",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLAREDGE,
     roles=(_SE_TIMEOUT, _SE_CHARGE, _SE_DISCHARGE, _SE_MODE, _SE_CONTROL_MODE, _SE_POLICY),
     states={
@@ -1774,6 +1781,9 @@ def _hw_run(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
 
 HUAWEI_CONTROL: Final = BrandControl(
     brand="huawei",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=HUAWEI,
     roles=(_HW_FORCIBLE, _HW_DISCHARGE, _HW_CHARGE),
     states={
@@ -1816,6 +1826,9 @@ def _sx(option: str, sign: float = 0.0) -> Callable[[float, int], tuple[Want, ..
 
 SOLAX_CONTROL: Final = BrandControl(
     brand="solax",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLAX,
     roles=(_SX_REPEAT, _SX_POWER, _SX_CONTROL, _SX_TRIGGER),
     states={
@@ -1913,6 +1926,9 @@ SOLINTEG_PHASES: Final = PhaseControl(
 
 SOLINTEG_CONTROL: Final = BrandControl(
     brand="solinteg",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLINTEG,
     roles=(_SOL_MODE, _SOL_TARGET),
     states={
@@ -2044,6 +2060,9 @@ VICTRON_PHASES: Final = PhaseControl(
 
 VICTRON_CONTROL: Final = BrandControl(
     brand="victron",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=VICTRON,
     roles=(_VIC_CHARGE, _VIC_DISCHARGE, _VIC_GRID),
     states={
@@ -2120,6 +2139,9 @@ def _gw_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
 
 GOODWE_CONTROL: Final = BrandControl(
     brand="goodwe",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=GOODWE,
     roles=(_GW_ECO_SOC, _GW_ECO_POWER, _GW_DEPTH, _GW_MODE),
     states={
@@ -2165,6 +2187,9 @@ TESLA_CHARGE_BLOCK_S: Final = 1800.0
 
 TESLA_CONTROL: Final = BrandControl(
     brand="tesla",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=TESLA,
     roles=(_TS_RESERVE, _TS_GRID),
     states={
@@ -2188,6 +2213,9 @@ TESLA_CONTROL: Final = BrandControl(
     fixed_charge=True,
     fixed_charge_kw=5.0,
     write_caps={"setting": TESLA_WRITES_PER_DAY},
+    # The hardware test: three modes after one another, each after a 15-minute re-arm and two cloud read-backs of up
+    # to 7 minutes (`verify.quick_for`); about 55 minutes when the cloud is at its slowest, with room for the looks.
+    test_total_s=75 * 60.0,
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
@@ -2227,6 +2255,9 @@ FERROAMP_HOLDS: Final = (
 
 FERROAMP_CONTROL: Final = BrandControl(
     brand="ferroamp",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=FERROAMP,
     roles=(_FA_CMD,),
     states={
@@ -2883,6 +2914,14 @@ def hardware_test_first(brand: str | None) -> bool:
     `field_tested`)."""
     control = next((control for control in CONTROLS if control.brand == brand), None)
     return control is not None and control.hardware_test_first and not control.field_tested
+
+
+#: The brands whose recipe was gated by `hardware_test_first` after control could already run on them (2026-11-25).
+#: A plant of one whose control ran before (switched on, with a passed routine check on its firmware key now) counts
+#: as passed and as having its control code (`BatteryControl._grandfather_running`): control never stops by an update.
+GATED_AFTER_RUNNING: Final = frozenset(
+    {"solaredge", "huawei", "solax", "solinteg", "victron", "goodwe", "tesla", "ferroamp"}
+)
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:

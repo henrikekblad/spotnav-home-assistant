@@ -38,7 +38,8 @@ whether the brand's recipe has been tested on a real plant: for a tested recipe 
 starts once it passed; no recipe is marked tested yet (Sigenergy will be once its on-site tests are rerun), so for
 every brand it only logs what it would do (the line under the switch says "Test: SpotNav controls nothing
 yet and only logs what it would do"), unless the installation is a
-[beta tester](beta-testing.md), when the check runs for them too. Either way control runs only once
+[beta tester](beta-testing.md), when the check runs for them too. Every brand but Sigenergy also waits for a passed
+hardware test and a control code ([Becoming a tester](#becoming-a-tester)). Either way control runs only once
 the brand's check passed, and every fuse rule below applies (beta or not). The switch is in the
 settings popover's **Home battery** section, shown when SpotNav finds a battery: from the house card's gear, the heat
 card's gear or the charging card's **Settings** (administrators only). The section also has:
@@ -108,7 +109,13 @@ administrators can confirm, and never over the webhook. The entities per brand:
   Mode, and the Charge Battery and Discharge Battery power.
 
 **GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
-the same routine as the others, and both are untested.
+the same routine as the others, and both are untested: nothing is written until a hardware test has passed on the
+plant and its result was approved with a control code ([Becoming a tester](#becoming-a-tester)).
+
+**SolarEdge, Huawei and SolaX: mapped, not yet tested on a plant.** The same holds for these three: the hardware test
+and a control code come first ([Becoming a tester](#becoming-a-tester)). SolarEdge runs only in Remote Control with
+its storage command timeout (30 minutes, renewed); Huawei through the forcible charge services and the battery's
+power limits (installer password); SolaX through the integration's remote control, renewed by its autorepeat.
 
 * *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode
   and no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco
@@ -142,6 +149,11 @@ the same routine as the others, and both are untested.
     a hand-back SpotNav watches that the reserve and the switch stay as it set them back; one that shows SpotNav's
     value again is written again twice, and then the switch's line says the control is blocked until the reserve is
     set back. A hand-back the cloud refuses outright is tried again every hour.
+  * The **hardware test** waits for all of that at each step (the 15-minute re-arm after each hand-back and up to
+    7 minutes per write for the cloud), so on a Powerwall it takes half an hour to an hour, at most 75 minutes, and
+    no car charge starts on the site meanwhile. Where the Powerwall's own charge power does not fit under the fuse
+    cap, the test skips its charge step (it cannot charge at a smaller power) and can still pass; control then charges
+    from the grid only once SpotNav's own check has seen a charge that fits.
 
 **If GoodWe or Tesla Powerwall control goes wrong, restore by hand** (note the values before you turn control on):
 
@@ -150,7 +162,8 @@ the same routine as the others, and both are untested.
 * Tesla Powerwall, in the Tesla app or Home Assistant: set the backup reserve back to your value and grid charging
   (the "allow charging from grid" switch, on a site with solar) back as it was; then turn SpotNav's switch off.
 
-**Ferroamp (EnergyHub), untested.** Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
+**Ferroamp (EnergyHub), untested.** Nothing is written until a hardware test has passed on the hub and its result was
+approved with a control code ([Becoming a tester](#becoming-a-tester)). Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
 which Ferroamp's support enables): a charge or discharge request with a power in watts for the whole system (steps of
 500 W), and `autocharge`, which hands the batteries back to the hub. A hold is a charge request of 0 W (the check also
 tries a discharge request of 0 W; neither is documented by Ferroamp, so the hub may refuse it), covering the house is
@@ -199,7 +212,7 @@ What to know before you turn it on:
 
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
   passed once on this inverter and its result was approved with a control code (see
-  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); until then control only logs what it would do,
+  [Becoming a tester](#becoming-a-tester)); until then control only logs what it would do,
   whatever the test-mode setting says, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
   if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
   lets the check run again, as for every brand).
@@ -239,7 +252,7 @@ What to know before you turn it on:
   Time of Use, the programmes, the work mode, the grid charge settings or the export and peak shaving settings.
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
   passed once on this inverter and its result was approved with a control code (see
-  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); until then control only logs what it would
+  [Becoming a tester](#becoming-a-tester)); until then control only logs what it would
   do, and the checklist says so. The test holds, skips the grid charge, covers the house and hands back.
 * **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home
   Assistant is back and hands it back. It never takes more from the grid because of it.
@@ -281,7 +294,7 @@ SpotNav's control for Marstek goes through the **Modbus integration only** (the 
 Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
 local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
 the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery and its
-result was approved with a control code ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)): until
+result was approved with a control code ([Becoming a tester](#becoming-a-tester)): until
 then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
 too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
 only if that check fails does the checklist ask for the hardware test again.
@@ -330,6 +343,8 @@ write outside the test.
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
 the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.
+Nothing is written until a hardware test has passed on the inverter and its result was approved with a control code
+([Becoming a tester](#becoming-a-tester)).
 What it does:
 
 * **Hold:** Working Mode *EMS BattCtrl* with the battery's power target at 0. The battery stands idle and stores no
@@ -695,7 +710,8 @@ Solinteg grid charge is the balanced one under its cap.
 For a GX device with a MultiPlus or Quattro and the ESS assistant, through the **Victron GX** integration in Home
 Assistant core or the HACS **Victron MQTT**. Nobody has run it on a plant yet: it is built from Victron's own page
 "ESS mode 2 and 3" and the integrations' source, it sits behind the same switch and the same check, and a
-[field report](supported.md) is what it needs. The community Modbus integration (`victron`) is read only: its
+[field report](supported.md) is what it needs. Nothing is written until a hardware test has passed on the plant and
+its result was approved with a control code ([Becoming a tester](#becoming-a-tester)). The community Modbus integration (`victron`) is read only: its
 maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
 to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
 
@@ -821,7 +837,7 @@ Battery, which matters only if you select those modes yourself.
 **The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
 hardware test) has passed once on the battery and its result was approved with a control code
-([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); after a firmware or integration update SpotNav checks
+([Becoming a tester](#becoming-a-tester)); after a firmware or integration update SpotNav checks
 the battery again by itself, and asks for the hardware test again only if that check fails. The checklist says so.
 Press Start:
 the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
@@ -886,7 +902,7 @@ up when another system takes the battery: pause the other system, clear the mark
 
 **The hardware test first.** Nobody has run this on a plant yet, so on a Solis SpotNav only shows what it would do (as
 under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
-hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)).
+hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester)).
 Press Start: the test waits by itself for a moment with the house using more than the sun gives (between 08 and 21
 for the first pass, with a phone notice and a Stop button while it writes) and runs, in about twenty minutes:
 
@@ -960,7 +976,7 @@ whether these registers are kept in flash; the integration and evcc treat them a
 
 **The hardware test first.** Nobody has run this on a plant yet, so on a Plenticore SpotNav only shows what it would do
 (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
-hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)).
+hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester)).
 Press Start: the test waits by itself for a moment with the house using more than the sun gives (between 08 and 21
 for the first pass, with a phone notice and a Stop button while it writes) and runs, in about ten minutes:
 
@@ -1018,7 +1034,7 @@ whether these registers are kept in flash; SpotNav writes them only when somethi
 **The hardware test first.** Nobody has run this on a plant yet, so on a Fronius SpotNav only shows what it would do
 (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
 hardware test) has passed on the battery and its result was approved with a control code
-([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)). Press Start: the test waits by itself for a
+([Becoming a tester](#becoming-a-tester)). Press Start: the test waits by itself for a
 moment with the house using more than the sun gives (between 08 and 21 for the first pass, with a phone notice and a
 Stop button while it writes) and runs, in about ten minutes:
 
@@ -1037,13 +1053,17 @@ fuse, if a write does not read back or when anything is written by someone else.
 discharge power limiting* off, set both limits to your values (100 % if you never changed them). Then turn SpotNav's
 switch off.
 
-### Becoming a tester (FoxESS, EcoFlow, Marstek, Solis)
+### Becoming a tester
 
-Control of FoxESS, EcoFlow, Marstek and Solis batteries has not yet run on a real plant. It is tested together with users,
-one plant at a time, so an untried recipe is never switched on by mistake and every early plant is known and looked
-at. Sigenergy and the other brands need none of this. Deye, Sunsynk and Sol-Ark (limits only) are tested the same way.
+Control of every brand but Sigenergy (SolarEdge, Huawei, SolaX, Solinteg, Victron, GoodWe, Tesla Powerwall, Ferroamp,
+FoxESS, EcoFlow, Marstek, Solis, Kostal Plenticore, Fronius and Deye / Sunsynk) has not yet been tested on a real
+plant. It is tested together with users, one plant at a time, so an untried recipe is never switched on by mistake
+and every early plant is known and looked at. Sigenergy needs none of this.
 
-Fronius Gen24 control is tested the same way.
+**Control that already runs stays on.** A plant of SolarEdge, Huawei, SolaX, Solinteg, Victron, GoodWe, Tesla
+Powerwall or Ferroamp whose control was switched on and had passed its check on the firmware it runs when this
+release came counts as tested and as having its code: nothing changes for it, and the card shows no Tester row. Every
+other plant of these brands goes through the steps below.
 
 1. **Become a tester.** In the card's Settings, the home battery section shows a **Tester** row for these brands
    (administrators only): *SpotNav can read this battery. Control is being tested together with users.* Tap it, give

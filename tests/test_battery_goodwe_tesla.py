@@ -5,8 +5,8 @@ on a device."""
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
-from datetime import timedelta
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 
 from custom_components.spotnav.battery.adapters import adapter_for
 from custom_components.spotnav.battery.commands import (
@@ -26,9 +26,24 @@ from custom_components.spotnav.battery.executor import (
     RoleRead,
 )
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
-from custom_components.spotnav.battery.gate import restricted
+from custom_components.spotnav.battery.gate import (
+    NOT_APPLICABLE_FIXED_CHARGE,
+    hardware_test_passed,
+    mode_verdict,
+    restricted,
+)
+from custom_components.spotnav.battery.monitor import Capability
+from custom_components.spotnav.battery.verify import (
+    SLOW_TEST_SLACK_S,
+    TEST_CHARGE_SOC_MAX_PCT,
+    Sample,
+    Timing,
+    Verification,
+    quick_for,
+    supported_modes,
+)
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S
-from tests.battery_control_fakes import T0, TICK, FakeBattery, events, written
+from tests.battery_control_fakes import T0, TICK, FakeBattery, events, inputs, written
 from tests.battery_control_fakes import run as _run
 
 
@@ -573,3 +588,133 @@ def test_the_live_check_counts_a_fixed_charge_on_one_phase() -> None:
 
 def test_the_reads_of_an_absent_optional_role_are_not_needed() -> None:
     assert RoleRead().found is False and TICK
+
+
+# --- the hardware test of a slow recipe ----------------------------------------------------------------------------
+
+
+@dataclass
+class _Cloud(_Fake):
+    """A Powerwall behind Tesla's cloud: a write shows only `delay_s` later (a restore within half a minute)."""
+
+    delay_s: float = 410.0
+    now: datetime = T0
+    pending: list[tuple[datetime, dict[str, str]]] = field(default_factory=list)
+
+    def apply(self, op):  # type: ignore[no-untyped-def]
+        before = dict(self.states)
+        taken = super().apply(op)
+        after, self.states = dict(self.states), before
+        self.pending.append((self.now + timedelta(seconds=30.0 if op.restore else self.delay_s), after))
+        return taken
+
+    def tick(self, now: datetime) -> None:
+        self.now = now
+        for due, states in list(self.pending):
+            if due <= now:
+                self.states = states
+                self.pending.remove((due, states))
+
+
+def _hardware_test(
+    timing: Timing, *, delay_s: float = 410.0, not_applicable_charge: bool = False
+) -> tuple[dict[str, str | None], float]:
+    """The hardware test's modes on the cloud fake: the outcomes and the minutes it took."""
+    executor = Executor(TESLA_CONTROL)
+    battery = _Cloud(TESLA_CONTROL, dict(TESLA_STATES), soc_pct=42.7, rated_kw=5.0, capacity_kwh=13.5, delay_s=delay_s)
+    now = T0
+    verification = Verification(
+        executor, now, firmware="x", timing=timing, stop_on_fail=True, charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
+    )
+    capability = Capability(rated_charge_kw=5.0, rated_discharge_kw=5.0)
+    failed: tuple[str, ...] = ()
+    for _ in range(5000):
+        battery.tick(now)
+        state = executor.state
+        # The battery acts once the cloud has the command.
+        if not battery.pending:
+            battery.action = state.action if state.phase == "active" else None
+        battery.rate_kw = state.rate_kw
+        sample = Sample(battery.power_kw(battery.action, battery.rate_kw), 5.0, battery.soc_pct, 2.0)
+        if not_applicable_charge and verification.current is not None and verification.current.mode == "charge":
+            verification.not_applicable(now, NOT_APPLICABLE_FIXED_CHARGE)
+        action, rate = verification.command(now, sample, 10.0)
+        result = executor.step(
+            inputs(battery, now, action, rate, failed=failed, house_deficit_kw=2.0, headroom_a=40.0, charge_phases=1)
+        )
+        failed = tuple(op.role for op in result.ops if not battery.apply(op))
+        verification.after(now, result, sample, capability)
+        now += TICK
+        if verification.done and executor.state.phase in ("idle", "blocked") and not result.ops and not battery.pending:
+            break
+    outcomes = {mode: row["outcome"] for mode, row in verification.report()["modes"].items()}
+    return outcomes, (now - T0).total_seconds() / 60.0
+
+
+def test_a_tesla_hardware_test_waits_for_its_rearm_and_the_cloud_and_passes_within_its_deadline() -> None:
+    timing = quick_for(TESLA_CONTROL)
+    # The re-arm after a hand-back, then the two roles read back in turn at the cloud's longest wait.
+    assert timing.command_timeout_s == 900.0 + 2 * 420.0 + SLOW_TEST_SLACK_S
+    for delay_s in (0.0, 300.0, 410.0):
+        outcomes, minutes = _hardware_test(timing, delay_s=delay_s)
+        assert outcomes == {"hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"}
+        assert minutes * 60.0 < TESLA_CONTROL.test_total_s
+        assert hardware_test_passed(
+            {"modes": {name: {"outcome": outcome} for name, outcome in outcomes.items()}}, supported_modes(TESLA_CONTROL)
+        )
+    # The quick test's own four minutes per command: a slow cloud's hold is given up on.
+    outcomes, _minutes = _hardware_test(Timing.quick(), delay_s=410.0)
+    assert outcomes["hold"] == "aborted:command_timeout"
+
+
+def test_every_other_recipe_keeps_the_quick_tests_timing_and_ten_minutes() -> None:
+    from custom_components.spotnav.battery.commands import CONTROLS  # noqa: PLC0415
+
+    for control in CONTROLS:
+        if control is not TESLA_CONTROL:
+            assert not control.slow and quick_for(control) == Timing.quick(), control.brand
+            assert control.test_total_s is None, control.brand
+
+
+def test_a_fixed_charge_that_does_not_fit_is_not_applicable_and_the_test_still_passes_without_a_charge() -> None:
+    outcomes, _minutes = _hardware_test(quick_for(TESLA_CONTROL), not_applicable_charge=True)
+    assert outcomes == {
+        "hold": "obeyed", "charge": NOT_APPLICABLE_FIXED_CHARGE, "discharge_house": "obeyed", "normal": "restored",
+    }
+    report = {"modes": {name: {"outcome": outcome} for name, outcome in outcomes.items()}}
+    assert hardware_test_passed(report, supported_modes(TESLA_CONTROL))
+    # No pass of the charge: control runs no grid charge until the routine's own charge step passed.
+    assert mode_verdict(NOT_APPLICABLE_FIXED_CHARGE) == "pending"
+    # Any other charge left unrun is no pass.
+    for other in ("not_judgeable:grid_charge_cap", "skipped", None):
+        assert not hardware_test_passed(
+            {"modes": report["modes"] | {"charge": {"outcome": other}}}, supported_modes(TESLA_CONTROL)
+        )
+
+
+def test_the_hardware_tests_deadline_is_the_slow_recipes_own_and_ten_minutes_for_every_other() -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from custom_components.spotnav import hardware_test  # noqa: PLC0415
+
+    def deadline(control):  # type: ignore[no-untyped-def]
+        battery = SimpleNamespace(
+            recipe=lambda: control, hardware_test_deadman=lambda: None, hardware_test_deadman_s=lambda: None,
+        )
+        runner = object.__new__(hardware_test.HardwareTest)
+        runner.site = SimpleNamespace(battery_control=battery)  # type: ignore[assignment]
+        return runner._max_test()
+
+    assert deadline(TESLA_CONTROL) == timedelta(minutes=75)
+    assert deadline(GOODWE_CONTROL) == hardware_test.MAX_TEST == timedelta(minutes=10)
+
+
+def test_a_charge_step_not_applicable_shows_as_skipped_and_leaves_the_test_passed() -> None:
+    from custom_components.spotnav import hardware_test  # noqa: PLC0415
+
+    assert hardware_test.battery_step_status(NOT_APPLICABLE_FIXED_CHARGE, False) == "skipped"
+    steps = hardware_test.battery_steps({"modes": {
+        "hold": {"outcome": "obeyed"}, "charge": {"outcome": NOT_APPLICABLE_FIXED_CHARGE},
+        "discharge_house": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+    }}, None, False)
+    assert hardware_test.result_of(steps) == "passed"

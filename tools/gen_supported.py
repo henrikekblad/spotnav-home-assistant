@@ -742,7 +742,7 @@ UNKNOWN = "Unknown"
 #: The makers `docs/home-battery.md` offers the control for (the first brand); the others with commands are not yet.
 CONTROL_IN_TESTING: frozenset[str] = frozenset({"sigenergy"})
 CONTROL_OPT_IN = "Opt-in, in testing"
-CONTROL_MAPPED = "Mapped, never run on a device"
+CONTROL_MAPPED = "Mapped, never run on a device: a hardware test and a control code first"
 
 #: Sources: `battery/adapters.py`, `battery/commands.py`, `battery/coexist.py`, `site/site_detection.py`, and the
 #: research notes `plans/research_integrations/` (`battery_local_control_guide_2026-11-14.md`, `site.md`,
@@ -1167,7 +1167,9 @@ def overview_section() -> list[str]:
         f"- **SpotNav controls**: *{CONTROL_OPT_IN}* is [SpotNav's own battery control]"
         "(home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing), off by default. "
         f"*{CONTROL_MAPPED}* means SpotNav has the commands for that integration behind the same switch and the same "
-        "check of the battery, but nobody has run them on a battery yet. *Not mapped* means SpotNav only reads, "
+        "check of the battery, but nobody has run them on a battery yet: nothing is written until a hardware test has "
+        "passed on the plant and its result was approved with a control code ([Becoming a tester]"
+        "(home-battery.md#becoming-a-tester); a plant whose control already ran keeps it). *Not mapped* means SpotNav only reads, "
         "with what the integration itself could do locally. Without control SpotNav still plans in shadow where it "
         "reads the battery's level, and still signals a grid charge to your own planner or automation.",
         "- **Unknown** is where neither SpotNav's tables nor our notes say. Corrections are welcome: "

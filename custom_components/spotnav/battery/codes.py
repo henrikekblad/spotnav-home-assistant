@@ -1,6 +1,6 @@
 """The control code a person enters for a battery brand whose recipe waits for a person's hardware test (pure).
 
-A brand marked `commands.BrandControl.hardware_test_first` and not yet `field_tested` (FoxESS, EcoFlow, Marstek, Solis today)
+A brand marked `commands.BrandControl.hardware_test_first` and not yet `field_tested` (every brand but Sigenergy today)
 writes outside a test only once two things hold on the plant: a person's hardware test passed (`BatteryControl`'s
 `hardware_brands`) and SpotNav's developer read that test's result and sent a **control code** for this installation
 and brand, which the person entered (Support → Hardware test). The code is the developer's approval of the test

@@ -10,8 +10,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
   for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
-  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (FoxESS, EcoFlow,
-  Marstek, Solis) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
+  runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (every brand but
+  Sigenergy; a plant whose control already ran keeps it, `commands.GATED_AFTER_RUNNING`) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
   on the plant's firmware key (`hardware_test_passed`, kept by the shell per key) and the developer's control code for
   the installation and brand was entered (`codes.py`, `tester.py`: the code approves the test's result, so control
   needs both); the checklist says so (`tester_signup`, `hardware_test_first`, `control_code`) and the test itself
@@ -150,6 +150,12 @@ MODE_EXPIRY: Final = "expiry"
 PASSING: Final = frozenset({"obeyed", "restored"})
 #: Outcomes that fail outright.
 FAILING: Final = frozenset({"ignored", "partial"})
+#: The hardware test's charge step on a recipe whose charge power is the plant's own (`BrandControl.fixed_charge`,
+#: Tesla) when that power does not fit under the fuse cap: the step cannot be run at a safe size on this plant, so the
+#: test goes on without it and may pass (`hardware_test_passed`). It is no pass of the charge: control runs no grid
+#: charge until the routine's own charge step passed (`allowed_actions`), which it tries again later as pending.
+NOT_APPLICABLE_FIXED_CHARGE: Final = "not_applicable:fixed_charge_over_cap"
+
 #: Abort reasons (`aborted:<reason>`) that show the plant does not do as told; every other abort is the moment's.
 FAILING_ABORTS: Final = (
     "write_not_taken", "no_effect", "changed_outside_spotnav", "restore_failed", "command_timeout", "not_obeyed",
@@ -295,7 +301,7 @@ def shadow_default(*, field_tested: bool, beta: bool) -> bool:
 def _step_status(outcome: Any) -> str:
     """One mode's outcome as the hardware test's step shows it: `passed`, `failed`, `not_judgeable`, `skipped` (an
     action the recipe does not have, `verify.Verification.unsupported`) or `open` (not run, or stopped)."""
-    if outcome == "skipped":
+    if outcome == "skipped" or (isinstance(outcome, str) and outcome.startswith("not_applicable:")):
         return "skipped"
     if isinstance(outcome, str) and outcome.startswith("not_judgeable:"):
         return "not_judgeable"
@@ -308,7 +314,8 @@ def hardware_test_passed(
     """Whether a person's finished hardware test (its verification's report) shows the battery doing as told: what a
     recipe with `BrandControl.hardware_test_first` waits for before anything is written outside a test. The hold and
     the hand-back (`normal`) passed; the grid charge passed where the recipe has one (`supported`, the modes it has
-    an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, or
+    an action for, `verify.supported_modes`; `None`: all), else skipped, or not applicable where the plant's own
+    charge power does not fit under the cap (`NOT_APPLICABLE_FIXED_CHARGE`); the dead-man step (`expiry`, or
     `expiry:<phase>` per phase, where the test times one) passed or could not be judged (`deadman_required`: passed, and
     there); every other step passed, could not be judged or was skipped. A step stopped or still open is no pass."""
     if not isinstance(report, Mapping):
@@ -316,6 +323,9 @@ def hardware_test_passed(
     modes = _modes(report)
     status = {name: _step_status((row or {}).get("outcome")) for name, row in modes.items()}
     must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
+    if (modes.get("charge") or {}).get("outcome") == NOT_APPLICABLE_FIXED_CHARGE:
+        # A fixed charge that does not fit under the fuse cap here: the one step that may stay unrun.
+        must.discard("charge")
     if any(status.get(name) != "passed" for name in must):
         return False
     deadman = [value for name, value in status.items() if name.split(":", 1)[0] == MODE_EXPIRY]
