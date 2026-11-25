@@ -30,7 +30,8 @@ Vad det gör, och bara om båda gränsomkopplarna är av när det börjar:
 1. Hålla: Battery discharge power limit till 0 % och Battery discharge power limiting på; batteriet slutar täcka
    huset (det lagrar fortfarande sol).
 2. En liten nätladdning: Battery discharge power limit under 0 (en tvångsladdning med en andel av batteriets
-   märkeffekt, högst 2 kW, mindre om säkringen kräver det).
+   märkeffekt, högst 2 kW, mindre om säkringen kräver det) och Battery charge power limit på samma andel som tak,
+   båda omkopplarna på.
 3. Täcka huset: Battery charge power limit till 0 % och Battery charge power limiting på, urladdningsgränsen av;
    batteriet täcker huset och lagrar inget.
 4. Lämna tillbaka: båda gränsomkopplarna av, båda gränserna tillbaka till sina värden.
@@ -66,8 +67,8 @@ Mellanslag och radbrytningar spelar ingen roll. Koden gäller bara din Home Assi
 Sedan kan du slå på styrningen i avsnittet Hembatteri ("Batteristyrning").
 
 Vad styrningen gör på din Fronius: en hållning sätter batteriets urladdningsgräns till 0 %, en nätladdning sätter den
-under 0 (en tvångsladdning med laddeffekten), att täcka huset utan att lagra sätter laddgränsen till 0 %; bara en av
-de två gränsomkopplarna är på åt gången. Varje återlämning slår av båda omkopplarna och sätter tillbaka gränserna.
+under 0 (en tvångsladdning med laddeffekten) med laddgränsen på samma andel som tak, att täcka huset utan att lagra
+sätter laddgränsen till 0 %. Varje återlämning slår av båda omkopplarna och sätter tillbaka gränserna.
 SpotNav ändrar aldrig nätladdningen eller den lägsta reserven, och säljer ännu inte från batteriet. Växelriktaren
 behåller en gräns tills den ändras, eller, med integrationens återgångsinställning på, tills ungefär en timme efter
 att Home Assistant har stannat, så SpotNav begränsar varje nätladdning för fallet att Home Assistant stannar.

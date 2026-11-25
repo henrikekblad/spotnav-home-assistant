@@ -1007,8 +1007,8 @@ reference*) and each acting only while its switch is on. A negative limit forces
 * **Hold:** *Battery discharge power limit* at 0 % and *Battery discharge power limiting* on. The battery covers
   nothing; a sun surplus is still stored.
 * **Grid charge:** *Battery discharge power limit* below 0, at the rate's share of the rated power (rounded down, in
-  steps of 1 %), with its switch on: a forced charge at least that fast; the sun may add to it, the grid does not. It
-  needs **Battery grid charging** on in Home Assistant and *Battery charging from other sources (including public
+  steps of 1 %), with its switch on: a forced charge at least that fast. *Battery charge power limit* at the same
+  share, with its switch on, caps it: neither the sun nor the grid takes the charge above the rate. It needs **Battery grid charging** on in Home Assistant and *Battery charging from other sources (including public
   grid)* on in the web UI. SpotNav reads the first and never sets it; the second cannot be read, and a charge that
   does not come shows only as a battery that does not charge, which SpotNav then hands back.
 * **Cover the house:** *Battery charge power limit* at 0 % and *Battery charge power limiting* on: the battery covers
@@ -1017,8 +1017,9 @@ reference*) and each acting only while its switch is on. A negative limit forces
 * **Hand back:** both switches off first (the inverter's own settings take over again), then both limits back to the
   values found (a negative one found is put back as 100 %, no limit).
 
-Only one of the two switches is on at a time and the limits are written before the switches, because the integration
-refuses two limits that are both on and add up to less than 0. The rate is a share of the rating the inverter reports;
+The limits are written before their switches, and when both are on (a grid charge, +p and -p, which add up to 0) a
+change of rate writes the limit that rises first: the integration refuses two limits that are both on and add up to
+less than 0. The rate is a share of the rating the inverter reports;
 while that reads nothing, no grid charge runs. SpotNav never writes the *Battery minimum reserve* or grid charging, and
 it starts only while both limit switches are off: one that is on is someone else's (evcc, a script, an automation).
 Time-of-use schedules in the web UI and the Energy Cost Assistant in Solar.web cannot be seen from Home Assistant, so
@@ -1041,7 +1042,8 @@ moment with the house using more than the sun gives (between 08 and 21 for the f
 Stop button while it writes) and runs, in about ten minutes:
 
 1. **Hold:** the discharge limit at 0 %; the battery must stop covering the house.
-2. **Small grid charge:** the discharge limit below 0, about 1 kW under the fuse cap; the battery must charge.
+2. **Small grid charge:** the discharge limit below 0 and the charge limit at the same share, about 1 kW under the
+   fuse cap; the battery must charge.
 3. **Discharge to the house:** the charge limit at 0 %, the discharge limit's switch off; the battery must cover the
    house.
 4. **Hand back:** both switches off, both limits as found.

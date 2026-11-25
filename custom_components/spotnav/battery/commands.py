@@ -458,12 +458,14 @@ The entity keys, options and services below were checked against each integratio
   while its switch (`battery_charge_power_limit_enabled` / `battery_discharge_power_limit_enabled`, one register,
   StorCtl_Mod) is on; a **negative** limit forces the other direction at least that fast. A hold is the discharge
   limit at 0 (a sun surplus is still stored), a discharge to the house the charge limit at 0 (it stores nothing), a
-  grid charge the discharge limit at minus the rate's share of WChaMax, rounded down, 1 % at least (a minimum: the
-  sun may add to it, the grid not). The rate is a share of the rating **as read** (`rating_read`): a learnt rating
+  grid charge the discharge limit at minus the rate's share of WChaMax, rounded down, 1 % at least (a minimum),
+  with the charge limit at the same share as its cap (the research note: +p is what holds the total, so neither
+  the sun nor the grid takes it above the rate). The rate is a share of the rating **as read** (`rating_read`): a learnt rating
   (WChaMax unread) is no base, the charge then does not start (`rated_unknown`). No discharge to the grid: a
-  negative charge limit would be the first write of its kind and its sign is unconfirmed on a plant. Only one
-  switch is on in any action, the values are written before the switches and a switch turned off before the
-  other one comes on where it matters (`peak_first` for the grid charge): core refuses a pair of enabled limits
+  negative charge limit would be the first write of its kind and its sign is unconfirmed on a plant. The values
+  are written before the switches, a switch turned off before the other one comes on where it matters
+  (`peak_first` for the grid charge), and in a grid charge (both on, +p and -p) the limit that rises first
+  (`rising_first`): core refuses a pair of enabled limits
   whose sum is below 0 (`_refused_battery_limits`), and a found negative value is handed back as 100, no limit
   (`Role.restored_below`), so a momentary pair never sums below 0. The core writes the setpoint, writes the
   enable bit again where it was already on (the device takes a changed limit only so) and reads the model back at

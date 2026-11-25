@@ -30,7 +30,8 @@ What it does, only with both battery limit switches off when it starts:
 1. Hold: Battery discharge power limit at 0 % and Battery discharge power limiting on; the battery stops covering the
    house (it still stores sun).
 2. A small grid charge: Battery discharge power limit below 0 (a forced charge at a share of the battery's rated
-   power, at most 2 kW, less if the fuse needs it).
+   power, at most 2 kW, less if the fuse needs it) and Battery charge power limit at the same share as its cap, both
+   switches on.
 3. Cover the house: Battery charge power limit at 0 % and Battery charge power limiting on, the discharge limit off;
    the battery covers the house and stores nothing.
 4. Hand back: both limit switches off, both limits back to the values they had.
@@ -65,8 +66,8 @@ do not matter. It works only on your Home Assistant installation and your Froniu
 on in the home battery section ("Battery control").
 
 What control does on your Fronius: a hold sets the battery discharge power limit to 0 %, a grid charge sets it below
-0 (a forced charge at the rate), covering the house without storing sets the charge limit to 0 %; only one of the two
-limit switches is on at a time. Every hand-back turns both switches off and puts the limits back. SpotNav never sets
+0 (a forced charge at the rate) with the charge limit at the same share as its cap, covering the house without storing
+sets the charge limit to 0 %. Every hand-back turns both switches off and puts the limits back. SpotNav never sets
 grid charging or the minimum reserve, and does not sell from the battery yet. The inverter keeps a limit until it is
 changed, or, with the integration's revert option on, until about an hour after Home Assistant stops, so SpotNav
 caps each grid charge for the case that Home Assistant stops.
