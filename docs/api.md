@@ -108,8 +108,8 @@ and refusals as the charger webhook below. It answers:
   `get_house_now`, `get_house_history`, `get_house_loads`, `get_heat`, `get_heat_history`, `get_plan`,
   `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`, `pool`, `spa`, `sauna`), each answering
   exactly what a charger's webhook of the same home answers; `update_site_settings` (as on a charger's webhook, for the home itself; load
-  balancing is `spotnav_not_permitted_over_webhook`, 403); `get_power_month` and `suggest_import_target` (as on a
-  charger's webhook).
+  balancing is `spotnav_not_permitted_over_webhook`, 403); `get_power_month`, `suggest_import_target` and
+  `get_strings` (as on a charger's webhook).
 * **Every charger action** of the charger webhook (`dashboard`, `start`, `stop`, `settings`, `sessions`,
   `push_register`, …) with `"charger_id": "<charger entry id>"` in the body: the same answer the charger's own
   webhook gives. A `charger_id` beside a home action is checked the same way.
@@ -148,6 +148,26 @@ is HTTP 400 `spotnav_no_site` (keep using the charger's webhook); a home that ex
 HTTP 429 `spotnav_rate_limited` with `retry_after_s` and `Retry-After`. Over the home's webhook with a `charger_id`
 it answers the same. Examples: `get_site_access_success.json`, `get_site_access_no_site.json`,
 `get_site_access_rate_limited.json`, `get_site_access_site_unloaded.json`.
+
+**`get_strings`** on either webhook (`api_version` optional, `1`), and `spotnav/get_strings` over the WebSocket for any
+signed-in user: the card's own words in one language, so the app says what the card says without an app release. The
+words are the card's built language files (`custom_components/spotnav/www/i18n/<lang>.<hash>.json`, English
+included), not a copy. Request `{"language", "known_hash"?}`: `language` is a language tag (`sv`, `sv-SE`, `nb_NO`),
+resolved as the card resolves Home Assistant's (`no` and `nn` are `nb`; a language the card has no words for is
+English); `known_hash` is the hash the app already holds for it.
+
+```json
+{"ok": true, "action": "get_strings", "api_version": 1, "language": "sv", "hash": "4635a84f", "unchanged": false,
+ "strings": {"house.title": "Huset", "heat.measured": "Inne {value}", "learning.daysLeft.one": "{days} dygn kvar"}}
+```
+
+`hash` is the file's content hash, so it changes with any wording; with `known_hash` equal to it the answer is
+`"unchanged": true` and `"strings": null`. The texts are plain text with the card's `{name}` placeholders, plural
+forms as separate `.one` / `.other` keys. Read it after connecting, not on the live loop. Refusals (HTTP 400 on the
+webhook, WebSocket errors): `spotnav_unsupported_api_version`, `spotnav_invalid_value` (`language` missing or not a
+string, `known_hash` not a string); `spotnav_strings_unavailable` (HTTP 404) when the package has no language file. A
+Home Assistant before it answers HTTP 400 "Unsupported action": keep the app's own words. Examples:
+`get_strings_success.json`, `get_strings_unchanged.json`, `get_strings_english.json`.
 
 ### For administrators
 
@@ -1178,6 +1198,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/send_debug_info` | Send that same bundle to SpotNav's developer (administrators only; a non-administrator gets Home Assistant's `unauthorized`): `{"api_version": 1, "message", "email"?, "client"?}`, `message` required (at most 4000 characters), `email` optional (at most 254), `client` the card's own block (its known keys only). A given `email` is kept as the installation's one address (the same as `spotnav/beta`'s), so the next report and the beta box have it filled in; a blank one sends without an address and keeps the saved one. Sent only when this command is called, gzip-compressed, to `https://spotnav.sensnology.se/v1/support/report`, with the installation as a salted SHA-256 of Home Assistant's instance id, never the id. Answers `{"api_version": 1, "ok", "error", "ref", "retry_after_s"}`: `ref` the reference to quote (`SN-XXXX`); refusals `spotnav_report_invalid_message`, `spotnav_report_invalid_email`, `spotnav_report_rate_limited` (with `retry_after_s`), `spotnav_report_too_large`, `spotnav_report_rejected`, `spotnav_report_network`, `spotnav_report_server`. |
 | `spotnav/beta` | The beta tester mode and the site's hardware test (administrators only; otherwise `ok` false, `error` `spotnav_not_admin`): `{"api_version": 1, "site_id"? \| "charger_id"?, "action"?, "changes"?}`. `action`: `get` (default), `set` with `changes: {on?: bool, email?: str \| null}` (ticking starts a 14-day period of nightly `beta_daily` reports; an address that is none is `spotnav_report_invalid_email`), `start_test` (refused with `spotnav_test_blocked`, the reason in `test.blocked`: `running`, `nothing_to_test` (no battery or heat control to test; before the day's slot), `once_a_day` with `next_at`, `not_ready` (a part is there but none can run now: starting, busy or waiting for an acknowledgement), `battery_run_elsewhere` (none can run and the battery's part is refused because something else runs the battery: an outside system, its own optimiser or a force left standing, to be paused first; since 3.0.0b6), `waiting` (one pressed earlier waits; since 3.0.0b6)). A test with a battery part that cannot run at once is not refused: it answers `test.state` `waiting` (since 3.0.0b6) and runs by itself at the first moment that suits its battery steps (the house using more than the sun gives, the battery between 30 and 80 %, no car charging, room under the fuse), within three days; `next_at` is then when that is likely (`null`: soon), and `result` the previous run's, `partial` when it runs again by itself because a step could not be judged. The other actions: `stop_test` (also ends a waiting test), `send_test` (the last finished test as a `beta_test` report; the `spotnav_report_*` codes and `spotnav_no_test`). Answers `{"api_version": 1, "ok", "error", "beta": {on, started_at, ends_at, ended, email}, "test": {state (`idle`, `waiting`, `running`, `done`), blocked, next_at, started_at, finished_at, result (`passed`, `partial` with a part skipped, `skipped` with none run, `failed`; a partial or skipped test leaves the day's slot), steps: [{part, step, status, reason}], sent_ref} \| null, "ref", "retry_after_s"}` (`test` null without a site). A battery step is `hold`, `charge`, `discharge`, `hand_back` or, before the hand-back where the plant's own dead-man is timed (EcoFlow, Solis; since 3.0.0b6), `deadman`; a client shows a step it does not know by its code. Not over the charger webhook. |
 | `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
+| `spotnav/get_strings` | The card's words in one language, for any signed-in user: `{"api_version": 1, "language", "known_hash"?}` answers `{"api_version", "language", "hash", "unchanged", "strings"}` (see [the home's webhook](#the-homes-webhook), `get_strings`). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/update_guest` | The guest amount, administrators only (see [the guest car](#the-guest-car)). |
