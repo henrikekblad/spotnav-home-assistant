@@ -15,6 +15,7 @@ from typing import Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
@@ -41,7 +42,7 @@ from .runtime import (
 )
 from .site.flexible_loads import flexible_loads
 from .site.import_target import stored_import_target_kw
-from .site.regulator import RegulatorDecision
+from .site.regulator import rate_limit_margin_a, rate_limit_margin_active, RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
 from .vehicles.vehicle_charge_start import charge_start_diagnostics
@@ -150,6 +151,25 @@ def _price_source(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     return None if source is None else source.diagnostics()
 
 
+def _rate_limit_margin(controller: Any) -> dict[str, Any]:
+    from .core.electric import PHASE_V  # noqa: PLC0415
+
+    last = controller.rate_limited_stop_at
+    now = dt_util.utcnow()
+    margin = rate_limit_margin_a(
+        controller.adapter.policy.min_interval_s,
+        last_stop_at=last,
+        now=now,
+        confirms_must_lower=getattr(controller.adapter.current, "confirms_must_lower", False) is True,
+        phase_v=PHASE_V,
+    )
+    return {
+        "last_rate_limited_stop": None if last is None else last.isoformat(),
+        "active": rate_limit_margin_active(last, now) and margin > 0,
+        "margin_a": round(margin, 2),
+    }
+
+
 def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = controller_for(hass, entry.entry_id)
     resolved = controller.resolve_current() if controller else None
@@ -197,6 +217,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # reckon it at, and where it came from (`measured`, `site_step`, `charging_current` or `default`); null
             # for a charger whose current is set.
             "switched_current": controller.switched_current_snapshot(),
+            # The room load balancing keeps free below the fuse with each write (`site/regulator.py`
+            # `rate_limit_margin_a`): the last `safety_stop: rate_limited` (null: none), whether it is recent enough
+            # for the margin, and the margin per phase now (0 when not active).
+            "rate_limit_margin": _rate_limit_margin(controller),
             # What the delivered energy is counted with (`ChargingController.energy_count`): the charger's register,
             # the energy integrated from a smart plug's or the charger's own power, or nothing, with the entities.
             "energy_count": controller.energy_count(),

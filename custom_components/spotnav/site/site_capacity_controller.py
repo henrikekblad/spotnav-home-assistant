@@ -158,6 +158,7 @@ from .battery_probe import (
 from .regulator_damping import DampingDecision, RegulatorDamper
 from .step_guard import CATCH_UP_S, charger_above_written, StepGuard
 from .regulator import (
+    rate_limit_margin_a,
     allocate_regulator_decisions,
     applyability_failure,
     ApplyabilityFailure,
@@ -1729,6 +1730,28 @@ class SiteCapacityController:
         current-limit entity exists.
         """
         return charger_controller is not None and charger_controller.is_commandable
+
+    @staticmethod
+    def _write_margin_a(charger_controller: object) -> float:
+        """The room a write to this charger keeps free below the fuse (`regulator.rate_limit_margin_a`): a charger
+        that takes the next current write only after its policy's interval cannot be lowered in it, once it was
+        stopped for that within the last week. Only a charger whose current SpotNav sets (`is_commandable`)."""
+        if charger_controller is None or getattr(charger_controller, "is_commandable", False) is not True:
+            return 0.0
+        adapter = getattr(charger_controller, "adapter", None)
+        policy = getattr(adapter, "policy", None)
+        interval = getattr(policy, "min_interval_s", None)
+        if not isinstance(interval, (int, float)) or isinstance(interval, bool):
+            return 0.0
+        confirms = getattr(getattr(adapter, "current", None), "confirms_must_lower", False) is True
+        last_stop = getattr(charger_controller, "rate_limited_stop_at", None)
+        return rate_limit_margin_a(
+            float(interval),
+            last_stop_at=last_stop if isinstance(last_stop, datetime) else None,
+            now=dt_util.utcnow(),
+            confirms_must_lower=confirms,
+            phase_v=PHASE_V,
+        )
 
     @staticmethod
     def _is_switch_only_charger(charger_controller: object) -> bool:
@@ -5408,6 +5431,7 @@ class SiteCapacityController:
                 order=order,
                 phase_basis=basis,
                 switch_only=switch_only,
+                write_margin_a=0.0 if switch_only else self._write_margin_a(charger_controller),
             )
             requests.append(request)
         latest: SiteCapacityResult | None = getattr(self, "result", None)
