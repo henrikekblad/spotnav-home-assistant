@@ -533,3 +533,49 @@ def test_the_brands_gated_after_running_are_gated_and_not_field_tested() -> None
         control.brand for control in commands.CONTROLS if commands.hardware_test_first(control.brand)
     }
     assert "sigenergy" not in commands.GATED_AFTER_RUNNING and not commands.hardware_test_first("sigenergy")
+
+
+async def test_a_damaged_report_in_the_store_never_stops_the_start_or_decides_the_grandfathering(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Storage is untrusted: a report that is no mapping, or one whose mode rows are not, is read as no report. The
+    start goes on to its hand-back, and the plant's real pass still counts."""
+    _gated_after_running(monkeypatch)
+    _site, controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    key = control.firmware_key()
+    await control.async_look(dt_util.now())
+    await control.async_stop()
+    stored = next(
+        item["data"] for item in hass_storage.values()
+        if isinstance(item.get("data"), dict) and isinstance(item["data"].get("reports"), dict) and "gate" in item["data"]
+    )
+    good = stored["reports"][key]
+    stored["reports"] = {
+        "V0 | broken 1": {"brand": "sigenergy", "modes": {"hold": "x", "normal": 7}},
+        "V0 | broken 2": ["not", "a", "report"],
+        "V0 | broken 3": {"brand": "sigenergy", "modes": ["hold"]},
+        key: good,
+    }
+    stored["gate"]["grandfather_checked"] = []
+    stored["gate"]["control_codes"] = {}
+    stored["gate"]["hardware_brands"] = []
+    again = control_module.BatteryControl(hass, controller, plan_source=control._plan_source)
+    await again.async_start()
+    assert again._started
+    assert again.control_codes["sigenergy"]["grandfathered"] is True
+    assert again.hardware_test_due() is None
+    # Every look reads them too.
+    await again.async_look(dt_util.now() + timedelta(seconds=10))
+    assert again.status()["state"] is not None
+    await again.async_stop()
+
+
+def test_a_report_that_is_no_mapping_reads_as_none_and_a_damaged_mode_row_as_not_run() -> None:
+    from custom_components.spotnav.battery import gate
+
+    damaged = {"modes": {"hold": "x", "normal": 7, "charge": ["y"]}}
+    assert gate.report_status(damaged) == "pending"
+    assert gate.failed_mode(damaged) is None
+    assert gate.hardware_test_passed(damaged) is False
+    assert gate.report_status(["not", "a", "report"]) == "none"  # type: ignore[arg-type]
+    assert gate.failed_mode("x") is None  # type: ignore[arg-type]

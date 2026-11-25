@@ -671,7 +671,10 @@ class BatteryControl:
         self._loaded = True
         self._migrate_mode()
         reports = self._stored.get("reports")
-        self.reports = dict(reports) if isinstance(reports, dict) else {}
+        # Storage is untrusted: a report that is no mapping is none (every reader takes a mapping or nothing).
+        self.reports = {
+            key: report for key, report in reports.items() if isinstance(key, str) and isinstance(report, dict)
+        } if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
         await self._async_check_codes()
         self._take_back("battery", control_for, self._stored)
@@ -791,6 +794,12 @@ class BatteryControl:
         control = self._gated_control()
         if control is None or control.brand not in GATED_AFTER_RUNNING or control.brand in self.grandfather_checked:
             return
+        # Read before the brand is marked as decided: a store that cannot be read decides nothing.
+        passed = [
+            key for key, report in self.reports.items()
+            if isinstance(report, dict) and report.get("brand") == control.brand and gate.firmware_known(key)
+            and gate.report_status(report) == "passed"
+        ]
         self.grandfather_checked = [*self.grandfather_checked, control.brand]
         if (
             control.brand in self.control_codes or control.brand in self.hardware_brands
@@ -799,11 +808,6 @@ class BatteryControl:
             # A record already, a person's hardware test passed here (its pass is the routine's report too) or a
             # tester's sign-up: the developer's code approves that one.
             return
-        passed = [
-            key for key, report in self.reports.items()
-            if isinstance(report, dict) and report.get("brand") == control.brand and gate.firmware_known(key)
-            and gate.report_status(report) == "passed"
-        ]
         if not passed:
             return
         key = passed[-1]
