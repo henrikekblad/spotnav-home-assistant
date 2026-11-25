@@ -531,6 +531,9 @@ from .plan_model import (
 
 #: The value a role had before SpotNav first wrote it.
 SNAPSHOT: Final = "<snapshot>"
+#: How a number that follows its own maximum is read (`Role.follows_max`): a text, never a number, so a value written
+#: to it never reads back as taken while the entity follows its maximum instead.
+FOLLOWS_MAX: Final = "follows_max"
 #: Values a recipe cannot fix on its own, filled in by `BrandControl.wanted` from the plant's readings when the
 #: action is entered: `floor(SoC now)` (Tesla's reserve under a hold), the depth of discharge that makes the cut-off
 #: the SoC now (GoodWe's hold), and a share of the battery's rated power for a power in kW (`pct_of_rated`). Left as
@@ -739,6 +742,11 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
+    #: The attribute that is true while the number follows its own maximum instead of the value it shows (Kostal's
+    #: Set Charge Rate: a value at or above the maximum, which moves with the battery's voltage). The role then reads
+    #: `FOLLOWS_MAX` (`answered`): a write that latched it is not taken (no number read back), and the restore of a
+    #: value found so writes the entity's maximum again (`resolve_follows_max`). `None`: no such attribute.
+    follows_max: str | None = None
 
     def __post_init__(self) -> None:
         if (self.readback == "answer") != (self.answer is not None):
@@ -1474,6 +1482,12 @@ def answered(role: Role, state: str | None, attributes: Mapping[str, Any] | None
     write is never confirmed by its own request (the ledger waits, then retries or hands back) and a refused one is
     never someone else's change. Without a transaction in the attributes (no request seen since the integration
     started; a restart does not restore the attributes) the state is read as it is."""
+    if (
+        role.follows_max is not None and attributes and attributes.get(role.follows_max) is True
+        and state is not None and state.strip().lower() not in _NO_READING
+    ):
+        # The number follows its own maximum, whatever it shows (`Role.follows_max`).
+        return FOLLOWS_MAX
     spec = role.answer
     if spec is None or state is None or not attributes or attributes.get(spec.transaction) is None:
         return state
@@ -2632,10 +2646,11 @@ KOSTAL_TIMEOUT_S: Final = 60.0
 
 # Set Charge Rate: the integration's own value (W, step 100), which Charge Start's loop sends as the setpoint at every
 # tick; its state is that value, so the echo is what the inverter is sent. Never written back: it acts only while
-# Charge Start is on, and the next charge writes its own first (the integration keeps it over a restart).
+# Charge Start is on, and the next charge writes its own first (the integration keeps it over a restart). A value at
+# or above its maximum latches "follow the maximum" (`follows_max` true): such a write is not taken.
 _KO_RATE = Role(
     "charge_rate", "number", _key("charge_rate", "number"), scale=1000.0, step=100.0, restored=False,
-    write_class="setpoint", readback="echo",
+    write_class="setpoint", readback="echo", follows_max="follows_max",
 )
 # The two switches SpotNav turns on. Their state is the integration's flag (on at once, its loop after any settling
 # wait), so the battery's power judges the effect.

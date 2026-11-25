@@ -163,6 +163,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION: Final = 1
+#: The share below a charge entity's maximum a recipe with `charge_power_bound_exclusive` stays at least (Kostal: the
+#: maximum moves with the battery's voltage between the read and the write), where the entity's step is less.
+EXCLUSIVE_BOUND_MARGIN: Final = 0.05
 #: How long a stop or unload keeps stepping the hand-back before it leaves the rest to the next start (s).
 HAND_BACK_DEADLINE_S: Final = 30.0
 #: How long the shell waits for an entity to change after a write, between looks during a hand-back (s).
@@ -1733,8 +1736,13 @@ class BatteryControl:
         state = None if entity_id is None else self.hass.states.get(entity_id)
         bound = None if state is None else _float(state.attributes.get("max"))
         if bound is not None and control.charge_power_bound_exclusive:
-            # The maximum itself means "follow the battery's maximum" (Kostal's Set Charge Rate): a step below it.
-            bound -= role.step or 0.0
+            # The maximum itself means "follow the battery's maximum" (Kostal's Set Charge Rate), and it moves with
+            # the battery's voltage between this read and the write: a margin of `EXCLUSIVE_BOUND_MARGIN` or the
+            # entity's step below it, whichever is larger, on the step.
+            step = role.step or 0.0
+            bound -= max(step, bound * EXCLUSIVE_BOUND_MARGIN)
+            if step:
+                bound = math.floor(bound / step + 1e-9) * step
         found = None if bound is None or not role.scale else bound / role.scale
         if found is not None and found < gate.MIN_RATE_KW:
             found = None

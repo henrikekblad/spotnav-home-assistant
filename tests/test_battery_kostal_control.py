@@ -7,7 +7,7 @@ in the hardware test's quick timing. Nothing here has run on an inverter."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import pytest
@@ -16,6 +16,7 @@ from custom_components.spotnav.battery import optin
 from custom_components.spotnav.battery.adapters import KOSTAL, adapter_for
 from custom_components.spotnav.battery.commands import (
     CONTROLS,
+    FOLLOWS_MAX,
     KOSTAL_CONTROL,
     KOSTAL_MGMT_MODBUS,
     SNAPSHOT,
@@ -57,6 +58,9 @@ class Plenticore(FakeBattery):
     is ignored without an error (README), the switches still showing on."""
 
     house_kw: float = 2.0
+    #: Set Charge Rate's maximum (W): the battery's voltage times its current. A value at or above it latches
+    #: "follow the maximum" (`number.py` `async_set_native_value`), shown as the maximum with `follows_max` true.
+    max_w: float = 5200.0
     others: dict[str, str] = field(default_factory=lambda: dict.fromkeys(OTHERS, "off"))
     predbat: str = "Not installed"
     #: Switch writes the integration made itself (its mutual exclusion).
@@ -70,9 +74,13 @@ class Plenticore(FakeBattery):
                     self.turned_off.append(name)
             for name in self.others:
                 self.others[name] = "off"
+        if op.method == "number" and op.role == "charge_rate" and op.value == FOLLOWS_MAX:
+            op = replace(op, value=self.max_w)
         taken = super().apply(op)
         if op.method == "number" and taken and op.role not in self.drops:
-            self.states[op.role] = str(int(float(op.value)))
+            follows = float(op.value) >= self.max_w
+            self.states[op.role] = str(int(self.max_w if follows else float(op.value)))
+            self.attributes[op.role] = {"follows_max": follows, "max": self.max_w}
         return taken
 
     def turn_on_other(self, name: str) -> None:
@@ -107,7 +115,9 @@ class Plenticore(FakeBattery):
 
 
 def _plant(**kwargs: Any) -> tuple[Executor, Plenticore]:
-    return Executor(KOSTAL_CONTROL), Plenticore(KOSTAL_CONTROL, dict(STATES), idle_kw=-2.0, **kwargs)
+    plant = Plenticore(KOSTAL_CONTROL, dict(STATES), idle_kw=-2.0, **kwargs)
+    plant.attributes["charge_rate"] = {"follows_max": True, "max": plant.max_w}
+    return Executor(KOSTAL_CONTROL), plant
 
 
 def _run(executor: Executor, plant: Plenticore, start: Any, looks: int, action: str | None, rate: float = 0.0,
@@ -345,14 +355,28 @@ def test_a_charge_that_does_nothing_is_handed_back_and_left_as_found() -> None:
     assert plant.states["charge_start"] == "off" and plant.states["block_discharge"] == "off"
 
 
-def test_the_charge_is_bounded_one_step_below_the_rates_maximum_which_means_follow_the_maximum(
+def test_the_charge_is_bounded_well_below_the_rates_maximum_which_means_follow_the_maximum(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tests.test_battery_control import _bare_control  # noqa: PLC0415
 
+    # 5 % below the maximum (it moves with the voltage between the read and the write), on the 100 W step.
     control = _bare_control("kostal", {"charge_rate": ("number.kostal_set_charge_rate", {"max": 5200})}, monkeypatch)
-    assert control._charge_entity_max_kw(KOSTAL_CONTROL) == pytest.approx(5.1)
-    assert control._within_charge_power(9.0) == pytest.approx(5.1) and control._within_charge_power(2.0) == 2.0
+    assert control._charge_entity_max_kw(KOSTAL_CONTROL) == pytest.approx(4.9)
+    assert control._within_charge_power(9.0) == pytest.approx(4.9) and control._within_charge_power(2.0) == 2.0
+    # A small maximum: the step is the larger margin.
+    control = _bare_control("kostal", {"charge_rate": ("number.kostal_set_charge_rate", {"max": 1500})}, monkeypatch)
+    assert control._charge_entity_max_kw(KOSTAL_CONTROL) == pytest.approx(1.4)
+
+
+def test_a_rate_that_latched_follow_the_maximum_is_not_taken_and_charge_start_never_goes_on() -> None:
+    # The maximum fell below the rate between the read and the write: the integration follows its maximum, which
+    # then shows the value written. Not taken: Charge Start is never turned on.
+    executor, plant = _plant(max_w=1000.0)
+    _now, results = _run(executor, plant, T0, 12, "grid_charge", 1.0)
+    assert ("charge_rate", 1000.0) in written(results)
+    assert ("charge_start", True) not in written(results) and plant.states["charge_start"] == "off"
+    assert not any(event["reason"] == "charge_rate" for event in events(results, "confirmed"))
 
 
 # --- the check before control and the hardware test ------------------------------------------------------------------
