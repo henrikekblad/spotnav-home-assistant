@@ -77,6 +77,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.util import dt as dt_util
 
+from ..util import error_text
 from ..beta import learning_gate_open
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
@@ -281,7 +282,7 @@ def _error_text(err: Exception) -> str:
     """A failed write's error as logged; a call given up on says so (its `TimeoutError` has no text)."""
     if isinstance(err, TimeoutError):
         return f"no answer within {CALL_TIMEOUT_S:.0f} s"
-    return str(err)
+    return error_text(err)
 
 
 async def async_hand_back_stored(

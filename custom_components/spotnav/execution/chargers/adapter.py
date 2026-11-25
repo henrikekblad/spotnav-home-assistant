@@ -40,6 +40,7 @@ from homeassistant.core import callback, CALLBACK_TYPE, HassJob, HomeAssistant
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
+from ...util import error_text
 from ...const import DEFAULT_MIN_CURRENT_A
 from ...vehicles.ocpp_identity import connector_sensor_entity_id, OcppConnectorTarget, STATUS_CONNECTOR_KEY
 from ...vehicles.soc_estimate import read_energy_register_kwh
@@ -371,7 +372,7 @@ class ChargerAdapter:
         try:
             await self._logged(COMMAND_PHASES, run)
         except Exception as err:  # noqa: BLE001 - any failed call is a switch not sent, never a crash of the caller
-            _LOGGER.warning("The charger's phase switch to %s phase(s) failed: %s", phases, err)
+            _LOGGER.warning("The charger's phase switch to %s phase(s) failed: %s", phases, error_text(err))
             return PhaseSwitchResult(False, PHASES_WRITE_FAILED)
         return result
 
