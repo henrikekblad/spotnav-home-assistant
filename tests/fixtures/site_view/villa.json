@@ -188,5 +188,23 @@
       }
     ],
     "writable": true
+  },
+  "export_curtail": {
+    "found": true,
+    "enabled": false,
+    "brand": "sigenergy",
+    "state": "off",
+    "beta": true,
+    "need": null,
+    "entity_id": null,
+    "saving": {
+      "days": 30,
+      "kwh": 41.2,
+      "minor": 1236.0,
+      "blocked_minor": 0.0,
+      "major_unit": "kr",
+      "minor_unit": "öre"
+    },
+    "writable": true
   }
 }

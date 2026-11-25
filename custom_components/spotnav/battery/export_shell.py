@@ -373,6 +373,8 @@ class ExportShell:
             "days": TALLY_DAYS,
             "kwh": round(totals["kwh"], 2),
             "minor": round(totals["saving"], 1),
+            # The part on days the limit could not have been run (watch-only, an entity missing).
+            "blocked_minor": round(totals["blocked_saving"], 1),
             "major_unit": major,
             "minor_unit": minor,
         }

@@ -1184,6 +1184,10 @@
         "battery_control_accept_ha_down": {
           "name": "Uitval van Home Assistant geaccepteerd",
           "description": "De persoon accepteert dat een zekering kan springen als Home Assistant stopt of het contact met de batterij of de elektriciteitsmeter verliest tijdens het laden van de thuisbatterij vanaf het net; het laden wordt dan begrensd op wat de zekering toelaat met een leeg huis."
+        },
+        "export_curtail_enabled": {
+          "name": "Geen teruglevering bij negatieve prijzen",
+          "description": "Zet de terugleverlimiet van de installatie op nul zolang een verkochte kWh minder dan niets oplevert, en zet hem daarna terug. Voor een installatie met of zonder batterij; de schakelaar van de batterijsturing zet dit niet aan."
         }
       }
     }

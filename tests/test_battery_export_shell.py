@@ -526,3 +526,48 @@ async def test_a_disabled_export_limit_entity_is_named_for_the_person_to_enable(
     shown = control.export.status()
     assert shown["found"] is True and shown["need"] == "control_disabled" and shown["entity_id"] == EXPORT
     await control.async_stop()
+
+
+# --- the card's and the apps' commands ------------------------------------------------------------------------------
+
+
+async def test_the_site_settings_view_carries_the_switch_and_an_administrator_writes_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], hass_ws_client: Any,
+) -> None:
+    from custom_components.spotnav.api.battery_control import async_battery_control_answer
+    from custom_components.spotnav.api.site_view import site_settings_view
+
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage, own=True)
+    await hass.async_block_till_done()
+    _export_limit(hass)
+    client = await hass_ws_client(hass)
+
+    async def ask(msg_id: int, **message: Any) -> dict[str, Any]:
+        await client.send_json({"id": msg_id, "api_version": 1, "site_id": site.entry_id, **message})
+        return (await client.receive_json())["result"]
+
+    block = (await ask(1, type="spotnav/get_site_settings_view"))["export_curtail"]
+    assert block["found"] is True and block["enabled"] is False and block["writable"] is True
+    assert block["brand"] == "sigenergy" and block["state"] == "off"
+    assert set(block) == {"found", "enabled", "brand", "state", "beta", "need", "entity_id", "saving", "writable"}
+    assert set(block["saving"]) == {"days", "kwh", "minor", "blocked_minor", "major_unit", "minor_unit"}
+    # Written with the battery control command's changes; the battery's own options are untouched.
+    result = await ask(2, type="spotnav/battery_control", changes={"export_curtail_enabled": True})
+    assert result["ok"] is True and "export_curtail_enabled" not in result["status"]["options"]
+    assert result["status"]["options"][gate.CONF_ENABLED] is False
+    assert site.data[gate.CONF_EXPORT_CURTAIL] is True
+    block = (await ask(3, type="spotnav/get_site_settings_view"))["export_curtail"]
+    assert block["enabled"] is True and block["state"] == "on"
+    assert (await ask(4, type="spotnav/battery_control", changes={"export_curtail_enabled": "yes"}))["error"] == (
+        "spotnav_invalid_value"
+    )
+    # A webhook's secret (the apps) reads it and never writes it; nor does a user who is no administrator.
+    view = site_settings_view(hass, site, writable=True, active_control_writable=False)
+    assert view["export_curtail"]["writable"] is False and view["export_curtail"]["enabled"] is True
+    refused = await async_battery_control_answer(
+        hass, site, {"export_curtail_enabled": False}, admin=False, over_webhook=True
+    )
+    assert refused["error"] == "spotnav_not_permitted_over_webhook"
+    refused = await async_battery_control_answer(hass, site, {"export_curtail_enabled": False}, admin=False)
+    assert refused["error"] == "spotnav_not_admin"
+    assert site.data[gate.CONF_EXPORT_CURTAIL] is True

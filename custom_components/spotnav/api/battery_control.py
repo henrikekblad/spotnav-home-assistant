@@ -13,7 +13,10 @@ carry it), `battery_wear_minor_per_kwh` (the battery's wear per kWh each way in 
 number from 0 to 10 times the currency's default, or `null` for the default; the status's `options` carry it and
 `plan_costs` both the value in force and `wear_default_minor_per_kwh`; never over the webhook), `battery_control_accept_ha_down` (the person accepts that a fuse may trip if Home Assistant stops during a
 grid charge of the home battery, `gate`); the owner's `battery_control_shadow_only` and
-`battery_control_import_limit_acts` too.
+`battery_control_import_limit_acts` too; and `export_curtail_enabled` ("No export at negative prices", the site's
+switch for its export limit: for a site with or without a battery, and not armed by `battery_control_enabled`; the
+site settings view's `export_curtail` block carries it and what it shows, `api/site_view.py`; turning it off hands
+the limit back before the answer; never over a webhook).
 Written to the site entry without a reload; turning off hands the plant back before the answer. Refusals are stable
 codes in `error`: `spotnav_no_site`, `spotnav_not_admin`, `spotnav_invalid_value`.
 

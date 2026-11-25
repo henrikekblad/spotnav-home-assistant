@@ -49,5 +49,23 @@
   "priority": {
     "order": [],
     "writable": true
+  },
+  "export_curtail": {
+    "found": false,
+    "enabled": false,
+    "brand": null,
+    "state": "no_control",
+    "beta": false,
+    "need": null,
+    "entity_id": null,
+    "saving": {
+      "days": 30,
+      "kwh": 0.0,
+      "minor": 0.0,
+      "blocked_minor": 0.0,
+      "major_unit": null,
+      "minor_unit": null
+    },
+    "writable": true
   }
 }

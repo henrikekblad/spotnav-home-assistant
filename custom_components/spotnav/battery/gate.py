@@ -303,11 +303,12 @@ class Options:
         return self.export_curtail
 
     def as_dict(self) -> dict[str, bool | str | float | None]:
-        """The payload's options."""
+        """The payload's options: the battery's. The export limit's switch is not one of them: the site settings
+        view's `export_curtail` block carries it (`export_shell.ExportShell.status`)."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
             CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_ACCEPT_HA_DOWN: self.accept_ha_down,
-            CONF_MODE: self.mode, CONF_WEAR: self.wear_minor_per_kwh, CONF_EXPORT_CURTAIL: self.export_curtail,
+            CONF_MODE: self.mode, CONF_WEAR: self.wear_minor_per_kwh,
         }
 
 
