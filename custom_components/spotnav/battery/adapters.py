@@ -186,8 +186,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
 
 * Fronius (Gen24, Gen24 Plus, Tauro, Verto Plus; BYD or Reserva battery), core `fronius` (home-assistant/core `42f4a32`,
-  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`): read only (the Modbus limits and
-  their revert timer are not written here). Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
+  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`). The Modbus limits are written by
+  `commands.FRONIUS_CONTROL` (behind a person's hardware test); this adapter reads. Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
   (`sensor.py` line 1266: `state_of_charge`, line 1069; `capacity_designed`, line 1033; only for a storage that reports
   a serial) and `<inverter id>-modbus-<key>` for what the Modbus settings read (lines 1200-1202): the counters
   `storage_energy_charged_total` and `storage_energy_discharged_total` (Wh, DC side, line 512), `battery_power_limit_reference`
@@ -198,7 +198,10 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   self-consumption; a limit in force is someone's. Schedules and the Energy Cost Assistant in the inverter's web UI are
   invisible to Home Assistant. The battery's power is discharge-positive (`power_battery`, disabled by default,
   `sensor.py` line 926; its `power_battery_discharge` is the positive part, line 936), negated by the site. The firmware
-  is the device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's. The size is
+  is the battery device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's, and
+  which a Gen24 (no logger info, `config_flow.py` line 67) does not have at all: then the storage device's (the one
+  with the level, `sensor.py` line 1154, the storage controller's software; `firmware_device`). The inverter's own
+  firmware is on no device, so its update is not seen as a firmware change. The size is
   the storage's *designed* capacity, not the usable or aged one; `capacity_maximum` (line 1026) is not read.
 
 * Homevolt (Tibber, Polarium), core `homevolt` (home-assistant/core `42f4a32`, pyHomevolt 0.7.0 `634bcbc`, read 2026-11-23,
@@ -702,6 +705,10 @@ class Adapter:
     #: Set for a YAML package read through a platform other brands share: the adapter is chosen only for a battery
     #: entity whose unique id is the package's, and its entities are looked for by that scope (`PackageScope`).
     package: PackageScope | None = None
+    #: Where the battery's own device has no software version and the adapter no firmware entity: the fact whose
+    #: entity's device carries the firmware instead (Fronius: a Gen24 has no logger info, so its SolarNet device, where
+    #: the battery's power is, has no version; the storage's device has its software). `None`: the battery's device.
+    firmware_device: FactRole | None = None
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -1281,7 +1288,8 @@ def _fronius(key: str, *domains: str) -> Match:
     return Match(domains or ("sensor",), re.compile(rf"-{re.escape(key)}$"))
 
 
-#: Fronius through core `fronius` (see the module): read only. Its unique ids join the parts with a hyphen.
+#: Fronius through core `fronius` (see the module); its control is `commands.FRONIUS_CONTROL`. Its unique ids join the
+#: parts with a hyphen.
 FRONIUS: Final = Adapter(
     brand="fronius",
     label="Fronius",
@@ -1306,6 +1314,7 @@ FRONIUS: Final = Adapter(
         ),
     ),
     reserves=(ReserveSource(_fronius("battery_minimum_reserve", "number")),),
+    firmware_device="soc",
 )
 
 #: Homevolt through core `homevolt` (see the module): read only. A sensor's key is a display key with spaces.

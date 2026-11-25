@@ -934,11 +934,75 @@ anything is changed by someone else.
 **If something goes wrong, restore by hand:** turn *Charge Start* and *Block Discharge* off; the inverter returns to
 its own control within its timeout. Then turn SpotNav's switch off.
 
+### Fronius Gen24 (mapped, not yet tested on a plant)
+
+For a Fronius Gen24, Gen24 Plus, Tauro or Verto Plus with a BYD or Fronius Reserva battery, through Home Assistant's
+own **Fronius** integration (`fronius`) in **Home Assistant 2026.11 or later**, which talks Modbus TCP to the
+inverter. In the inverter's web UI, under Communication → Modbus, Modbus TCP and **Inverter control via Modbus** must be
+on: without them the integration shows no battery limits and SpotNav only reads the battery. The HACS integration
+`fronius_modbus` is not used.
+
+SpotNav uses the integration's two battery limits, each a share of the battery's rated power (the *Battery power limit
+reference*) and each acting only while its switch is on. A negative limit forces the other direction:
+
+* **Hold:** *Battery discharge power limit* at 0 % and *Battery discharge power limiting* on. The battery covers
+  nothing; a sun surplus is still stored.
+* **Grid charge:** *Battery discharge power limit* below 0, at the rate's share of the rated power (rounded down, in
+  steps of 1 %), with its switch on: a forced charge at least that fast; the sun may add to it, the grid does not. It
+  needs **Battery grid charging** on in Home Assistant and *Battery charging from other sources (including public
+  grid)* on in the web UI. SpotNav reads the first and never sets it; the second cannot be read, and a charge that
+  does not come shows only as a battery that does not charge, which SpotNav then hands back.
+* **Cover the house:** *Battery charge power limit* at 0 % and *Battery charge power limiting* on: the battery covers
+  the house and stores nothing.
+* **Sell:** not yet. It would be a negative charge limit, which nobody has seen on a plant.
+* **Hand back:** both switches off first (the inverter's own settings take over again), then both limits back to the
+  values found (a negative one found is put back as 100 %, no limit).
+
+Only one of the two switches is on at a time and the limits are written before the switches, because the integration
+refuses two limits that are both on and add up to less than 0. The rate is a share of the rating the inverter reports;
+while that reads nothing, no grid charge runs. SpotNav never writes the *Battery minimum reserve* or grid charging, and
+it starts only while both limit switches are off: one that is on is someone else's (evcc, a script, an automation).
+Time-of-use schedules in the web UI and the Energy Cost Assistant in Solar.web cannot be seen from Home Assistant, so
+the checklist asks you to accept that SpotNav's limits override them; turn them off.
+
+**When Home Assistant stops.** The inverter keeps a limit until it is changed. The integration's option **Revert the
+power and battery limits if Home Assistant stops** (Settings → Devices & services → Fronius → Reconfigure; off by
+default) has the inverter drop the limits about an hour after Home Assistant last sent them; turn it on. It is the
+integration's own timer, renewed by the integration every 15 minutes while Home Assistant runs, not by SpotNav, so it
+does not end a limit while Home Assistant runs and only SpotNav is stuck. SpotNav hands back when it stops or unloads,
+and a grid charge's fuse cap is reckoned as for a battery that keeps its command (the house at its learned peak, the
+whole charge on one phase, since Fronius does not say how a three-phase Gen24 spreads a forced charge). Nobody states
+whether these registers are kept in flash; SpotNav writes them only when something changes.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a Fronius SpotNav only shows what it would do
+(as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed on the battery and its result was approved with a control code
+([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)). Press Start: the test waits by itself for a
+moment with the house using more than the sun gives (between 08 and 21 for the first pass, with a phone notice and a
+Stop button while it writes) and runs, in about ten minutes:
+
+1. **Hold:** the discharge limit at 0 %; the battery must stop covering the house.
+2. **Small grid charge:** the discharge limit below 0, about 1 kW under the fuse cap; the battery must charge.
+3. **Discharge to the house:** the charge limit at 0 %, the discharge limit's switch off; the battery must cover the
+   house.
+4. **Hand back:** both switches off, both limits as found.
+
+There is no step that times the revert option: an hour is longer than any test. The firmware the result is kept
+under is the battery storage's software version as the Fronius device page shows it (a Gen24 itself shows none), so an
+update of the inverter's own firmware is not noticed: after one, press Start again. It aborts and hands back near the
+fuse, if a write does not read back or when anything is written by someone else.
+
+**If something goes wrong, restore by hand:** in Home Assistant turn *Battery charge power limiting* and *Battery
+discharge power limiting* off, set both limits to your values (100 % if you never changed them). Then turn SpotNav's
+switch off.
+
 ### Becoming a tester (FoxESS, EcoFlow, Marstek, Solis)
 
 Control of FoxESS, EcoFlow, Marstek and Solis batteries has not yet run on a real plant. It is tested together with users,
 one plant at a time, so an untried recipe is never switched on by mistake and every early plant is known and looked
 at. Sigenergy and the other brands need none of this.
+
+Fronius Gen24 control is tested the same way.
 
 1. **Become a tester.** In the card's Settings, the home battery section shows a **Tester** row for these brands
    (administrators only): *SpotNav can read this battery. Control is being tested together with users.* Tap it, give
