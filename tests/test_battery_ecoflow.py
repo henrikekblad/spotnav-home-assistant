@@ -425,12 +425,18 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     assert control.options().shadow_only and control.state() == "shadow_only"
     status = control.status()
     assert status["options"]["battery_control_shadow_only"] is False, "the switch shows what the person chose"
-    assert NEED_HARDWARE_TEST_FIRST in status["needs"]
-    # The test itself is what it waits for: never refused for it. Sigenergy's has no dead-man step.
+    assert "tester_signup" in status["needs"] and status["tester"]["stage"] == "none"
+    assert control.hardware_test_refusal() == "tester_signup"
+    # Signed up as a tester: the test is what it waits for, never refused for it. Sigenergy's has no dead-man step.
+    control.tester = {"brand": "sigenergy", "asked_at": "2026-11-25T10:00:00+01:00", "ref": "SN-TEST"}
+    assert NEED_HARDWARE_TEST_FIRST in control.status()["needs"]
     assert control.hardware_test_refusal() is None and not control.hardware_test_deadman()
 
-    # The plant passed a hardware test with the brand once (and the routine passed on the key now): control runs.
+    # The plant passed a hardware test with the brand once (and the routine passed on the key now), and the
+    # developer's control code was entered: control runs.
     control.hardware_brands = ["sigenergy"]
+    assert control.state() == "shadow_only" and "control_code" in control.status()["needs"]
+    control.control_codes = {"sigenergy": {"brand": "sigenergy", "entered_at": "2026-11-25T12:00:00+01:00"}}
     assert not control.options().shadow_only and control.state() == "on"
     assert NEED_HARDWARE_TEST_FIRST not in control.status()["needs"]
     # A later test that failed on this key holds it back again.
