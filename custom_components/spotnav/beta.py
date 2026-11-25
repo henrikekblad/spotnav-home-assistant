@@ -23,7 +23,8 @@ timer and a report in flight are cancelled at Home Assistant's stop (`async_stop
 **What beta opens** (`learning_gate_open`): learning gates only, never safety. A gate that waits for SpotNav to
 have learned something (the hot-water shadow gate's days and peaks, learned profiles) asks
 `learning_gate_open(hass, site)` and opens when it answers true; the home battery's untested recipes leave shadow
-only by default on a beta site (`battery/gate.py`, `commands.BrandControl.field_tested`). Never skipped, beta or
+only by default on a beta site (`battery/gate.py`, `commands.BrandControl.field_tested`), and an untested export
+limit recipe writes on a beta site only, once the site's own switch is on (`battery/export_shell.py`). Never skipped, beta or
 not: fuse caps (the learned per-phase house peak and its conservative default included), write caps, the brand's
 verification routine, acknowledgements, opt-in entity enabling, heat safety reasons, a person's own boost, the hot
 water's level-A back-off (its stricter rules after cold risks, `heat/dhw_level_a.py`). Control a

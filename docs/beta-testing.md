@@ -21,6 +21,9 @@ default. Its **Read more** says the same as this page. The hardware test (below)
   ([Home batteries](home-battery.md)). Control still starts only after that check has passed. Every brand but Sigenergy
   needs more than beta: a passed hardware test and a control code
   ([Becoming a tester](home-battery.md#becoming-a-tester)).
+- **No export at negative prices** writes to the inverter for a brand whose export limit has not yet been seen to
+  work on a real plant ([No export at negative prices](solar-export.md)). You still turn its switch on yourself.
+  It needs no hardware test and no control code.
 - Control that a beta period started stays on after the period ends.
 
 ## What it never skips

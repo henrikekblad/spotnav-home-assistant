@@ -791,8 +791,9 @@ default), the line asks you to enable it first so SpotNav can read it. A plant w
 protocol names only the Sigen PV M1-HYA/HYB for preheating) gets no line. SpotNav never switches the heater itself.
 
 **Turning off** hands the battery back at once: control mode to Maximum Self Consumption, Remote EMS off, the
-limits to what SpotNav found (a limit that was never set comes back as the battery's rating), the export limit to
-what it found. A setting you or an app changed meanwhile is left as you set it. The battery plan keeps running in
+limits to what SpotNav found (a limit that was never set comes back as the battery's rating). The export limit is
+not the battery switch's: it has [its own](solar-export.md). A setting you or an app changed meanwhile is left as
+you set it. The battery plan keeps running in
 shadow. SpotNav also hands back when Home Assistant stops or the site is reloaded, before anything else of the site
 stops, and restores first after a start.
 
@@ -1275,36 +1276,7 @@ ten minutes each) is expected: SpotNav keeps its plan and does not tell you (see
 
 ## No export at a negative price
 
-When an exported kWh would cost you money, SpotNav 3.0 wants the inverter to stop exporting. "Costs money"
-means the spot price plus any credit you get per exported kWh is below zero: with a 5 öre credit, the spot
-price must be below −5 öre. In those quarter hours SpotNav would set the site's export limit to 0 kW, and
-put back the value it found when the price turns positive again. Your sun still covers the house, the car
-and the battery; the inverter only curtails what is left. The battery plan already counts on it: in those
-quarter hours it stores the sun first and never plans to sell at a negative price.
-
-**Unless SpotNav's battery control is on (off by default, in testing), this is shadow only: nothing is
-written.** The site's diagnostics (`battery.export_curtail`) show
-whether a negative-price quarter hour is running, what SpotNav would have written or why it could not, and
-per day the kWh you exported at a negative price and what that cost you. The battery plan's nightly review
-shows the same figure (`curtail`).
-
-* **Sigenergy** (the Sigenergy Local Modbus integration) is the first brand: the plant's **Grid Export
-  Limitation** number. It works in every EMS mode, needs the plant's grid sensor, and is disabled in Home
-  Assistant by default. A limit that was never set reads `unknown`; SpotNav would put back the plant's
-  maximum output instead, never `unknown`.
-* SolarEdge, Huawei, SolaX, Sungrow, Victron and GoodWe also have a local export limit; SpotNav does not use
-  them yet.
-* Works with or without a battery: without one, SpotNav finds the plant through your grid meter's entity.
-* A plant in its own optimiser (Sigen AI mode) or run by another system is only watched, as for the battery.
-  Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
-* If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
-  and does not write it again.
-* Beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is still SpotNav's
-  to curtail. Remote EMS of another app's is not: if the app or a VPP takes Remote EMS while SpotNav curtails,
-  SpotNav puts the limit back and only watches. The export limit stays at 0 kW when SpotNav hands the battery back.
-* If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
-  SpotNav would put the value it found back and stop trying.
-
-There is no setting of its own: it runs with the battery control switch, and needs no check of its own (its first
-real curtail is the check: the export must stop within a few minutes, or SpotNav puts the limit back and stops
-trying).
+When an exported kWh would cost you money, SpotNav can set the inverter's export limit to zero and put it back
+afterwards. It has its own switch (**Settings → Solar → No export at negative prices**) and its own page:
+[No export at negative prices](solar-export.md). It works with or without a battery. The battery control switch
+does not turn it on, and it does not wait for the battery's check, hardware test or control code.
