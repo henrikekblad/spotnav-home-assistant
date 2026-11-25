@@ -330,6 +330,9 @@ _BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget", "renewal_
 #: A command that lapses by itself (its documented fallback read while it runs, `BrandControl.command_role`) is handed
 #: back and may start again; this many lapses in a day block the control (`lapsed_repeatedly`, clearing by itself).
 LAPSES_A_DAY: Final = 3
+#: How long a hand-back of a recipe that restores only its own values waits for a first reading of a role after a
+#: restart before writing it back as before (s; `BrandControl.restore_own_only`): a few slow polls.
+RESTORE_READ_WAIT_S: Final = 180.0
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
 RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
@@ -1246,6 +1249,9 @@ class Executor:
         #: Since when a hand-back has waited for a first reading of the command role (`BrandControl.command_role`):
         #: nothing is written blind (after a restart the integration may not have polled yet); `_command_unread`.
         self.command_wait_since: datetime | None = None
+        #: Since when a hand-back has waited for a first reading of a role it would write back
+        #: (`BrandControl.restore_own_only`, `_restore_unread`); not stored.
+        self.restore_wait_since: datetime | None = None
         #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
         #: integration renews, stopped by a write); not stored: a restart ends the test.
         self.silenced = False
@@ -1788,6 +1794,17 @@ class Executor:
                 expected: str | None = claim.owned
             elif name not in state.written and name in state.snapshot:
                 expected = reading(role, state.snapshot[name])
+            elif self._restores_own_only(state, name):
+                # No claim (the ledger lost or released it): SpotNav's own value or the one found; anything else
+                # someone else set meanwhile, never written back over (`BrandControl.restore_own_only`).
+                now_read = reading(role, read.state)
+                ours = (state.wrote.get(name), state.restore_values.get(name))
+                if now_read is None or any(
+                    value is not None and same(value, now_read, _tolerance(role, read)) for value in ours
+                ):
+                    break
+                events += self._gave_up(inputs.now, name, entity_id, now_read, why="changed_while_not_owned")
+                continue
             else:
                 break
             if expected is None:
@@ -3058,6 +3075,8 @@ class Executor:
             return []
         state = self.state
         name = self._next_role(state, inputs)
+        if restoring and name is not None and self._restore_unread(state, inputs, name):
+            return []
         if name is None or self._capped(state, inputs, name) or (restoring and self._limit_waits(state, inputs, name)):
             return []
         role = self.control.role(name)
@@ -3104,6 +3123,27 @@ class Executor:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _restores_own_only(self, state: ExecState, name: str) -> bool:
+        """Whether a hand-back of `name` is checked against SpotNav's own values (`BrandControl.restore_own_only`): a
+        role SpotNav wrote, restored now."""
+        return self.control.restore_own_only and state.phase == "restoring" and name in state.written
+
+    def _restore_unread(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
+        """Whether the hand-back waits for a first reading of `name` before writing it back
+        (`BrandControl.restore_own_only`): after a restart the integration may not have read the inverter yet, and a
+        value found then may be someone else's (`_precheck` judges it once it reads). Never for the fuse; at most
+        `RESTORE_READ_WAIT_S`, then written as before."""
+        if not self._restores_own_only(state, name) or state.reason in _FUSE_REASONS:
+            self.restore_wait_since = None
+            return False
+        read = inputs.reads.get(name)
+        if reading(self.control.role(name), None if read is None else read.state) is not None:
+            self.restore_wait_since = None
+            return False
+        since = self.restore_wait_since or inputs.now
+        self.restore_wait_since = since
+        return (inputs.now - since).total_seconds() < RESTORE_READ_WAIT_S
 
     def _limit_waits(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
         """In a hand-back, whether a limit that acts in the plant's modes (`BrandControl.mode_limits`) must wait before

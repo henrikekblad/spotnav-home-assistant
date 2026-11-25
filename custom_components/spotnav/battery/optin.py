@@ -85,6 +85,14 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "max_discharge_current"),
         ("number", "max_charge_current"),
     ),
+    # Deye / Sunsynk: the battery's current limits, `solarman`'s numbers and kellerza's add-on's (published only once
+    # the add-on's "advanced" or "battery" sensor group is listed).
+    "deye": (
+        ("number", "battery_max_discharging_current_number"),
+        ("number", "battery_max_charging_current_number"),
+        ("number", "battery_max_discharge_current"),
+        ("number", "battery_max_charge_current"),
+    ),
     # The Solinteg plugin of `solax_modbus` (enabled by default but for the three phase numbers).
     "solinteg": (
         ("select", "working_mode"),

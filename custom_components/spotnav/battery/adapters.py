@@ -222,8 +222,9 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   unverified on hardware (the library's fixture reads -17 at idle).
 
 * Deye and Sunsynk hybrids (the Deye profiles `deye_hybrid` 1p, `deye_p3` 3p LV and HV), read 2026-11-23
-  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`), read only (the control is the time-of-use
-  programmes and the grid-charge settings, which stay as registers with no timeout). `solarman` (davidrapan/ha-solarman
+  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`); control is limits only
+  (`commands.DEYE_CONTROL`: the battery's max charge and discharge currents; the time-of-use programmes and the
+  grid-charge settings, which stay as registers with no timeout, are never written). `solarman` (davidrapan/ha-solarman
   `84982c5`; the domain is shared with other makers' profiles that name their items alike, `solis_hybrid`, `sofar_hybrid`
   and more, so only a device whose manufacturer is "Deye", which the profile's `info` gives the device registry,
   `common.py` line 167, or "Sunsynk" is read): unique id `<entry id>_<slug of the item's name>_<platform>` (`entity.py`
@@ -1329,8 +1330,8 @@ HOMEVOLT: Final = Adapter(
     ),
 )
 
-#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module): read
-#: only. Both platforms are shared with other devices, so only these makers' devices are read.
+#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module); control
+#: is limits only (`commands.DEYE_CONTROL`). Both platforms are shared with other devices, so only these makers' devices are read.
 DEYE: Final = Adapter(
     brand="deye",
     label="Deye / Sunsynk",

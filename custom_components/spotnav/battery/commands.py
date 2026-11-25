@@ -479,6 +479,26 @@ The entity keys, options and services below were checked against each integratio
   start is someone else's (`requires`). Schedules, the Energy Cost Assistant and a grid operator's dynamic power
   reduction live in the web UI and cannot be read (`strategy_unread`). Nothing says whether model 124 is kept in
   flash: setpoints the maker states nothing about (500 a day).
+* **Deye / Sunsynk / Sol-Ark** hybrids (`DEYE_CONTROL`; **never run on a device; limits only**), `solarman`
+  (davidrapan/ha-solarman `84982c5`, the Deye profiles `deye_hybrid` and `deye_p3`) or kellerza's Sunsynk add-on over
+  MQTT (`49efe3f`); read 2026-11-23 and 2026-11-25 (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`).
+  Numbers "Battery Max Charging Current" / "Battery Max Discharging Current" (A, 0-240 on 1p, 0-350 on 3p LV; holding
+  0xD2/0xD3 on 1p, 0x6C/0x6D on 3p), on kellerza "Battery Max Charge current" / "... Discharge current" (210/211 and
+  108/109). `solarman` reads the register first and skips a write of the value it holds, writes it with FC16 and
+  shows the value only once the logger acknowledged the write (`entity.py` `write`); the next poll shows the register.
+  Nothing else is written with it (no companion registers, no cache). A **hold** is the discharge current at 0 (the
+  battery covers nothing; a sun surplus is still stored: evcc's `holddischarge` on the 3p template), a **discharge for
+  the house** the charge current at 0. Both only lower a limit, so if Home Assistant stops the battery only covers
+  less: no fuse cap is needed and nothing expires (`NO_EXPIRY`). The hand-back writes both back as found; a limit
+  someone else changed meanwhile (the vendor app, Predbat, evcc) is given up and not written back over them.
+  **No grid charge and no sale.** There is no power setpoint and no dead-man on any route: a grid charge is the
+  owner's six time-of-use programmes (each slot's SoC, power and charge source), which would have to be rewritten
+  (evcc #34394, #36312), so it is not mapped. **Time of Use on** means the inverter runs its own programmes: the
+  battery is someone else's and only watched (`adapters.DEYE`'s mode rule). The work mode, the grid charge switch and
+  current, and the export and peak shaving settings are never written. **Writes**: every control is a settings
+  register, and the community fears flash wear (kellerza #706; no limit is stated anywhere), so writes are only on a
+  change of action, read back, and capped at `DEYE_SETTING_WRITES` a day. Live writes wait for a person's hardware
+  test on the plant's firmware (`hardware_test_first`).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -500,6 +520,7 @@ from .adapters import (
     Match, _goodwe, _key, _tesla,
 )
 from .adapters import FRONIUS, _fronius
+from .adapters import DEYE, _any_key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -1142,6 +1163,12 @@ class BrandControl:
     #: WChaMax, the base its limits are a percentage of): a rating learnt where the plant reads none
     #: (`learned.with_learned`) is no base for them, so they stay unresolved (`rated_unknown`). `False`: any rating.
     rating_read: bool = False
+    #: A hand-back writes a role back only over SpotNav's own value: one that reads neither SpotNav's value nor the
+    #: one found (the vendor app or another controller set it meanwhile, also while Home Assistant was down) is left
+    #: alone (`left_alone`), and after a restart a role with no reading yet is not written blind until it reads or
+    #: `executor.RESTORE_READ_WAIT_S` passed (never for the fuse). For settings whose found value is the owner's (Deye's
+    #: current limits). `False`: as before (a restart restores every written role).
+    restore_own_only: bool = False
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -2727,6 +2754,52 @@ FRONIUS_CONTROL: Final = BrandControl(
     " after a passed hardware test.",
 )
 
+# --- Deye / Sunsynk / Sol-Ark (limits only; see the module) --------------------------------------------------------
+
+#: The battery's own current limits (A), as `solarman`'s Deye profiles name them (`Battery Max Charging Current`,
+#: `... Discharging Current`: `<entry id>_battery_max_charging_current_number`) and kellerza's add-on
+#: (`Battery Max Charge current`: `<serial>_battery_max_charge_current`, the add-on's sensor groups "advanced" or
+#: "battery"). Whole amps (both round to an integer register). Restored as found. `solarman` shows a value once the
+#: logger acknowledged it, kellerza's add-on reads its settings every 5 s: the ledger's own read-back wait.
+_DY_DISCHARGE = Role(
+    "discharge_current", "number",
+    _any_key("battery_max_discharging_current_number", "battery_max_discharge_current", domains=("number",)),
+    step=1.0,
+)
+_DY_CHARGE = Role(
+    "charge_current", "number",
+    _any_key("battery_max_charging_current_number", "battery_max_charge_current", domains=("number",)),
+    step=1.0,
+)
+#: Counted writes a day (restores and peak covers are not counted): half a setting's, as both limits are inverter
+#: settings that nobody says are kept out of flash, and the community worries about wear (kellerza #706).
+DEYE_SETTING_WRITES: Final = 48
+
+DEYE_CONTROL: Final = BrandControl(
+    brand="deye",
+    adapter=DEYE,
+    roles=(_DY_DISCHARGE, _DY_CHARGE),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (evcc's `holddischarge`; not an idle hold).
+        ACTION_HOLD: lambda _rate, _w: (Want("discharge_current", 0.0),),
+        # It covers the house and stores nothing (a sun surplus is exported, or curtailed in a zero-export work mode).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_current", 0.0),),
+        # No grid charge and no sale: only by rewriting the owner's time-of-use programmes (see the module).
+    },
+    enter_order=("discharge_current", "charge_current"),
+    restore_order=("discharge_current", "charge_current"),
+    # A hold's peak cover gives the discharge current back.
+    peak_first={ACTION_HOLD: ("discharge_current",)},
+    # Lower limits never add import, so nothing needs to end by itself (`NO_EXPIRY`, the default).
+    write_caps={"setting": DEYE_SETTING_WRITES},
+    # A limit the app or another controller set meanwhile is theirs, also after a restart: never written back over.
+    restore_own_only=True,
+    hardware_test_first=True,
+    note="Limits only: the battery's max discharge current at 0 A to hold, its max charge current at 0 A to cover the"
+    " house without storing, only while Time of Use is off. No grid charge or sale. Never run on a device; writes"
+    " only after a passed hardware test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -2743,7 +2816,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
     VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL, ECOFLOW_CONTROL, MARSTEK_CONTROL, SOLIS_CONTROL,
-    KOSTAL_CONTROL, FRONIUS_CONTROL,
+    KOSTAL_CONTROL, FRONIUS_CONTROL, DEYE_CONTROL,
 )
 
 

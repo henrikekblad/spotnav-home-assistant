@@ -1046,7 +1046,7 @@ while `status.options` shows the switches as stored). After that first pass a ch
 or recipe revision is checked by the routine by itself; `hardware_test_again` says that check (or a later hardware
 test) failed on the key now, and the control only watches until a hardware test passes again. `recipe_blocked` says
 this release holds the brand's recipe back on the plant's firmware or the recipe's revision (only watching).
-Since 3.0.0b6 a recipe still being tested (FoxESS, EcoFlow, Marstek, Solis) also needs the person's sign-up as a tester
+Since 3.0.0b6 a recipe still being tested (FoxESS, EcoFlow, Marstek, Solis, Deye) also needs the person's sign-up as a tester
 before its first hardware test (`tester_signup`: the test's `blocked` is `tester_signup` too) and, after the test
 passed, the developer's control code (`control_code`); `status.tester` says where the tester stands (below). `restore_by_hand:<entity_id>=<value>|...` names, in order, what a hand-back could not write back (the person sets it by hand; the line goes once the executor no longer holds them). With `changes` it writes first, and the only key the
 webhook takes is `battery_mode`: `self_consumption`, `balanced` or `max_profit`. HTTP 200 written (the plan is made

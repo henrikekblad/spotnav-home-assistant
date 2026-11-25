@@ -97,6 +97,9 @@ administrators can confirm, and never over the webhook. The entities per brand:
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
 * FoxESS (FoxESS Modbus; both enabled by default): Max Charge Current and Max Discharge Current.
+* Deye / Sunsynk (Solarman: Battery Max Charging Current and Battery Max Discharging Current; the Sunsynk add-on:
+  Battery Max Charge current and Battery Max Discharge current, which the add-on publishes only once its sensor group
+  "battery" or "advanced" is in its SENSORS option).
 * Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
   limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
   disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
@@ -211,6 +214,44 @@ What to know before you turn it on:
 Please [tell us](supported.md) what the hardware test says on yours. To help decide about a grid charge, a supervised
 script (`tools/foxess_watchdog_test.py` in the repository) shows what your inverter does when the remote control stops
 being renewed, with the charge current capped low first; ask before you run it.
+
+**Deye, Sunsynk and Sol-Ark hybrids: limits only, never run on a device.** SpotNav reads these through the Solarman
+integration (`solarman`, davidrapan/ha-solarman, the Deye profiles) or the Sunsynk add-on (kellerza/sunsynk) over
+MQTT, only on a device that names Deye or Sunsynk as its maker (see [supported](supported.md)). Its control only
+lowers the battery's own current limits:
+
+* **Hold:** *Battery Max Discharging Current* to 0 A. The battery covers nothing; a sun surplus is still stored. When
+  the house needs the battery to keep under the fuse, the limit is given back for that time.
+* **Cover the house:** *Battery Max Charging Current* to 0 A. The battery covers the house and stores nothing (a sun
+  surplus is exported, or curtailed in a zero-export work mode).
+* **Hand back:** both limits to the values they had. A limit that someone else changed meanwhile (the Deye or Sunsynk
+  app, Predbat, evcc), also while Home Assistant was down, is left as they set it, and control stops (the line under
+  the switch says why); after a restart SpotNav waits for the integration's first reading before it writes a limit
+  back.
+* **No grid charge and no sale.** The inverter has no power setpoint and nothing that ends a command by itself: a
+  grid charge is one of the six time-of-use programmes (its time, power, SoC and charge source), and SpotNav would
+  have to rewrite the programmes you set. It does not. The plan therefore plans no grid charge on a Deye.
+
+What to know before you turn it on:
+
+* **Only with Time of Use off.** With *Time of Use* on (any weekday choice in Solarman, *Use Timer* or *Prog Time Of
+  Use Enabled* in the add-on) the inverter runs its own programmes, and SpotNav only watches. SpotNav never writes
+  Time of Use, the programmes, the work mode, the grid charge settings or the export and peak shaving settings.
+* **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
+  passed once on this inverter and its result was approved with a control code (see
+  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); until then control only logs what it would
+  do, and the checklist says so. The test holds, skips the grid charge, covers the house and hands back.
+* **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home
+  Assistant is back and hands it back. It never takes more from the grid because of it.
+* **Writes a day:** at most 48, and only when the plan changes what the battery should do (a write of the value the
+  inverter already holds is skipped). Nobody states how often these settings may be written; owners worry about the
+  inverter's flash memory, so SpotNav keeps to half of what it allows other brands' settings.
+* **Restore by hand:** set *Battery Max Charging Current* and *Battery Max Discharging Current* back to your values
+  (often the battery's maximum).
+
+Not yet seen on a Deye: how soon a limit acts after the write, and whether every model and firmware takes a single
+current write from Home Assistant (some settings are taken only as a group from the vendor's app). The hardware test
+shows both; please [tell us](supported.md) what it says on yours.
 
 **Solis (hybrid inverters such as the S6-EH3P): control mapped, never run on a plant.** SpotNav reads these through
 the Solis Modbus integration (`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor
@@ -1000,7 +1041,7 @@ switch off.
 
 Control of FoxESS, EcoFlow, Marstek and Solis batteries has not yet run on a real plant. It is tested together with users,
 one plant at a time, so an untried recipe is never switched on by mistake and every early plant is known and looked
-at. Sigenergy and the other brands need none of this.
+at. Sigenergy and the other brands need none of this. Deye, Sunsynk and Sol-Ark (limits only) are tested the same way.
 
 Fronius Gen24 control is tested the same way.
 
