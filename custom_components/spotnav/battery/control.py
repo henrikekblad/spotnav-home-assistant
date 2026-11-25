@@ -1014,8 +1014,8 @@ class BatteryControl:
         entered (`battery/codes.py`: the developer's approval of the test's result, so control needs both; one
         code per plant and brand); after both, `hardware_test_again` once the routine's check on the key now failed
         (or gave up), or a later hardware test failed on it. A change of firmware, integration version or recipe
-        revision after the first pass is checked by the routine by itself, and control goes on once that passed: no
-        new code is needed."""
+        revision after the first pass is checked by the routine by itself, and control runs on meanwhile on the
+        brand's last passed report here (`control_report`): no new code is needed."""
         control = self._gated_control()
         if control is None:
             return None
@@ -1231,7 +1231,8 @@ class BatteryControl:
         return gate.per_phase(self.control_report(self._with_revision(key))) == "verified"
 
     def state(self, options: gate.Options | None = None) -> str:
-        """`off`, `shadow_only`, `verifying`, `waiting` (for the routine), `on` or `failed`."""
+        """`off`, `shadow_only`, `verifying`, `waiting` (for the routine), `on` or `failed`; `on` also while
+        control runs on a report carried over an update (`control_report`)."""
         options = options or self.options()
         if not options.enabled:
             return "off"
