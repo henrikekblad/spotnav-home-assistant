@@ -376,10 +376,11 @@ ORPHANED: Final = "orphaned"
 
 
 def _orphans(raw: Any) -> list[dict[str, Any]]:
-    """The stored orphans that are well formed (`ORPHANED`)."""
+    """The stored orphans that are well formed (`ORPHANED`): a known key and a state that is a mapping (anything
+    else holds no snapshot)."""
     return [
         dict(row) for row in (raw if isinstance(raw, list) else [])
-        if isinstance(row, dict) and row.get("key") in ("battery", "export")
+        if isinstance(row, dict) and row.get("key") in ("battery", "export") and isinstance(row.get("state"), dict)
     ]
 
 
@@ -660,13 +661,14 @@ class BatteryControl:
             _LOGGER.warning("The battery control state could not be read")
             stored = None
         self._stored = dict(stored) if isinstance(stored, dict) else {}
+        # With the store itself, before anything is awaited: a start cut short stores what it holds (`_data`).
+        self._orphaned = _orphans(self._stored.get(ORPHANED))
         self._loaded = True
         self._migrate_mode()
         reports = self._stored.get("reports")
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
         await self._async_check_codes()
-        self._orphaned = _orphans(self._stored.get(ORPHANED))
         self._take_back("battery", control_for, self._stored)
         self._set_aside("battery", control_for, self._stored)
         state = ExecState.from_dict(self._stored.get("state"))

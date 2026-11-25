@@ -3211,3 +3211,53 @@ async def test_a_test_action_and_a_hardware_test_asked_for_during_a_look_never_b
         assert answers == {"hardware_test": "None", "trial": "refused:verifying"}
         assert control.trial is None and control.verification is not None
     await control.async_stop()
+
+
+async def test_a_start_cut_short_before_the_orphans_were_read_never_stores_them_away(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Home Assistant stops while the start still checks the control codes: the unload stores the state, and a
+    snapshot kept for a brand without a recipe must still be in it."""
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    data = hass_storage[key]["data"]
+    orphan = {"key": "battery", **{name: data.pop(name) for name in ("state", "ledger", "monitor")}}
+    orphan["state"] = {**orphan["state"], "brand": "gone_since"}
+    data["orphaned"] = [orphan]
+    reached = asyncio.Event()
+
+    async def waits(self) -> None:
+        reached.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(BatteryControl, "_async_check_codes", waits)
+    control = BatteryControl(hass, controller, plan_source=None)
+    control._start_task = hass.async_create_task(control.async_start())
+    await reached.wait()
+    await control.async_shutdown()
+    assert hass_storage[key]["data"]["orphaned"] == [orphan]
+
+
+async def test_malformed_stored_orphans_never_fail_a_start_the_diagnostics_or_a_removal(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    junk = [
+        1, "text", None, ["battery"], {"key": "other", "state": {}}, {"key": "battery"},
+        {"key": "battery", "state": "text"}, {"key": "export", "state": [1, 2]},
+        {"key": "battery", "state": {"brand": 5, "snapshot": "text", "entities": 7, "restore_values": [1]}},
+        {"key": "export", "state": {"brand": "sigenergy", "phase": "restoring", "target": 3}, "ledger": 4, "monitor": "x"},
+    ]
+    for stored in (junk, "text", {"key": "battery"}, 7):
+        hass_storage[key]["data"]["orphaned"] = stored
+        control = BatteryControl(hass, controller, plan_source=None)
+        await control.async_start()
+        assert isinstance(control.snapshot()["orphaned"], list)
+        for row in control.snapshot()["orphaned"]:
+            assert row["key"] in ("battery", "export")
+        await control.async_save()
+        await control.async_shutdown()
+    # The real snapshot was handed back at the first start; the removal reads the same rows without failing.
+    hass_storage[key]["data"]["orphaned"] = junk
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
