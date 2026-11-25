@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 
 from custom_components.spotnav.battery import adapters as ba  # noqa: E402
 from custom_components.spotnav.battery import commands as bc  # noqa: E402
+from custom_components.spotnav.battery import mirrored as bm  # noqa: E402
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
 from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
 from custom_components.spotnav.pool import detect as pool_detect  # noqa: E402
@@ -711,6 +712,10 @@ def batteries_section() -> list[str]:
         "and negates the integrations that report the opposite.",
         "",
         *table(("Integration", "Sign convention", "Notes", "Verification"), rows),
+        "",
+        f"A battery mirrored from another Home Assistant by Remote Home-Assistant (`{bm.MIRROR_PLATFORM}`, HACS) is "
+        "read only: its brand is found from the mirrored entity ids, the entry's entity prefix taken off, and "
+        "SpotNav plans with it but never controls it (see [Home batteries](home-battery.md)).",
         "",
     ]
 

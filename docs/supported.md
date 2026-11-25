@@ -264,6 +264,8 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Marstek (local API), one battery (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | Marstek (Modbus) (`marstek_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 
+A battery mirrored from another Home Assistant by Remote Home-Assistant (`remote_homeassistant`, HACS) is read only: its brand is found from the mirrored entity ids, the entry's entity prefix taken off, and SpotNav plans with it but never controls it (see [Home batteries](home-battery.md)).
+
 ## Supported heat pumps
 
 What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table says what it can control, and which pumps can make hot water on command through Home Assistant.
