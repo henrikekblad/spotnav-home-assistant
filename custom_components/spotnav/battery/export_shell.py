@@ -22,7 +22,8 @@ what that executor is asked for:
   export went on, or a write not taken, stays blocked until the person switches the rule off and on (`_transitions`).
 * **The one-time migration** (`migrate`): before the switch, the battery opt-in armed the export limit, and only
   Sigenergy had one (`commands.EXPORT_ARMED_BY_BATTERY`). A site of that brand whose battery control writes when the
-  switch arrives gets it turned on once, so nothing stops by an update. Every other site starts with it off.
+  switch arrives gets it turned on once, so nothing stops by an update, and is not held to beta sites for it
+  (`ExportGate.carried_over`). Every other site starts with it off.
 * **What the card shows** (`status`, in the site settings view's `export_curtail` block): whether a control is found,
   the switch, the 30 days' would-be saving from the rule's shadow (`export_curtail.CurtailShadow.totals`), and at
   most one thing the person can act on (`need`). A plant only watched (its own optimiser) is logged, not shown.
@@ -113,7 +114,8 @@ class ExportShell:
         control = self.recipe()
         if control is None:
             return "no_control"
-        if not control.field_tested and not learning_gate_open(c.hass, c.site.entry_id):
+        carried = self.gate.carried_over and control.brand in EXPORT_ARMED_BY_BATTERY
+        if not control.field_tested and not carried and not learning_gate_open(c.hass, c.site.entry_id):
             return "beta_only"
         return "on"
 
@@ -143,6 +145,7 @@ class ExportShell:
             return False
         if c.facts.control_brand not in EXPORT_ARMED_BY_BATTERY or not c.options().writes:
             return False
+        self.gate.carried_over = True
         c.hass.config_entries.async_update_entry(entry, data={**entry.data, gate.CONF_EXPORT_CURTAIL: True})
         c._log([{"at": now.isoformat(), "kind": "export_migrated", "reason": "battery_control_wrote"}])
         _LOGGER.info("SpotNav export limit: turned on for this site, where the battery control already ran it")

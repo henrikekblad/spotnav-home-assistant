@@ -201,6 +201,28 @@ async def test_a_site_whose_battery_control_already_writes_gets_the_switch_turne
     await again.async_stop()
 
 
+async def test_a_migrated_site_keeps_its_limit_without_beta(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    _exporting(monkeypatch, hass)
+    monkeypatch.setattr(export_shell_module, "learning_gate_open", lambda _hass, _site: False)
+    control = await _control(hass, controller, -12.0)
+    _options(hass, site, enabled=True, shadow_only=False)
+    control._enabled_seen = True
+    _passed(control)
+    now = await _looks(control, dt_util.now(), 4)
+    assert site.data[gate.CONF_EXPORT_CURTAIL] is True and control.export.gate.carried_over is True
+    assert control.export.state() == "on"
+    assert SET_ZERO in plant.calls, "the limit the battery control ran in b5 goes on without beta"
+    await control.async_stop()
+    again = await _control(hass, controller, -12.0)
+    assert again.export.gate.carried_over is True and again.export.state() == "on"
+    await _looks(again, now + timedelta(minutes=5), 2)
+    await again.async_stop()
+
+
 async def test_a_site_whose_battery_control_does_not_write_starts_with_the_switch_off(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

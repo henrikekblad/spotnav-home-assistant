@@ -75,6 +75,9 @@ class ExportGate:
 
     #: The site's one-time migration from the battery opt-in was decided.
     migrated: bool = False
+    #: The migration turned the switch on here: the battery control ran this brand's limit before, so it is not held
+    #: to beta sites (nothing stops by an update).
+    carried_over: bool = False
     #: The rule's switch as last seen (its turning on lifts a block and forgets a failed check).
     seen_on: bool = False
     #: The local day counted and the stretches started in it.
@@ -183,6 +186,7 @@ class ExportGate:
     def as_dict(self) -> dict[str, Any]:
         return {
             "migrated": self.migrated,
+            "carried_over": self.carried_over,
             "seen_on": self.seen_on,
             "day": self.day,
             "stretches": self.stretches,
@@ -199,6 +203,7 @@ class ExportGate:
         day, stretches = raw.get("day"), raw.get("stretches")
         return cls(
             migrated=raw.get("migrated") is True,
+            carried_over=raw.get("carried_over") is True,
             seen_on=raw.get("seen_on") is True,
             day=day if isinstance(day, str) else None,
             stretches=stretches if isinstance(stretches, int) and not isinstance(stretches, bool) and stretches >= 0 else 0,
