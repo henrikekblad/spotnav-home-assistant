@@ -229,6 +229,16 @@ def test_victrons_no_limit_is_handed_back_exactly_and_a_read_below_it_is_no_valu
     assert events(results, "not_started")[0]["reason"] == "no_restore_value:export_limit"
 
 
+def test_sigenergys_limit_never_set_is_not_curtailed_however_the_integration_shows_it() -> None:
+    # 2.0.1 on shows the all-ones register as `unknown`, older versions as 4294967.295 kW: neither can be handed back.
+    for found in ("unknown", "4294967.295"):
+        executor = Executor(SIGENERGY_EXPORT_CONTROL)
+        plant = FakeBattery(SIGENERGY_EXPORT_CONTROL, {"export_limit": found})
+        _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
+        assert written(results) == [], found
+        assert events(results, "not_started")[0]["reason"] == "no_restore_value:export_limit", found
+
+
 def test_goodwe_without_the_forks_switch_writes_the_limit_alone() -> None:
     executor, plant = _plant(GOODWE_EXPORT_CONTROL, {"export_limit": "10000"}, missing={"export_enable"})
     now, results = _run(executor, plant, T0, 5, ACTION_CURTAIL_EXPORT)

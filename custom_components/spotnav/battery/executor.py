@@ -1120,6 +1120,10 @@ def _rating(facts: BatteryFacts, kind: str | None) -> float | None:
     return None
 
 
+#: At or above this a power limit reads the register's all-ones "never set" value (4294967.295), not a limit.
+_NEVER_SET: Final = 4_000_000.0
+
+
 def _unset(role: Role, state: str | None) -> bool:
     """Whether a number reads the register's "never set" value (Sigenergy's all-ones U32, shown as `unknown` by
     2.0.1 and as 4294967.295 before): it cannot be written back, so the rating is (research §1.4). A real value, even
@@ -1132,7 +1136,7 @@ def _unset(role: Role, state: str | None) -> bool:
         value = float(state) / role.scale if state is not None else None
     except ValueError:
         return False
-    return value is not None and value >= 4_000_000.0
+    return value is not None and value >= _NEVER_SET
 
 
 def _rises(target: Native | None, read: RoleRead | None) -> bool:
@@ -1163,6 +1167,10 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
         if value is not None and role.restored_below is not None and value < role.restored_below[0]:
             # A sale running when it was found is never the person's value (`Role.restored_below`).
             return role.restored_below[1]
+        if value is not None and role.unknown_is_unset and value / role.scale >= _NEVER_SET:
+            # The register's "never set" shown as a number (Sigenergy before 2.0.1) with no rating to write in its
+            # place: no value to hand back, as when it reads `unknown`.
+            return None
         if value is not None and isinstance(role.no_limit, int | float) and value < role.no_limit:
             # Below the maker's "no limit" there is no value (`Role.no_limit`): nothing to hand back.
             return None
