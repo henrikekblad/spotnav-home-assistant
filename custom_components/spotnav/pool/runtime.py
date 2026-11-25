@@ -12,8 +12,8 @@ would do in its shadow book (`battery/shadow.py`, part `pool`). The sun's surplu
 It also counts each part's energy per quarter hour as it really draws (its own trusted power sensor where it has one,
 else the circulation and the heat pump while on, the spa or the sauna while it heats, at their powers as they count:
 entered, learned or typical) for the heat card's Use tab and the house card's energy flow (`energy_hours`,
-`energy_quarters`,
-`DAYS_KEPT` days).
+`energy_quarters`, `DAYS_KEPT` days), and what of it the sensor measured (`energy_qm`): the rest is an estimate
+(`estimated_quarters`), which the energy flow lets take only what the house has left.
 
 Nothing here writes to a device: no service is called. The settings are the heat settings'; the household's extra
 filtering is kept here (`extra`). Stored in `spotnav.pool_spa.<entry>`, the days' figures for `DAYS_KEPT` days.
@@ -199,6 +199,9 @@ class PoolSpaShadow:
         self.energy: dict[str, dict[str, float]] = {}
         #: Each part's energy per UTC quarter hour (`energy_quarters`): `{part: {quarter start ISO: kWh}}`.
         self.energy_q: dict[str, dict[str, float]] = {}
+        #: What of it its own trusted power sensor measured (`estimated_quarters`), the same shape; the rest is an
+        #: estimate (on time at its power). Quarters counted before it was kept read as estimated.
+        self.energy_qm: dict[str, dict[str, float]] = {}
         self._energy_tick: datetime | None = None
         self._last_filter = False
         self._plan_key: Any = None
@@ -264,15 +267,16 @@ class PoolSpaShadow:
         self.spa.restore(self.book.section("spa"))
         self.sauna.restore(self.book.section("sauna"))
         self.power.restore(self.book.section("power"))
-        quarters = self.book.section("energy_q")
-        for part in ENERGY_PARTS:
-            rows = quarters.get(part)
-            if isinstance(rows, dict):
-                self.energy_q[part] = {
-                    key: float(value)
-                    for key, value in rows.items()
-                    if isinstance(key, str) and _aware(key) is not None and _float(value) is not None
-                }
+        for name, target in (("energy_q", self.energy_q), ("energy_qm", self.energy_qm)):
+            quarters = self.book.section(name)
+            for part in ENERGY_PARTS:
+                rows = quarters.get(part)
+                if isinstance(rows, dict):
+                    target[part] = {
+                        key: float(value)
+                        for key, value in rows.items()
+                        if isinstance(key, str) and _aware(key) is not None and _float(value) is not None
+                    }
         energy = self.book.section("energy")
         for kind in ENERGY_KINDS:
             rows = energy.get(kind)
@@ -341,6 +345,7 @@ class PoolSpaShadow:
         self.book.set_section("power", self.power.as_dict())
         self.book.set_section("energy", {kind: {key: round(kwh, 4) for key, kwh in rows.items()} for kind, rows in self.energy.items()})
         self.book.set_section("energy_q", {part: {key: round(kwh, 4) for key, kwh in rows.items()} for part, rows in self.energy_q.items()})
+        self.book.set_section("energy_qm", {part: {key: round(kwh, 4) for key, kwh in rows.items()} for part, rows in self.energy_qm.items()})
         return self.book.as_dict()
 
     # ---- reads
@@ -670,25 +675,26 @@ class PoolSpaShadow:
         watts = read_power_w(self.hass, learned.trusted_sensor)
         return None if watts is None else max(0.0, watts) / 1000.0
 
-    def _draws(self, config: HeatConfig) -> dict[str, float]:
-        """What each part draws now (kW): its own trusted power sensor's reading where it has one (measured), else the
-        pool's circulation and heat pump while on and the spa or the sauna while it heats, each at its power as it
-        counts (entered, learned, else typical)."""
-        out: dict[str, float] = {}
+    def _draws(self, config: HeatConfig) -> dict[str, tuple[float, bool]]:
+        """What each part draws now (kW) and whether it is measured: its own trusted power sensor's reading where it
+        has one (measured), else the pool's circulation and heat pump while on and the spa or the sauna while it
+        heats, each at its power as it counts (entered, learned, else typical: an estimate)."""
+        out: dict[str, tuple[float, bool]] = {}
+
+        def put(part: str, measured: float | None, estimate: float) -> None:
+            out[part] = (measured, True) if measured is not None else (estimate, False)
+
         pool = config.pool
         if pool is not None:
             if pool.circulation_id is not None:
                 on = self._switch_on(pool.circulation_id)
-                measured = self._measured_kw(PART_POOL_CIRCULATION)
-                out[PART_POOL_CIRCULATION] = measured if measured is not None else (pool.circulation_kw or DEFAULT_CIRCULATION_KW) if on else 0.0
+                put(PART_POOL_CIRCULATION, self._measured_kw(PART_POOL_CIRCULATION), (pool.circulation_kw or DEFAULT_CIRCULATION_KW) if on else 0.0)
             if pool.heat_pump is not None:
-                measured = self._measured_kw(PART_POOL_HEAT)
                 heating = self._pump_state(pool)[1]
-                out[PART_POOL_HEAT] = measured if measured is not None else (pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW) if heating else 0.0
+                put(PART_POOL_HEAT, self._measured_kw(PART_POOL_HEAT), (pool.heat_pump_kw or DEFAULT_HEAT_PUMP_KW) if heating else 0.0)
         for kind, part, block in (("spa", self.spa, config.spa), ("sauna", self.sauna, config.sauna)):
             if block is not None:
-                measured = self._measured_kw(kind)
-                out[kind] = measured if measured is not None else (block.heater_kw or DEFAULT_KW[kind]) if part.reading.heating else 0.0
+                put(kind, self._measured_kw(kind), (block.heater_kw or DEFAULT_KW[kind]) if part.reading.heating else 0.0)
         return out
 
     def _account_energy(self, now: datetime, config: HeatConfig) -> None:
@@ -697,20 +703,24 @@ class PoolSpaShadow:
         last, self._energy_tick = self._energy_tick, now
         if last is None or not last < now or now - last > MAX_GAP:
             return
-        for part, kw in self._draws(config).items():
+        for part, (kw, measured) in self._draws(config).items():
             if kw <= 0:
                 continue
             rows = self.energy_q.setdefault(part, {})
+            sure = self.energy_qm.setdefault(part, {}) if measured else None
             moment = last
             while moment < now:
                 utc = moment.astimezone(UTC)
                 quarter = utc.replace(minute=utc.minute - utc.minute % 15, second=0, microsecond=0)
                 end = min(now, quarter + QUARTER)
                 key = quarter.isoformat()
-                rows[key] = rows.get(key, 0.0) + kw * (end - moment).total_seconds() / 3600.0
+                kwh = kw * (end - moment).total_seconds() / 3600.0
+                rows[key] = rows.get(key, 0.0) + kwh
+                if sure is not None:
+                    sure[key] = sure.get(key, 0.0) + kwh
                 moment = end
         oldest = (now - timedelta(days=DAYS_KEPT)).astimezone(UTC).isoformat()
-        for rows in (*self.energy.values(), *self.energy_q.values()):
+        for rows in (*self.energy.values(), *self.energy_q.values(), *self.energy_qm.values()):
             for key in [key for key in rows if key < oldest]:
                 del rows[key]
 
@@ -722,6 +732,18 @@ class PoolSpaShadow:
             moment = _aware(key)
             if moment is not None:
                 out[moment] = kwh
+        return out
+
+    def estimated_quarters(self, part: str) -> dict[datetime, float]:
+        """What of a part's energy per UTC quarter-hour start (`energy_quarters`) is an estimate (on time at its power,
+        not its trusted power sensor's reading): the energy less what the sensor measured, never below 0. The energy
+        flow lets an estimate take only what the house has left (`site/energy_flow.with_heat_parts`)."""
+        measured = self.energy_qm.get(part) or {}
+        out: dict[datetime, float] = {}
+        for key, kwh in (self.energy_q.get(part) or {}).items():
+            moment = _aware(key)
+            if moment is not None:
+                out[moment] = max(0.0, kwh - measured.get(key, 0.0))
         return out
 
     def has_energy(self, kind: str) -> bool:

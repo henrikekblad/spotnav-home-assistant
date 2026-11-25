@@ -156,6 +156,12 @@ async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant)
     quarters = again.energy_quarters("pool_heat")
     assert quarters == pytest.approx({first + timedelta(minutes=45): 1.6 / 60, first + timedelta(hours=1): 1.6 / 60}, abs=1e-3)
     assert again.energy_hours("pool_circulation") == pytest.approx({first: 0.4 / 60, first + timedelta(hours=1): 0.4 / 60}, abs=1e-3)
+    # Without a trusted power sensor every quarter is an estimate (on time at the entered power), kept over a restart.
+    assert again.estimated_quarters("pool_heat") == pytest.approx(quarters, abs=1e-3)
+    # What a trusted sensor measured is not: only the rest of a quarter is.
+    key = (first + timedelta(minutes=45)).isoformat()
+    again.energy_qm["pool_heat"] = {key: 1.0 / 60}
+    assert again.estimated_quarters("pool_heat")[first + timedelta(minutes=45)] == pytest.approx(0.6 / 60, abs=1e-3)
 
 
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1, 2, 3, 4, 5, 6, 7], "time": "19:00"}]}
