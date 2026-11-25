@@ -610,23 +610,23 @@ def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]
 
 def _last_verdict(
     reports: Mapping[str, Any], *, key: str, brand: str | None, variants: tuple[str, ...], since: datetime | None
-) -> Mapping[str, Any] | None:
-    """The brand's last decided report under another key (`updated_at`), when that verdict is a pass that still
+) -> tuple[str, Mapping[str, Any]] | None:
+    """The brand's last decided report under another key (`updated_at`) with that key, when that verdict is a pass that still
     stands with the recipe's hold variants (`without_removed_hold`) and is later than `since`; `None` otherwise,
     also when the last verdict is a failure: an older pass says nothing of a plant that stopped obeying since."""
     decided = [
-        report for name, report in reports.items()
+        (name, report) for name, report in reports.items()
         if name != key and firmware_known(name) and isinstance(report, Mapping) and brand is not None
         and report.get("brand") == brand and report_status(report) in ("passed", "failed")
     ]
     if not decided:
         return None
-    last = max(decided, key=lambda report: str(report.get("updated_at") or ""))
+    name, last = max(decided, key=lambda item: str(item[1].get("updated_at") or ""))
     if since is not None:
         updated = parse_time(last.get("updated_at"))
         if updated is None or updated <= since:
             return None
-    return last if report_status(without_removed_hold(last, variants)) == "passed" else None
+    return (name, last) if report_status(without_removed_hold(last, variants)) == "passed" else None
 
 
 def control_report(
@@ -650,9 +650,10 @@ def control_report(
     attempts = (current or {}).get("attempts")
     if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
         return current
-    last = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since)
-    if last is None:
+    found = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since)
+    if found is None:
         return current
+    source, last = found
     held = hold_variant(last)
     if held is not None and any(
         row.get("variant") == held and mode_verdict(row.get("outcome")) == "fail" for row in variants_tried(current)
@@ -669,7 +670,7 @@ def control_report(
     if not carried:
         return current
     base = dict(current) if current is not None else {"brand": brand, "attempts": 0}
-    return {**base, "key": key, "modes": modes, "carried_from": last.get("key")}
+    return {**base, "key": key, "modes": modes, "carried_from": source}
 
 
 def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any], *, most: int) -> dict[str, Any]:

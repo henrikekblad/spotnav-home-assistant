@@ -4004,6 +4004,8 @@ class BatteryControl:
             "reports": dict(self.reports),
             # The key whose passed report control runs on while the routine checks the key now (`control_report`).
             "carried_from": self._carried_block(),
+            # When the plant last failed a check that left no failed report: nothing older is carried.
+            "carry_after": self.carry_after,
             "log": list(self.log),
             "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
