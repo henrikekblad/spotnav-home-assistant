@@ -257,6 +257,7 @@ async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | 
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
         services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
+        options=role.write_as,
     )
     try:
         await _async_service(hass, domain, service, data)
@@ -3219,7 +3220,7 @@ class BatteryControl:
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
             services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
-            duration=role.lease,
+            duration=role.lease, options=role.write_as,
         )
         try:
             await _async_service(self.hass, domain, service, data)

@@ -606,6 +606,10 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
+    #: For a select: the option written for a value SpotNav compares it by (`service_call`), where the option itself
+    #: reads as no reading: Solis's "None" (no force running), compared as `SOLIS_RC_OFF` (`normalize` reads it so).
+    #: Empty: every value is written as it is.
+    write_as: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if (self.readback == "answer") != (self.answer is not None):
@@ -2419,7 +2423,7 @@ def export_table() -> list[dict[str, Any]]:
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
     services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
-    duration: bool = False,
+    duration: bool = False, options: Mapping[str, str] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
@@ -2428,11 +2432,13 @@ def service_call(
     Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
     integration's service, for the battery's device in the role's `device_field`, with the power where the value has
     one and, where the role is a lease (`Role.lease`, passed as `duration`), the window as the duration in
-    minutes."""
+    minutes. A select's value is written as the option `options` names for it (`Role.write_as`), else as it is."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":
-        return "select", "select_option", {"entity_id": entity_id, "option": value}
+        # A value compared by another name is written as its option (`Role.write_as`).
+        option = options.get(value, value) if options and isinstance(value, str) else value
+        return "select", "select_option", {"entity_id": entity_id, "option": option}
     if method == "switch":
         # A restore writes the state found ("on"/"off" as read), an action a bool.
         on = value is True or (isinstance(value, str) and value.strip().lower() in ("on", "true"))
