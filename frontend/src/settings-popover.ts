@@ -197,7 +197,6 @@ const WAITING_KEYS: Record<string, TranslationKey> = {
   firmware_unknown: "battery.waiting.firmwareUnknown",
   retry_gap: "battery.waiting.retryGap",
   no_battery_control: "battery.waiting.noBatteryControl",
-  not_evening: "battery.waiting.notEvening",
   car_charging: "battery.waiting.carCharging",
   battery_not_discharging: "battery.waiting.notDischarging",
   soc_out_of_range: "battery.waiting.socOutOfRange",
@@ -259,6 +258,8 @@ export function batteryLine(language: Language, line: string): string {
     return translate(language, known);
   }
   const [kind, first, second] = line.split(":");
+  // `waiting_after_update`: control runs on what passed before an update while the check of the new firmware,
+  // integration version or recipe waits for its moment (the state is then `on`).
   if (kind === "waiting" || kind === "waiting_after_update") {
     const why = WAITING_KEYS[first ?? ""];
     const base = translate(language, kind === "waiting" ? "battery.line.waiting" : "battery.line.waitingAfterUpdate");
