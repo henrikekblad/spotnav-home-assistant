@@ -11,7 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
-import { batteryLine, batteryNeed, batteryOutsideClearable, outcomeVerdict, preheatLine } from "../src/settings-popover";
+import { batteryLine, batteryNeed, brandName, batteryOutsideClearable, outcomeVerdict, preheatLine } from "../src/settings-popover";
 import { decodeBatteryControl, decodeSiteList, decodeSiteView } from "../src/site-model";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -935,5 +935,19 @@ describe("the popover from the house card", () => {
     expect(opened.dataset["heatNone"]).toBeUndefined();
     expect(opened.querySelector("button[data-edit='path']")).not.toBeNull();
     expect(opened.textContent).toContain("En varmvattenberedare på ett relä kan läggas till här.");
+  });
+});
+
+describe("brandName", () => {
+  it("writes each brand whose control is still being tested as people write it", () => {
+    expect(brandName("solaredge")).toBe("SolarEdge");
+    expect(brandName("solax")).toBe("SolaX");
+    expect(brandName("goodwe")).toBe("GoodWe");
+    expect(brandName("tesla")).toBe("Tesla Powerwall");
+    expect(brandName("kostal")).toBe("Kostal Plenticore");
+    expect(brandName("deye")).toBe("Deye / Sunsynk");
+    expect(brandName("fronius")).toBe("Fronius");
+    expect(brandName("huawei")).toBe("Huawei");
+    expect(brandName("victron")).toBe("Victron");
   });
 });
