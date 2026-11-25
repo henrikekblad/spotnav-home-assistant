@@ -149,8 +149,19 @@ The entity keys, options and services below were checked against each integratio
   (2.0.3) `number.py` lines 185-199 (the key at 186), `modbusregisterdefinitions.py` lines 1624-1632). It applies in every EMS mode
   (the integration's `docs/MODBUS_ENTITIES.md`, "Grid export power limit": "All EMS modes", "Hybrid / PV · grid
   sensor"), so it does not need Remote EMS, but it needs the plant's grid sensor. Its never-set all-ones value reads
-  `unknown` as the battery limits do; it is restored as the plant's maximum output (`plant_max_active_power`), the most
-  the plant can export anyway, and the export control is not started without that figure.
+  `unknown` as the battery limits do; the integration has no entity that sets it so again, and the plant's maximum is
+  never written in its place (it could overwrite a grid operator's cap), so a plant whose limit was never set is not
+  curtailed (`no_restore_value:export_limit`). Five more brands have one since 2026-11-25 (`EXPORT_CONTROLS`, the
+  recipes near the end of this file; every entity read in its source at the commit `EXPORT_LIMIT_TABLE` names):
+  Victron (`system_ess_max_feed_in_power`, -1 no limit, `Role.no_limit`), Sungrow (`uid_export_power_limit` with the
+  switch `sg_export_power_limit_switch`), Solis (`solis_modbus_inverter_backflow_power` with the switch `43073_4`),
+  GoodWe (`grid_export_limit`, with the HACS fork's switch `grid_export_limit_switch` where it exists) and SolaX
+  (`export_control_user_limit`). Each is one number at the grid point (`BrandControl.limit_point`: a cap on the
+  inverter's AC output is never an export control) with at most one switch that enables it: the value is written
+  first and the switch last, and back the switch first; a switch found off is switched off again and the value
+  handed back as found; only SpotNav's own values are ever written over (`restore_own_only`). None of the five has
+  run on a device: they write on a beta tester's site only (`export_field_tested`), and where no source states that
+  0 means no export (`zero_stated`) a check on the plant comes first (`control`'s export check).
 * **GoodWe**, `goodwe`, the HACS fork mletenay/home-assistant-goodwe-inverter `e6e9b385dd0000b3e6dcf3742c61c38e0dc75c8f`
   (0.9.9.30; library goodwe 0.4.10 `66dfcdd9cd947bfd799f2bddb40b4e05ba9db6f6`; research
   `goodwe_tesla_enphase_control_2026-11.md`). **Core `goodwe` is not enough**: it has no `eco_charge` option and no eco
@@ -525,6 +536,7 @@ from .adapters import (
 )
 from .adapters import FRONIUS, _fronius
 from .adapters import DEYE, _any_key
+from .adapters import SUNGROW, _package
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -751,6 +763,10 @@ class Role:
     #: `FOLLOWS_MAX` (`answered`): a write that latched it is not taken (no number read back), and the restore of a
     #: value found so writes the entity's maximum again (`control.resolve_follows_max`). `None`: no such attribute.
     follows_max: str | None = None
+    #: The value the maker documents as "no limit" (Victron's -1 on its feed-in limit), in the entity's unit; `None`:
+    #: none. Found so, it is handed back exactly (never moved into a range), a read below it is no value at all
+    #: (`executor._restore_value`), and the diagnostics name it (`export_table`).
+    no_limit: Native | None = None
 
     def __post_init__(self) -> None:
         if (self.readback == "answer") != (self.answer is not None):
@@ -1042,8 +1058,18 @@ class BrandControl:
     #: peak cover under a hold, and the first writes of every hand-back of that action).
     peak_first: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: `battery` (the plan's actions) or `export` (the export limit, `ACTION_CURTAIL_EXPORT`): an export control
-    #: needs no battery reading or fuse headroom, since a lower export limit never adds import.
+    #: needs no battery reading or fuse headroom, since a lower export limit at the grid point never adds import
+    #: (`limit_point`).
     kind: Literal["battery", "export"] = "battery"
+    #: Where an export control's limit acts: `grid` (what leaves the site at its grid connection: the house is still
+    #: fed by the sun) or `inverter_ac` (the inverter's whole AC output: the house would then be fed from the grid).
+    #: An export control must say `grid` (`__post_init__`): a cap on the inverter's AC output (Fronius's and Kostal's
+    #: power limits, Solis's output clamp, SolarEdge's active power limit, Solinteg's 50208) is never one, and that is
+    #: why it may skip the fuse headroom. `None` for a battery control.
+    limit_point: Literal["grid", "inverter_ac"] | None = None
+    #: For an export control: a source of the maker's or the integration's states that 0 means no export (not "off"
+    #: or "unlimited"). Only for the gate and the report (`control`'s export check), never for what is written.
+    zero_stated: bool = False
     #: How the plant spreads a grid charge over the phases: as many phases, evenly (the HA-down grid charge cap,
     #: `gate.grid_charge_cap_kw`); 1 (all on one phase) where the brand does not say. `output_type` (an enum sensor,
     #: read by `OUTPUT_TYPE_PHASES`) overrides it when the plant shows it.
@@ -1204,6 +1230,8 @@ class BrandControl:
         names = {role.name for role in self.roles}
         if any(role not in names for role, _value in self.expiry.silence):
             raise ValueError(f"{self.brand}: a silence writes the control's own roles")
+        if self.kind == "export" and self.limit_point != "grid":
+            raise ValueError(f"{self.brand}: an export control's limit acts at the grid point, never on the AC output")
 
     @property
     def watchdog_roles(self) -> tuple[str, ...]:
@@ -2118,9 +2146,12 @@ VICTRON_CONTROL: Final = BrandControl(
     write_caps={"setpoint": SETPOINT_WRITES_WATCHED},
 )
 
+# No `unset_as_rating`: a limit never set (`unknown`) has no value to hand back, and the plant's maximum is never
+# written in its place (a grid operator's export cap must never be overwritten; owner decision 2026-11-25). The
+# integration has no entity that turns the limitation off again, so such a plant is not curtailed
+# (`no_restore_value:export_limit`).
 _SIG_EXPORT = Role(
     "export_limit", "number", _key("plant_grid_point_maximum_export_limitation", "number"), step=0.001,
-    unset_as_rating="export", unknown_is_unset=True,
 )
 
 SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
@@ -2136,8 +2167,12 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     own_states={"EMS work mode": frozenset({"remote_ems"})},
     takeover={"EMS work mode": frozenset({"ai_mode"})},
     kind="export",
-    note="Grid Export Limitation (40038) applies in every EMS mode and needs the plant's grid sensor; a never-set"
-    " limit is restored as the plant's maximum output.",
+    limit_point="grid",
+    # The integration's own table: "the most power your installation can send to the public grid", 0 to 100 kW.
+    zero_stated=True,
+    note="Grid Export Limitation (40038) applies in every EMS mode and needs the plant's grid sensor. Handed back"
+    " exactly as found; a limit never set (`unknown`) cannot be handed back, so it is not curtailed, and the"
+    " plant's maximum is never written.",
 )
 
 # --- GoodWe (the HACS fork) ---------------------------------------------------------------------------------------
@@ -2890,9 +2925,162 @@ CONTROLS: Final[tuple[BrandControl, ...]] = (
 )
 
 
-#: The export-limit controls: only where the brand's adapter already knows the entity (`EXPORT_LIMIT_TABLE` lists
-#: the brands seen with a local export limit, mapped or not).
-EXPORT_CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_EXPORT_CONTROL,)
+# --- the export limit of more brands (see the module) --------------------------------------------------------------
+
+
+def _curtail(*enable: str) -> Callable[[float, int], tuple[Want, ...]]:
+    """The one export action: the limit at 0, and the brand's enable (`enable`, where it has one) on. The orders put
+    the value first and the enable last, and back the enable first, so the limit never acts at a value not meant."""
+    wants = (Want("export_limit", 0.0), *(Want(name, True) for name in enable))
+    return lambda _rate_kw, _watchdog_s: wants
+
+
+def _zero_or_above(state: str | None) -> str | None:
+    """A lower bound as compared: `zero`, `above_zero`, `None` when it reads no number."""
+    try:
+        value = float(state) if state is not None else math.nan
+    except ValueError:
+        return None
+    if not math.isfinite(value):
+        return None
+    return "zero" if value <= 0 else "above_zero"
+
+
+# Victron: -1 is "no limit" and 0 "none at all", one watt apart: read to the watt, and -1 handed back exactly.
+_VIC_FEED_IN = Role(
+    "export_limit", "number", _key("system_ess_max_feed_in_power", "number"), scale=1000.0, step=1.0, tolerance=1.0,
+    no_limit=-1.0,
+)
+VICTRON_EXPORT_CONTROL: Final = BrandControl(
+    brand="victron",
+    adapter=VICTRON,
+    roles=(_VIC_FEED_IN,),
+    states={ACTION_CURTAIL_EXPORT: _curtail()},
+    enter_order=("export_limit",),
+    restore_order=("export_limit",),
+    own_states=VICTRON_CONTROL.own_states,
+    kind="export",
+    limit_point="grid",
+    zero_stated=True,
+    restore_own_only=True,
+    count_restores=True,
+    note="ESS max feed-in power (Settings/CGwacs/MaxFeedInPower, a setting on the GX): -1 no limit, >= 0 the system's"
+    " feed-in, DC- and AC-coupled. It caps the battery's feed-in too. Not tested on a plant.",
+)
+
+# Sungrow (mkaiser's package): the limit acts only while its switch is on; its lower bound is the inverter's own.
+_SG_EXPORT = Role("export_limit", "number", _package("uid_export_power_limit", "number"), scale=1000.0, step=100.0)
+_SG_EXPORT_ENABLE = Role("export_enable", "switch", _package("sg_export_power_limit_switch", "switch"))
+_SG_EXPORT_MIN = Role(
+    "limit_min", "sensor", _package("sg_export_power_limit_min"), restored=False, normalize=_zero_or_above,
+)
+SUNGROW_EXPORT_CONTROL: Final = BrandControl(
+    brand="sungrow",
+    adapter=SUNGROW,
+    roles=(_SG_EXPORT, _SG_EXPORT_ENABLE, _SG_EXPORT_MIN),
+    states={ACTION_CURTAIL_EXPORT: _curtail("export_enable")},
+    enter_order=("export_limit", "export_enable"),
+    restore_order=("export_enable", "export_limit"),
+    # An inverter whose least limit is above 0 cannot stop its export: nothing is written.
+    requires=(
+        ("limit_min", frozenset({"zero", "above_zero"}), "limit_min_unread"),
+        ("limit_min", frozenset({"zero"}), "limit_min_above_zero"),
+    ),
+    kind="export",
+    limit_point="grid",
+    # The package's own scene "Zero Export Power": the switch on and the number at 0.
+    zero_stated=True,
+    restore_own_only=True,
+    count_restores=True,
+    note="Export power limit (13073, W) with its switch (13086); needs the Sungrow meter. It caps the battery's"
+    " export too. One firmware was reported to take 13073 as 0.1 %: 0 is no export either way. Not tested on a"
+    " plant.",
+)
+
+# Solis: the number echoes at once, so the limit is read back by the sensor of the same register.
+_SOLIS_BACKFLOW = Role(
+    "export_limit", "number", _key("solis_modbus_inverter_backflow_power", "number"), scale=1000.0, step=1.0,
+    parts=(_key("solis_modbus_inverter_backflow_power", "sensor"),), compose=_solis_register,
+)
+_SOLIS_BACKFLOW_ENABLE = Role("export_enable", "switch", _key("43073_4", "switch"))
+#: "Flexible Export Status" (43292 with 43291): anything but `Off` and the inverter follows the flexible export
+#: limit instead of the backflow power, so SpotNav's limit would not act.
+_SOLIS_FLEXIBLE = Role(
+    "flexible_export", "sensor", _key("solis_modbus_inverter_flexible_export_status"), restored=False
+)
+SOLIS_EXPORT_CONTROL: Final = BrandControl(
+    brand="solis",
+    adapter=SOLIS,
+    roles=(_SOLIS_BACKFLOW, _SOLIS_BACKFLOW_ENABLE),
+    states={ACTION_CURTAIL_EXPORT: _curtail("export_enable")},
+    enter_order=("export_limit", "export_enable"),
+    restore_order=("export_enable", "export_limit"),
+    own_states=SOLIS_CONTROL.own_states,
+    watched=((_SOLIS_FLEXIBLE, "Off", "flexible_export_on"),),
+    kind="export",
+    limit_point="grid",
+    restore_own_only=True,
+    count_restores=True,
+    note="Backflow Power (43074, W) with the grid feed-in power limit switch (43073 bit 4); needs the meter or CT."
+    " Not started while the inverter's Flexible Export is on. Nothing states that 0 means no export: checked on"
+    " the plant first. Not tested on a plant.",
+)
+
+# GoodWe: the number is core's; the switch that enables the limit (47509) exists only in the HACS fork, whose switches
+# carry no `goodwe-` before the key. Neither polls: Home Assistant's echo, watched after a hand-back.
+_GW_EXPORT = Role(
+    "export_limit", "number", _goodwe("grid_export_limit", "number"), scale=1000.0, step=1.0, readback="echo",
+    settle_s=900.0,
+)
+_GW_EXPORT_ENABLE = Role(
+    "export_enable", "switch", Match(("switch",), re.compile(r"^grid_export_limit_switch-[^-]+$")), readback="echo",
+    settle_s=900.0, optional=True,
+)
+GOODWE_EXPORT_CONTROL: Final = BrandControl(
+    brand="goodwe",
+    adapter=GOODWE,
+    roles=(_GW_EXPORT, _GW_EXPORT_ENABLE),
+    states={ACTION_CURTAIL_EXPORT: _curtail("export_enable")},
+    enter_order=("export_limit", "export_enable"),
+    restore_order=("export_enable", "export_limit"),
+    own_states=GOODWE_CONTROL.own_states,
+    kind="export",
+    limit_point="grid",
+    restore_own_only=True,
+    count_restores=True,
+    hacs_roles=("export_enable",),
+    hacs_repo=GOODWE_CONTROL.hacs_repo,
+    note="Grid export limit (47510, W; % on some models: 0 is none in both) and, with the HACS integration, the"
+    " switch that enables it (47509). With core alone the limit acts only where it is already enabled on the"
+    " inverter: one that is not shows as a limit not obeyed. Nothing states that 0 means no export: checked on the"
+    " plant first. Not tested on a plant.",
+)
+
+_SX_EXPORT = Role(
+    "export_limit", "number", _key("export_control_user_limit", "number"), scale=1000.0, step=100.0
+)
+SOLAX_EXPORT_CONTROL: Final = BrandControl(
+    brand="solax",
+    adapter=SOLAX,
+    roles=(_SX_EXPORT,),
+    states={ACTION_CURTAIL_EXPORT: _curtail()},
+    enter_order=("export_limit",),
+    restore_order=("export_limit",),
+    own_states=SOLAX_CONTROL.own_states,
+    kind="export",
+    limit_point="grid",
+    restore_own_only=True,
+    count_restores=True,
+    note="Export Control User Limit (0x42, W): a setting register with no switch of its own. Nothing states that 0"
+    " means no export: checked on the plant first. Not tested on a plant.",
+)
+
+#: The export-limit controls (`EXPORT_LIMIT_TABLE` lists every brand looked at, mapped or not). Each is the brand's
+#: one number at the grid point, with at most one switch that enables it.
+EXPORT_CONTROLS: Final[tuple[BrandControl, ...]] = (
+    SIGENERGY_EXPORT_CONTROL, VICTRON_EXPORT_CONTROL, SUNGROW_EXPORT_CONTROL, SOLIS_EXPORT_CONTROL,
+    GOODWE_EXPORT_CONTROL, SOLAX_EXPORT_CONTROL,
+)
 
 
 def control_for(brand: str | None, variant: str | None = None) -> BrandControl | None:
@@ -2968,36 +3156,115 @@ def export_control_for(brand: str | None) -> BrandControl | None:
     return next((control for control in EXPORT_CONTROLS if control.brand == brand), None)
 
 
-#: Brands with a local export limit in their Home Assistant integration, from each source (2026-11-15, shallow
-#: clones). `mapped`: SpotNav has the control (`EXPORT_CONTROLS`); the rest are noted for later, not written.
+def export_field_tested(brand: str | None) -> bool:
+    """Whether the brand's export-limit control was tested on a real plant: until then it writes only on a beta
+    tester's site (`control.BatteryControl.export_state`). Never the battery recipe's flag: the two are apart."""
+    control = export_control_for(brand)
+    return control is not None and control.field_tested
+
+
+#: The brands looked at for a local export limit (2026-11-25; each source at the commit named). `mapped`: SpotNav has
+#: the control (`EXPORT_CONTROLS`), whose entities were read again in the source at that commit; every other row is
+#: from the research notes only and is not written. `zero`: whether a source states that 0 means no export.
+#: `verdict`: `beta` (mapped, untested: a beta tester's site only), `second_wave` (a recipe is possible, not built),
+#: `later`, `not_now` or `not_possible` (no limit at the grid point: never an export control).
 EXPORT_LIMIT_TABLE: Final[tuple[Mapping[str, Any], ...]] = (
-    {"brand": "sigenergy", "integration": "sigen (TypQxQ 2.0.3, 41182ec)", "mapped": True,
-     "entity": "number `plant_grid_point_maximum_export_limitation` (Grid Export Limitation, kW, register 40038)",
-     "note": "Every EMS mode, no Remote EMS needed; needs the plant's grid sensor; disabled by default."},
-    {"brand": "solaredge", "integration": "solaredge_modbus_multi (WillCodeForCats fa590ea)", "mapped": False,
-     "entity": "number `<model>_<serial>_site_limit` (Site Limit, W) with select `<model>_<serial>_limit_control_mode`",
-     "note": "Only with the integration's advanced 'site limit control' option; the limit is available only while"
-     " an export-control mode is set."},
-    {"brand": "huawei", "integration": "huawei_solar (wlcrs 2412b4d)", "mapped": False,
-     "entity": "services `huawei_solar.set_zero_power_grid_connection` / `set_maximum_feed_grid_power` (W)",
-     "note": "Active power control of the inverter or EMMA; installer password; no plain number to read back."},
-    {"brand": "solax", "integration": "solax_modbus (wills106 4acd644)", "mapped": False,
-     "entity": "number `<hub>_export_control_user_limit` (Export Control User Limit, W, register 0x42)",
-     "note": "A setting register, not the remote control's local values; its range differs per generation."},
-    {"brand": "sungrow", "integration": "mkaiser Sungrow-SHx YAML package (13a7622), not an integration", "mapped": False,
-     "entity": "template number `uid_export_power_limit` (W, register 13073) with modbus switch"
-     " `sg_export_power_limit_switch` (13086)",
-     "note": "The limit applies only while the switch is on."},
-    {"brand": "victron", "integration": "victron_gx (victron-mqtt)", "mapped": False,
-     "entity": "number `system_ess_max_feed_in_power` (/Settings/CGwacs/MaxFeedInPower, W, -1 no limit)",
-     "note": "A setting stored on the GX; Multi RS also has switch `multi_disable_feed_in`. The community Modbus"
-     " integration (sfstar/hass-victron 32fb345) has `settings_ess_maxfeedinpower` (register 2706, W, -1 no limit)."},
-    {"brand": "goodwe", "integration": "core goodwe (library goodwe 66dfcdd)", "mapped": False,
-     "entity": "number `grid_export_limit` (W on ET/EH, register 47510; % on DT, register 40328)",
-     "note": "A setting written to the inverter; the unit depends on the model."},
-    {"brand": "fronius", "integration": "core fronius (d33dfe3a)", "mapped": False, "entity": None,
-     "note": "No feed-in limit entity: its AC power limit (model 123) caps the inverter's whole AC output, not the"
-     " feed-in, and the web UI's dynamic power reduction is not written over Modbus."},
+    {"brand": "sigenergy", "integration": "sigen (TypQxQ 2.0.3, 41182ec)", "mapped": True, "verdict": "beta",
+     "entity": "number `plant_grid_point_maximum_export_limitation` (Grid Export Limitation, kW 0-100, register"
+     " 40038; `number.py` 185-199)",
+     "zero": "stated", "no_limit": "never set reads `unknown`; no entity turns the limitation off",
+     "note": "Every EMS mode, no Remote EMS needed; needs the plant's grid sensor; disabled by default. A limit"
+     " never set cannot be handed back, so such a plant is not curtailed."},
+    {"brand": "victron", "integration": "victron_gx / victron_mqtt (library victron_mqtt 3fe6d08)", "mapped": True,
+     "verdict": "beta",
+     "entity": "number `system_ess_max_feed_in_power` (Settings/CGwacs/MaxFeedInPower, W, -1 to 1000000;"
+     " `_victron_topics.py` 3421-3433)",
+     "zero": "stated", "no_limit": "-1",
+     "note": "A setting stored on the GX; caps the battery's feed-in too. The community Modbus integration"
+     " (sfstar/hass-victron, `settings_ess_maxfeedinpower`, register 2706) scales -1 badly and has no control."},
+    {"brand": "sungrow", "integration": "mkaiser Sungrow-SHx YAML package (e2adb62), not an integration",
+     "mapped": True, "verdict": "beta",
+     "entity": "template number `uid_export_power_limit` (W, register 13073; `modbus_sungrow.yaml` 1750-1771) with"
+     " modbus switch `sg_export_power_limit_switch` (13086, 1423-1436) and sensor `sg_export_power_limit_min`"
+     " (5621, 471-482)",
+     "zero": "stated (the package's scene Zero Export Power)", "no_limit": "the switch off",
+     "note": "Needs the Sungrow meter; caps the battery's export too; refused where the inverter's least limit is"
+     " above 0. One firmware took 13073 as 0.1 %."},
+    {"brand": "solis", "integration": "solis_modbus (Pho3niX90 840ab30)", "mapped": True, "verdict": "beta",
+     "entity": "number `solis_modbus_inverter_backflow_power` (Backflow Power, W, register 43074;"
+     " `sensor_data/hybrid_sensors.py` 2607-2622) with switch `43073_4` (Grid feed in power limit switch;"
+     " `sensor_data/switch_sensors.py` 24-29)",
+     "zero": "not stated", "no_limit": "the switch off",
+     "note": "Needs the meter or CT. Flexible Export (43292/43291) overrides it when on: not started then. Not"
+     " solax_modbus's `backflow_power_switch`, which writes the whole register."},
+    {"brand": "goodwe", "integration": "core goodwe (library 0.4.10, 66dfcdd) and the HACS fork (mletenay e6e9b38)",
+     "mapped": True, "verdict": "beta",
+     "entity": "number `goodwe-grid_export_limit-<serial>` (W on ET/EH, register 47510; % on other models) with the"
+     " fork's switch `grid_export_limit_switch-<serial>` (47509; fork `switch.py` 39-45, 122)",
+     "zero": "not stated", "no_limit": "the switch off (the fork only)",
+     "note": "An installer parameter. Core has no enable switch: the limit then acts only where it is already"
+     " enabled. The library ignores a negative value."},
+    {"brand": "solax", "integration": "solax_modbus (wills106 4acd644)", "mapped": True, "verdict": "beta",
+     "entity": "number `<hub>_export_control_user_limit` (Export Control User Limit, W, register 0x42;"
+     " `plugin_solax.py` 2866-2909)",
+     "zero": "not stated", "no_limit": "none (the model's maximum)",
+     "note": "A setting register; its range differs per generation. Not `grid_export_limit` (a remote-control"
+     " target) nor `export_duration`."},
+    {"brand": "solaredge", "integration": "solaredge_modbus_multi (WillCodeForCats 39567a9)", "mapped": False,
+     "verdict": "second_wave",
+     "entity": "number `<uid>_site_limit` (W) with selects `limit_control_mode` and `limit_control`",
+     "zero": "stated (may still export small amounts)", "no_limit": "the mode Disabled",
+     "note": "Only with the integration's option for site limit control (off by default); needs the SolarEdge"
+     " meter. Never `active_power_limit`, a cap on the AC output."},
+    {"brand": "huawei", "integration": "huawei_solar (wlcrs d8b0120)", "mapped": False, "verdict": "second_wave",
+     "entity": "services `set_zero_power_grid_connection`, `set_maximum_feed_grid_power`,"
+     " `reset_maximum_feed_grid_power`",
+     "zero": "stated (mode 5)", "no_limit": "mode 0",
+     "note": "Read back only through a sensor disabled by default; the hand-back is a mode, a power and a share."},
+    {"brand": "tesla", "integration": "core tesla_fleet / teslemetry", "mapped": False, "verdict": "second_wave",
+     "entity": "select `components_customer_preferred_export_rule` (`never`, `battery_ok`, `pv_only`)",
+     "zero": "by its label only", "no_limit": "the option found",
+     "note": "A cloud control with few writes a day; only for sites with a battery and solar."},
+    {"brand": "deye", "integration": "solarman (davidrapan 84982c5); kellerza MQTT", "mapped": False,
+     "verdict": "second_wave",
+     "entity": "number Export Surplus Power / Max Sell Power with switch Export Surplus / Solar Sell (single"
+     " phase); a number alone on three phases",
+     "zero": "not stated", "no_limit": "the switch off",
+     "note": "The unit differs between low- and high-voltage models; nobody states the wear of the register."},
+    {"brand": "foxess", "integration": "foxess_modbus (nathanmarlor 94252f0)", "mapped": False,
+     "verdict": "second_wave", "entity": "number `export_power_limit` (W): KH 1.33+, H3 Smart, H3 Pro only",
+     "zero": "not stated", "no_limit": "not stated", "note": "H1 and H3 classic have no entity."},
+    {"brand": "ecoflow", "integration": "ef_powerocean_tcpmodbus (56331de)", "mapped": False,
+     "verdict": "second_wave", "entity": "switch `grid_feed`",
+     "zero": "stated", "no_limit": "the switch on",
+     "note": "Acts only while the integration's Modbus control runs, the battery recipe's own role."},
+    {"brand": "solinteg", "integration": "solax_modbus `plugin_solinteg.py` (4acd644)", "mapped": False,
+     "verdict": "second_wave",
+     "entity": "select `export_limit_switch` with number `export_limit_value` (% of rated)",
+     "zero": "not stated", "no_limit": "the select off",
+     "note": "The cloud was seen to write over Modbus limits after about an hour."},
+    {"brand": "growatt", "integration": "growatt_modbus; growatt_local; solax_modbus Growatt", "mapped": False,
+     "verdict": "later", "entity": "select `export_limit_mode` with number `export_limit_rate` (%)",
+     "zero": "not stated", "no_limit": "the mode off",
+     "note": "No export recipe brand yet; an enabled limit at 100 % was seen to block the battery's export."},
+    {"brand": "sma", "integration": "pysmaplus (5d74e78)", "mapped": False, "verdict": "not_now",
+     "entity": "service `pysmaplus.set_value` on Active Power Limitation (GCP)",
+     "zero": "stated", "no_limit": "not stated",
+     "note": "A limited number of parameter writes over the inverter's life."},
+    {"brand": "fronius", "integration": "core fronius", "mapped": False, "verdict": "not_possible", "entity": None,
+     "zero": None, "no_limit": None,
+     "note": "Only `ac_power_limit`, a cap on the inverter's whole AC output (the house would be fed from the"
+     " grid); the feed-in limit is in the web UI only."},
+    {"brand": "kostal", "integration": "core kostal_plenticore", "mapped": False, "verdict": "not_possible",
+     "entity": None, "zero": None, "no_limit": None,
+     "note": "Only `active_power_limitation`, a cap on the inverter's AC output that takes priority over the"
+     " battery's control."},
+    {"brand": "enphase", "integration": "core enphase_envoy", "mapped": False, "verdict": "not_possible",
+     "entity": None, "zero": None, "no_limit": None, "note": "Only the grid relay, which islands the site."},
+    {"brand": "ferroamp", "integration": "ha-ferroamp", "mapped": False, "verdict": "not_possible",
+     "entity": None, "zero": None, "no_limit": None, "note": "No export limit entity."},
+    {"brand": "marstek", "integration": "marstek_venus_modbus; marstek_local_api", "mapped": False,
+     "verdict": "not_possible", "entity": None, "zero": None, "no_limit": None, "note": "No export limit entity."},
 )
 
 
@@ -3028,7 +3295,14 @@ def export_table() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for control in EXPORT_CONTROLS:
         wants = control.states[ACTION_CURTAIL_EXPORT](0.0, WATCHDOG_S)
-        rows.append({"brand": control.brand, "action": ACTION_CURTAIL_EXPORT, "writes": {w.role: w.value for w in wants}})
+        rows.append({
+            "brand": control.brand, "action": ACTION_CURTAIL_EXPORT, "writes": {w.role: w.value for w in wants},
+            "enter_order": list(control.enter_order), "restore_order": list(control.restore_order),
+            "limit_point": control.limit_point, "zero_stated": control.zero_stated,
+            "field_tested": control.field_tested,
+            "no_limit": {role.name: role.no_limit for role in control.roles if role.no_limit is not None},
+            "optional": sorted(control.optional_names()),
+        })
         rows.append({"brand": control.brand, "action": ACTION_SELF_CONSUME, "writes": {"*": SNAPSHOT}})
     return rows
 

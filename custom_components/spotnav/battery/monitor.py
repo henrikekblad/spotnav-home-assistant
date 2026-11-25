@@ -21,7 +21,11 @@ What each command expects:
   the hold stopped the sun charging too.
 * `curtail` (the site's export limit at 0 kW, judged on the site's grid power, + import): export at most
   `EXPORT_TOLERANCE_KW`, after `CURTAIL_GRACE_S`. Still exporting at least `1 - FAIL_FRACTION` of the export before
-  the command is `no_effect`, less is `partial`.
+  the command is `no_effect`, less is `partial`. A site that exported before the command and now **imports** more
+  than `EXPORT_TOLERANCE_KW` beyond what its battery charges and its chargers draw (`Reading.excused_kw`, where
+  read) is `import_rose`: the limit capped the inverter's own output instead of the export, so the house is fed from
+  the grid. Judged only for `IMPORT_ROSE_WINDOW_S` after the command (such a cap acts at once; a load that starts
+  later is the house's own).
 * `charge`/`discharge` at a rate: below `FAIL_FRACTION` of what the battery can deliver (at least `FLOOR_KW`) is
   `no_effect`, below `PARTIAL_FRACTION` is `partial`. A deliverable rate under `FLOOR_KW` is not judged.
 
@@ -71,6 +75,8 @@ CHARGE_TAPER_SOC_PCT: Final = 90.0
 DISCHARGE_MARGIN_PCT: Final = 5.0
 COUNTER_DAYS: Final = 30
 COUNTERS: Final[tuple[str, ...]] = ("writes", "no_effect", "partial")
+#: How long after a curtail an import that rose is read as the limit's doing (s).
+IMPORT_ROSE_WINDOW_S: Final = 600.0
 
 #: What an idle hold's battery may charge (kW) before a reading counts as a hold not taken.
 HOLD_CHARGE_TOLERANCE_KW: Final = 0.5
@@ -88,7 +94,7 @@ PHASE_OVER_GAP_S: Final = 10.0
 PhaseVerdict = Literal["ok", "over", "partial", "no_effect"]
 
 CommandKind = Literal["hold", "charge", "discharge", "curtail"]
-ReadingVerdict = Literal["ok", "partial", "no_effect"]
+ReadingVerdict = Literal["ok", "partial", "no_effect", "import_rose"]
 _KINDS: Final = frozenset({"hold", "charge", "discharge", "curtail"})
 
 
@@ -155,6 +161,9 @@ class Reading:
     #: The site's grid power (kW, + import), for a hold that stores the sun: `None` when unknown (then the battery's
     #: own power alone is judged).
     grid_kw: float | None = None
+    #: For a curtail: what the battery charges and the site's chargers draw now (kW), where read: an import up to it
+    #: is theirs, not a sign of an inverter held at no output (`import_rose`).
+    excused_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,15 +206,19 @@ def deliverable_kw(
 
 
 def judge(
-    command: Command, expected_kw: float, power_kw: float, grid_kw: float | None = None, soc_pct: float | None = None
+    command: Command, expected_kw: float, power_kw: float, grid_kw: float | None = None, soc_pct: float | None = None,
+    *, excused_kw: float | None = None,
 ) -> ReadingVerdict:
     """One reading against what the command expects (a hold that stores the sun also against the site's grid power,
-    when known)."""
+    when known; a curtail's import against `excused_kw`, `Reading.excused_kw`)."""
     if command.kind == "curtail":
         export = max(-power_kw, 0.0)
-        if export <= EXPORT_TOLERANCE_KW:
-            return "ok"
         before = None if command.before_kw is None else max(-command.before_kw, 0.0)
+        if export <= EXPORT_TOLERANCE_KW:
+            excused = excused_kw if excused_kw is not None and math.isfinite(excused_kw) else 0.0
+            if before is not None and before > EXPORT_TOLERANCE_KW and power_kw > EXPORT_TOLERANCE_KW + max(excused, 0.0):
+                return "import_rose"
+            return "ok"
         if before is not None and before > EXPORT_TOLERANCE_KW and export >= (1.0 - FAIL_FRACTION) * before:
             return "no_effect"
         return "partial"
@@ -259,7 +272,7 @@ class MonitorEvent:
     kind: Literal["failure", "dry_run"]
     at: datetime
     command: Command
-    #: `no_effect`/`partial` for a failure; for a dry run `baseline_<verdict>` or `not_judgeable:<why>`.
+    #: `no_effect`/`partial`/`import_rose` for a failure; for a dry run `baseline_<verdict>` or `not_judgeable:<why>`.
     outcome: str
     expected_kw: float | None = None
     readings: tuple[dict[str, Any], ...] = ()
@@ -355,7 +368,10 @@ class Monitor:
         if expected is None:
             self.watch = replace(watch, run=(), last_reading_at=now, why_not=why_not)
             return None
-        verdict = judge(command, expected, power, reading.grid_kw, reading.soc_pct)
+        verdict = judge(command, expected, power, reading.grid_kw, reading.soc_pct, excused_kw=reading.excused_kw)
+        if verdict == "import_rose" and (now - command.at).total_seconds() > IMPORT_ROSE_WINDOW_S:
+            # A load that started long after the limit was set is the house's own.
+            verdict = "ok"
         row = {"at": now.isoformat(), "power_kw": round(power, 3), "soc_pct": reading.soc_pct, "verdict": verdict}
         if not command.written:
             # A dry run judges nothing: it shows the first three readings it would have judged, as a baseline.
@@ -374,9 +390,11 @@ class Monitor:
         if len(run) < CONFIRM_READINGS:
             self.watch = replace(watch, run=run, last_reading_at=now, why_not=None)
             return None
-        outcome = "no_effect" if all(item["verdict"] == "no_effect" for item in run) else "partial"
+        verdicts = {item["verdict"] for item in run}
+        outcome = next(iter(verdicts)) if len(verdicts) == 1 and verdicts <= {"no_effect", "import_rose"} else "partial"
         self.watch = replace(watch, run=run, last_reading_at=now, why_not=None, done=True)
-        self._count(now, outcome)
+        # Counted with the commands that had no effect: the limit did not do what was asked.
+        self._count(now, "no_effect" if outcome == "import_rose" else outcome)
         return MonitorEvent("failure", now, command, outcome, expected, run)
 
     def _count(self, now: datetime, key: str) -> None:

@@ -176,14 +176,19 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   is below zero, `export_curtail.py`); anything else hands it back to the value found. It needs no battery reading
   and no fuse headroom (a lower export limit never adds import), but every other rule holds: management (a battery in
   its own optimiser is only watched), off-grid, the site's measurement, read-back, a change by someone else given up,
-  the restore. A never-set limit (`unknown`) is restored as the plant's maximum output. The day's write cap is the
+  the restore. A limit never set (`unknown`) has no value to hand back and the plant's maximum is never written in
+  its place, so it is not taken (`no_restore_value`); a value found at the maker's "no limit" (`Role.no_limit`,
+  Victron's -1) is handed back exactly. A brand whose limit has a switch that enables it writes the value first and
+  the switch last, and back the switch first; a switch found off is switched off again. Without the site's signed
+  grid power nothing could judge it, so it is not taken (`no_grid_reading`). The day's write cap is the
   site's, shared with the battery's instance (`ExecInputs.other_writes_today`). A plant whose mode reads SpotNav's
   own battery control (Remote EMS that the battery instance runs, `ExecInputs.sibling_active`) is taken; one in
   Remote EMS of someone else's is not, and a curtail is handed back when someone else takes Remote EMS. The two instances never write each other's roles: the battery's control
   does not read the export limit, and Sigenergy's export limit needs no Remote EMS, so the battery's hand-back
   (Remote EMS off) takes nothing from it. **Obeyed?** The monitor judges a curtail on the site's grid power: after
   `monitor.CURTAIL_GRACE_S`, three readings exporting more than `monitor.EXPORT_TOLERANCE_KW` hand the limit back
-  and block it (`not_obeyed`).
+  and block it (`not_obeyed`), and so do three readings importing where the site exported before
+  (`not_obeyed:curtail_export:import_rose`: a limit that caps the inverter's output, not the export).
 
 Pure: no Home Assistant import; times are aware datetimes from the caller. State survives a restart
 (`ExecState.as_dict`, `from_dict`); the ledger and the monitor keep their own.
@@ -489,6 +494,9 @@ class ExecInputs:
     #: What the plant may import by itself on the most loaded phase now (A, `commands.AutonomousImport`), only while
     #: its trigger may fire: taken off the headroom a hold starts on and its peak cover reads.
     own_import_a: float = 0.0
+    #: For the export limit: what the site's battery charges and its chargers draw now (kW), where read: an import
+    #: up to it under a curtail is theirs (`monitor`'s `import_rose`).
+    excused_import_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1155,6 +1163,9 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
         if value is not None and role.restored_below is not None and value < role.restored_below[0]:
             # A sale running when it was found is never the person's value (`Role.restored_below`).
             return role.restored_below[1]
+        if value is not None and isinstance(role.no_limit, int | float) and value < role.no_limit:
+            # Below the maker's "no limit" there is no value (`Role.no_limit`): nothing to hand back.
+            return None
         return value
     return reading(role, state)
 
@@ -1555,7 +1566,9 @@ class Executor:
             # The export limit is judged on the site's grid power: the export must stop.
             grid = inputs.grid_import_kw
             fresh = inputs.measurement_ok and grid is not None and math.isfinite(grid)
-            judged = self.monitor.observe(Reading(grid, 0.0 if fresh else None), Capability(), now)
+            judged = self.monitor.observe(
+                Reading(grid, 0.0 if fresh else None, excused_kw=inputs.excused_import_kw), Capability(), now
+            )
             if judged is not None and judged.kind == "failure":
                 events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
                 events += self._begin_restore(now, f"not_obeyed:{self.state.action}:{judged.outcome}")
@@ -2481,6 +2494,10 @@ class Executor:
             return "off_grid"
         if not inputs.measurement_ok or (not self._export and not _fresh(inputs)):
             return "stale_data"
+        if self._export and (inputs.grid_import_kw is None or not math.isfinite(inputs.grid_import_kw)):
+            # Nothing could judge whether the limit is obeyed: the export limit is not taken without the site's
+            # signed grid power.
+            return "no_grid_reading"
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
         if action == ACTION_HOLD and not hold_headroom_ok(inputs):

@@ -749,6 +749,7 @@ class BatteryShadow:
         sell = self.curtail_sell = self.plan.sell_at(now)
         shown = None
         blocker: str | None = None
+        grid_w = site_net_grid_w(self.site)
         if curtails(sell):
             facts, reads, control = read_export_facts(self.hass, self.site.config)
             self.curtail_brand = None if control is None else control.brand
@@ -761,10 +762,10 @@ class BatteryShadow:
                         now=now, facts=self.with_outside(facts), reads=reads, action=ACTION_CURTAIL_EXPORT,
                         measurement_ok=inputs.measurement_ok, headroom_a=inputs.headroom_a,
                         volts_between_phases=inputs.volts_between_phases,
+                        grid_import_kw=None if grid_w is None else grid_w / 1000.0,
                     ),
                 )
                 blocker = shown.blocker
-        grid_w = site_net_grid_w(self.site)
         day = now.astimezone(time_zones.require_zone(self.plan._tz)).date().isoformat()
         restore = dict(self.curtail.restore)
         before = self.curtail.as_dict()

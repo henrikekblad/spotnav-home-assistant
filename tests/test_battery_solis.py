@@ -135,7 +135,10 @@ def test_solis_is_controlled_only_by_its_rc_force_recipe() -> None:
     # The adapter itself writes nothing (no hold or grid charge spec); the control is the RC force recipe.
     assert SOLIS.hold is None and SOLIS.grid_charge is None
     assert commands.control_for("solis") is commands.SOLIS_CONTROL
-    assert all(control.brand != "solis" for control in commands.EXPORT_CONTROLS)
+    # Its export limit is a control of its own, with none of the battery recipe's roles.
+    export = commands.export_control_for("solis")
+    assert export is commands.SOLIS_EXPORT_CONTROL
+    assert {role.name for role in export.roles}.isdisjoint(role.name for role in commands.SOLIS_CONTROL.roles)
     facts = _facts("solis")
     assert facts.hold is None and facts.grid_charge is None
 
