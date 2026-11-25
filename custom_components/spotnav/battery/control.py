@@ -2011,7 +2011,7 @@ class BatteryControl:
     def hardware_test_deadman_s(self) -> float | None:
         """How long the hardware test's dead-man step may take here (s: the hold until a renewal, the window and its
         slack), `None` where the test times none."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         expiry = None if control is None else self._hardware_test_deadman(control)
         if expiry is None or expiry.window_s is None:
             return None

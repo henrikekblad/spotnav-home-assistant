@@ -3047,3 +3047,17 @@ async def test_roles_a_hand_back_could_not_write_are_named_with_what_to_set_by_h
     executor.state = replace(executor.state, phase="idle", blocked=None, unrestored=())
     assert not any(need.startswith("restore_by_hand") for need in control.status()["needs"])
     await control.async_stop()
+
+
+async def test_a_mirrored_battery_has_no_dead_man_time_for_a_hardware_test(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    control.facts = replace(control.facts, brand="solis")
+    assert control.hardware_test_deadman() and control.hardware_test_deadman_s() is not None
+    # Read only (mirrored from another Home Assistant): no recipe, so no dead-man step and no time for one.
+    control.facts = replace(control.facts, read_only="remote_homeassistant")
+    assert not control.hardware_test_deadman()
+    assert control.hardware_test_deadman_s() is None
+    await control.async_stop()
