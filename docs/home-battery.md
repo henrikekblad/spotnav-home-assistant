@@ -802,7 +802,9 @@ and *Stop force charge/discharge*, which send the force, its power and its timeo
 
 * **Hold:** a force charge at 0 W. The battery covers nothing; a sun surplus is still stored. A tester's log showed
   the battery flat at 0 W for over an hour this way while the house drew 1.8 kW.
-* **Grid charge:** a force charge at the rate. It needs **Allow Grid to Charge the Battery** on (SpotNav reads it and
+* **Grid charge:** a force charge at the rate. Below its *Force Charge SOC* the inverter charges from the grid by
+  itself at its *Force-charge Power Limitation*; SpotNav counts that against the fuse only while the battery is near
+  that level. It needs **Allow Grid to Charge the Battery** on (SpotNav reads it and
   never sets it): with it off the plan's grid charge does not run. The battery's BMS has the last word: a cold pack may
   take only 10 A (about 3.7 kW at 370 V) whatever is asked, so SpotNav asks no more than the BMS's present charge
   limit times its voltage.
@@ -832,7 +834,11 @@ same register, and the inverter's time-of-use periods are its own schedule. Spot
 seen once, marks the battery as run by someone else: SpotNav then writes nothing more to the force, its powers or its
 timeout (it does not even stop the other system's force), and its own plan keeps running in shadow as a benchmark.
 That mark lasts until 48 hours after the last sign of the other system, unless you press **It was me – clear** in
-the home battery section. The hardware test refuses to run while it stands, and a test waiting for its moment gives
+the home battery section. One case looks the same and is treated so: if someone changes only *RC Force Battery
+Charge Power* (or *Discharge Power*) by hand while SpotNav's own force runs, SpotNav writes nothing more and the
+battery runs at that power until the *RC Timeout* ends the force (up to five minutes); SpotNav stops its own force
+early only if a phase comes near the main fuse. After a restart SpotNav first waits for the integration to read the
+force (at most five minutes) before it hands anything back, and leaves a force it did not write alone. The hardware test refuses to run while it stands, and a test waiting for its moment gives
 up when another system takes the battery: pause the other system, clear the mark, then press Start.
 
 **The hardware test first.** Nobody has run this on a plant yet, so on a Solis SpotNav only shows what it would do (as
@@ -845,8 +851,9 @@ for the first pass, with a phone notice and a Stop button while it writes) and r
 2. **Small grid charge:** about 1 kW under the fuse cap and within the BMS's limit; the battery must charge.
 3. **Discharge to the house:** back to Self-Use; the battery must cover the house.
 4. **Stops by itself:** the hold again, renewed once after two minutes, then left alone while the test times how long
-   the inverter keeps it before it covers the house by itself. About five minutes after the renewal passes; sooner
-   (the renewal did not restart the timer), much later or never fails, and the battery is stopped either way. On
+   the inverter keeps it before it covers the house by itself, judged by the force's own switches turning off (the
+   house may change meanwhile; the battery's power is the cross-check). About five minutes after the renewal passes;
+   sooner (the renewal did not restart the timer), much later or never fails, and the battery is stopped either way. On
    Solis this step must **pass**: if it could not be judged (the house's load moved, say), the test runs again later
    by itself and does not count as passed.
 5. **Hand back:** the force stopped, both powers at 0, the timeout as found.

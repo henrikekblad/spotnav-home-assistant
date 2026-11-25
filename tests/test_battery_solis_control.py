@@ -89,6 +89,8 @@ class Hybrid(FakeBattery):
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     #: The most the battery charged at under each look (kW), for the safety assertions.
     charged: list[float] = field(default_factory=list)
+    #: The integration has not read the plant yet (after a restart): the force's switches read nothing.
+    unread: bool = False
 
     def __post_init__(self) -> None:
         self._shown_from_registers()
@@ -123,6 +125,8 @@ class Hybrid(FakeBattery):
 
     def reads(self) -> dict[str, RoleRead]:
         switch = {1: ("on", "off"), 2: ("off", "on")}.get(self.reg[43135], ("off", "off"))
+        if self.unread:
+            switch = ("unavailable", "unavailable")
         sensors = {43136: str(self.reg[43136] * 10), 43129: str(self.reg[43129] * 10), 43282: str(self.reg[43282])}
         own = {
             "rc_force": switch[0], "charge_power": self.shown["charge_power"],
@@ -541,7 +545,12 @@ def test_an_outside_force_landing_at_any_point_of_the_renewal_cycle_is_never_wri
     assert events(results, "left_alone") and events(results, "external")
     assert {"rc_force", "charge_power", "discharge_power", "rc_timeout"} <= set(executor.state.given_up)
     assert plant.reg[43135] == (1 if kind == "charge" else 2) and plant.reg[_POWER_REG[kind]] == watts // 10
-    assert executor.state.phase != "active"
+    if kind == "charge":
+        # The same kind as SpotNav's own hold: it cannot tell it from its own force with the power moved, so it keeps
+        # the action, writes nothing and would stop only for the fuse (`altered`).
+        assert events(results, "altered") and executor.state.altered == "rc_force"
+    else:
+        assert executor.state.phase != "active"
 
 
 def test_a_grid_charge_waits_while_grid_charging_is_not_allowed_and_a_hold_still_runs() -> None:
@@ -665,7 +674,8 @@ def test_the_bms_charge_limit_is_read_live_and_never_learnt() -> None:
 
 
 def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: float = 1.8,
-              headroom_a: float = 20.0, deadman: bool = True) -> tuple[Any, list[StepResult], datetime]:
+              headroom_a: float = 20.0, deadman: bool = True,
+              house_at: Any = None) -> tuple[Any, list[StepResult], datetime]:
     """The hardware test's battery part (`Timing.quick`, `stop_on_fail`) as `BatteryControl.async_hardware_test_start`
     builds it, with the dead-man step `_hardware_test_deadman` names, on the fake's own clock."""
     from custom_components.spotnav.battery.monitor import Capability  # noqa: PLC0415
@@ -682,6 +692,8 @@ def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: 
     now = T0
     results: list[StepResult] = []
     for _ in range(looks):
+        if house_at is not None:
+            house_kw = plant.house_kw = house_at(now)
         power = plant.at(now).power_kw()
         grid = house_kw + power
         sample = Sample(power, 5.0, plant.soc_pct, house_kw, grid_kw=grid, headroom_a=headroom_a)
@@ -767,3 +779,143 @@ def test_a_force_standing_while_spotnav_acts_on_nothing_is_a_foreign_command() -
     assert not seen({"remote force charge": "on"}, acting=True), "SpotNav's own force"
     # A recipe without a command role (Marstek's RS485 control) keeps the old rules.
     assert not seen({"RS485 control": "on"}, brand="marstek")
+
+
+# --- SpotNav's own changes are never someone else's (review round 2) ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("first", "first_kw", "then", "then_kw"),
+    [
+        ("grid_charge", 3.0, "grid_charge", 1.5), ("grid_charge", 1.5, "grid_charge", 3.0),
+        ("export_discharge", 2.0, "export_discharge", 1.0), ("grid_charge", 3.0, "hold", 0.0),
+        ("hold", 0.0, "grid_charge", 2.0), ("export_discharge", 2.0, "hold", 0.0),
+        ("hold", 0.0, "export_discharge", 2.0),
+    ],
+)
+def test_spotnavs_own_change_of_power_or_action_runs_on_and_is_never_read_as_someone_elses(
+    first: str, first_kw: float, then: str, then_kw: float,
+) -> None:
+    executor, plant = _plant(bms_kw=10.0)
+    now, _results = _run(executor, plant, T0, 10, first, first_kw)
+    assert executor.state.phase == "active" and executor.state.action == first
+    now, results = _run(executor, plant, now, 20, then, then_kw)
+    assert not events(results, "external") and not events(results, "left_alone") and not events(results, "hand_back")
+    assert executor.state.phase == "active" and executor.state.action == then and not executor.state.given_up
+    want = executor.state.target["rc_force"]
+    kind, _sep, watts = str(want).partition(":")
+    assert plant.reg[43135] == (1 if kind == "charge" else 2)
+    assert plant.reg[_POWER_REG[kind]] * 10 == int(watts) == round(then_kw * 1000)
+    # It keeps renewing its own force afterwards.
+    _now, results = _run(executor, plant, now, 14, then, then_kw)
+    assert events(results, "renew") and executor.state.phase == "active"
+
+
+def test_a_same_kind_force_landing_on_spotnavs_first_call_awaited_is_given_up_not_stopped() -> None:
+    executor, plant = _plant()
+    now, results = T0, []
+    while ("rc_force", "charge:0") not in written(results):
+        now, more = _run(executor, plant, now, 1, "hold")
+        results += more
+    plant.outside_force("charge", 4000)  # lands before the call's read-back
+    _now, results = _run(executor, plant, now, 12, "hold")
+    assert written(results) == [] and events(results, "external")
+    assert plant.reg[43135] == 1 and plant.reg[43136] == 400
+
+
+def test_a_hand_back_after_a_restart_waits_for_a_reading_and_leaves_a_force_it_did_not_write() -> None:
+    def restarted(plant: Hybrid) -> tuple[Executor, datetime]:
+        executor = Executor(SOLIS_CONTROL)
+        now, _results = _run(executor, plant, T0, 8, "hold")
+        stored = executor.as_dict()
+        again = Executor(
+            SOLIS_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+            state=ExecState.from_dict(stored["state"]),
+        )
+        again.restart(now)
+        return again, now
+
+    # Nothing read yet: nothing written; once it reads SpotNav's own hold, the hand-back stops it.
+    plant = Hybrid(SOLIS_CONTROL, {"grid_charge_allowed": "on"}, idle_kw=-1.8)
+    again, now = restarted(plant)
+    plant.unread = True
+    now, results = _run(again, plant, now, 6, None, stopping="restart")
+    assert written(results) == [] and again.state.phase == "restoring"
+    plant.unread = False
+    _now, results = _run(again, plant, now, 6, None, stopping="restart")
+    assert written(results)[0] == ("rc_force", SOLIS_RC_STOP) and plant.reg[43135] == 0
+    # Another system's force found once it reads: left as it is, nothing written.
+    plant = Hybrid(SOLIS_CONTROL, {"grid_charge_allowed": "on"}, idle_kw=-1.8)
+    again, now = restarted(plant)
+    plant.unread = True
+    now, _results = _run(again, plant, now, 3, None, stopping="restart")
+    plant.unread = False
+    plant.outside_force("discharge", 3000)
+    _now, results = _run(again, plant, now, 6, None, stopping="restart")
+    assert written(results) == [] and events(results, "external") and plant.reg[43135] == 2
+    # Never read within the command's own window: left as it is (SpotNav's own force has ended by then).
+    plant = Hybrid(SOLIS_CONTROL, {"grid_charge_allowed": "on"}, idle_kw=-1.8)
+    again, now = restarted(plant)
+    plant.unread = True
+    _now, results = _run(again, plant, now, 40, None, stopping="restart")
+    assert ("rc_force", SOLIS_RC_STOP) not in written(results) and again.state.phase in ("idle", "blocked")
+    assert not any(role in ("charge_power", "discharge_power", "rc_timeout") for role, _value in written(results))
+
+
+def test_a_power_set_from_outside_under_spotnavs_own_force_is_left_to_the_timeout_or_stopped_for_the_fuse() -> None:
+    # Someone moves the charge power under SpotNav's hold: never fought, nothing written, the action runs on.
+    executor, plant = _plant(bms_kw=10.0)
+    now, _results = _run(executor, plant, T0, 8, "hold")
+    plant.reg[43136] = 885
+    now, results = _run(executor, plant, now, 6, "hold")
+    assert written(results) == [] and events(results, "altered") and executor.state.phase == "active"
+    assert not events(results, "renew") and executor.state.altered == "rc_force"
+    # Near the fuse SpotNav ends its own force (only that: the power stays the other writer's).
+    _now, results = _run(executor, plant, now, 4, "hold", headroom_a=0.5)
+    assert written(results) == [("rc_force", SOLIS_RC_STOP)] and plant.reg[43135] == 0 and plant.reg[43136] == 885
+    # A plan change instead: nothing written, the inverter's own timeout ends it.
+    executor, plant = _plant(bms_kw=10.0)
+    now, _results = _run(executor, plant, T0, 8, "hold")
+    plant.reg[43136] = 885
+    now, _results = _run(executor, plant, now, 3, "hold")
+    _now, results = _run(executor, plant, now, 6, "self_consume")
+    assert written(results) == [] and plant.reg[43135] == 1
+    # Its own expiry ending it while the action still runs: handed back, not blocked.
+    executor, plant = _plant(bms_kw=10.0)
+    now, _results = _run(executor, plant, T0, 8, "hold")
+    plant.reg[43136] = 885
+    _now, results = _run(executor, plant, now, 40, "hold")
+    assert any(str(e["reason"]) == "altered_ended:rc_force" for e in events(results, "hand_back"))
+    # Not blocked: once re-armed the plan's hold starts afresh (its own power first), nothing stopped by SpotNav.
+    assert executor.state.phase != "blocked" and ("rc_force", SOLIS_RC_STOP) not in written(results)
+    assert written(results)[:2] in ([], [("charge_power", 0.0), ("rc_force", "charge:0")])
+
+
+def test_the_dead_man_is_judged_by_its_switches_whatever_the_house_does() -> None:
+    # The house moves by kilowatts during the five-minute silence (a heat pump, a kettle): still timed.
+    executor, plant = _plant(bms_kw=10.0)
+    verification, _results, _end = _test_run(
+        plant, executor, house_at=lambda now: 1.8 + (1.5 if (now - T0).total_seconds() // 60 % 2 else 0.0),
+    )
+    row = verification.report()["modes"]["expiry"]
+    assert row["outcome"] == "obeyed" and 290.0 < row["fallback_s"] <= 370.0
+    assert any(reading.get("cross_check") == "covering" for reading in row["readings"])
+
+
+def test_the_inverters_own_top_up_counts_against_a_grid_charge_only_near_its_force_charge_soc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = {"solis_modbus_inverter_battery_force_charge_limit": "3000", "solis_modbus_inverter_force_charge_soc": "10"}
+
+    def read(_hass: Any, _config: Any, match: Any) -> str | None:
+        return next((value for key, value in values.items() if match is not None and match.matches("number", key)), None)
+
+    monkeypatch.setattr(control_module, "read_plant_entity", read)
+    control = BatteryControl.__new__(BatteryControl)
+    control.hass = None  # type: ignore[assignment]
+    control.site = SimpleNamespace(config={})  # type: ignore[assignment]
+    for soc, counted in ((50.0, False), (16.0, False), (14.0, True), (8.0, True), (None, True)):
+        control.facts = SimpleNamespace(brand="solis", soc_pct=soc, reserve_soc_pct=10.0)  # type: ignore[assignment]
+        amps = control._own_import_a(SOLIS_CONTROL)
+        assert (amps > 0) is counted, soc
+    assert SOLIS_CONTROL.autonomous_import is not None and SOLIS_CONTROL.autonomous_import.near_reserve_only
