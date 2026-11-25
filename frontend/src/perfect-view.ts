@@ -5,7 +5,7 @@
 // each way saved and the battery's work, with the cells' temperature. Every figure is the
 // backend's; text is written with `textContent` only.
 
-import { formatFixed, formatNumber, moneyMinorAsMajor as money, percentWhole } from "./format";
+import { formatFixed, formatNumber, moneyTidy as money, percentWhole } from "./format";
 import { MODES, PERFECT_WAYS, type BatteryMode, type HouseAnswer, type PerfectFigures, type PerfectWay } from "./house-model";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { numberWord, pluralForm, translate, type Language } from "./i18n";
@@ -16,6 +16,12 @@ type Money = HouseAnswer["money"];
 
 /** A day's share needs the perfect plan to save at least this much (minor units: `hindsight.MIN_PERFECT_SAVING`). */
 const MIN_PERFECT_SAVING = 500;
+
+/** A count of days in words ("åtta dygn"), but one as a figure: the word for one takes the gender of its noun, and
+ * "en dygn" is wrong where a day is neuter (Swedish "ett dygn", Norwegian "ett døgn", Danish "et døgn"). */
+function dayCount(language: Language, days: number): string {
+  return days === 1 ? "1" : numberWord(language, days);
+}
 
 /** Whether there is a perfect plan to show: a whole day's, or only incomplete days (which say so). */
 export function hasPerfect(perfect: PerfectFigures | null | undefined): perfect is PerfectFigures {
@@ -146,7 +152,7 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
   if (perfect.provisional > 0) {
     add(
       "perfect-provisional",
-      singleDay ? translate(language, "perfect.provisionalDay") : translate(language, `perfect.provisional.${pluralForm(language, perfect.provisional)}`, { days: numberWord(language, perfect.provisional) }),
+      singleDay ? translate(language, "perfect.provisionalDay") : translate(language, `perfect.provisional.${pluralForm(language, perfect.provisional)}`, { days: dayCount(language, perfect.provisional) }),
     );
   }
   if (perfect.partial > 0) {
@@ -241,7 +247,7 @@ export function perfectTemperature(doc: Document, language: Language, perfect: P
       mean: `${formatFixed(language, temperature.mean_c, 1)} °C`,
       max: `${formatFixed(language, temperature.max_c, 1)} °C`,
       minutes: formatNumber(language, temperature.minutes_above, 0),
-      days: numberWord(language, temperature.days),
+      days: dayCount(language, temperature.days),
     }),
   );
   line.dataset["line"] = "cell-temperature";

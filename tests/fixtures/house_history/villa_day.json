@@ -842,14 +842,19 @@
     "by_day": [
       {
         "battery_saving": 400.0,
+        "controlled": 0.0,
         "date": "2026-11-15",
         "own_saving": 50.0,
         "own_share": 77.1,
+        "perfect_vs_none": 1200.0,
         "plan_saving": 150.0,
         "plan_share": 68.3,
+        "plan_vs_none": 820.0,
+        "real_vs_none": 925.0,
         "share_note": null
       }
     ],
+    "by_month": null,
     "days": 1,
     "mode": "balanced",
     "modes": {
@@ -941,6 +946,7 @@
     "battery": null,
     "battery_days": 0,
     "car": 300.0,
+    "car_controlled_days": 0,
     "car_days": 1,
     "days": 1,
     "heat": null,

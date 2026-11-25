@@ -80,6 +80,14 @@ export type BatteryMode = (typeof MODES)[number];
 
 /** The ways compared with the perfect plan: what really happened (`own`), self-consumption and SpotNav's modes. */
 export const PERFECT_WAYS = ["own", "self_consumption", "balanced", "max_profit"] as const;
+
+/** A battery's own optimiser by the brand that runs it, where the card knows its name (`BatteryView.brand`). */
+const OPTIMISERS: Readonly<Record<string, string>> = { sigenergy: "Sigenergy AI" };
+
+/** The battery's own optimiser's name for its brand, `null` where the card does not know one. */
+export function ownOptimiser(brand: string | null | undefined): string | null {
+  return OPTIMISERS[brand ?? ""] ?? null;
+}
 export type PerfectWay = (typeof PERFECT_WAYS)[number];
 
 export interface BatteryWork {

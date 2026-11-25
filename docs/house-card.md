@@ -261,20 +261,31 @@ tabs. Every figure in it is the chosen period's own and stands once; nothing is 
 
 * **The cost bars**: the comparison the tabs do not have: what the electricity cost, with what the battery saved against
   the same days with no battery hatched on top.
-* **Share of perfect**: the battery's ways side by side (below).
 * **Money**: what the period cost, and what the battery, the sun and both together saved (*The battery saved*, below).
   Without a home battery: what the period cost and *The sun saved*, from the nightly sun review (the quarter hours of
   the 5-minute statistics) or, for older days, estimated from the hourly statistics, with a note where it is.
-* **SpotNav saved**: the period's sum and a row per part (its bars are the Earnings tab).
-* **Forecast errors** and **Day by day**.
+* **SpotNav saved**: a row per part SpotNav controlled (its bars are the Earnings tab), the total only over two parts
+  or more. A part the site has that SpotNav did not control says "not controlled" instead of "0 kr" (the battery
+  under its own control; the car on days no charge SpotNav started began), and where it controlled nothing at all one
+  sentence stands instead ("SpotNav did not control the battery or the car yesterday").
+* **Share of perfect**: the battery's ways side by side (below).
+* **Day by day** (a month; **Month by month** in a year, none for a single day): every way against one baseline, the
+  same day with no battery and what was left in the battery at midnight counted: what the battery really did, SpotNav's
+  plan (simulated on the same measured day, in the site's mode), the perfect plan and the real way's share of it. The
+  real way is named by who ran the battery: "SpotNav", the battery's own optimiser where the card knows its name
+  ("Sigenergy AI"), else "The battery's own control", and "Actual" where both ran it on different days. The rows are
+  the period's reviewed days, which are kept 30 days: the line above the table says how many of the period's days that
+  is, and a year's month says "13 of 15 days" where not all of its days are reviewed. One rule for the table's amounts:
+  whole kr where any is 10 kr or more, else two decimals.
+* **Forecast errors**: each forecast's mean error per hour, the days it covers said once (per row where they differ).
 * **How it is counted**: what SpotNav's saving is compared with, how the flow is allocated, and the sources, among
   them the home battery's round trip ("Round-trip efficiency: 84 %, learnt", or "assumed 90 %" until it is learnt; see
   [the battery plan](battery-plan.md)).
 
 The energy flow is not here: it is the Energy flow tab.
 
-**Share of perfect** opens with a headline ("The battery's own control 77 % of perfect · SpotNav Balanced 74 %") and a
-bar per way: the battery's own control, each of SpotNav's modes (the chosen one marked) and plain self-consumption.
+**Share of perfect** has a bar per way with its share: what really happened (named by who ran the battery, as in Day
+by day), each of SpotNav's modes (the chosen one marked) and plain self-consumption.
 Under the bars one table has a block per way, and the perfect plan last: what it *saved* against the same days with no
 battery, its *cycles*, how often it *switched* between charging and discharging, and the kWh it charged *from the grid*
 and sold *to the grid*. A share stands on its bar only, the money and the work in the table only. The perfect plan is the
@@ -332,8 +343,9 @@ not the same sum. Money's figure is the battery app's measure: what the days rea
 battery (the house and the car on the grid, the sun still there), over every measured day, and the energy the battery
 holds at midnight is not counted. The table counts whole days with a perfect plan only, and counts what was left at
 midnight at the next day's mean buy price, so that a battery that emptied itself does not look better than one that
-saved its energy for the morning. The note under the table says both sums and both day counts. Hold Money's figure up
-against the battery app's own; read the table for which way of running the battery is best.
+saved its energy for the morning (the Day by day table counts it the same way). The note under the table says both
+sums and both day counts (on the same days, only the midnight remainder). Hold Money's figure up against the battery
+app's own; read the table for which way of running the battery is best.
 
 ### Heat in the flow
 

@@ -238,6 +238,7 @@ export class SpotnavHouseCard extends HTMLElement {
           return houseHistoryBody({
             ...input,
             carSince: answer?.saving?.car_since ?? null,
+            batteryBrand: answer?.battery?.brand ?? null,
             sources: answer === null ? null : houseSources(input.doc, input.language, answer, entityWordsOf(this.hassObject)),
           });
         },

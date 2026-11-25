@@ -29,7 +29,7 @@
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
 import { clock, dayCue, formatFixed, formatNumber, kwhText, type FormatContext } from "./format";
-import { HOUSE_NOW_API_VERSION, type EnergyFlow, type HouseAnswer } from "./house-model";
+import { HOUSE_NOW_API_VERSION, ownOptimiser, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { record, text, numberOrNull, flag, textOrNull } from "./decode-primitives";
 
@@ -129,8 +129,6 @@ export function planRuns(answer: HouseAnswer, nowMs: number): PlanRun[] {
   return runs;
 }
 
-const OPTIMISERS: Record<string, string> = { sigenergy: "Sigenergy AI" };
-
 function when(ctx: FormatContext, nowMs: number, instantMs: number): string {
   const same = dayCue(ctx, nowMs) === dayCue(ctx, instantMs);
   return same ? clock(ctx, instantMs) : `${dayCue(ctx, instantMs)} ${clock(ctx, instantMs)}`;
@@ -150,7 +148,7 @@ export function planSentence(language: Language, answer: HouseAnswer, nowMs: num
   const verb = controlling ? "act" : "inf";
   const who =
     battery.management === "self_managed"
-      ? translate(language, "house.plan.who.own", { name: OPTIMISERS[battery.brand ?? ""] ?? translate(language, "house.compare.own") })
+      ? translate(language, "house.plan.who.own", { name: ownOptimiser(battery.brand) ?? translate(language, "house.compare.own") })
       : translate(language, "house.plan.who.test");
   if (runs.length === 0) {
     return controlling ? null : who;
