@@ -73,6 +73,10 @@ async def test_a_free_plant_would_get_a_zero_export_limit_and_the_value_found_ba
     curtail = diagnostics["export_curtail"]
     assert curtail["control"] == "sigenergy" and curtail["curtailing"] is False and curtail["sell_now"] == 4.0
     assert curtail["totals"]["kwh"] == pytest.approx(count.kwh, abs=1e-4)
+    assert {row["brand"] for row in curtail["brands"] if row["mapped"]} == {
+        "sigenergy", "victron", "sungrow", "solis", "goodwe", "solax"
+    }
+    assert {row["brand"] for row in curtail["commands"]} == {row["brand"] for row in curtail["brands"] if row["mapped"]}
     assert diagnostics["parts"][PART_EXPORT_CURTAIL] == "shadow"
     assert shadow.book.section(SECTION_CURTAIL)["days"]
 

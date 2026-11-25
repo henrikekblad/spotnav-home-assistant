@@ -48,7 +48,10 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
-from .commands import ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, BrandControl, control_for, export_control_for, export_table
+from .commands import (
+    ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, EXPORT_LIMIT_TABLE, BrandControl, control_for, export_control_for,
+    export_table,
+)
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
@@ -941,5 +944,7 @@ class BatteryShadow:
                 **self.curtail.as_dict(),
                 "totals": self.curtail.totals(),
                 "commands": export_table(),
+                # Every brand looked at for a local export limit, mapped or not, with its verdict.
+                "brands": [dict(row) for row in EXPORT_LIMIT_TABLE],
             },
         }
