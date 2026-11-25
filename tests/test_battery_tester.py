@@ -115,6 +115,27 @@ async def test_signing_up_sends_the_testers_report_turns_beta_on_and_unlocks_the
     await control.async_stop()
 
 
+async def test_a_sign_up_while_beta_already_runs_gives_the_tester_a_full_period(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _relay(monkeypatch)
+    beta = domain_data(hass).beta
+    await beta.async_set(on=True, email="old@example.com")
+    from dataclasses import replace  # noqa: PLC0415
+
+    started = dt_util.now() - timedelta(days=13)
+    beta._state = replace(beta.state, started_at=started)
+    assert beta.state.ends_at() == started + timedelta(days=14)
+    error, _ref = await tester.async_signup(hass, control, "tester@example.com", "")
+    assert error is None
+    assert beta.state.on and beta.state.email == "tester@example.com"
+    # The day the period had left is not all the test and the review get: a full period from the sign-up.
+    ends = beta.state.ends_at()
+    assert ends is not None and ends >= dt_util.now() + timedelta(days=13, hours=23)
+    await control.async_stop()
+
+
 async def test_a_sign_up_the_relay_did_not_take_unlocks_nothing(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

@@ -104,7 +104,7 @@ async def async_signup(
     hass: HomeAssistant, control: BatteryControl, email: Any, note: Any
 ) -> tuple[str | None, str | None]:
     """The person's sign-up (see the module): `(error, ref)`. The address is required; the note may be empty."""
-    from ..beta import beta_of  # noqa: PLC0415 - see `beta.py`'s imports
+    from ..beta import BETA_DAYS, beta_of  # noqa: PLC0415 - see `beta.py`'s imports
     from ..support_report import ERROR_INVALID_EMAIL, ERROR_INVALID_MESSAGE, KIND_BATTERY_TESTER  # noqa: PLC0415
     from ..support_report import MAX_MESSAGE_CHARS, async_send_report, clean_email, clean_message  # noqa: PLC0415
 
@@ -135,6 +135,8 @@ async def async_signup(
     beta = beta_of(hass)
     if beta is not None:
         await beta.async_set(on=True, email=address)
+        # A beta period already running may have only days left: the test and its review get a full one from here.
+        await beta.async_keep_on_until(now + timedelta(days=BETA_DAYS))
     _LOGGER.info("SpotNav battery tester: signed up for %s (%s); the hardware test may run", brand, result.ref)
     return None, result.ref
 
