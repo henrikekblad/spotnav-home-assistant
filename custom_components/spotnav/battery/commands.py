@@ -1044,8 +1044,24 @@ class BrandControl:
     #: whatever the force asks, and the monitor would read the rest as a charge not taken). `False` for every other
     #: recipe.
     bms_charge_limit: bool = False
+    #: The role that holds the plant's whole command (Solis's RC force): a read of it that is neither SpotNav's value
+    #: nor its documented fallback nor the value found, of another kind (the text before `:`), is another system's
+    #: command, given up at once (no dwell), and from then on nothing is written to it or to `mode_limits`, not even
+    #: by the hand-back (`executor`'s `left_alone`). Its documented fallback (`Expiry.fallback_values`) read while a
+    #: command runs is the command lapsing by itself: handed back and started again (`lapsed`), blocked only after
+    #: `LAPSES_A_DAY`. `None`: every role is the ledger's alone, as before.
+    command_role: str | None = None
+    #: The renewals of the expiry a day (`Expiry.renewed_roles`; each a write to the plant that the day's write caps
+    #: never count): reaching it hands the command back and starts none again that day (`renewal_cap`). `None`: not
+    #: bounded (the recipes whose renewal is a few writes an hour).
+    renewal_cap: int | None = None
+    #: The hardware test's dead-man step must have passed (timed), not merely been tried, for the test to pass: a recipe
+    #: whose every action is a command that stands until it expires (`gate.hardware_test_passed`).
+    deadman_must_pass: bool = False
 
     def __post_init__(self) -> None:
+        if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
+            raise ValueError(f"{self.brand}: the command role is a role of the control's own")
         if self.charge_power_bound is not None and self.charge_power_bound not in {role.name for role in self.roles}:
             raise ValueError(f"{self.brand}: the charge power bound names a role of the control's own")
         if self.import_limit is not None and self.import_limit_trust is None:
