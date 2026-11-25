@@ -1182,6 +1182,10 @@ class BrandControl:
     #: `executor.RESTORE_READ_WAIT_S` passed (never for the fuse). For settings whose found value is the owner's (Deye's
     #: current limits). `False`: as before (a restart restores every written role).
     restore_own_only: bool = False
+    #: Number roles of which any that rises from what it reads to its target is written ahead of the brand's order
+    #: (after a change's stop): limits whose enabled pair must never sum below 0 (Fronius: the charge cap at +p beside
+    #: the discharge limit at -p), so a change of rate never passes through a pair core refuses. `()`: the order.
+    rising_first: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -2749,11 +2753,16 @@ def _fr_hold(_rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
 
 
 def _fr_charge(rate_kw: float, watchdog_s: int) -> tuple[Want, ...]:
-    """The discharge limit at minus the rate's share of WChaMax: a forced charge at least that fast (the sun may add
-    to it). A rate of nothing is a hold."""
+    """The discharge limit at minus the rate's share of WChaMax: a forced charge at least that fast; and the charge
+    limit at the same share: at most that fast, so neither the sun nor the grid takes the charge above the rate
+    (`fronius_control_2026-11-23.md`: a charge cap of +p is what holds the total). The pair sums to 0, which core
+    accepts. A rate of nothing is a hold."""
     if rate_kw <= 0:
         return _fr_hold(rate_kw, watchdog_s)
-    return (Want("discharge_limit", pct_of_rated(-rate_kw)), Want("discharge_limit_on", True))
+    return (
+        Want("charge_limit", pct_of_rated(rate_kw)), Want("charge_limit_on", True),
+        Want("discharge_limit", pct_of_rated(-rate_kw)), Want("discharge_limit_on", True),
+    )
 
 
 FRONIUS_CONTROL: Final = BrandControl(
@@ -2795,6 +2804,9 @@ FRONIUS_CONTROL: Final = BrandControl(
     grid_charge_phases=1,
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
     rating_read=True,
+    # A grid charge holds both limits on at +p and -p: a change of rate writes the one that rises first, so the pair
+    # never sums below 0 on the way (core refuses that pair).
+    rising_first=("charge_limit", "discharge_limit"),
     hardware_test_first=True,
     note="Modbus limits through core fronius (HA 2026.11 or later). Hold: the discharge limit at 0; grid charge: the"
     " discharge limit below 0 (a forced charge at the rate's share of WChaMax); house: the charge limit at 0. No"

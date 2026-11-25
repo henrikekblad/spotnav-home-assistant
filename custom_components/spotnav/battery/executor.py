@@ -1124,6 +1124,17 @@ def _unset(role: Role, state: str | None) -> bool:
     return value is not None and value >= 4_000_000.0
 
 
+def _rises(target: Native | None, read: RoleRead | None) -> bool:
+    """Whether a number role's target is above what it reads now (`BrandControl.rising_first`)."""
+    if read is None or isinstance(target, bool) or not isinstance(target, int | float):
+        return False
+    try:
+        now = float(read.state) if read.state is not None else None
+    except ValueError:
+        return False
+    return now is not None and math.isfinite(now) and float(target) > now
+
+
 def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native | None:
     """What a restore writes back for a role found reading `state`; `None` when that cannot be known."""
     if role.method == "number":
@@ -3042,6 +3053,14 @@ class Executor:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
+            if self.control.rising_first:
+                # A limit that rises goes ahead of one that falls (after a change's stop): an enabled pair never
+                # sums below 0 on the way (`BrandControl.rising_first`).
+                rising = tuple(
+                    name for name in self.control.rising_first
+                    if name not in state.lead and _rises(state.target.get(name), inputs.reads.get(name))
+                )
+                order = (*state.lead, *rising, *(name for name in order if name not in state.lead and name not in rising))
         # A role whose value must change goes before a role that is only renewed: renewals never hold back a write
         # the action owes (an action that flips at every look must still write its command, and be counted).
         renewals: list[str] = []

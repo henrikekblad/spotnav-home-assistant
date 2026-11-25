@@ -6850,14 +6850,14 @@
     "discharge_limit_on": "<snapshot>"
    },
    "grid_charge@1.0": {
-    "charge_limit": "<snapshot>",
-    "charge_limit_on": "<snapshot>",
+    "charge_limit": 10.0,
+    "charge_limit_on": true,
     "discharge_limit": -10.0,
     "discharge_limit_on": true
    },
    "grid_charge@3.0": {
-    "charge_limit": "<snapshot>",
-    "charge_limit_on": "<snapshot>",
+    "charge_limit": 30.0,
+    "charge_limit_on": true,
     "discharge_limit": -30.0,
     "discharge_limit_on": true
    },

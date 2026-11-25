@@ -101,7 +101,9 @@ class Gen24(FakeBattery):
         charge_on, discharge_on = self.states["charge_limit_on"] == "on", self.states["discharge_limit_on"] == "on"
         charge, discharge = float(self.states["charge_limit"]), float(self.states["discharge_limit"])
         if discharge_on and discharge < 0 and self.states["grid_charging"] == "on":
-            return -discharge / 100 * top
+            # A forced charge at least that fast; the sun may add to it, up to the charge limit where it is on.
+            forced = max(-discharge / 100 * top, self.sun_kw - self.house_kw)
+            return min(forced, charge / 100 * top) if charge_on else forced
         if charge_on and charge < 0:
             return charge / 100 * top
         need = self.house_kw - self.sun_kw
@@ -140,8 +142,12 @@ def test_the_recipe_is_one_limit_and_its_switch_per_action() -> None:
         "charge_limit": "<snapshot>", "discharge_limit": 0.0, "charge_limit_on": "<snapshot>",
         "discharge_limit_on": True,
     }, "grid charging is never part of a state: it is not restored, nor written"
-    # The rate as a negative share of WChaMax, rounded down (1 kW of 6 kW is 16 %, 0.96 kW), at most 100 %.
-    assert control.wanted("grid_charge", 1.0, rated_kw=RATED_KW)["discharge_limit"] == -16.0
+    # The rate as a negative share of WChaMax, rounded down (1 kW of 6 kW is 16 %, 0.96 kW), at most 100 %, and the
+    # charge limit at the same share as its cap.
+    charge = control.wanted("grid_charge", 1.0, rated_kw=RATED_KW)
+    assert (charge["discharge_limit"], charge["charge_limit"]) == (-16.0, 16.0)
+    assert charge["discharge_limit_on"] is True and charge["charge_limit_on"] is True
+    assert control.rising_first == ("charge_limit", "discharge_limit")
     assert control.wanted("grid_charge", 9.0, rated_kw=RATED_KW)["discharge_limit"] == -100.0
     assert control.wanted("grid_charge", 0.01, rated_kw=RATED_KW)["discharge_limit"] == -1.0
     # A rate of nothing is a hold, never -0 % or a force at the minimum share.
@@ -239,19 +245,36 @@ def test_a_hold_writes_the_discharge_limit_then_its_switch_and_hands_back_switch
     assert plant.states == STATES and executor.state.phase == "idle" and plant.refused == []
 
 
-def test_a_grid_charge_is_a_negative_discharge_limit_and_a_lower_rate_is_the_limit_alone() -> None:
+def test_a_grid_charge_is_the_discharge_limit_below_0_with_the_charge_limit_as_its_cap() -> None:
     executor, plant = _plant()
-    now, results = run(executor, plant, T0, 6, "grid_charge", 1.0)
-    assert written(results) == [("discharge_limit", -16.0), ("discharge_limit_on", True)]
-    assert plant.power_kw() == pytest.approx(0.96) and executor.state.phase == "active"
+    now, results = run(executor, plant, T0, 10, "grid_charge", 1.0)
+    # The forced charge (-p) and its cap (+p): the pair sums to 0, which core accepts.
+    assert written(results) == [
+        ("charge_limit", 16.0), ("discharge_limit", -16.0), ("charge_limit_on", True), ("discharge_limit_on", True),
+    ]
+    assert plant.power_kw() == pytest.approx(0.96) and executor.state.phase == "active" and plant.refused == []
+    # The sun cannot take the charge above the rate.
+    plant.sun_kw = 6.0
+    assert plant.power_kw() == pytest.approx(0.96)
+    plant.sun_kw = 0.0
     seen = preview(FRONIUS_CONTROL, inputs(Gen24(FRONIUS_CONTROL, dict(STATES)), T0, "grid_charge", 1.0, takeover=True))
     assert [(op.role, op.value) for op in seen.writes] == written(results)
-    assert [(op.role, op.value) for op in seen.restores] == [("discharge_limit_on", "off"), ("discharge_limit", 100.0)]
-    now, results = run(executor, plant, now, 3, "grid_charge", 0.5)
-    assert written(results) == [("discharge_limit", -8.0)] and plant.power_kw() == pytest.approx(0.48)
-    # Handed back: the switch first (the forced charge ends at once), then the limit as found.
-    now, results = run(executor, plant, now, 6, "self_consume")
-    assert written(results) == [("discharge_limit_on", "off"), ("discharge_limit", 100.0)]
+    assert [(op.role, op.value) for op in seen.restores] == [
+        ("discharge_limit_on", "off"), ("charge_limit_on", "off"), ("discharge_limit", 100.0), ("charge_limit", 100.0),
+    ]
+    # A lower rate: the limit that rises first (the force eases before the cap comes down), never a refused pair.
+    now, results = run(executor, plant, now, 5, "grid_charge", 0.5)
+    assert written(results) == [("discharge_limit", -8.0), ("charge_limit", 8.0)]
+    assert plant.power_kw() == pytest.approx(0.48) and plant.refused == []
+    # A higher one (after the dwell): the cap first.
+    now, results = run(executor, plant, now, 400, "grid_charge", 2.0)
+    assert written(results) == [("charge_limit", 33.0), ("discharge_limit", -33.0)]
+    assert plant.power_kw() == pytest.approx(1.98) and plant.refused == []
+    # Handed back: the switches first (the forced charge ends at once), then the limits as found.
+    now, results = run(executor, plant, now, 10, "self_consume")
+    assert written(results) == [
+        ("discharge_limit_on", "off"), ("charge_limit_on", "off"), ("discharge_limit", 100.0), ("charge_limit", 100.0),
+    ]
     assert plant.states == STATES and plant.refused == []
 
 
@@ -265,8 +288,8 @@ def test_a_discharge_to_the_house_caps_the_charge_at_0_and_stores_nothing() -> N
 
 
 def test_no_change_of_action_ever_asks_core_for_a_refused_pair() -> None:
-    """Every action after every other, and back: only one switch is on in any action, and the values are written first,
-    so no moment has both on below 0 (core would refuse with a bare Modbus error)."""
+    """Every action after every other, and back: the values are written before their switches and a rising limit
+    before a falling one, so no moment has both on below 0 (core would refuse with a bare Modbus error)."""
     actions = (("hold", 0.0), ("grid_charge", 2.0), ("discharge_house", 2.0), ("grid_charge", 1.0))
     for first, second in itertools.permutations(actions, 2):
         if first[0] == second[0]:
