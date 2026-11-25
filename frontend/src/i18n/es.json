@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "No hay cifra de la casa para este período.",
   "house.loads.otherHolds": "Otros medidos: {list}.",
   "house.loads.over": "Los medidores suman {kwh} más que la casa, así que Desconocido se muestra como 0.",
+  "house.loads.clamped": "Partes estimadas limitadas a lo medido: {kwh} de la estimación se quedan en la casa.",
+  "house.loads.estimated": "(estimado)",
   "house.loads.none": "Aún no hay medidores en dispositivos individuales. Añádelos en el panel de Energía de Home Assistant, en Dispositivos individuales, para verlos aquí.",
   "house.loads.carHeat": "El coche y la calefacción se muestran aparte en el flujo y no están incluidos aquí.",
   "house.loads.car": "El coche se muestra aparte en el flujo y no está incluido aquí.",

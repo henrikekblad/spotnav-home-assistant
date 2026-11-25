@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "Der er intet tal for huset i denne periode.",
   "house.loads.otherHolds": "Øvrigt målt: {list}.",
   "house.loads.over": "Målerne giver tilsammen {kwh} mere end huset, så Ukendt vises som 0.",
+  "house.loads.clamped": "Anslåede dele begrænset til det, der blev målt: {kwh} af skønnet bliver i huset.",
+  "house.loads.estimated": "(anslået)",
   "house.loads.none": "Ingen målere på enkelte apparater endnu. Tilføj dem i Home Assistants Energi-dashboard under Enkelte enheder, så vises de her.",
   "house.loads.carHeat": "Bilen og varmen vises for sig i flowet og indgår ikke her.",
   "house.loads.car": "Bilen vises for sig i flowet og indgår ikke her.",

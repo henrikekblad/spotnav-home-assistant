@@ -181,6 +181,27 @@ describe("the heat pie, where a meter belongs and meters that jump", () => {
     expect(decodeHouseLoads({ ...raw, moved: [{ statistic_id: "a", name: "A", belongs: "kitchen" }] }).ok).toBe(false);
   });
 
+  it("names an estimated part (estimated) and says once that estimates were limited to what was measured", () => {
+    const answer = loads("heat_estimated_day.json");
+    expect(answer.clamped_kwh).toBe(23.965);
+    expect(answer.loads.map((load) => [load.source, load.estimated])).toEqual([["heat_pump", false], ["spa", true], ["zone", false]]);
+    const body = loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer });
+    const marks = [...body.querySelectorAll<HTMLElement>("[data-mark='estimated']")];
+    expect(marks.map((mark) => mark.textContent)).toEqual(["(uppskattat)"]);
+    expect(marks[0]!.closest("li")!.dataset["key"]).toBe("climate.spa");
+    const lines = body.querySelectorAll("[data-line='clamped']");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.textContent).toBe(translate("sv", "house.loads.clamped", { kwh: "24,0 kWh" }));
+    expect(lines[0]!.textContent).toMatch(/^Uppskattade delar begränsade till det som mättes/);
+    // A backend before them: nothing estimated, no line.
+    const older = loads("heat_villa_day.json");
+    const { clamped_kwh: _clamped, ...raw } = read("house_loads", "heat_villa_day.json") as Record<string, unknown>;
+    const decoded = decodeHouseLoads({ ...raw, loads: (raw["loads"] as Record<string, unknown>[]).map(({ estimated: _e, clamped_kwh: _c, ...row }) => row) });
+    expect(decoded.ok && [decoded.value.clamped_kwh, decoded.value.loads.every((load) => !load.estimated)]).toEqual([0, true]);
+    expect(loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer: older }).querySelector("[data-line='clamped']")).toBeNull();
+    expect(decodeHouseLoads({ ...raw, clamped_kwh: "a lot" }).ok).toBe(false);
+  });
+
   it("shows the heat pump and each zone by name, Heat in its middle, and no house lines", () => {
     const body = loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer: loads("heat_villa_day.json") });
     const names = [...body.querySelectorAll(".spotnav-house-loads-name")].map((name) => name.textContent);

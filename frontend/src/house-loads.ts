@@ -232,6 +232,11 @@ export interface HouseLoad {
   source: "meter" | "heat_pump" | "zone" | OwnLoadKind;
   /** The household moved it here (its belonging is not the default). */
   changed: boolean;
+  /** Some of its energy is an estimate (a part without its own trusted power sensor, on time at its power): always
+   * named "(estimated)". `false` from a backend before it. */
+  estimated: boolean;
+  /** The estimate the house had no room for (left in the house), 0 when it fit or from a backend before it. */
+  clamped_kwh: number;
 }
 
 export interface MovedLoad {
@@ -265,6 +270,8 @@ export interface HouseLoads {
   inverter_kwh: number | null;
   /** What no meter explains, the inverter left out: `other_kwh` from a backend before it. */
   unknown_kwh: number | null;
+  /** The estimates left out because the house had no room for them, summed; 0 from a backend before it. */
+  clamped_kwh: number;
   loads: HouseLoad[];
   moved: MovedLoad[];
   /** The stored choices, as read (the compare-and-set's `expected`). */
@@ -325,6 +332,7 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
         over_kwh: number(source.over_kwh),
         inverter_kwh: source.inverter_kwh === undefined ? null : numberOrNull(source.inverter_kwh),
         unknown_kwh: source.unknown_kwh === undefined ? numberOrNull(source.other_kwh) : numberOrNull(source.unknown_kwh),
+        clamped_kwh: source.clamped_kwh === undefined ? 0 : Math.max(0, number(source.clamped_kwh)),
         loads: (source.loads as unknown[]).map((item) => {
           const load = record(item);
           return {
@@ -333,6 +341,8 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
             kwh: Math.max(0, number(load.kwh)),
             source: sourceOf(load.source),
             changed: load.changed === undefined ? false : load.changed === true ? true : load.changed === false ? false : bad(),
+            estimated: load.estimated === undefined ? false : load.estimated === true ? true : load.estimated === false ? false : bad(),
+            clamped_kwh: load.clamped_kwh === undefined ? 0 : Math.max(0, number(load.clamped_kwh)),
           };
         }),
         moved: optionalList(source.moved).map((item) => {
@@ -659,6 +669,11 @@ export function loadsBody(
       mark.dataset["mark"] = "changed";
       name.append(mark);
     }
+    if (load?.estimated === true) {
+      const mark = element(doc, "span", L.mark, translate(language, "house.loads.estimated"));
+      mark.dataset["mark"] = "estimated";
+      name.append(mark);
+    }
     row.append(swatch, name, element(doc, "span", L.value, `${kwhFineText(language, slice.kwh)} · ${shareText(language, slice.share)}`));
     list.append(row);
   }
@@ -705,6 +720,9 @@ export function loadsBody(
   }
   if (answer.over_kwh > 0) {
     root.append(note("house.loads.over", { kwh: kwhFineText(language, answer.over_kwh) }, "over"));
+  }
+  if (answer.clamped_kwh > 0) {
+    root.append(note("house.loads.clamped", { kwh: kwhFineText(language, answer.clamped_kwh) }, "clamped"));
   }
   if (answer.loads.length === 0 && !heat) {
     root.append(note("house.loads.none", undefined, "none"));

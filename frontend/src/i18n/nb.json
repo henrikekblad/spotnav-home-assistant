@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "Det finnes ikke noe tall for huset i denne perioden.",
   "house.loads.otherHolds": "Øvrig målt: {list}.",
   "house.loads.over": "Målerne summerer til {kwh} mer enn huset, så Ukjent vises som 0.",
+  "house.loads.clamped": "Anslåtte deler begrenset til det som ble målt: {kwh} av anslaget blir i huset.",
+  "house.loads.estimated": "(anslått)",
   "house.loads.none": "Ingen målere på enkeltapparater ennå. Legg dem til i Home Assistants Energi-dashbord under Enkeltenheter, så vises de her.",
   "house.loads.carHeat": "Bilen og varmen vises for seg i flyten og er ikke med her.",
   "house.loads.car": "Bilen vises for seg i flyten og er ikke med her.",
