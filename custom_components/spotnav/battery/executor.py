@@ -146,7 +146,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   action nor on a hand-back, and a role the running action no longer sets has its claim released
   (`_release_unset`), so the plant's own writes to it are never read as someone else's change.
 * **A fast watchdog** (`BrandControl.watchdog_renew_s`): its roles are renewed on that interval while the action
-  sets them, a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
+  sets them (not one it leaves at its value found: no command stands there), a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
   writes the value the role holds and is not counted; one whose value changed meanwhile is a change, and is. A
   watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX) is renewed as before: every role every
   round, on time whatever is still owed, a role a look, never counted.
@@ -325,7 +325,10 @@ RENEW_ON_CHANGE_GAP_S: Final = 60.0
 #: The checklist's code for a sale left standing in a setpoint SpotNav holds no snapshot of (`told_problems`).
 SETPOINT_SELLING: Final = "grid_setpoint_selling"
 #: Hand-back reasons for a day's budget that neither block the control nor are logged at every look after.
-_BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget")
+_BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget", "renewal_cap")
+#: A command that lapses by itself (its documented fallback read while it runs, `BrandControl.command_role`) is handed
+#: back and may start again; this many lapses in a day block the control (`lapsed_repeatedly`, clearing by itself).
+LAPSES_A_DAY: Final = 3
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
 RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
@@ -343,12 +346,13 @@ _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
 #: `MANAGEMENT_BLOCK_S`).
 _BLOCKING_PREFIXES: Final = (
     "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed", "call_timeout",
+    "lapsed_repeatedly",
 )
 #: Blocks that clear by themselves `MANAGEMENT_BLOCK_S` after the hand-back: a management change, and an idle hold
 #: that charged (the plant may take it another day; a block until reset would stop control for good).
 _SELF_CLEARING: Final = (
     "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
-    "call_timeout",
+    "call_timeout", "lapsed_repeatedly",
 )
 #: Blocks the expiry test's silence never leaves behind (`ExecInputs.expiry_probe`): nothing new was asked of the plant,
 #: and a fallback reads as a command not obeyed.
@@ -386,8 +390,13 @@ def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: E
         found = find_entity(role.match, entities, battery)
         if found is None:
             continue
+        state = answered(role, found.state, found.attributes)
+        if role.compose is not None:
+            # Read back from more than its own entity (`commands.Role.parts`): no part, no reading.
+            parts = tuple(find_entity(match, entities, battery) for match in role.parts)
+            state = role.compose(state, tuple(None if part is None else part.state for part in parts))
         reads[role.name] = RoleRead(
-            entity_id=found.entity_id, state=answered(role, found.state, found.attributes), found=True,
+            entity_id=found.entity_id, state=state, found=True,
             enabled=not found.disabled, step=found.step,
             device_id=found.device_id,
         )
@@ -575,6 +584,13 @@ class ExecState:
     phase_over_at: datetime | None = None
     #: Writes today to setpoints (`commands.WriteClass`), counted apart from the settings' (`writes_today`).
     setpoint_writes_today: int = 0
+    #: Renewal rounds today (`BrandControl.renewal_cap`) and commands that lapsed by themselves today
+    #: (`BrandControl.command_role`, `LAPSES_A_DAY`).
+    renewals_today: int = 0
+    lapses_today: int = 0
+    #: The command role whose value was set from outside under SpotNav's own command (`Executor._gave_up`): nothing
+    #: is written while it stands, but a hand-back for the fuse still ends SpotNav's own command. Not stored.
+    altered: str | None = None
     #: The value SpotNav last wrote per role for an action (not a restore), stored: what a refused restore shows.
     wrote: dict[str, Native] = field(default_factory=dict)
     #: After a hand-back, the roles watched for a restore not held (`BrandControl.settle_s`): per role the state found,
@@ -633,7 +649,17 @@ class ExecState:
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
-        } | self._settle_dict()
+        } | self._settle_dict() | self._renewal_dict()
+
+    def _renewal_dict(self) -> dict[str, Any]:
+        """The day's renewal rounds and lapses, stored only when there are any: a recipe without them stores what it
+        always did."""
+        out: dict[str, Any] = {}
+        if self.renewals_today:
+            out["renewals_today"] = self.renewals_today
+        if self.lapses_today:
+            out["lapses_today"] = self.lapses_today
+        return out
 
     def _settle_dict(self) -> dict[str, Any]:
         """The values written and the watch after a hand-back (`BrandControl.settle_s`), stored only when there are
@@ -688,6 +714,10 @@ class ExecState:
         writes = data.get("writes_today")
         setpoints = data.get("setpoint_writes_today")
         misses = data.get("settle_misses")
+
+        def count(key: str) -> int:
+            value = data.get(key)
+            return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
         settle: dict[str, tuple[str, Native, Native, str]] = {}
         raw_settle = data.get("settle")
         if isinstance(raw_settle, Mapping):
@@ -747,6 +777,8 @@ class ExecState:
             settle=settle,
             settle_until=parse_aware_datetime(data.get("settle_until")),
             settle_misses=misses if isinstance(misses, int) and not isinstance(misses, bool) and misses >= 0 else 0,
+            renewals_today=count("renewals_today"),
+            lapses_today=count("lapses_today"),
         )
 
 
@@ -1206,6 +1238,13 @@ class Executor:
         #: a restart ends the test.
         self.expired: tuple[str, ...] = ()
         self.diverged: tuple[str, ...] = ()
+        #: The value the command role was owned at when SpotNav's next write to it went out (a renewal, a change of
+        #: power or of action; `BrandControl.command_role`): kept across that write's read-back, so a reading that is
+        #: none of SpotNav's is someone else's at once, also while the write is awaited. Not stored.
+        self.renewal_owned: dict[str, str] = {}
+        #: Since when a hand-back has waited for a first reading of the command role (`BrandControl.command_role`):
+        #: nothing is written blind (after a restart the integration may not have polled yet); `_command_unread`.
+        self.command_wait_since: datetime | None = None
         #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
         #: integration renews, stopped by a write); not stored: a restart ends the test.
         self.silenced = False
@@ -1313,7 +1352,9 @@ class Executor:
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
-            self.state = replace(self.state, day=today, writes_today=0, setpoint_writes_today=0)
+            self.state = replace(
+                self.state, day=today, writes_today=0, setpoint_writes_today=0, renewals_today=0, lapses_today=0,
+            )
             if self.state.phase == "blocked" and self.state.blocked == "daily_write_cap" and not self.state.holds_snapshot:
                 self.state = replace(self.state, phase="idle", blocked=None)
         state = self.state
@@ -1396,6 +1437,35 @@ class Executor:
             read = inputs.reads.get(role.name)
             now_read = reading(role, None if read is None else read.state)
             expiring = False
+            command = role.name == self.control.command_role
+            foreign = command and self._foreign(role, claim, now_read)
+            if foreign:
+                # Another system's command on the role that holds the whole command: given up at once, and from now
+                # on nothing is written to it or to the limits that act in it (`_gave_up`).
+                events += self._gave_up(now, role.name, entity_id, now_read, foreign=True)
+                self.ledger.give_up(entity_id, now_read, now, claim.intended)
+                continue
+            if (
+                command and self.state.altered == role.name and self.state.phase == "active"
+                and now_read is not None and now_read == self._fallback_values().get(role.name)
+            ):
+                # SpotNav's own command, its value set from outside, ended by the device's own expiry: handed back.
+                events += self._begin_restore(now, f"altered_ended:{role.name}")
+                continue
+            owned = claim.owned if claim.owned is not None else self.renewal_owned.get(role.name)
+            if (
+                command and not self._probing(inputs) and owned is not None and now_read is not None
+                and self.state.phase == "active" and role.name not in self.state.given_up
+            ):
+                fallback = self._fallback_values().get(role.name)
+                step = None if read is None else _tolerance(role, read)
+                if fallback is not None and same(fallback, now_read, step) and same(owned, now_read, step) is False:
+                    # The command lapsed by itself (a renewal that never landed): the device's own fallback, not
+                    # someone else's change. Handed back and started again; blocked only on repeats.
+                    events += self._lapsed(now, role.name, entity_id, now_read)
+                    self.ledger.release(entity_id)
+                    self.renewal_owned.pop(role.name, None)
+                    continue
             if self._probing(inputs) and role.name in self.control.watchdog_roles and claim.owned is not None:
                 step = None if read is None else _tolerance(role, read)
                 if now_read is not None and same(claim.owned, now_read, step) is False:
@@ -1408,6 +1478,15 @@ class Executor:
                         # ledger's dwell as any outside change; the test ends on it.
                         self.diverged = (*self.diverged, role.name)
                         events.append(_event(now, "diverged", role.name, entity_id=entity_id, read=now_read))
+            if (
+                self.control.command_role is not None and role.name in self.control.mode_limits
+                and role.name not in self.state.given_up and claim.owned is not None and now_read is not None
+                and role.name in self.state.target and same(claim.owned, now_read, claim.step) is False
+                and same(self.state.target[role.name], now_read, claim.step)
+            ):
+                # The command's own call set this limit to the value the action wants (Solis's force carries its
+                # power and timeout): SpotNav's own write, owned again.
+                self.ledger.intend(entity_id, self.state.target[role.name], now, step=claim.step)
             event = self.ledger.observe(entity_id, now_read, now, expiring=expiring)
             if event is None:
                 continue
@@ -1589,16 +1668,95 @@ class Executor:
         return events
 
     def _gave_up(self, now: datetime, role: str, entity_id: str, read: str | None, **detail: Any) -> list[dict[str, Any]]:
-        """A role someone else changed: given up (never fought); an active part hands the rest back."""
+        """A role someone else changed: given up (never fought); an active part hands the rest back. The role that
+        holds the whole command (`BrandControl.command_role`) takes the limits that act in it along: another system's
+        command runs on them, so the hand-back writes none of them (`left_alone`, logged)."""
+        given = (*self.state.given_up, role) if role not in self.state.given_up else self.state.given_up
+        events: list[dict[str, Any]] = []
+        if role == self.control.command_role:
+            left = tuple(name for name in self.control.mode_limits if name not in given)
+            given = (*given, *left)
+            events.append(_event(now, "left_alone", role, roles=[role, *left]))
         self.state = replace(
-            self.state, given_up=(*self.state.given_up, role),
-            pending=None if self.state.pending == role else self.state.pending,
-            in_flight=_without(self.state.in_flight, role),
+            self.state, given_up=given,
+            pending=None if self.state.pending in given else self.state.pending,
+            in_flight=tuple(name for name in self.state.in_flight if name not in given),
         )
-        events = [_event(now, "external", role, entity_id=entity_id, read=read, **detail)]
+        events.insert(0, _event(now, "external", role, entity_id=entity_id, read=read, **detail))
+        if role == self.control.command_role and self.state.phase == "active" and self._own_command_altered(role, read):
+            # SpotNav's own command with a value set from outside (the power under its force): never fought. It stays
+            # SpotNav's to end only for the fuse (`_begin_restore`); otherwise the device's own expiry ends it. The
+            # action still runs, writing nothing, until the plan or a rule hands back.
+            self.state = replace(self.state, altered=role)
+            events.append(_event(now, "altered", role, read=read))
+            return events
         if self.state.phase == "active":
             events += self._begin_restore(now, f"changed_outside_spotnav:{role}")
         return events
+
+    def _foreign(self, role: Role, claim: Any, now_read: str | None) -> bool:
+        """Whether the command role reads another system's command (`BrandControl.command_role`): a value that is none
+        of SpotNav's for it: the one owned (also the one owned before the write awaited now), the one written or
+        awaited, the one the action wants now, the one found, or the device's documented fallback. Every write to
+        the command's limits goes before or with the command (`mode_limits`, the command's own call), so SpotNav's
+        own change of power reads as the value it wants, and its own call taken only in part as the value written
+        before it."""
+        if now_read is None or role.name in self.state.given_up:
+            return False
+        state = self.state
+        known = {
+            claim.intended, claim.owned, self.renewal_owned.get(role.name), state.target.get(role.name),
+            state.wrote.get(role.name), state.restore_values.get(role.name), self._fallback_values().get(role.name),
+        }
+        return now_read not in known
+
+    def _command_unread(self, inputs: ExecInputs) -> bool:
+        """Whether a hand-back waits for a first reading of the command role (`BrandControl.command_role`) before it
+        writes anything: after a restart the integration may not have read the plant yet, and a command found then
+        may be another system's (`_foreign` judges it once it reads). Never for the fuse. Bounded by the command's
+        own expiry window (SpotNav's own command has ended by then): past it, the command and its limits are left as
+        they are (`left_alone`), nothing written blind."""
+        state = self.state
+        name = self.control.command_role
+        if (
+            name is None or name in state.given_up or name not in state.target or state.reason in _FUSE_REASONS
+        ):
+            self.command_wait_since = None
+            return False
+        read = inputs.reads.get(name)
+        if reading(self.control.role(name), None if read is None else read.state) is not None:
+            self.command_wait_since = None
+            return False
+        since = self.command_wait_since or inputs.now
+        self.command_wait_since = since
+        if (inputs.now - since).total_seconds() < (self.control.expiry.window_s or 0.0):
+            return True
+        left = tuple(item for item in (name, *self.control.mode_limits) if item not in state.given_up)
+        self.state = replace(state, given_up=(*state.given_up, *left))
+        self.command_wait_since = None
+        return False
+
+    def _own_command_altered(self, name: str, now_read: str | None) -> bool:
+        """Whether a foreign reading of the command role is SpotNav's own command with another value (its kind, the
+        text before `:`, is the one SpotNav owns: Solis's 43135 still SpotNav's, only the power moved from outside)."""
+        claim_owned = self.renewal_owned.get(name) or self.state.wrote.get(name)
+        return (
+            now_read is not None and claim_owned is not None
+            and str(now_read).partition(":")[0] == str(claim_owned).partition(":")[0]
+            and str(now_read).partition(":")[0] != str(self._fallback_values().get(name)).partition(":")[0]
+        )
+
+    def _lapsed(self, now: datetime, role: str, entity_id: str, read: str | None) -> list[dict[str, Any]]:
+        """The command lapsed by itself (`BrandControl.command_role` read at its documented fallback while it runs):
+        handed back and started again after the re-arm, unless it lapsed `LAPSES_A_DAY` times today."""
+        lapses = self.state.lapses_today + 1
+        self.state = replace(
+            self.state, lapses_today=lapses, pending=None if self.state.pending == role else self.state.pending,
+            in_flight=_without(self.state.in_flight, role),
+        )
+        events = [_event(now, "lapsed", role, entity_id=entity_id, read=read, lapses_today=lapses)]
+        why = "lapsed_repeatedly" if lapses >= LAPSES_A_DAY else "lapsed"
+        return events + self._begin_restore(now, f"{why}:{role}")
 
     def _precheck(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """Re-read the role about to be written: if it is not what SpotNav expects (the value it owns, or for a role
@@ -1630,6 +1788,10 @@ class Executor:
                 break
             now_read = reading(role, read.state)
             if same(expected, now_read, _tolerance(role, read)) is not False:
+                break
+            if name == self.control.command_role and claim is not None and not self._foreign(role, claim, now_read):
+                # The command reads one of SpotNav's own values (its own change of power, written before the command's
+                # call): no one else's.
                 break
             if claim is not None:
                 self.ledger.give_up(entity_id, now_read, inputs.now, state.target.get(name, expected))
@@ -1900,6 +2062,13 @@ class Executor:
         if state.phase == "restoring" or (state.phase != "active" and not state.holds_snapshot):
             return []
         self.monitor.stop(now)
+        if state.altered is not None and reason in _FUSE_REASONS:
+            # SpotNav's own command with a value set from outside, near the fuse: SpotNav ends its own command (the
+            # limits stay the other writer's).
+            state = replace(state, given_up=_without(state.given_up, state.altered))
+            entity_id = state.entities.get(state.altered)
+            if entity_id is not None:
+                self.ledger.release(entity_id)
         target = self._retake_target(state) if state.retake else self._restore_target(state)
         blocked = reason if _blocking(reason) else state.blocked
         if reason in _FUSE_REASONS and state.pending is not None:
@@ -2289,6 +2458,8 @@ class Executor:
             return "headroom_too_small"
         if _writes_today(state, inputs) >= self._daily_cap:
             return "daily_write_cap"
+        if self.control.renewal_cap is not None and state.renewals_today >= self.control.renewal_cap:
+            return "renewal_cap"
         budget = self._charge_budget(inputs)
         if budget is not None:
             return budget
@@ -2564,7 +2735,14 @@ class Executor:
             return events
         # A fast watchdog (`BrandControl.watchdog_renew_s`): only what the running action sets is renewed (a
         # watchdog of the charge per phase has nothing to keep alive under a hold).
-        renewed = tuple(name for name in self.control.watchdog_roles if name in state.target)
+        # A renewed role the action leaves at its value found holds no command (Solis's force select back at "None",
+        # in the inverter's own Self-Use or under a hold's peak cover): nothing to keep alive, so not written again.
+        renewed = tuple(
+            name for name in self.control.watchdog_roles
+            if name in state.target and name not in state.given_up and not (
+                name in state.restore_values and state.target[name] == state.restore_values[name]
+            )
+        )
         if (
             renewed and state.watchdog_at is not None and state.pending is None
             and (now - state.watchdog_at).total_seconds() >= (self.control.watchdog_renew_s or WATCHDOG_RENEW_S)
@@ -2572,7 +2750,11 @@ class Executor:
             # one ended would never reach its last role.
             and not state.renew and not state.in_flight and self._next_role(state, inputs) is None
         ):
-            self.state = replace(state, renew=renewed, watchdog_at=now)
+            cap = self.control.renewal_cap
+            if cap is not None and state.renewals_today >= cap:
+                # The day's renewals are spent: handed back (the command then ends as found), none started again today.
+                return events + self._begin_restore(now, "renewal_cap")
+            self.state = replace(state, renew=renewed, watchdog_at=now, renewals_today=state.renewals_today + 1)
             events.append(_event(now, "renew", ",".join(renewed)))
         return events
 
@@ -2859,6 +3041,9 @@ class Executor:
         if state.phase not in ("active", "restoring") or state.pending is not None:
             return []
         restoring = state.phase == "restoring"
+        if restoring and self._command_unread(inputs):
+            return []
+        state = self.state
         name = self._next_role(state, inputs)
         if name is None or self._capped(state, inputs, name) or (restoring and self._limit_waits(state, inputs, name)):
             return []
@@ -2888,6 +3073,13 @@ class Executor:
                                  setpoint_writes_today=setpoints)
         else:
             if entity_id is not None:
+                claim = self.ledger.claim(entity_id)
+                if name == self.control.command_role and claim is not None and claim.owned is not None:
+                    self.renewal_owned[name] = claim.owned
+                elif name == self.control.command_role and claim is not None and claim.owned is None:
+                    pass  # a write over one still awaited keeps the value owned before it
+                else:
+                    self.renewal_owned.pop(name, None)
                 self.ledger.intend(
                     entity_id, value, inputs.now, step=None if read is None else _tolerance(role, read),
                     deadline_s=self._readback_s(state, name),

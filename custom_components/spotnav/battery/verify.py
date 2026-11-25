@@ -107,6 +107,12 @@ it (the integration's last renewal came up to one of its intervals before, so an
 look is `obeyed`, later `ignored`), and after the outcome the plant is taken back as the inverter's own
 self-consumption (`_retake`: the discharge to the house, the integration renewing again) before the hand-back, so a
 dead-man that did not act leaves no command standing. That row is the tester's evidence; it never lifts a cap.
+A person's hardware test also times a dead-man SpotNav renews whose window is longer than any the gate takes
+(`expiry_long`, Solis's 5-minute RC Timeout; `BatteryControl._hardware_test_deadman`): the silence starts only once one
+renewal followed the command's own write, the fallback is timed from that renewal (`obeyed` from one look before the
+window up to `EXPIRY_LONG_SLACK_S` and a look after it, a timer in whole minutes; sooner than the window but after the
+renewal interval `partial:not_renewed`: the renewal did not restart it), and the silence runs at most
+`expiry_max_s`. It too never lifts a cap.
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -213,8 +219,29 @@ def expiry_margin_s(window_s: float) -> float:
     return max(EXPIRY_MARGIN_MIN_S, 0.5 * window_s)
 
 
+#: A dead-man longer than `SILENCE_FALLBACK_MAX_S` (only a hardware test times one: it lifts no cap, the test is the
+#: tester's evidence; Solis's RC Timeout in whole minutes): how late past its window a fallback still counts (s), one
+#: minute tick of a timer in whole minutes and a look.
+EXPIRY_LONG_SLACK_S: Final = 60.0
+
+
+def expiry_long(window_s: float) -> bool:
+    """Whether a window is longer than any the gate takes (`SILENCE_FALLBACK_MAX_S`): timed as such (see the module)."""
+    return window_s > SILENCE_FALLBACK_MAX_S
+
+
+def expiry_max_s(window_s: float) -> float:
+    """The longest the mode `expiry`'s silence runs (s): `EXPIRY_TEST_MAX_S`, or for a long window that window with its
+    slack and two looks."""
+    if not expiry_long(window_s):
+        return EXPIRY_TEST_MAX_S
+    return window_s + EXPIRY_LONG_SLACK_S + 3 * EXPIRY_LOOK_S
+
+
 def expiry_deadline_s(window_s: float) -> float:
-    """How long the mode `expiry` stays silent at most (s): the window and its margin, at most `EXPIRY_TEST_MAX_S`."""
+    """How long the mode `expiry` stays silent at most (s): the window and its margin, at most `expiry_max_s`."""
+    if expiry_long(window_s):
+        return window_s + EXPIRY_LONG_SLACK_S + 2 * EXPIRY_LOOK_S
     return min(window_s + expiry_margin_s(window_s), EXPIRY_TEST_MAX_S)
 
 #: The modes, in order: (name, the plan action commanded). `per_phase` and `expiry` run only when a run names them
@@ -384,6 +411,9 @@ class Verification:
         self.expiry_last_write: datetime | None = None
         self.expiry_fallback_at: datetime | None = None
         self.expiry_fallback_looks = 0
+        #: The looks in the mode `expiry` that wrote a renewed role: a long dead-man (`expiry_long`) goes silent only
+        #: once one renewal followed the command's own write, so the timing also shows a renewal restarts it.
+        self.expiry_writes = 0
         #: For a silence the test wrote (`Expiry.silence`, a dead-man the integration renews): since when the plant is
         #: being taken back after the outcome (the discharge to the house, the integration's own state again) before
         #: the hand-back; `None` otherwise.
@@ -661,6 +691,7 @@ class Verification:
             # The dead-man counts from the last write of a renewed role (or of the silence), not from the look the
             # test began.
             self.expiry_last_write = now
+            self.expiry_writes += 1
         if result.action != ACTION_SELF_CONSUME and self.stage != "hand_back":
             hand_back = next((event for event in step.events if event["kind"] == "hand_back"), None)
             not_started = next((event for event in step.events if event["kind"] == "not_started"), None)
@@ -952,6 +983,23 @@ class Verification:
         if self._expiry_unsafe(now, result, sample, step, phase):
             return
         assert self.expiry_house is not None
+        if self._by_register(expiry, phase):
+            # A long dead-man with a documented fallback: judged by the command reading it (a register fact, seen as
+            # the executor's `expired`), whatever the house does; the battery's power is the cross-check kept.
+            if result.expired:
+                if self.expiry_fallback_at is None:
+                    self.expiry_fallback_at = now
+                    result.readings.append({
+                        "at": now.isoformat(), "fallback": list(result.expired),
+                        "cross_check": "covering" if sample.power_kw < -FLOOR_KW else "not_covering",
+                    })
+                self._expiry_decide(now, result, expiry, (self.expiry_fallback_at - last_write).total_seconds())
+                return
+            if (now - last_write).total_seconds() >= expiry_deadline_s(expiry.window_s) or (
+                elapsed >= expiry_max_s(expiry.window_s)
+            ):
+                self._expiry_outcome(now, result, "ignored")
+            return
         if abs(house - self.expiry_house) > PROBE_HOUSE_TOLERANCE_KW:
             # The house moved: a load that stops on the phase reads as the plant leaving its target.
             self._expiry_outcome(now, result, "not_judgeable:house_changed")
@@ -977,7 +1025,7 @@ class Verification:
             # A fallback must hold: one look of it is a glitch.
             self.expiry_fallback_at, self.expiry_fallback_looks = None, 0
         window_over = (now - last_write).total_seconds() >= expiry_deadline_s(expiry.window_s)
-        if (window_over and self.expiry_fallback_at is None) or elapsed >= EXPIRY_TEST_MAX_S:
+        if (window_over and self.expiry_fallback_at is None) or elapsed >= expiry_max_s(expiry.window_s):
             self._expiry_outcome(now, result, "ignored")
 
     def _expiry_start(
@@ -989,6 +1037,17 @@ class Verification:
         if step.ops or state.pending is not None or state.in_flight or state.renew:
             if (now - self.stage_at).total_seconds() >= self.timing.command_timeout_s:
                 self._expiry_outcome(now, result, "not_judgeable:writes_owed")
+            return
+        expiry = self.expiry
+        if (
+            expiry is not None and expiry.window_s is not None and expiry_long(expiry.window_s) and not expiry.silence
+            and self.expiry_writes < 2
+        ):
+            # A long dead-man: one renewal after the command's own write first, so the fallback timed from it shows the
+            # renewal restarted the timer (`_expiry_decide`).
+            renew_s = expiry.renew_s or WATCHDOG_RENEW_S
+            if (now - self.stage_at).total_seconds() >= renew_s + self.timing.command_timeout_s:
+                self._expiry_outcome(now, result, "not_judgeable:no_renewal_seen")
             return
         if phase is not None:
             plant = sample.plant_phase_kw
@@ -1006,7 +1065,7 @@ class Verification:
             if sample.power_kw < -FLOOR_KW:
                 self._expiry_outcome(now, result, "not_judgeable:not_obeying")
                 return
-            if sample.grid_kw <= FLOOR_KW:
+            if sample.grid_kw <= FLOOR_KW and not self._by_register(self.expiry, None):
                 # Nothing for the battery to cover: a fallback could not show.
                 self._expiry_outcome(now, result, "not_judgeable:battery_not_discharging")
                 return
@@ -1014,6 +1073,16 @@ class Verification:
             return
         self.expiry_since, self.expiry_house = now, house
         self.expiry_fallback_at, self.expiry_fallback_looks = None, 0
+
+    @staticmethod
+    def _by_register(expiry: Expiry | None, phase: int | None) -> bool:
+        """Whether the mode `expiry` judges the fallback by the command role reading its documented fallback
+        (`Expiry.fallback_values`) instead of the house's power: a long dead-man (`expiry_long`) SpotNav renews, on
+        the whole command (a five-minute silence outlasts any steady house)."""
+        return (
+            expiry is not None and phase is None and expiry.window_s is not None and expiry_long(expiry.window_s)
+            and bool(expiry.fallback_values) and not expiry.silence
+        )
 
     def _expiry_unsafe(
         self, now: datetime, result: ModeResult, sample: Sample, step: StepResult, phase: int | None
@@ -1093,8 +1162,25 @@ class Verification:
                 outcome = "ignored"
             self._expiry_outcome(now, result, outcome)
             return
-        window = min(expiry.window_s, SILENCE_FALLBACK_MAX_S)
         renew_s = expiry.renew_s or WATCHDOG_RENEW_S
+        if expiry_long(expiry.window_s):
+            # Timed from the renewal: a fallback a window after the command's first write but sooner than a window
+            # after the renewal shows the renewal did not restart the timer (the recipe's renewal is wrong).
+            window = expiry.window_s
+            if fallback_s < renew_s:
+                outcome = "partial:early"
+            elif fallback_s <= window - EXPIRY_LOOK_S:
+                outcome = "partial:not_renewed"
+            elif fallback_s <= window + EXPIRY_LONG_SLACK_S + EXPIRY_LOOK_S:
+                outcome = "obeyed"
+            elif fallback_s <= window + EXPIRY_LONG_SLACK_S + 2 * EXPIRY_LOOK_S:
+                outcome = "not_judgeable:late_look"
+            else:
+                result.late = True
+                outcome = "ignored"
+            self._expiry_outcome(now, result, outcome)
+            return
+        window = min(expiry.window_s, SILENCE_FALLBACK_MAX_S)
         if fallback_s < renew_s:
             outcome = "partial:early"
         elif fallback_s <= window - EXPIRY_LOOK_S:

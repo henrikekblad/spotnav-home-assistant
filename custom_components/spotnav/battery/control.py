@@ -149,6 +149,8 @@ from .verify import (
     Sample,
     Timing,
     Verification,
+    expiry_long,
+    expiry_max_s,
     phase_charge_step,
     supported_modes,
 )
@@ -239,6 +241,9 @@ def _state_of(control: BrandControl, name: str, state: State | None) -> str | No
         role = control.role(name)
     except KeyError:
         return state.state
+    if role.compose is not None:
+        # Read back from its parts too (`commands.Role.parts`), which only the registry lookup finds: no evidence.
+        return None
     return answered(role, state.state, state.attributes)
 
 
@@ -258,6 +263,7 @@ async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | 
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
         services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
+        power_field=role.power_field, duration_field=role.duration_field,
     )
     try:
         await _async_service(hass, domain, service, data)
@@ -1633,9 +1639,19 @@ class BatteryControl:
         (`_charge_entity_max_kw`), for a live charge, a test action and the plan alike; never raised."""
         control = control_for(self.facts.brand)
         entity_kw = None if control is None else self._charge_entity_max_kw(control)
+        bms_kw = None if control is None else self._bms_charge_kw(control)
+        if bms_kw is not None:
+            entity_kw = bms_kw if entity_kw is None else min(entity_kw, bms_kw)
         if entity_kw is None:
             return cap
         return entity_kw if cap is None else min(cap, entity_kw)
+
+    def _bms_charge_kw(self, control: BrandControl) -> float | None:
+        """What the battery's BMS takes now (kW: its present charge-current limit times the voltage,
+        `facts.BatteryFacts.bms_charge_kw`; 0 while it takes nothing), only for a recipe that names it
+        (`BrandControl.bms_charge_limit`: Solis, whose cold pack holds a force charge far under the rating); `None`
+        for every other recipe and where it reads nothing. A bound only: it never raises a cap."""
+        return self.facts.bms_charge_kw if control.bms_charge_limit else None
 
     def _charge_entity_max_kw(self, control: BrandControl) -> float | None:
         """The largest grid charge the recipe's charge power entity takes (kW: its `max` over the role's scale), only
@@ -1671,7 +1687,9 @@ class BatteryControl:
         if control is None or not control.hardware_test_first or not gate.firmware_known(key):
             return
         report = self.hardware_report or {}
-        if done and gate.hardware_test_passed(report, self._supported_modes()):
+        if done and gate.hardware_test_passed(
+            report, self._supported_modes(), deadman_required=control.deadman_must_pass,
+        ):
             if control.brand not in self.hardware_brands:
                 self.hardware_brands.append(control.brand)
             self.hardware_failed = [known for known in self.hardware_failed if known != key]
@@ -1693,13 +1711,20 @@ class BatteryControl:
             headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
             volts_between_phases=inputs.volts_between_phases,
         )
-        # The charge step never asks for more than the battery's rating or its own charge power entity takes.
-        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control))
+        # The charge step never asks for more than the battery's rating, its own charge power entity or its BMS takes.
+        charge_max_kw = _least(
+            _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control)),
+            self._bms_charge_kw(executor.control),
+        )
         action, rate = verification.command(now, sample, charge_max_kw)
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
+            bms_kw = self._bms_charge_kw(executor.control)
+            if bms_kw is not None:
+                # A BMS that takes too little now (a full or a cold pack) leaves the step nothing to judge.
+                cap = bms_kw if cap is None else min(cap, bms_kw)
             if cap is not None and cap < gate.MIN_RATE_KW:
                 if self._phase_charge_possible():
                     # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most
@@ -1856,10 +1881,36 @@ class BatteryControl:
 
     def _hardware_test_deadman(self, control: BrandControl) -> Expiry | None:
         """The dead-man a hardware test times after its hold (`gate.deadman_testable`: one the integration renews and
-        SpotNav can silence, EcoFlow's), `None` for every other recipe."""
+        SpotNav can silence, EcoFlow's; or, for a recipe that waits for a hardware test, one SpotNav renews in its
+        hold, Solis's), `None` for every other recipe."""
         base = control.with_phases(False)
         expiry = base.expiry
-        return expiry if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge) else None
+        if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge):
+            return expiry
+        # A dead-man SpotNav renews in the hold's own writes (Solis's RC Timeout, renewed by the force call): the
+        # test stops renewing it after the hold and times the inverter's fallback, as the routine's mode `expiry`
+        # does, so a recipe never run on a plant has its dead-man seen before control relies on it. Its window may be
+        # longer than any the gate takes (`verify.expiry_long`): it then lifts no cap, the timing is the evidence.
+        hold = base.states.get(ACTION_HOLD)
+        window = expiry.window_s
+        if (
+            base.hardware_test_first and hold is not None and not base.slow and not base.fixed_charge
+            and expiry.kind in ("device_deadman", "device_lease") and expiry.renewer == "spotnav"
+            and window is not None and window > 0
+            and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(window))}
+        ):
+            return expiry
+        return None
+
+    def hardware_test_deadman_s(self) -> float | None:
+        """How long the hardware test's dead-man step may take here (s: the hold until a renewal, the window and its
+        slack), `None` where the test times none."""
+        control = control_for(self.facts.brand)
+        expiry = None if control is None else self._hardware_test_deadman(control)
+        if expiry is None or expiry.window_s is None:
+            return None
+        renew = float(expiry.renew_s or 0) if expiry_long(expiry.window_s) else 0.0
+        return renew + expiry_max_s(expiry.window_s)
 
     def hardware_test_deadman(self) -> bool:
         """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
@@ -2173,11 +2224,12 @@ class BatteryControl:
         read from its entity where it has one, else the recipe's figure; neither known: infinite (no grid charge, no
         hold start). For the HA-down caps whatever the trigger (the SoC drifts while Home Assistant is down); `live`
         (the executor's room now): only while the trigger may fire (`below_reserve`: the SoC within
-        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read). 0 for a recipe that declares none."""
+        `outside_control.RESERVE_MARGIN_PCT` of the reserve, or not read; so too for the HA-down caps where the recipe says
+        its top-up can only start that low, `AutonomousImport.near_reserve_only`). 0 for a recipe that declares none."""
         spec = None if control is None else control.autonomous_import
         if control is None or spec is None:
             return 0.0
-        if live and spec.trigger == "below_reserve":
+        if (live or spec.near_reserve_only) and spec.trigger == "below_reserve":
             soc = self.facts.soc_pct
             reserve = _float(read_plant_entity(self.hass, self.site.config, spec.reserve)) if spec.reserve else None
             reserve = reserve if reserve is not None else self.facts.reserve_soc_pct
@@ -3352,7 +3404,8 @@ class BatteryControl:
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
             services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
-            duration=role.lease,
+            duration=role.lease, power_field=role.power_field,
+            duration_field=role.duration_field,
         )
         try:
             await _async_service(self.hass, domain, service, data)

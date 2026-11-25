@@ -35,7 +35,7 @@ is listed.
   control code or an answer about your test. It is kept with the reports for 90 days, never in a log, and the nightly
   beta reports run until 30 days after the control code. Untick Beta tester to stop: from then on nothing more is
   sent, not even a test's result, and the sign-up ends. See
-  [Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek).
+  [Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek-solis).
 
 The file holds versions, settings, entity names and recent logs. It never holds passwords, tokens, e-mail addresses
 or your exact location. The solar forecast's review states only the latitude in whole degrees.

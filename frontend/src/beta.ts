@@ -192,6 +192,15 @@ export function stepText(language: Language, step: TestStep): string {
   return `${label === undefined ? step.step : translate(language, label)}: ${status === undefined ? step.status : translate(language, status)}`;
 }
 
+/** Whether the battery's part was skipped because something else runs the battery (`needs:outside_control`, or its
+ * own optimiser or a force left standing, `needs:self_managed`). */
+export function batteryRunElsewhere(test: TestState): boolean {
+  return test.steps.some(
+    (step) => step.part === "battery" && step.status === "skipped" && step.reason !== null
+      && (step.reason.startsWith("needs:outside_control") || step.reason.startsWith("needs:self_managed")),
+  );
+}
+
 /** Why a test cannot start now, in one sentence; `null` when it can. */
 export function blockedText(language: Language, test: TestState): string | null {
   switch (test.blocked) {
@@ -205,6 +214,8 @@ export function blockedText(language: Language, test: TestState): string | null 
         : translate(language, "test.blocked.onceADay", { time: dateText(language, test.nextAt, true) });
     case "nothing_to_test":
       return translate(language, "test.blocked.nothing");
+    case "battery_run_elsewhere":
+      return translate(language, "test.blocked.runElsewhere");
     case "waiting":
       return null;
     case "tester_signup":
@@ -666,6 +677,10 @@ export function testBox(input: BetaBoxInput): HTMLElement {
         : say("test.waiting.at", { time: dateText(language, test.nextAt, true) }));
     } else if (test.result !== null) {
       lines.push(say(RESULT_LABELS[test.result]));
+      if (batteryRunElsewhere(test)) {
+        // The battery's part was skipped because something else runs it: what to do first.
+        lines.push(say("test.blocked.runElsewhere"));
+      }
     }
     if (test.sentRef !== null) {
       lines.push(say("test.sent", { ref: test.sentRef }));

@@ -20,7 +20,7 @@ default. Its **Read more** says the same as this page. The hardware test (below)
 - A home battery brand not yet tested on a real plant leaves "shadow only", so its check can run
   ([Home batteries](home-battery.md)). Control still starts only after that check has passed. FoxESS, EcoFlow and
   Marstek need more than beta: a passed hardware test and a control code
-  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek)).
+  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek-solis)).
 - Control that a beta period started stays on after the period ends.
 
 ## What it never skips
@@ -40,7 +40,7 @@ While the box is ticked, SpotNav sends the same redacted file that **Send debug 
 
 - Once a night, at a time of its own for each installation, for **14 days**. For a battery tester the reports run
   until 30 days after the control code was entered
-  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek)).
+  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek-solis)).
 - Then the box unticks itself and Support says "The beta period has ended – nothing is sent any more". There is no
   alert.
 - Untick it at any time and nothing more is sent.
@@ -73,7 +73,7 @@ says when that is likely ("Runs by itself, likely from about 17:00"). It waits u
 not be judged (no room under the fuse, the sun came out) runs again by itself at the next suitable moment, up to
 three times. **Stop the test** ends a waiting test too.
 
-A battery brand's **first** test on your plant (FoxESS, EcoFlow and Marstek wait for it before SpotNav writes
+A battery brand's **first** test on your plant (FoxESS, EcoFlow, Marstek and Solis wait for it before SpotNav writes
 anything) starts only between 08:00 and 21:00. When it starts, each phone that is on for SpotNav's notices gets one
 notification, "Hardware test of the battery is running now (about 10 min)", with a **Stop the test** button; it is
 taken off when the test ends. Later checks after an update run by themselves, at any suitable hour, and tell no one.

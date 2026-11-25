@@ -909,6 +909,9 @@ describe("the popover from the house card", () => {
   it("offers no clear for a planner's or an integration's mark", () => {
     expect(batteryOutsideClearable("outside_control:settings_changed")).toBe(true);
     expect(batteryOutsideClearable("outside_control:grid_charge_behaviour")).toBe(true);
+    // A force another system left standing (Solis's RC force), seen once: the person may clear it too.
+    expect(batteryOutsideClearable("outside_control:foreign_command")).toBe(true);
+    expect(translate("en", "battery.outsideClear.help")).toMatch(/48 hours/);
     expect(batteryOutsideClearable("outside_control:planner:predbat")).toBe(false);
     expect(batteryOutsideClearable("outside_control:integration:checkwatt")).toBe(false);
   });

@@ -2,7 +2,7 @@
 
 Plan `plans/v3_battery_activation_codes.md` with the owner's decisions of 2026-11-25. Only for a plant whose recipe
 writes only after a person's hardware test (`commands.BrandControl.hardware_test_first`, not yet `field_tested`:
-FoxESS, EcoFlow, Marstek today); every other brand needs neither.
+FoxESS, EcoFlow, Marstek, Solis today); every other brand needs neither.
 
 1. **Sign-up** (`async_signup`, the card's "Become a tester", administrators only): an e-mail address (required here)
    and an optional note. A `battery_tester` report goes to the relay (the debug bundle, and the `battery` block:

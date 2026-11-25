@@ -503,6 +503,16 @@ class BatteryShadow:
         self.facts = self._read_facts()
         return True
 
+    def _foreign_command(self, facts: BatteryFacts) -> bool:
+        """Whether a command SpotNav did not write stands on the plant: for a recipe that holds its whole command in
+        one place (`commands.BrandControl.command_role`), one of its own command states (`own_states`) read while
+        SpotNav acts on nothing (`outside_control.REASON_FOREIGN_COMMAND`)."""
+        control = control_for(facts.brand)
+        if control is None or control.command_role is None or self.spotnav_acting():
+            return False
+        settings = facts.management.settings
+        return any(settings.get(label) in states for label, states in control.own_states.items())
+
     def _top_up_reserve_pct(self, facts: BatteryFacts) -> float | None:
         """The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
         (`commands.AutonomousImport`, trigger `below_reserve`): read where the plant shows it, else the facts' own
@@ -563,6 +573,7 @@ class BatteryShadow:
                 planner=external_planner(self.hass),
                 spotnav_acting=self.spotnav_acting(),
                 starting=self.start_wait(),
+                foreign_command=self._foreign_command(facts),
             )
         )
         for event in events:

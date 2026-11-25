@@ -194,7 +194,7 @@ What to know before you turn it on:
 
 * **Run the hardware test first.** Nothing is written until a hardware test (Settings → Support → Hardware test) has
   passed once on this inverter and its result was approved with a control code (see
-  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek)); until then control only logs what it would do,
+  [Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); until then control only logs what it would do,
   whatever the test-mode setting says, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself; only
   if that check fails does the checklist ask for the hardware test again (turning SpotNav's switch off and on also
   lets the check run again, as for every brand).
@@ -210,15 +210,14 @@ Please [tell us](supported.md) what the hardware test says on yours. To help dec
 script (`tools/foxess_watchdog_test.py` in the repository) shows what your inverter does when the remote control stops
 being renewed, with the charge current capped low first; ask before you run it.
 
-**Read only: Solis (hybrid inverters such as the S6-EH3P).** SpotNav reads these through the Solis Modbus integration
-(`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor (*Overdischarge SOC*, the on-grid one)
-and the grid meter. The ratings are the BMS's charge and discharge current limits times the BMS's voltage, an estimate;
-the size is learnt (the integration's *Battery Rated Capacity* is a setting in Ah, not the bank the BMS reports). SpotNav
-counts the battery as running itself only in the *Storage Mode* "Self-Use" with neither *RC Force Battery Charge* nor
-*RC Force Battery Discharge* on; with the integration's read-only (essential-only) option those entities are missing and
-SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not read. SpotNav has no control for Solis and
-writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
-integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+**Solis (hybrid inverters such as the S6-EH3P): control mapped, never run on a plant.** SpotNav reads these through
+the Solis Modbus integration (`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor
+(*Overdischarge SOC*, the on-grid one) and the grid meter. The ratings are the BMS's charge and discharge current limits
+times the BMS's voltage, an estimate; the size is learnt (the integration's *Battery Rated Capacity* is a setting in Ah,
+not the bank the BMS reports). SpotNav counts the battery as running itself only in the *Storage Mode* "Self-Use" with
+neither *RC Force Battery Charge* nor *RC Force Battery Discharge* on; with the integration's "essential sensors only"
+option those entities are missing and SpotNav cannot tell (and has nothing to control). A time-of-use period switched
+on beside "Self-Use" is the inverter's own schedule: SpotNav then only watches. See [Solis](#solis-mapped-not-yet-tested-on-a-plant) below for the control.
 
 **Marstek (Venus E, C, D, A): read through both integrations, control mapped for the Modbus one, never run on a
 device.** SpotNav reads these through either the Marstek Local API integration
@@ -239,7 +238,7 @@ SpotNav's control for Marstek goes through the **Modbus integration only** (the 
 Passive mode, the only command there that ends by itself, is acknowledged and then dropped in field reports; on the
 local API the checklist says the Modbus integration is needed). It is behind the same switch and the same check as
 the other brands, but **nothing is written until a hardware test (below) has passed** once on the battery and its
-result was approved with a control code ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek)): until
+result was approved with a control code ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)): until
 then control only logs what it would do, whatever the test-mode setting says and on a beta tester's installation
 too, and the checklist says so. After a firmware or integration update SpotNav checks the battery again by itself;
 only if that check fails does the checklist ask for the hardware test again.
@@ -779,7 +778,7 @@ Battery, which matters only if you select those modes yourself.
 **The hardware test first.** Nobody has run this on a plant yet, so on a PowerOcean SpotNav only shows what it would
 do (as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
 hardware test) has passed once on the battery and its result was approved with a control code
-([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek)); after a firmware or integration update SpotNav checks
+([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)); after a firmware or integration update SpotNav checks
 the battery again by itself, and asks for the hardware test again only if that check fails. The checklist says so.
 Press Start:
 the test waits by itself for a moment with the house using more than the sun gives, and besides the usual steps
@@ -793,9 +792,82 @@ back.
 **If something goes wrong, restore by hand:** in Home Assistant set Battery Mode to Automatic, then turn Modbus
 Control off; after a minute the EcoFlow app works again. Then turn SpotNav's switch off.
 
-### Becoming a tester (FoxESS, EcoFlow, Marstek)
+### Solis (mapped, not yet tested on a plant)
 
-Control of FoxESS, EcoFlow and Marstek batteries has not yet run on a real plant. It is tested together with users,
+For a Solis hybrid through the HACS integration **Solis Modbus** (`solis_modbus`, Pho3niX90), with the integration's
+full sensor set (not "essential sensors only") and **one** inverter in Home Assistant (the integration's force
+services are refused with more). SpotNav uses the inverter's own **remote-control force**, the same register an
+outside energy manager uses, through the integration's services *Force battery charge*, *Force battery discharge*
+and *Stop force charge/discharge*, which send the force, its power and its timeout in one go:
+
+* **Hold:** a force charge at 0 W. The battery covers nothing; a sun surplus is still stored. A tester's log showed
+  the battery flat at 0 W for over an hour this way while the house drew 1.8 kW.
+* **Grid charge:** a force charge at the rate. Below its *Force Charge SOC* the inverter charges from the grid by
+  itself at its *Force-charge Power Limitation*; SpotNav counts that against the fuse only while the battery is near
+  that level. It needs **Allow Grid to Charge the Battery** on (SpotNav reads it and
+  never sets it): with it off the plan's grid charge does not run. The battery's BMS has the last word: a cold pack may
+  take only 10 A (about 3.7 kW at 370 V) whatever is asked, so SpotNav asks no more than the BMS's present charge
+  limit times its voltage.
+* **Cover the house:** the inverter's own Self-Use; nothing is written.
+* **Sell:** a force discharge at the rate. The house is covered first and the rest goes to the grid.
+* **Hand back:** the force stopped first, then *RC Force Battery Charge Power* and *RC Force Battery Discharge Power*
+  set to **0** and *RC Timeout* back to the value it had. The powers never go back to the values found: whatever is
+  left there runs in the next force anyone starts from the *RC Force Charge/Discharge* select, which sends them again.
+
+Before each force SpotNav sets its power and the timeout and waits until the inverter's registers read them (the
+number entities show a new value at once, before the inverter has it), so a force always runs at a power SpotNav saw
+the inverter take, even if part of a write is lost on the way. SpotNav never writes the select.
+
+**The dead-man.** The force ends by itself when the *RC Timeout* runs out. SpotNav sends it at 5 minutes (the
+inverter's default) with every force and renews the force every 2 minutes, so if Home Assistant (or SpotNav) stops,
+the inverter goes back to Self-Use within about five minutes. The renewals are bounded (800 a day; a whole day of
+control is 720). This comes from the integration's source; the hardware test times it. A grid charge's fuse cap is
+reckoned as for any battery that keeps its command (the house at its learned peak, the whole charge on one phase,
+since Solis does not say how a three-phase unit spreads it): a five-minute timeout never lifts it. Nobody states
+whether these registers are kept in flash; they are the ones an outside energy manager writes all day. If a renewal
+is lost and the force lapses by itself, SpotNav hands back and starts again; three lapses in a day stop control for a
+while.
+
+**Another system that runs the force.** An energy manager (Enequi, for one) or SolisCloud's own strategy drives the
+same register, and the inverter's time-of-use periods are its own schedule. SpotNav takes the battery only in the
+*Storage Mode* "Self-Use" with no force running and every time-of-use period off. A force SpotNav did not write,
+seen once, marks the battery as run by someone else: SpotNav then writes nothing more to the force, its powers or its
+timeout (it does not even stop the other system's force), and its own plan keeps running in shadow as a benchmark.
+That mark lasts until 48 hours after the last sign of the other system, unless you press **It was me – clear** in
+the home battery section. One case looks the same and is treated so: if someone changes only *RC Force Battery
+Charge Power* (or *Discharge Power*) by hand while SpotNav's own force runs, SpotNav writes nothing more and the
+battery runs at that power until the *RC Timeout* ends the force (up to five minutes); SpotNav stops its own force
+early only if a phase comes near the main fuse. After a restart SpotNav first waits for the integration to read the
+force (at most five minutes) before it hands anything back, and leaves a force it did not write alone. The hardware test refuses to run while it stands, and a test waiting for its moment gives
+up when another system takes the battery: pause the other system, clear the mark, then press Start.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a Solis SpotNav only shows what it would do (as
+under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)).
+Press Start: the test waits by itself for a moment with the house using more than the sun gives (between 08 and 21
+for the first pass, with a phone notice and a Stop button while it writes) and runs, in about twenty minutes:
+
+1. **Hold:** the force charge at 0 W; the battery must stop covering the house.
+2. **Small grid charge:** about 1 kW under the fuse cap and within the BMS's limit; the battery must charge.
+3. **Discharge to the house:** back to Self-Use; the battery must cover the house.
+4. **Stops by itself:** the hold again, renewed once after two minutes, then left alone while the test times how long
+   the inverter keeps it before it covers the house by itself, judged by the force's own switches turning off (the
+   house may change meanwhile; the battery's power is the cross-check). About five minutes after the renewal passes;
+   sooner (the renewal did not restart the timer), much later or never fails, and the battery is stopped either way. On
+   Solis this step must **pass**: if it could not be judged (the house's load moved, say), the test runs again later
+   by itself and does not count as passed.
+5. **Hand back:** the force stopped, both powers at 0, the timeout as found.
+
+It aborts and hands back near the fuse, if the battery charges from the grid while it waits, or when anything is
+written by someone else.
+
+**If something goes wrong, restore by hand:** in Home Assistant set *RC Force Charge/Discharge* to *None*, *RC Force
+Battery Charge Power* and *RC Force Battery Discharge Power* to 0 and *RC Timeout* to your value (5 minutes by
+default). Then turn SpotNav's switch off. A force left standing also ends by itself once *RC Timeout* runs out.
+
+### Becoming a tester (FoxESS, EcoFlow, Marstek, Solis)
+
+Control of FoxESS, EcoFlow, Marstek and Solis batteries has not yet run on a real plant. It is tested together with users,
 one plant at a time, so an untried recipe is never switched on by mistake and every early plant is known and looked
 at. Sigenergy and the other brands need none of this.
 
@@ -950,6 +1022,9 @@ no battery at all, so every battery is only watched; with it on, the detection k
 system runs.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
+* **A command SpotNav did not write, seen standing** where a recipe holds the whole command in one place (Solis's RC
+  force): marked watch-only at once, since SpotNav never leaves one of its own standing. It ends as the next point
+  does (48 hours after the last sign, or **It was me – clear**).
 * **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
   self-consumption it charges from the grid or discharges into export by more than 1 kW for ten minutes in a
   row** (and its level moves the same way): something outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself 48 hours after the

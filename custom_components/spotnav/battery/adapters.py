@@ -68,7 +68,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   and exist only when the hub sends them. `pinv-L1..L3` is the hub's inverter power per phase on the grid's sign
   (import positive, so negative while it delivers): `plant_phase_sign` -1. Nothing is disabled by default.
 * Solis, `solis_modbus` (Pho3niX90/solis_modbus v4.5.0, `f92ead8`, read 2026-11-22, `plans/v3_solis_modbus_adapter.md`;
-  line numbers at that tag): read only (no control is mapped). Unique ids are `solis_modbus_<serial>_<unique>`
+  line numbers at that tag): the adapter reads only, and the control (`commands.SOLIS_CONTROL`) writes the
+  inverter's RC force (43135 with its powers and timeout). Unique ids are `solis_modbus_<serial>_<unique>`
   (`helpers.py` `unique_id_generator`, lines 48-74; the host or the identification stands in before the serial is
   known), a sensor's `<unique>` being its `"unique"` in `sensor_data/hybrid_sensors.py`, e.g.
   `solis_modbus_inverter_battery_soc`; an editable register is both a sensor and a number of the same unique id
@@ -91,7 +92,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   so it is not used. The selects and switches are left out in the integration's essential-only (read-only) mode,
   so the mode is then unknown. On firmware with the V2 time-of-use (register 33289
   = 0xAA55) the charge and discharge periods are twelve switches (43707, `switch_sensors.py` line 217) beside a
-  "Self-Use" mode; they are not read, so "Self-Use" with such periods on still reads free. The firmware is
+  "Self-Use" mode; each is read (`43707_<bit>`), and one on is the inverter's own schedule (not free). The firmware is
   `hmi_version` (33002, line 41; the device's `sw_version` is "Protocol <n>", the Modbus protocol, not the
   firmware). The battery's counters are `total_battery_charge_energy` and `total_battery_discharge_energy`
   (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
@@ -1138,7 +1139,7 @@ FERROAMP: Final = Adapter(
     # No mode entity: the hub's own control (FerroAI, the person's EnergyCloud settings) is not readable here.
 )
 
-#: Solis through `solis_modbus` (see the module): read only.
+#: Solis through `solis_modbus` (see the module); its control is `commands.SOLIS_CONTROL`.
 SOLIS: Final = Adapter(
     brand="solis",
     label="Solis",
@@ -1156,6 +1157,13 @@ SOLIS: Final = Adapter(
         ModeRule(_key("43110_select", "select"), frozenset({"Self-Use"}), "storage mode"),
         ModeRule(_key("43135_1", "switch"), frozenset({"off"}), "remote force charge", required=False),
         ModeRule(_key("43135_2", "switch"), frozenset({"off"}), "remote force discharge", required=False),
+        # The V2 time-of-use periods (43707 bits 0-11, `switch_sensors.py` lines 216-231): any one on is the inverter's
+        # own schedule beside "Self-Use", so the plant is not SpotNav's to run.
+        *(
+            ModeRule(_key(f"43707_{bit}", "switch"), frozenset({"off"}), f"time-of-use {kind} period {bit % 6 + 1}",
+                     required=False)
+            for bit, kind in ((bit, "charge" if bit < 6 else "discharge") for bit in range(12))
+        ),
     ),
     reserves=(ReserveSource(_key("solis_modbus_inverter_overdischarge_soc", "number", "sensor")),),
     # The inverter's rated output, from the model chosen in the integration's setup: the advisory `device_limit` (W)
