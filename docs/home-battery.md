@@ -918,7 +918,9 @@ Stop button while it writes) and runs, in about ten minutes:
    house.
 4. **Hand back:** both switches off, both limits as found.
 
-There is no step that times the revert option: an hour is longer than any test. It aborts and hands back near the
+There is no step that times the revert option: an hour is longer than any test. The firmware the result is kept
+under is the battery storage's software version as the Fronius device page shows it (a Gen24 itself shows none), so an
+update of the inverter's own firmware is not noticed: after one, press Start again. It aborts and hands back near the
 fuse, if a write does not read back or when anything is written by someone else.
 
 **If something goes wrong, restore by hand:** in Home Assistant turn *Battery charge power limiting* and *Battery
