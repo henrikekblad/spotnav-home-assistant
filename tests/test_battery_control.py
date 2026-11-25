@@ -3173,3 +3173,41 @@ async def test_a_stored_export_limit_whose_recipe_is_gone_is_kept_and_handed_bac
     await control.async_save()
     assert "orphaned" not in hass_storage[key]["data"]
     await control.async_shutdown()
+
+
+@pytest.mark.parametrize("first", ["trial", "hardware_test"])
+async def test_a_test_action_and_a_hardware_test_asked_for_during_a_look_never_both_start(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], first: str
+) -> None:
+    """Both are asked for while a look runs (it holds the lock): each passed its checks before the other started.
+    The one that gets the lock first starts; the other is refused as if asked a moment later."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=None)
+    assert control.hardware_test_refusal() is None
+
+    async def trial() -> str:
+        try:
+            await control.async_trial("hold", None, 5, force=True)
+        except TrialRefused as refused:
+            return f"refused:{refused}"
+        return "started"
+
+    async def hardware_test() -> str:
+        return str(await control.async_hardware_test_start())
+
+    asks = {"trial": trial, "hardware_test": hardware_test}
+    order = [first, *(name for name in asks if name != first)]
+    await control._lock.acquire()
+    tasks = {}
+    for name in order:
+        tasks[name] = hass.async_create_task(asks[name]())
+        await asyncio.sleep(0)  # up to the lock, its checks passed
+    control._lock.release()
+    answers = {name: await task for name, task in tasks.items()}
+    if first == "trial":
+        assert answers == {"trial": "started", "hardware_test": "trial"}
+        assert control.trial is not None and control.verification is None
+    else:
+        assert answers == {"hardware_test": "None", "trial": "refused:verifying"}
+        assert control.trial is None and control.verification is not None
+    await control.async_stop()

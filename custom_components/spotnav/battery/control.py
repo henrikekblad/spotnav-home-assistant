@@ -2025,6 +2025,11 @@ class BatteryControl:
         if why is not None:
             return why
         async with self._lock:
+            # Asked again once the lock is held: what ran meanwhile (a test action asked for during the same look)
+            # refuses it as it would a moment later.
+            why = self.hardware_test_refusal()
+            if why is not None:
+                return why
             now = dt_util.now()
             executor = self._executor()
             if executor is None:
@@ -2231,6 +2236,12 @@ class BatteryControl:
                 rate = rate if cap is None else min(rate, cap)
         minutes = max(1.0, min(float(minutes), float(TRIAL_MAX_MIN)))
         async with self._lock:
+            # Asked again once the lock is held: a routine or hardware test that started meanwhile (asked for during
+            # the same look), or an unload, refuses it as it would a moment later.
+            if self._closed:
+                raise TrialRefused("starting")
+            if self.verification is not None and not self.verification.done:
+                raise TrialRefused("verifying")
             self.trial = Trial(action, round(rate, 3), now, now + timedelta(minutes=minutes), force)
             self._log([{"at": now.isoformat(), "kind": "trial", "reason": action, "rate_kw": round(rate, 3),
                         "minutes": minutes, "force_test": force}])
