@@ -843,11 +843,15 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Fronius (GEN24 with BYD)",
-        "`fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
+        "`fronius`, Home Assistant core. Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
         keys=("fronius",),
         adapter="fronius",
-        control="Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve)",
-        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute. "
+        note="Control is core's Modbus battery limits (Home Assistant 2026.11 or later, \"Inverter control via "
+        "Modbus\" on): the discharge limit at 0 to hold, below 0 to charge from the grid, the charge limit at 0 to "
+        "cover the house; no sale yet. It runs only after the site's own hardware test passed on its firmware. "
+        "Grid charging and the reserve are never set. A limit stays until changed, or about an hour after Home "
+        "Assistant stops with the integration's revert option on, so a grid charge is capped as all on one phase. "
+        "Web-UI schedules and the Energy Cost Assistant cannot be read. The meter updates about once a minute. "
         "The ratings, the floor and the counters are read only where the inverter accepts control over Modbus; the "
         "size is the battery's designed capacity.",
     ),
