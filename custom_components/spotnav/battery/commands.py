@@ -1051,6 +1051,10 @@ class BrandControl:
     #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
     #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
     charge_power_bound: str | None = None
+    #: That entity's maximum itself means something else (Kostal's Set Charge Rate: "follow the battery's maximum",
+    #: which then moves with its voltage and would read as someone else's change), so a charge is bounded one of the
+    #: role's steps below it. `False` for every other recipe.
+    charge_power_bound_exclusive: bool = False
     #: The battery's BMS bounds a grid charge live: its present charge-current limit times its voltage
     #: (`facts.BatteryFacts.bms_charge_kw`), read every look, for the check's charge step, a live grid charge, a test
     #: action and the plan's cap alike; it only ever lowers a cap (Solis: a cold Dyness at 10 A x 377 V takes 3.7 kW

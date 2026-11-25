@@ -1671,6 +1671,9 @@ class BatteryControl:
         entity_id = plant_entity_id(self.hass, self.site.config, role.match)
         state = None if entity_id is None else self.hass.states.get(entity_id)
         bound = None if state is None else _float(state.attributes.get("max"))
+        if bound is not None and control.charge_power_bound_exclusive:
+            # The maximum itself means "follow the battery's maximum" (Kostal's Set Charge Rate): a step below it.
+            bound -= role.step or 0.0
         found = None if bound is None or not role.scale else bound / role.scale
         if found is not None and found < gate.MIN_RATE_KW:
             found = None
