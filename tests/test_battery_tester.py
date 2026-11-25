@@ -338,3 +338,106 @@ async def test_the_actions_are_an_administrators_and_never_over_the_webhook(
                                    "enter_code": {"code": await _code(hass)}})
     assert frame["result"]["ok"] is True and frame["result"]["status"]["tester"]["stage"] == "control_code"
     await control.async_stop()
+
+
+# ---- a brand gated after its control could already run (`commands.GATED_AFTER_RUNNING`)
+
+
+def _gated_after_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The test plant's brand (Sigenergy's recipe, gated by `_waiting_site`) counted as one gated after running."""
+    monkeypatch.setattr(control_module, "GATED_AFTER_RUNNING", frozenset({"sigenergy"}))
+
+
+async def test_a_plant_whose_control_already_ran_keeps_it_with_no_sign_up_or_code_asked(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    # Switched on, with the routine's check passed on the firmware key now (`_started`): the first look counts it as
+    # passed and as having its code, so control goes on as before the update.
+    now = dt_util.now()
+    await control.async_look(now)
+    assert control.hardware_test_due() is None and control.state() == "on"
+    record = control.control_codes["sigenergy"]
+    assert record["grandfathered"] is True and record["firmware_key"] == control.firmware_key()
+    assert dt_util.parse_datetime(record["entered_at"]) is not None
+    assert control.hardware_brands == ["sigenergy"]
+    assert any(row["kind"] == "control_grandfathered" for row in control.log)
+    # No tester row, no sign-up, no code, no tester's result report.
+    assert control.tester_view() is None and not control.tester_signup_needed()
+    assert not {control_module.NEED_TESTER_SIGNUP, control_module.NEED_CONTROL_CODE,
+                control_module.NEED_HARDWARE_TEST_FIRST} & set(control._needs())
+    assert control.hardware_test_refusal() is None and not tester.sends_result(control)
+    # Kept over a restart: the record has no code text and is not dropped by the code check.
+    await control.async_look(now + timedelta(seconds=10))
+    await control.async_stop()
+    again = control_module.BatteryControl(hass, controller, plan_source=control._plan_source)
+    await again.async_start()
+    assert again.control_codes["sigenergy"]["grandfathered"] is True
+    assert again.hardware_test_due() is None and again.tester_view() is None
+    await again.async_stop()
+
+
+async def test_a_plant_that_never_passed_still_signs_up_tests_and_enters_a_code(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _relay(monkeypatch)
+    # No passed report on the key now: nothing is recorded, the sign-up comes first.
+    control.reports.clear()
+    await control.async_look(dt_util.now())
+    assert control.control_codes == {} and control.hardware_brands == []
+    assert control.hardware_test_refusal() == control_module.NEED_TESTER_SIGNUP
+    assert control.tester_view()["stage"] == "none" and control.state() == "shadow_only"
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    # The test's own pass is a report on the key now: still the developer's code, never a grandfathered record.
+    await control.async_look(dt_util.now() + timedelta(seconds=10))
+    assert control.hardware_test_due() == control_module.NEED_CONTROL_CODE and "sigenergy" not in control.control_codes
+    assert await tester.async_enter_code(hass, control, await _code(hass)) is None
+    assert control.hardware_test_due() is None and control.tester_view()["stage"] == "control_code"
+    assert "grandfathered" not in control.control_codes["sigenergy"]
+    await control.async_stop()
+
+
+async def test_control_switched_off_or_another_brand_is_never_grandfathered(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    # A brand gated from the start (FoxESS, Solis and the others): a passed report is no reason.
+    await control.async_look(dt_util.now())
+    assert control.control_codes == {} and control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
+    # A record of one stored by hand for such a brand is dropped at the code check.
+    control.control_codes = {"sigenergy": {"grandfathered": True, "entered_at": "2026-11-25T12:00:00+01:00"}}
+    await control._async_check_codes()
+    assert control.control_codes == {}
+    # One gated after running, but with control switched off: nothing recorded.
+    _gated_after_running(monkeypatch)
+    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_enabled": False})
+    await control.async_look(dt_util.now() + timedelta(seconds=10))
+    assert control.control_codes == {} and control.hardware_brands == []
+    await control.async_stop()
+
+
+async def test_a_grandfathered_pass_voided_by_a_block_is_not_given_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    await control.async_look(dt_util.now())
+    assert control.hardware_brands == ["sigenergy"]
+    # A block voids the pass (`_void_blocked_passes`); after it, the record stays and the pass is not given back.
+    control.hardware_brands = []
+    await control.async_look(dt_util.now() + timedelta(seconds=10))
+    assert control.hardware_brands == [] and control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
+    await control.async_stop()
+
+
+def test_the_brands_gated_after_running_are_gated_and_not_field_tested() -> None:
+    from custom_components.spotnav.battery import commands  # noqa: PLC0415
+
+    assert commands.GATED_AFTER_RUNNING <= {
+        control.brand for control in commands.CONTROLS if commands.hardware_test_first(control.brand)
+    }
+    assert "sigenergy" not in commands.GATED_AFTER_RUNNING and not commands.hardware_test_first("sigenergy")

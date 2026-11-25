@@ -99,6 +99,7 @@ from . import gate, optin
 from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    GATED_AFTER_RUNNING,
     NORMAL,
     OUTPUT_TYPE_PHASES,
     BrandControl,
@@ -616,6 +617,7 @@ class BatteryControl:
         await self._async_check_codes()
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
+        self._grandfather_running()
         # The battery first (a grid charge left standing adds import), then the export limit.
         control = control_for(state.brand) or control_for(self.facts.control_brand)
         if control is not None:
@@ -662,6 +664,10 @@ class BatteryControl:
         install = install_hash(await instance_id.async_get(self.hass))
         kept: dict[str, dict[str, Any]] = {}
         for brand, stored in self.control_codes.items():
+            if stored.get("grandfathered") is True and brand in GATED_AFTER_RUNNING:
+                # Control ran on the plant before its brand was gated (`_grandfather_running`): no code text to check.
+                kept[brand] = stored
+                continue
             text = stored.get("code")
             try:
                 code = codes.verify(text) if isinstance(text, str) else None
@@ -675,6 +681,42 @@ class BatteryControl:
                 continue
             kept[brand] = stored
         self.control_codes = kept
+
+    def _grandfather_running(self) -> None:
+        """A plant of a brand gated after its control could already run (`commands.GATED_AFTER_RUNNING`) whose control
+        ran: switched on, and the routine's check passed on the firmware key now (`reports`). It counts as the brand's
+        first pass here (`hardware_brands`) and as having its control code (a `grandfathered` record with the date):
+        control never stops by an update (owner rule), and no tester sign-up or code is asked of it. Never for a plant
+        a person's hardware test passed on (`hardware_brands`: the code approves that pass), and once only: a plant
+        that holds a record for the brand (a code, or this) is never looked at again, so a pass voided later by a
+        block stays void."""
+        control = self._gated_control()
+        if control is None or control.brand not in GATED_AFTER_RUNNING:
+            return
+        if control.brand in self.control_codes or control.brand in self.hardware_brands:
+            # A record already, or a person's hardware test passed here (its pass is the routine's report too):
+            # the developer's code approves that one.
+            return
+        key = self.firmware_key()
+        if not gate.firmware_known(key) or gate.report_status(self.reports.get(key)) != "passed":
+            return
+        if not self._stored_options().enabled:
+            return
+        now = dt_util.now()
+        self.hardware_brands.append(control.brand)
+        self.control_codes = dict(self.control_codes) | {control.brand: {
+            "grandfathered": True, "brand": control.brand, "entered_at": now.isoformat(), "firmware_key": key,
+        }}
+        self._log([{"at": now.isoformat(), "kind": "control_grandfathered", "reason": key}])
+        _LOGGER.info(
+            "SpotNav battery control: %s control already ran here (passed on %s); it goes on without a hardware test "
+            "or a control code", control.brand, key,
+        )
+
+    def grandfathered(self) -> bool:
+        """Whether the plant's gated brand holds a `grandfathered` record (`_grandfather_running`)."""
+        brand = self.gated_brand()
+        return brand is not None and (self.control_codes.get(brand) or {}).get("grandfathered") is True
 
     def _void_blocked_passes(self) -> None:
         """At each look: a recipe this release holds back on the plant (`commands.BLOCKED`) voids the plant's stored
@@ -897,9 +939,10 @@ class BatteryControl:
     def tester_view(self) -> dict[str, Any] | None:
         """The battery section's tester block (`spotnav/battery_control`'s `tester`), `None` for a plant whose recipe
         takes no code: `stage` `none` (not signed up, or beta mode off: `tester_active`), `asked` (signed up, no test result sent), `tested` (a test's
-        result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail)."""
+        result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail). `None` too
+        for a plant whose control ran before its brand was gated (`grandfathered`): it has nothing to sign up for."""
         brand = self.gated_brand()
-        if brand is None:
+        if brand is None or self.grandfathered():
             return None
         tester = self.tester if self.tester_active() else None
         code = self.control_codes.get(brand)
@@ -1123,6 +1166,7 @@ class BatteryControl:
         # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
         self._ha_down_setup_look()
+        self._grandfather_running()
         self._void_blocked_passes()
         options = self.options()
         await self._async_read_sources(now)
@@ -1892,10 +1936,14 @@ class BatteryControl:
         # test stops renewing it after the hold and times the inverter's fallback, as the routine's mode `expiry`
         # does, so a recipe never run on a plant has its dead-man seen before control relies on it. Its window may be
         # longer than any the gate takes (`verify.expiry_long`): it then lifts no cap, the timing is the evidence.
+        # Not for a recipe gated after its control could already run (`GATED_AFTER_RUNNING`): its first pass is the
+        # routine's own modes, as its control ran on (SolarEdge's and SolaX's 30-minute timeouts would hold the test
+        # that long, and Huawei's hold is a stop, which has no lease).
         hold = base.states.get(ACTION_HOLD)
         window = expiry.window_s
         if (
-            base.hardware_test_first and hold is not None and not base.slow and not base.fixed_charge
+            base.hardware_test_first and base.brand not in GATED_AFTER_RUNNING
+            and hold is not None and not base.slow and not base.fixed_charge
             and expiry.kind in ("device_deadman", "device_lease") and expiry.renewer == "spotnav"
             and window is not None and window > 0
             and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(window))}
