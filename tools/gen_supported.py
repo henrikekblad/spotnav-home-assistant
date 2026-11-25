@@ -889,8 +889,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "cloud integrations",
         keys=("solarman", "mqtt/sunsynk"),
         adapter="deye",
-        control="Not mapped: read only. Work mode and programme slots are written in community setups, not confirmed",
-        note="Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
+        note="Control is limits only: a hold sets the battery's max discharging current to 0 A, a discharge for the "
+        "house its max charging current, both handed back as found, at most 48 writes a day, and only while Time "
+        "of Use is off. No grid charge or sale: that would mean rewriting the owner's time-of-use programmes, and "
+        "there is no setpoint and no dead-man. Nothing is written until a hardware test has passed on the plant's "
+        "firmware. Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
         "`solarman` has learnt it, and the ratings and the floor are learnt. The mode is read from the time-of-use "
         "setting: with it on, the inverter runs its own programmes.",
     ),

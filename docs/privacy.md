@@ -29,7 +29,7 @@ is listed.
 - **Beta tester** (administrators, off by default). The same file once a night for 14 days, then it stops by itself.
   Beta reports and an optional e-mail address are kept 90 days. See [Beta testing](beta-testing.md).
 - **Battery tester** (administrators, only for a battery brand whose control is still being tested: FoxESS, EcoFlow,
-  Marstek). Signing up sends the same file with the battery's brand, model, firmware and fuse, and your e-mail address
+  Marstek, Solis, Deye/Sunsynk). Signing up sends the same file with the battery's brand, model, firmware and fuse, and your e-mail address
   (required here), and turns beta testing on with it. While Beta tester stays on, the hardware test's result, with
   the battery's log and history over the test, is then sent by itself. The address is used only to send you the
   control code or an answer about your test. It is kept with the reports for 90 days, never in a log, and the nightly
