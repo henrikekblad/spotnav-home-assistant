@@ -52,7 +52,7 @@ SUPPORT_DIR = "/data/spotnav/support"
 #: The report kind a control code answers: a finished hardware test, which passed (`--force` takes another).
 CODE_KIND = "battery_test_result"
 #: The brands whose recipe waits for a person's hardware test (`commands.BrandControl.hardware_test_first`).
-GATED_BRANDS = ("foxess", "ecoflow", "marstek", "solis")
+GATED_BRANDS = ("foxess", "ecoflow", "marstek", "solis", "kostal")
 _REF = re.compile(r"SN-[A-Z0-9]{4}")
 
 

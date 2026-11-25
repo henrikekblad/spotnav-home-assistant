@@ -934,13 +934,6 @@ OVERVIEW: tuple[Overview, ...] = (
         "Sunny Home Manager are not seen.",
     ),
     Overview(
-        "Kostal (Plenticore)",
-        "`kostal_plenticore`, Home Assistant core: not read",
-        control="Not mapped. Power control is Modbus \"external battery control\", set up by the installer; no Home "
-        "Assistant integration for it was found",
-        note="External control falls back to the inverter's own after a timeout.",
-    ),
-    Overview(
         "E3/DC (S10 E, S10 X, S10 mini)",
         "`e3dc_rscp`, HACS (torbennehmer/hacs-e3dc), also `e3dc_rscp_connect`, HACS (tobias-terhaar/e3dc_rscp_connect): "
         "only the first is read",
@@ -1095,10 +1088,14 @@ OVERVIEW: tuple[Overview, ...] = (
         "`kostal_plenticore`, Home Assistant core; `kostal_modbus_control`, HACS (mbuhansen/kostal_plenticore_battery_control)",
         keys=("kostal_plenticore", "kostal_modbus_control"),
         adapter="kostal",
-        control="Not mapped: read only. Control is Modbus (port 1502) and needs the installer's setting \"External via "
-        "protocol\" and its timeout; the inverter hands back by itself when the writes stop",
-        note="The size is read through the Modbus integration only, and the ratings are learnt. The mode is read "
-        "only when the Modbus integration's Battery Management Mode is enabled.",
+        control="Mapped for the Modbus integration only",
+        note="Control needs the Modbus integration and the installer's setting \"External via protocol (Modbus TCP)\": "
+        "a hold is Block Discharge, a grid charge Set Charge Rate with Charge Start. The integration repeats them "
+        "within the inverter's timeout, so the inverter hands back by itself when Home Assistant stops; SpotNav does "
+        "not count on it and caps a grid charge as all on one phase. Nothing is written until a hardware test has "
+        "passed on the inverter's firmware. Not with Predbat in a control mode, nor while another of the "
+        "integration's switches runs. The size is read through the Modbus integration only, and the ratings are "
+        "learnt. The mode is read only when the Modbus integration's Battery Management Mode is enabled.",
     ),
     Overview(
         "Marstek (Venus E, C, D, A)",

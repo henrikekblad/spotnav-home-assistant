@@ -418,6 +418,37 @@ The entity keys, options and services below were checked against each integratio
   hand-back waits for a reading of the force first (`_command_unread`). Remote Dispatch (44100) and SolisCloud's strategy are not read.
   How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
   on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
+* **Kostal Plenticore** (plus G1-G3, BI, MP G3; `KOSTAL_CONTROL`; **never run on a plant**), HACS
+  `kostal_modbus_control`, mbuhansen/kostal_plenticore_battery_control 4.3.0 (`3bd84ac`, read 2026-11-25;
+  `plans/research_integrations/kostal_control_2026-11-23.md`). Modbus TCP, which acts only with the inverter's
+  installer setting "Battery management: External via protocol (Modbus TCP)" (register 1080 = 2; any other value and
+  the inverter ignores every write without an error: the sensor `battery_mgmt_mode`, disabled by default, must read so
+  before anything is written, `requires`). Core `kostal_plenticore` has no setpoint and is never written (its manual
+  charge has no rate and no timeout). Unique ids `<config entry id>_<key>`. The integration's switches start and stop
+  write loops of its own: **Charge Start** writes the battery's DC setpoint 1034 (1026, AC, on a BI) at minus **Set
+  Charge Rate** (W, the integration's own value, restored by it over a restart, read each tick: what the switch's echo
+  and the number's show is exactly what the loop sends; a rate at or above the number's maximum means "follow the
+  maximum", which then moves with the battery's voltage, so a charge is always written one step below it,
+  `charge_power_bound_exclusive`); **Block Discharge** holds the discharge limit 1040 at 0 (the integration's default;
+  or the minimum SoC 1042 at the SoC, its option): the sun is still stored, and since the firmware of October 2026
+  the inverter's own standby draw (about 170-260 W) may still come from the battery until the integration adds the
+  SoC as the minimum. Each loop writes every half of the integration's timeout (`switch.py` `_loop_interval`), which
+  must match the installer's timeout on the inverter (30 or 60 s seen, not readable). **The dead-man is the
+  inverter's**: without a write for that long it falls back to its own control, so a command ends by itself within a
+  minute of Home Assistant stopping (the switches are not restored over a restart), but **not** while Home Assistant
+  runs and SpotNav alone stalls (`Expiry` renewer `integration`: never lifts a cap, and the integration's loops give
+  SpotNav no write that stops them and leaves the command standing, so the hardware test cannot time it; a grid
+  charge is always under the HA-down cap, `grid_charge_phases` 1). Switches are mutually exclusive in the
+  integration (turning one on turns the others off): a change of action turns the old switch off first (a charge's
+  stop by `peak_first`, a hold's release by the enter order), so SpotNav never sees its own switch turned off by the
+  integration. Turning Charge Start off writes a "stop setpoint" from the live balance and then lets the inverter's
+  timeout run out; the integration waits that timeout and 15 s before its next switch writes anything (a hold right
+  after a charge starts up to 75 s late). Never written or relied on: Discharge Start (no sale), Block Charge,
+  Inverter Control, EMS Grid Protection (left as found; it only ever lowers a charge), the SoC limits, the I/O
+  outputs. The others' switches and an active Predbat (whose Charge Start runs Predbat's logic and whose reserve hold
+  writes 1042) are read by `adapters.KOSTAL`'s mode rules. Nothing in Kostal's interface description says whether the
+  battery registers are kept in flash; the integration and evcc say they are volatile and lapse with the timeout:
+  setpoints at `SETPOINT_WRITES_UNSTATED`.
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -433,7 +464,8 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    ECOFLOW, FERROAMP, FOXESS, GOODWE, HUAWEI, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, SOLIS, TESLA, VICTRON,
+    ECOFLOW, FERROAMP, FOXESS, GOODWE, HUAWEI, KOSTAL, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, SOLIS, TESLA,
+    VICTRON,
     Adapter,
     Match, _goodwe, _key, _tesla,
 )
@@ -1051,6 +1083,10 @@ class BrandControl:
     #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
     #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
     charge_power_bound: str | None = None
+    #: That entity's maximum itself means something else (Kostal's Set Charge Rate: "follow the battery's maximum",
+    #: which then moves with its voltage and would read as someone else's change), so a charge is bounded one of the
+    #: role's steps below it. `False` for every other recipe.
+    charge_power_bound_exclusive: bool = False
     #: The battery's BMS bounds a grid charge live: its present charge-current limit times its voltage
     #: (`facts.BatteryFacts.bms_charge_kw`), read every look, for the check's charge step, a live grid charge, a test
     #: action and the plan's cap alike; it only ever lowers a cap (Solis: a cold Dyness at 10 A x 377 V takes 3.7 kW
@@ -2489,6 +2525,84 @@ SOLIS_CONTROL: Final = BrandControl(
     " on a plant; writes only after a passed hardware test.",
 )
 
+# --- Kostal Plenticore (kostal_modbus_control, see the module) -------------------------------------------------------
+
+#: What the integration's `battery_mgmt_mode` reads (register 1080 = 2, `const.py` `BATTERY_MGMT_MODE_MAP`) when the
+#: installer set "External via protocol (Modbus TCP)": the only mode in which the inverter takes a write.
+KOSTAL_MGMT_MODBUS: Final = "External battery management via Modbus protocol"
+#: The inverter's external-control timeout (s): an installer's web setting (30 and 60 s seen), not readable. The
+#: longer one: a plant set to 30 s falls back sooner. Renewed by the integration's loops at half its own setting.
+KOSTAL_TIMEOUT_S: Final = 60.0
+
+# Set Charge Rate: the integration's own value (W, step 100), which Charge Start's loop sends as the setpoint at every
+# tick; its state is that value, so the echo is what the inverter is sent. Never written back: it acts only while
+# Charge Start is on, and the next charge writes its own first (the integration keeps it over a restart).
+_KO_RATE = Role(
+    "charge_rate", "number", _key("charge_rate", "number"), scale=1000.0, step=100.0, restored=False,
+    write_class="setpoint", readback="echo",
+)
+# The two switches SpotNav turns on. Their state is the integration's flag (on at once, its loop after any settling
+# wait), so the battery's power judges the effect.
+_KO_CHARGE = Role("charge_start", "switch", _key("charge_start", "switch"), write_class="setpoint", readback="echo")
+_KO_HOLD = Role("block_discharge", "switch", _key("block_discharge", "switch"), write_class="setpoint", readback="echo")
+# Register 1080: read before anything is written, never written (an installer's setting).
+_KO_MGMT = Role("management_mode", "sensor", _key("battery_mgmt_mode"), restored=False)
+
+
+def _ko_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    """The rate first, read back, then Charge Start, whose loop sends it."""
+    return (Want("charge_rate", native(_KO_RATE, rate_kw)), Want("charge_start", True))
+
+
+KOSTAL_CONTROL: Final = BrandControl(
+    brand="kostal",
+    adapter=KOSTAL,
+    roles=(_KO_MGMT, _KO_HOLD, _KO_RATE, _KO_CHARGE),
+    states={
+        # Block Discharge: the battery covers nothing; the sun is still stored.
+        ACTION_HOLD: lambda _rate, _w: (Want("block_discharge", True),),
+        ACTION_GRID_CHARGE: _ko_charge,
+        # The inverter's own control covers the house: no switch on.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
+    },
+    # A hold's switch off before the rate and Charge Start (the integration would turn it off itself, and SpotNav would
+    # read its own switch changed); a charge's Charge Start off first on every change and hand-back (`peak_first`).
+    enter_order=("block_discharge", "charge_rate", "charge_start"),
+    restore_order=("charge_start", "block_discharge"),
+    # SpotNav's own switches are not someone else's while they run (the adapter's mode rules read every switch).
+    own_states={"Charge Start": frozenset({"on"}), "Block Discharge": frozenset({"on"})},
+    requires=(("management_mode", frozenset({KOSTAL_MGMT_MODBUS}), "external_control_off"),),
+    peak_first={ACTION_HOLD: ("block_discharge",), ACTION_GRID_CHARGE: ("charge_start",)},
+    # The inverter's own timeout, renewed by the integration's loops (not by SpotNav): it ends a command when Home
+    # Assistant stops, never when SpotNav alone stalls, so it never lifts a cap (`gate.expiry_lifts`). Stated by the
+    # integration, evcc and owners; no write of SpotNav's stops the loops and leaves the command standing (turning a
+    # switch off writes the stop at once), so it has no silence and is not timed by the hardware test.
+    expiry=Expiry(
+        "device_deadman", "integration", KOSTAL_TIMEOUT_S, integration="kostal_modbus_control",
+        note="the inverter's external-control timeout (installer setting, 30 or 60 s seen), written every half of it"
+        " by the integration's switch loops",
+    ),
+    # A three-phase hybrid; how it spreads a grid charge over the phases is not stated: all of it on one.
+    grid_charge_phases=1,
+    # The inverter's own strategy (smart battery control, time control, core's select) is not in this integration's
+    # entry: the person acknowledges that SpotNav's commands override whatever runs.
+    strategy_unread=True,
+    # A minimum SoC hold (the integration's other option) may let the inverter reach it from the grid (unverified):
+    # a hold that charges from the grid did not take.
+    hold_grid_guard=True,
+    hacs_roles=("management_mode", "block_discharge", "charge_rate", "charge_start"),
+    hacs_repo="mbuhansen/kostal_plenticore_battery_control",
+    # Kostal's interface description says nothing of flash; the integration and evcc call the registers volatile.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    charge_power_bound="charge_rate",
+    charge_power_bound_exclusive=True,
+    hardware_test_first=True,
+    note="Needs kostal_modbus_control (mbuhansen) and the installer's External via protocol (Modbus TCP). Hold: Block"
+    " Discharge; grid charge: Set Charge Rate and Charge Start. The integration renews them; the inverter falls back"
+    " by itself within its timeout when Home Assistant stops, so a grid charge still runs under the HA-down cap. Never"
+    " run on a plant; writes only after a passed hardware test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -2505,6 +2619,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
     VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL, ECOFLOW_CONTROL, MARSTEK_CONTROL, SOLIS_CONTROL,
+    KOSTAL_CONTROL,
 )
 
 

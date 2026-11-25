@@ -92,6 +92,8 @@ administrators can confirm, and never over the webhook. The entities per brand:
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
 * Marstek (the Marstek Venus Modbus integration; all four are disabled by default): Max Discharge Power, RS485 Control
   Mode, Set Charge Power and Force Mode.
+* Kostal Plenticore (Kostal Plenticore Battery Control): Battery Management Mode (disabled by default), Block
+  Discharge, Set Charge Rate and Charge Start.
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
 * FoxESS (FoxESS Modbus; both enabled by default): Max Charge Current and Max Discharge Current.
@@ -864,6 +866,73 @@ written by someone else.
 **If something goes wrong, restore by hand:** in Home Assistant set *RC Force Charge/Discharge* to *None*, *RC Force
 Battery Charge Power* and *RC Force Battery Discharge Power* to 0 and *RC Timeout* to your value (5 minutes by
 default). Then turn SpotNav's switch off. A force left standing also ends by itself once *RC Timeout* runs out.
+
+### Kostal Plenticore (mapped, not yet tested on a plant)
+
+For a Plenticore plus (G1, G2, G3), Plenticore BI or MP G3 with its battery through the HACS integration **Kostal
+Plenticore Battery Control** (`kostal_modbus_control`, mbuhansen), which talks Modbus TCP to the inverter. SpotNav
+reads the core Kostal Plenticore integration too, but never writes through it: it has no charge power and no
+timeout. For control, the site's battery must be the Modbus integration's *Battery Power*.
+
+**What must be set first.**
+
+* The inverter's **Battery Management** set to *External via protocol (Modbus TCP)* in its web UI. That is an
+  installer setting (the installer or service code). In any other mode the inverter ignores every write without an
+  error, so SpotNav writes nothing until the integration's **Battery Management Mode** sensor reads *External battery
+  management via Modbus protocol*. That sensor ships disabled; the card offers to enable it, with *Software Version*
+  (the firmware the hardware test is kept per).
+* The integration's **Modbus Timeout** the same as the timeout beside that setting in the web UI (30 or 60 seconds
+  are common). SpotNav cannot read either.
+* Nothing else writing to the inverter: it takes one controller (evcc, Tibber's bridge, Predbat's own Kostal
+  automation and a Modbus automation of your own all use the same door).
+* The card asks you to confirm that SpotNav's commands override the inverter's own battery control and time
+  control: the Modbus integration does not show them.
+
+SpotNav takes the battery only while none of the integration's switches (*Charge Start*, *Discharge Start*, *Block
+Charge*, *Block Discharge*, *Inverter Control*) is on, and while Predbat, if installed, is not in a control mode (the
+integration's *Charge Start* then runs Predbat's logic). Any of them on later is someone else's command: SpotNav hands
+back and never turns another one's switch off. Battery Management on *digital I/O* (a ripple-control receiver or
+another box) is someone else's too.
+
+* **Hold:** *Block Discharge* on. The battery covers nothing and still stores a sun surplus. The integration holds
+  it through the discharge limit by default; since the firmware of October 2026 the inverter's own standby draw (about
+  200 W) may still come from the battery until the integration also holds the minimum SoC.
+* **Grid charge:** *Set Charge Rate* at the rate (in steps of 100 W, always one step below its maximum, which means
+  "follow the battery's maximum"), then *Charge Start*. The power is the battery's own (DC on a hybrid), so the sun
+  counts towards it. *EMS Grid Protection*, if you turned it on, may lower it further.
+* **Cover the house:** the inverter's own control; nothing is written.
+* **No sale:** *Discharge Start* is never used.
+* **Hand back:** the switch SpotNav turned on, off. *Set Charge Rate* stays as SpotNav last wrote it; it does nothing
+  without *Charge Start*. Set it back if you use it yourself.
+
+The integration turns its other switches off when one goes on; SpotNav always turns its old switch off first, so it
+never mistakes that for someone else. After *Charge Start* goes off the integration waits the timeout and 15 seconds
+before its next write, so a hold right after a charge starts up to about 75 seconds late.
+
+**The timeout.** The integration repeats each command to the inverter every half of its timeout, and the inverter goes
+back to its own control by itself when no write comes for that long, so a command ends within about a minute of Home
+Assistant stopping (the integration's switches also start off after a restart). It does not end while Home Assistant
+runs and only SpotNav is stuck. SpotNav therefore does not count on it: a grid charge's fuse cap is reckoned as for a
+battery that keeps its command (the house at its learned peak, the whole charge on one phase). The hardware test does
+not time it, since no write stops the integration's repeats without also ending the command. Kostal does not state
+whether these registers are kept in flash; the integration and evcc treat them as values that lapse with the timeout.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a Plenticore SpotNav only shows what it would do
+(as under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed on the inverter ([Becoming a tester](#becoming-a-tester-foxess-ecoflow-marstek-solis)).
+Press Start: the test waits by itself for a moment with the house using more than the sun gives (between 08 and 21
+for the first pass, with a phone notice and a Stop button while it writes) and runs, in about ten minutes:
+
+1. **Hold:** *Block Discharge* on; the battery must stop covering the house.
+2. **Small grid charge:** about 1 kW under the fuse cap; the battery must charge.
+3. **Discharge to the house:** *Charge Start* off; the battery must cover the house again.
+4. **Hand back:** both switches off as found.
+
+It aborts and hands back near the fuse, if a write does not read back, if the battery does not do as told, or when
+anything is changed by someone else.
+
+**If something goes wrong, restore by hand:** turn *Charge Start* and *Block Discharge* off; the inverter returns to
+its own control within its timeout. Then turn SpotNav's switch off.
 
 ### Becoming a tester (FoxESS, EcoFlow, Marstek, Solis)
 

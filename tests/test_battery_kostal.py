@@ -1,5 +1,6 @@
 """Kostal Plenticore through core `kostal_plenticore` (`42f4a32`) or HACS `kostal_modbus_control` (mbuhansen `3bd84ac`,
-4.3.0): read only, found by the key in the unique id.
+4.3.0), found by the key in the unique id. The control is the Modbus integration's only (`commands.KOSTAL_CONTROL`,
+`tests/test_battery_kostal_control.py`).
 
 Core's registry (`<entry id>_<module id>_<data id>`) is the fixture `kostal` in `tests/fixtures/battery/brands.json`;
 the Modbus integration's (`<config entry id>_<key>`) is built here.
@@ -33,10 +34,12 @@ def _modbus(*extra: EntityFact):
     return battery_facts(entities[0], entities, power_kw=-0.8)
 
 
-def test_both_integrations_are_the_kostal_adapter_and_it_is_read_only() -> None:
+def test_both_integrations_are_the_kostal_adapter_and_only_the_modbus_one_has_controls() -> None:
     assert adapter_for("kostal_plenticore", "Kostal") is KOSTAL
     assert adapter_for("kostal_modbus_control", None) is KOSTAL
-    assert all(control.brand != "kostal" for control in commands.CONTROLS)
+    control = commands.control_for("kostal")
+    assert control is commands.KOSTAL_CONTROL and control.adapter is KOSTAL
+    assert set(control.hacs_roles) == {role.name for role in control.roles}
     assert KOSTAL.hold is None and KOSTAL.grid_charge is None
 
 
@@ -86,13 +89,34 @@ def test_modbus_reads_level_and_size_but_not_the_limits_the_integration_writes()
 
 @pytest.mark.parametrize(
     "state, expected",
-    [(MODBUS_NONE, "free"), ("External battery management via Modbus protocol", "self_managed"),
+    # External control over Modbus is the door SpotNav's own control needs: who uses it is read from the switches.
+    [(MODBUS_NONE, "free"), ("External battery management via Modbus protocol", "free"),
      ("External battery management via digital I/O", "self_managed")],
 )
 def test_the_modbus_integrations_battery_management_mode_says_who_runs_it(state: str, expected: str) -> None:
     facts = _modbus(_fact("battery_mgmt_mode", state))
 
     assert facts.management.state == expected
+
+
+@pytest.mark.parametrize(
+    "key, label", [("charge_start", "Charge Start"), ("discharge_start", "Discharge Start"),
+                   ("block_charge", "Block Charge"), ("block_discharge", "Block Discharge"),
+                   ("inverter_control", "Inverter Control")],
+)
+def test_a_command_switch_of_the_modbus_integration_on_is_someones_command(key: str, label: str) -> None:
+    mode = _fact("battery_mgmt_mode", "External battery management via Modbus protocol")
+    off = _modbus(mode, _fact(key, "off", domain="switch"))
+    on = _modbus(mode, _fact(key, "on", domain="switch"))
+
+    assert off.management.state == "free"
+    assert on.management.state == "self_managed" and on.management.reason == f"{label}:on"
+
+
+def test_an_active_predbat_runs_the_modbus_integrations_charge_start() -> None:
+    mode = _fact("battery_mgmt_mode", MODBUS_NONE)
+    for state, expected in (("Not installed", "free"), ("Disabled", "free"), ("Enabled", "self_managed")):
+        assert _modbus(mode, _fact("predbat_mode", state)).management.state == expected, state
 
 
 def test_a_disabled_battery_management_mode_leaves_the_mode_unknown() -> None:
