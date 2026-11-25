@@ -341,6 +341,114 @@ describe("the popover from the house card", () => {
     expect(translate("sv", "site.priority.intro")).toBe("Överst får energi först och backar sist.");
   });
 
+  function exportView(more: Record<string, unknown> = {}): Record<string, unknown> {
+    const villa = read("site_view", "villa.json");
+    return { ...villa, export_curtail: { ...(villa["export_curtail"] as object), ...more } };
+  }
+
+  it("shows No export at negative prices in Solar with what it cost, and an administrator turns it on", async () => {
+    const { root, messages } = await mount({ view: exportView() });
+    const popover = await open(root);
+    const solar = popover.querySelector<HTMLElement>("[data-section='solar']")!;
+    const row = solar.querySelector<HTMLElement>("[data-row='export_curtail_enabled']")!;
+    expect(row.textContent).toContain("Ingen export vid negativa priser");
+    expect(row.textContent).toContain("Av");
+    expect(solar.querySelector("[data-help='export_curtail_enabled']")!.textContent).toContain("Gäller hela anläggningen.");
+    // Off: what exporting at negative prices cost in the last 30 days, from the rule's own count.
+    expect(solar.querySelector("[data-export-saving]")!.textContent).toBe(
+      "De senaste 30 dagarna kostade export vid negativa priser 12 kr (41,2 kWh).",
+    );
+    expect(solar.querySelector("[data-help='export_curtail_beta']")!.textContent).toBe(
+      "Testas fortfarande med Sigenergy: än så länge bara för betatestare.",
+    );
+    expect(solar.querySelector("[data-export-need]")).toBeNull();
+    row.querySelector<HTMLButtonElement>("button[data-edit='export_curtail_enabled']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const form = root.querySelector<HTMLFormElement>("form")!;
+    expect(form.textContent).toContain("Om någon annan ändrar gränsen under tiden låter SpotNav den vara.");
+    form.querySelector<HTMLInputElement>("input[value='on']")!.click();
+    root.querySelector<HTMLButtonElement>(`button[type='submit'][form='${form.id}']`)!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["changes"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { export_curtail_enabled: true } },
+    ]);
+  });
+
+  it("shows the export switch only where an export control is found, read-only for others", async () => {
+    const none = await open((await mount({ view: exportView({ found: false, brand: null, state: "no_control" }) })).root);
+    expect(none.querySelector("[data-section='solar']")).not.toBeNull();
+    expect(none.querySelector("[data-row='export_curtail_enabled']")).toBeNull();
+    document.body.innerHTML = "";
+    // A Home Assistant before the switch sends no block at all.
+    const older = { ...read("site_view", "villa.json") };
+    delete older["export_curtail"];
+    expect(decodeSiteView(older).ok).toBe(true);
+    const before = await open((await mount({ view: older })).root);
+    expect(before.querySelector("[data-row='export_curtail_enabled']")).toBeNull();
+    document.body.innerHTML = "";
+    // Written over the WebSocket by an administrator only: without `writable` the row is read.
+    const read_only = await open((await mount({ view: exportView({ writable: false, enabled: true, state: "on" }) })).root);
+    const row = read_only.querySelector<HTMLElement>("[data-row='export_curtail_enabled']")!;
+    expect(row.textContent).toContain("På");
+    expect(row.querySelector("button")).toBeNull();
+    // On: no line about what it would have saved.
+    expect(read_only.querySelector("[data-export-saving]")).toBeNull();
+  });
+
+  it("says the one thing the person can act on under the export switch", async () => {
+    const needs: [string, string][] = [
+      ["limit_unset", "Växelriktaren har ingen exportgräns inställd."],
+      ["not_obeyed", "Växelriktaren följde inte gränsen"],
+      ["not_taken", "Växelriktaren tog inte emot inställningen"],
+      ["needs_hacs_integration:mletenay/home-assistant-goodwe-inverter", "(mletenay/home-assistant-goodwe-inverter)"],
+      ["beta_only", "Med Sigenergy fungerar det här än så länge bara för betatestare."],
+      ["no_grid_reading", "elmätarens totala effekt mot nätet"],
+    ];
+    for (const [need, words] of needs) {
+      const popover = await open((await mount({ view: exportView({ need, enabled: true, state: "on" }) })).root);
+      const line = popover.querySelector<HTMLElement>("[data-export-need]")!;
+      expect(line.dataset["exportNeed"], need).toBe(need.split(":")[0]);
+      expect(line.textContent, need).toContain(words);
+      expect(line.querySelector("button"), need).toBeNull();
+      document.body.innerHTML = "";
+    }
+    // A disabled entity: the line opens it in Home Assistant, where it can be enabled.
+    const entity_id = "number.sigen_plant_grid_export_limitation";
+    const { root } = await mount({ view: exportView({ need: "control_disabled", entity_id }) });
+    const popover = await open(root);
+    const line = popover.querySelector<HTMLElement>("[data-export-need='control_disabled']")!;
+    expect(line.textContent).toContain("Exportgränsen är avstängd i Home Assistant.");
+    const opened: unknown[] = [];
+    root.addEventListener("hass-more-info", (event) => opened.push((event as CustomEvent).detail));
+    line.querySelector<HTMLButtonElement>("button[data-action='open-export-limit-entity']")!.click();
+    expect(opened).toEqual([{ entityId: entity_id }]);
+    document.body.innerHTML = "";
+    // A code a newer Home Assistant sends is no line.
+    const unknown = await open((await mount({ view: exportView({ need: "something_new" }) })).root);
+    expect(unknown.querySelector("[data-export-need]")).toBeNull();
+  });
+
+  it("refuses an unknown key in the export block and names the switch in every language", () => {
+    const villa = read("site_view", "villa.json");
+    const block = villa["export_curtail"] as Record<string, unknown>;
+    expect(decodeSiteView({ ...villa, export_curtail: { ...block, surprise: 1 } }).ok).toBe(false);
+    expect(decodeSiteView({ ...villa, export_curtail: { ...block, saving: { ...(block["saving"] as object), surprise: 1 } } }).ok).toBe(false);
+    expect(decodeSiteView({ ...villa, export_curtail: null }).ok).toBe(true);
+    for (const language of Object.keys(TRANSLATIONS) as (keyof typeof TRANSLATIONS)[]) {
+      for (const key of [
+        "exportCurtail.title", "exportCurtail.help", "exportCurtail.intro", "exportCurtail.saving", "exportCurtail.beta",
+        "exportCurtail.need.controlDisabled", "exportCurtail.need.limitUnset", "exportCurtail.need.notObeyed",
+        "exportCurtail.need.notTaken", "exportCurtail.need.needsHacs", "exportCurtail.need.betaOnly",
+        "exportCurtail.need.noGridReading",
+      ] as const) {
+        expect(TRANSLATIONS[language][key], `${language} ${key}`).toBeTruthy();
+      }
+      expect(TRANSLATIONS[language]["exportCurtail.saving"]).toContain("{amount}");
+      expect(TRANSLATIONS[language]["exportCurtail.need.needsHacs"]).toContain("{repo}");
+    }
+    expect(translate("en", "exportCurtail.title")).toBe("No export at negative prices");
+  });
+
   it("has no gear for a household member", async () => {
     const { root } = await mount({ admin: false });
     expect(root.querySelector("button[data-action='settings']")).toBeNull();

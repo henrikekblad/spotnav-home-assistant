@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Sauna heats up",
   "house.plan.run.sauna.hold": "Sauna ready",
   "house.plan.reason.bath": "for the booked time",
-  "house.plan.reason.now": "started now"
+  "house.plan.reason.now": "started now",
+  "exportCurtail.title": "No export at negative prices",
+  "exportCurtail.help": "While selling electricity costs money, SpotNav sets the inverter's export limit to zero and puts it back afterwards. The sun still runs the house, the car and the battery. Applies to the whole site.",
+  "exportCurtail.intro": "SpotNav writes the export limit of your {brand} system while a sold kWh earns less than nothing, and then puts back the value that was there. If someone else changes the limit meanwhile, SpotNav leaves it alone.",
+  "exportCurtail.saving": "In the last {days} days, exporting at negative prices cost {amount} ({energy}).",
+  "exportCurtail.beta": "Still being tested with {brand}: for beta testers only so far.",
+  "exportCurtail.need.controlDisabled": "The export limit is disabled in Home Assistant. Enable it to use this.",
+  "exportCurtail.need.limitUnset": "The inverter has no export limit set. Set one in the inverter's own app first, at the most you may export. SpotNav then lowers it and puts yours back, and never sets one of its own.",
+  "exportCurtail.need.notObeyed": "The inverter did not follow the limit, so SpotNav put it back and stopped. Turn this off and on to try again.",
+  "exportCurtail.need.notTaken": "The inverter did not take the setting, so SpotNav stopped. Turn this off and on to try again.",
+  "exportCurtail.need.needsHacs": "The export limit is not enabled in the inverter. Enable it in the inverter's own app, or install the HACS integration ({repo}) so SpotNav can.",
+  "exportCurtail.need.betaOnly": "With {brand} this works for beta testers only so far. Tick Beta tester under Support to use it.",
+  "exportCurtail.need.noGridReading": "This needs the meter's total grid power, which this site does not have."
 }

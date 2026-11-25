@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Sauna warmt op",
   "house.plan.run.sauna.hold": "Sauna klaar",
   "house.plan.reason.bath": "voor de geboekte tijd",
-  "house.plan.reason.now": "nu gestart"
+  "house.plan.reason.now": "nu gestart",
+  "exportCurtail.title": "Geen teruglevering bij negatieve prijzen",
+  "exportCurtail.help": "Zolang stroom verkopen geld kost, zet SpotNav de terugleverlimiet van de omvormer op nul en zet die daarna terug. De zon voedt nog steeds het huis, de auto en de batterij. Geldt voor de hele locatie.",
+  "exportCurtail.intro": "SpotNav schrijft de terugleverlimiet van je {brand}-installatie zolang een verkochte kWh minder dan niets oplevert, en zet daarna de waarde terug die er stond. Als iemand anders de limiet intussen wijzigt, laat SpotNav die met rust.",
+  "exportCurtail.saving": "In de afgelopen {days} dagen kostte terugleveren bij negatieve prijzen {amount} ({energy}).",
+  "exportCurtail.beta": "Wordt nog getest met {brand}: voorlopig alleen voor bètatesters.",
+  "exportCurtail.need.controlDisabled": "De terugleverlimiet is uitgeschakeld in Home Assistant. Schakel die in om dit te gebruiken.",
+  "exportCurtail.need.limitUnset": "In de omvormer is geen terugleverlimiet ingesteld. Stel er eerst een in via de eigen app van de omvormer, op het meeste dat je mag terugleveren. SpotNav verlaagt die daarna en zet de jouwe terug, en stelt er nooit zelf een in.",
+  "exportCurtail.need.notObeyed": "De omvormer volgde de limiet niet, dus SpotNav zette die terug en stopte. Zet dit uit en weer aan om het opnieuw te proberen.",
+  "exportCurtail.need.notTaken": "De omvormer nam de instelling niet over, dus SpotNav stopte. Zet dit uit en weer aan om het opnieuw te proberen.",
+  "exportCurtail.need.needsHacs": "De terugleverlimiet is niet ingeschakeld in de omvormer. Schakel die in via de eigen app van de omvormer, of installeer de HACS-integratie ({repo}) zodat SpotNav dat kan.",
+  "exportCurtail.need.betaOnly": "Met {brand} werkt dit voorlopig alleen voor bètatesters. Vink Bètatester aan onder Ondersteuning om het te gebruiken.",
+  "exportCurtail.need.noGridReading": "Hiervoor is het totale netvermogen van de meter nodig, en dat heeft deze locatie niet."
 }

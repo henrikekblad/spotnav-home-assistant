@@ -52,6 +52,31 @@ export interface SiteView {
   site: Site | null;
   /** The site's one priority list (`site/priority.py`), top first; `null` from a Home Assistant before it. */
   priority: SitePriority | null;
+  /** "No export at negative prices" (`battery/export_shell.py`); `null` from a Home Assistant before it or while the
+   * site is not running. */
+  export_curtail: SiteExportCurtail | null;
+}
+
+/** The site's switch for its export limit: shown only where `found`; `need` is at most one thing the person can act
+ * on (`control_disabled`, `limit_unset`, `not_obeyed`, `not_taken`, `needs_hacs_integration:<repo>`, `beta_only`,
+ * `no_grid_reading`); `saving` what exporting at a negative sell price cost in the last `days`. */
+export interface SiteExportCurtail {
+  found: boolean;
+  enabled: boolean;
+  brand: string | null;
+  state: string;
+  beta: boolean;
+  need: string | null;
+  entity_id: string | null;
+  saving: {
+    days: number;
+    kwh: number;
+    minor: number;
+    blocked_minor: number;
+    major_unit: string | null;
+    minor_unit: string | null;
+  };
+  writable: boolean;
 }
 
 /** One row of the priority list: `charger:<entry id>` (named by `name`) or a fixed load id the card names itself. */
@@ -317,6 +342,26 @@ const SITE_VIEW = O({
   ),
   site: "any",
   priority: N(O({ order: A(O({ id: "string", name: N("string") })), writable: "boolean" })),
+  export_curtail: N(
+    O({
+      found: "boolean",
+      enabled: "boolean",
+      brand: N("string"),
+      state: "string",
+      beta: "boolean",
+      need: N("string"),
+      entity_id: N("string"),
+      saving: O({
+        days: "number",
+        kwh: "number",
+        minor: "number",
+        blocked_minor: "number",
+        major_unit: N("string"),
+        minor_unit: N("string"),
+      }),
+      writable: "boolean",
+    }),
+  ),
 });
 
 const OPTIONS = O({
@@ -446,7 +491,7 @@ export function decodeSiteList(raw: unknown): Decoded<{ api_version: number; sit
 
 export function decodeSiteView(raw: unknown): Decoded<SiteView> {
   // `import_target` came later: a Home Assistant before it is read as one that can measure it (the row shows).
-  // `priority` came later too: absent reads as `null` (no row).
+  // `priority` came later too: absent reads as `null` (no row). So did `export_curtail`.
   const plain = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
   const grown =
     plain === null
@@ -454,6 +499,7 @@ export function decodeSiteView(raw: unknown): Decoded<SiteView> {
       : {
           ...("import_target" in plain ? {} : { import_target: { available: true, reason: null } }),
           ...("priority" in plain ? {} : { priority: null }),
+          ...("export_curtail" in plain ? {} : { export_curtail: null }),
           ...plain,
         };
   const decoded = versioned<SiteView>(grown, SITE_VIEW_API_VERSION, SITE_VIEW);

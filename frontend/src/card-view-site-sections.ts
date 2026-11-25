@@ -4,6 +4,8 @@
 import { translate } from "./i18n";
 import { type SiteFacts } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
+import type { SiteExportCurtail } from "./site-model";
+import { exportCurtailFacts } from "./settings-popover";
 import { onOffEditor, sectionHeading } from "./value-editors";
 import { solarSectionBody as sharedSolarSection, type SectionHost } from "./price-section";
 import { makeHomeEditor } from "./phones";
@@ -13,11 +15,16 @@ import type { PageHelpers, SettingsPageState, ViewContext } from "./card-view-co
 
 export interface SiteSectionsDeps extends PageHelpers {
   sectionHost: () => SectionHost;
+  /** "No export at negative prices" as the site's view read it (`SiteSections.exportCurtail`), and its write. */
+  exportCurtail: () => SiteExportCurtail | null;
+  writeExportCurtail: (on: boolean) => Promise<string | null>;
 }
 
 export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageState, deps: SiteSectionsDeps) {
   const { input, model, doc, idPrefix } = ctx;
   const { overviewRow, rowHelp, openValueEditor, writeValue, sectionHost } = deps;
+  // Painted again once the site's view is read (it arrives after the page opens).
+  let solarShown: HTMLElement | null = null;
 
   let homeOffered = false;
   let makeHomeSlot: HTMLElement | null = null;
@@ -93,9 +100,26 @@ export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageS
         appliesToText: site.appliesToText,
         writable: site.writable,
         choices: site.solarForecastChoices,
+        exportCurtail: exportCurtailFacts(deps.exportCurtail()),
       },
       writeForecast: (forecast) => writeValue({ kind: "solar", forecast }),
+      writeExportCurtail: deps.writeExportCurtail,
     });
+  }
+
+  /** The solar section, kept so the export switch can show once the site's view is read (`paintSolar`). */
+  function solarSectionKept(): HTMLElement | null {
+    solarShown = solarSectionBody();
+    return solarShown;
+  }
+
+  /** Draw the solar section again in place. */
+  function paintSolar(): void {
+    const next = solarShown === null || !solarShown.isConnected ? null : solarSectionBody();
+    if (solarShown !== null && next !== null) {
+      solarShown.replaceWith(next);
+      solarShown = next;
+    }
   }
 
   // The load-balancing switch's state lives outside `model`: an answer repaints this block in place,
@@ -176,7 +200,8 @@ export function createSiteSections(ctx: ViewContext, settingsPage: SettingsPageS
 
   return {
     siteSectionBody,
-    solarSectionBody,
+    solarSectionBody: solarSectionKept,
+    paintSolar,
     setActiveControlPending(pending: boolean): void {
       activePending = pending;
       paintActiveControl();

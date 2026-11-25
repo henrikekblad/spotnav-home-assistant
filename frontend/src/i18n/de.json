@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Sauna heizt auf",
   "house.plan.run.sauna.hold": "Sauna bereit",
   "house.plan.reason.bath": "für die gebuchte Zeit",
-  "house.plan.reason.now": "jetzt gestartet"
+  "house.plan.reason.now": "jetzt gestartet",
+  "exportCurtail.title": "Keine Einspeisung bei negativen Preisen",
+  "exportCurtail.help": "Solange das Einspeisen Geld kostet, setzt SpotNav die Einspeisebegrenzung des Wechselrichters auf null und stellt sie danach wieder her. Die Sonne versorgt weiterhin Haus, Auto und Speicher. Gilt für den ganzen Standort.",
+  "exportCurtail.intro": "SpotNav schreibt die Einspeisebegrenzung deiner {brand}-Anlage, solange eine verkaufte kWh weniger als nichts einbringt, und stellt danach den Wert wieder her, der dort stand. Ändert jemand anderes die Begrenzung in der Zwischenzeit, lässt SpotNav sie in Ruhe.",
+  "exportCurtail.saving": "In den letzten {days} Tagen hat das Einspeisen bei negativen Preisen {amount} gekostet ({energy}).",
+  "exportCurtail.beta": "Wird mit {brand} noch getestet: bisher nur für Betatester.",
+  "exportCurtail.need.controlDisabled": "Die Einspeisebegrenzung ist in Home Assistant deaktiviert. Aktiviere sie, um dies zu nutzen.",
+  "exportCurtail.need.limitUnset": "Im Wechselrichter ist keine Einspeisebegrenzung eingestellt. Stelle zuerst in der App des Wechselrichters eine ein, auf das Höchste, das du einspeisen darfst. SpotNav senkt sie dann und stellt deine wieder her, und setzt nie eine eigene.",
+  "exportCurtail.need.notObeyed": "Der Wechselrichter hat die Begrenzung nicht befolgt, daher hat SpotNav sie zurückgestellt und aufgehört. Schalte dies aus und wieder ein, um es erneut zu versuchen.",
+  "exportCurtail.need.notTaken": "Der Wechselrichter hat die Einstellung nicht angenommen, daher hat SpotNav aufgehört. Schalte dies aus und wieder ein, um es erneut zu versuchen.",
+  "exportCurtail.need.needsHacs": "Die Einspeisebegrenzung ist im Wechselrichter nicht aktiviert. Aktiviere sie in der App des Wechselrichters oder installiere die HACS-Integration ({repo}), damit SpotNav das kann.",
+  "exportCurtail.need.betaOnly": "Mit {brand} funktioniert dies bisher nur für Betatester. Setze unter Support den Haken bei Betatester, um es zu nutzen.",
+  "exportCurtail.need.noGridReading": "Dafür wird die gesamte Netzleistung des Zählers benötigt, die dieser Standort nicht hat."
 }

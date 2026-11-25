@@ -2,12 +2,12 @@
 // site's settings popover (`settings-popover.ts`, the house and heat cards): the electricity price the charger or
 // site reads (its line, the same-area question, "Price from"), the area, where the prices come from, the three fees
 // with the grid tariff's rows beside the grid fee, the supplier's two figures (the sold kWh only where something is
-// sold) and the demand charge; and the solar forecast sources.
+// sold) and the demand charge; and the solar forecast sources with the site's "No export at negative prices" switch.
 //
 // Nothing here talks to the backend. The host draws its own rows and editors (`row`, `openValueEditor`, ...) and
 // makes each write (`write`), so a charger writes through its own commands and a site through the site-keyed ones.
 
-import type { FormatContext } from "./format";
+import { kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
 import { numberWord, translate, type Language, type TranslationKey } from "./i18n";
 import { marketAreaLabel } from "./market";
 import type { PriceEntryFacts } from "./model";
@@ -30,7 +30,8 @@ import { componentEditor, demandRows, levelEditor } from "./demand-charge";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { fiscalRows } from "./settings";
 import type { Fiscal, GridTariffBlock, PriceProvider } from "./validate";
-import { sectionHeading, type ChoiceOption, type EditorHandlers, type NumberEditorInput } from "./value-editors";
+import type { SiteExportCurtail } from "./site-model";
+import { onOffEditor, sectionHeading, type ChoiceOption, type EditorHandlers, type NumberEditorInput } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
@@ -542,15 +543,121 @@ export interface SolarFacts {
   appliesToText: string;
   writable: boolean;
   choices: ReadonlyArray<{ id: string; title: string; selected: boolean }>;
+  /** "No export at negative prices" (the site view's `export_curtail`) with the brand's name; `null` or absent
+   * where it is not read. The row shows only where an export control is found. */
+  exportCurtail?: (SiteExportCurtail & { brandName: string }) | null;
 }
 
 export interface SolarSectionInput extends SectionHost {
   facts: SolarFacts;
   /** The chosen forecast sources (`spotnav/update_site_settings`). */
   writeForecast(forecast: string[]): Promise<string | null>;
+  /** The export switch (`spotnav/battery_control`'s `export_curtail_enabled`); absent where the host cannot write. */
+  writeExportCurtail?(on: boolean): Promise<string | null>;
 }
 
-/** Solar: the forecast sources the site's plans read, one multi-choice editor. */
+/** The one line about what the person can act on for the export switch (`SiteExportCurtail.need`), `null` for none
+ * or a code this card does not know. */
+export function exportCurtailNeed(language: Language, need: string | null, brandName: string): string | null {
+  if (need === null) {
+    return null;
+  }
+  const [kind] = need.split(":");
+  switch (kind) {
+    case "control_disabled":
+      return translate(language, "exportCurtail.need.controlDisabled");
+    case "limit_unset":
+      return translate(language, "exportCurtail.need.limitUnset");
+    case "not_obeyed":
+      return translate(language, "exportCurtail.need.notObeyed");
+    case "not_taken":
+      return translate(language, "exportCurtail.need.notTaken");
+    case "needs_hacs_integration":
+      // The repository holds a slash and comes after the first colon only.
+      return translate(language, "exportCurtail.need.needsHacs", { repo: need.slice((kind ?? "").length + 1) || "HACS" });
+    case "beta_only":
+      return translate(language, "exportCurtail.need.betaOnly", { brand: brandName });
+    case "no_grid_reading":
+      return translate(language, "exportCurtail.need.noGridReading");
+    default:
+      return null;
+  }
+}
+
+/**
+ * "No export at negative prices": the switch's row, what it does (site-wide), while it is off what exporting at a
+ * negative price cost in the last 30 days, the beta note for an untested brand, and at most one line the person can
+ * act on. Nothing where no export control is found. An administrator changes it; everyone else reads it.
+ */
+function exportCurtailRows(input: SolarSectionInput): HTMLElement[] {
+  const { doc, language, facts } = input;
+  const block = facts.exportCurtail ?? null;
+  if (block === null || !block.found) {
+    return [];
+  }
+  const label = translate(language, "exportCurtail.title");
+  const write = input.writeExportCurtail;
+  const nodes: HTMLElement[] = [
+    input.row(
+      "export_curtail_enabled",
+      label,
+      translate(language, block.enabled ? "settings.value.on" : "settings.value.off"),
+      input.isAdmin && block.writable && write !== undefined
+        ? () =>
+            input.openValueEditor(label, (handlers) =>
+              onOffEditor(
+                doc,
+                language,
+                {
+                  intro: translate(language, "exportCurtail.intro", { brand: block.brandName }),
+                  on: block.enabled,
+                  idPrefix: `${input.idPrefix}-export-curtail`,
+                },
+                async (value) => (value === block.enabled ? null : await write(value)),
+                handlers,
+              ),
+            )
+        : undefined,
+    ),
+    input.rowHelp("export_curtail_enabled", translate(language, "exportCurtail.help")),
+  ];
+  const saving = block.saving;
+  if (!block.enabled && saving.minor > 0) {
+    const line = input.rowHelp(
+      "export_curtail_saving",
+      translate(language, "exportCurtail.saving", {
+        days: String(saving.days),
+        amount: moneyMinorAsMajor(language, saving.minor, saving),
+        energy: kwhText(language, saving.kwh),
+      }),
+    );
+    line.dataset["exportSaving"] = "true";
+    nodes.push(line);
+  }
+  if (block.beta && block.need !== "beta_only") {
+    nodes.push(input.rowHelp("export_curtail_beta", translate(language, "exportCurtail.beta", { brand: block.brandName })));
+  }
+  const need = exportCurtailNeed(language, block.need, block.brandName);
+  if (need !== null) {
+    const line = input.rowHelp("export_curtail_need", need);
+    line.dataset["exportNeed"] = (block.need ?? "").split(":")[0] ?? "";
+    const entityId = block.entity_id;
+    if (block.need === "control_disabled" && entityId !== null && input.isAdmin) {
+      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.cap.phase.open")) as HTMLButtonElement;
+      button.type = "button";
+      button.dataset["action"] = "open-export-limit-entity";
+      // Home Assistant's own dialog for the entity: its settings let a disabled one be enabled.
+      button.addEventListener("click", () =>
+        button.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true })),
+      );
+      line.append(" ", button);
+    }
+    nodes.push(line);
+  }
+  return nodes;
+}
+
+/** Solar: the forecast sources the site's plans read, one multi-choice editor, and the site's export switch. */
 export function solarSectionBody(input: SolarSectionInput): HTMLElement {
   const { doc, language, facts } = input;
   const section = element(doc, "section", C.settingsSection);
@@ -577,5 +684,6 @@ export function solarSectionBody(input: SolarSectionInput): HTMLElement {
         : undefined,
     ),
   );
+  section.append(...exportCurtailRows(input));
   return section;
 }

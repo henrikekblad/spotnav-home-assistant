@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Badstuen varmes opp",
   "house.plan.run.sauna.hold": "Badstuen er klar",
   "house.plan.reason.bath": "til den bestilte tiden",
-  "house.plan.reason.now": "startet nå"
+  "house.plan.reason.now": "startet nå",
+  "exportCurtail.title": "Ingen eksport ved negative priser",
+  "exportCurtail.help": "Når det koster penger å selge strøm, setter SpotNav vekselretterens eksportgrense til null og setter den tilbake etterpå. Solen driver fortsatt huset, bilen og batteriet. Gjelder hele anlegget.",
+  "exportCurtail.intro": "SpotNav skriver eksportgrensen i {brand}-anlegget ditt mens en solgt kWh gir mindre enn null, og setter deretter tilbake verdien som sto der. Hvis noen andre endrer grensen i mellomtiden, lar SpotNav den være.",
+  "exportCurtail.saving": "De siste {days} dagene kostet eksport ved negative priser {amount} ({energy}).",
+  "exportCurtail.beta": "Testes fortsatt med {brand}: foreløpig bare for betatestere.",
+  "exportCurtail.need.controlDisabled": "Eksportgrensen er deaktivert i Home Assistant. Aktiver den for å bruke dette.",
+  "exportCurtail.need.limitUnset": "Vekselretteren har ingen eksportgrense satt. Sett først en i vekselretterens egen app, på det meste du har lov til å eksportere. SpotNav senker den deretter og setter din tilbake, og setter aldri en egen.",
+  "exportCurtail.need.notObeyed": "Vekselretteren fulgte ikke grensen, så SpotNav satte den tilbake og stoppet. Slå dette av og på for å prøve igjen.",
+  "exportCurtail.need.notTaken": "Vekselretteren tok ikke imot innstillingen, så SpotNav stoppet. Slå dette av og på for å prøve igjen.",
+  "exportCurtail.need.needsHacs": "Eksportgrensen er ikke aktivert i vekselretteren. Aktiver den i vekselretterens egen app, eller installer HACS-integrasjonen ({repo}) slik at SpotNav kan gjøre det.",
+  "exportCurtail.need.betaOnly": "Med {brand} fungerer dette foreløpig bare for betatestere. Kryss av for Betatester under Støtte for å bruke det.",
+  "exportCurtail.need.noGridReading": "Dette krever målerens totale effekt mot nettet, som dette anlegget ikke har."
 }

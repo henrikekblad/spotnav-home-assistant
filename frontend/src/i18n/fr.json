@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Le sauna chauffe",
   "house.plan.run.sauna.hold": "Sauna prêt",
   "house.plan.reason.bath": "pour l'heure réservée",
-  "house.plan.reason.now": "lancé maintenant"
+  "house.plan.reason.now": "lancé maintenant",
+  "exportCurtail.title": "Pas d'injection à prix négatifs",
+  "exportCurtail.help": "Tant que vendre de l'électricité coûte de l'argent, SpotNav met à zéro la limite d'injection de l'onduleur, puis la rétablit. Le soleil continue d'alimenter la maison, la voiture et la batterie. S'applique à tout le site.",
+  "exportCurtail.intro": "SpotNav écrit la limite d'injection de votre installation {brand} tant qu'un kWh vendu rapporte moins que rien, puis rétablit la valeur qui s'y trouvait. Si quelqu'un d'autre modifie la limite entre-temps, SpotNav n'y touche plus.",
+  "exportCurtail.saving": "Ces {days} derniers jours, l'injection à prix négatifs a coûté {amount} ({energy}).",
+  "exportCurtail.beta": "Encore en test avec {brand} : pour l'instant réservé aux bêta-testeurs.",
+  "exportCurtail.need.controlDisabled": "La limite d'injection est désactivée dans Home Assistant. Activez-la pour utiliser ceci.",
+  "exportCurtail.need.limitUnset": "Aucune limite d'injection n'est réglée dans l'onduleur. Réglez-en d'abord une dans l'application de l'onduleur, au maximum que vous avez le droit d'injecter. SpotNav l'abaisse ensuite et rétablit la vôtre, sans jamais en régler une lui-même.",
+  "exportCurtail.need.notObeyed": "L'onduleur n'a pas respecté la limite : SpotNav l'a rétablie et s'est arrêté. Désactivez puis réactivez ceci pour réessayer.",
+  "exportCurtail.need.notTaken": "L'onduleur n'a pas pris le réglage : SpotNav s'est arrêté. Désactivez puis réactivez ceci pour réessayer.",
+  "exportCurtail.need.needsHacs": "La limite d'injection n'est pas activée dans l'onduleur. Activez-la dans l'application de l'onduleur, ou installez l'intégration HACS ({repo}) pour que SpotNav puisse le faire.",
+  "exportCurtail.need.betaOnly": "Avec {brand}, ceci ne fonctionne pour l'instant que pour les bêta-testeurs. Cochez Bêta-testeur dans Assistance pour l'utiliser.",
+  "exportCurtail.need.noGridReading": "Ceci nécessite la puissance réseau totale du compteur, que ce site n'a pas."
 }

@@ -2658,5 +2658,17 @@
   "house.plan.run.sauna.heat": "Bastun värms upp",
   "house.plan.run.sauna.hold": "Bastun är klar",
   "house.plan.reason.bath": "till den bokade tiden",
-  "house.plan.reason.now": "startad nu"
+  "house.plan.reason.now": "startad nu",
+  "exportCurtail.title": "Ingen export vid negativa priser",
+  "exportCurtail.help": "När det kostar pengar att sälja el sätter SpotNav växelriktarens exportgräns till noll och återställer den efteråt. Solen driver fortfarande huset, bilen och batteriet. Gäller hela anläggningen.",
+  "exportCurtail.intro": "SpotNav skriver exportgränsen i din {brand}-anläggning medan en såld kWh ger mindre än noll, och sätter sedan tillbaka värdet som stod där. Om någon annan ändrar gränsen under tiden låter SpotNav den vara.",
+  "exportCurtail.saving": "De senaste {days} dagarna kostade export vid negativa priser {amount} ({energy}).",
+  "exportCurtail.beta": "Testas fortfarande med {brand}: än så länge bara för betatestare.",
+  "exportCurtail.need.controlDisabled": "Exportgränsen är avstängd i Home Assistant. Aktivera den för att använda det här.",
+  "exportCurtail.need.limitUnset": "Växelriktaren har ingen exportgräns inställd. Ställ först in en i växelriktarens egen app, på det mesta du får exportera. SpotNav sänker den sedan och sätter tillbaka din, och ställer aldrig in en egen.",
+  "exportCurtail.need.notObeyed": "Växelriktaren följde inte gränsen, så SpotNav återställde den och slutade. Slå av och på det här för att försöka igen.",
+  "exportCurtail.need.notTaken": "Växelriktaren tog inte emot inställningen, så SpotNav slutade. Slå av och på det här för att försöka igen.",
+  "exportCurtail.need.needsHacs": "Exportgränsen är inte aktiverad i växelriktaren. Aktivera den i växelriktarens egen app, eller installera HACS-integrationen ({repo}) så kan SpotNav göra det.",
+  "exportCurtail.need.betaOnly": "Med {brand} fungerar det här än så länge bara för betatestare. Kryssa i Betatestare under Support för att använda det.",
+  "exportCurtail.need.noGridReading": "Det här kräver elmätarens totala effekt mot nätet, som den här anläggningen saknar."
 }
