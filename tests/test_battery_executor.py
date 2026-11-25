@@ -503,6 +503,18 @@ def test_with_car_first_the_battery_yields_to_a_held_car_and_with_battery_first_
     assert executor.state.rate_kw == 4.0
 
 
+@pytest.mark.parametrize("sale_looks", [3, 12], ids=["a_young_sale", "an_old_sale"])
+def test_a_change_from_a_sale_into_a_charge_never_takes_the_sales_rate_from_a_held_car(sale_looks: int) -> None:
+    """With "car first" and a car held, a grid charge yields to the car from the battery's measured charge. A sale's
+    rate is no charge the battery already runs: however old the sale, the change is judged as a charge's start."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, sale_looks, "export_discharge", 3.0)
+    assert executor.state.action == "export_discharge" and executor.state.rate_kw == 3.0
+    _now, results = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True)
+    assert not events(results, "change"), "no charge at the sale's 3 kW"
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+
+
 def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last_command() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
@@ -1376,6 +1388,26 @@ def test_a_restart_restores_the_stored_snapshot_before_anything_else() -> None:
     # The hold's mode already is Maximum Self Consumption: the switch goes off, then the limit back.
     assert written(results) == [("discharge_limit", 23.04), ("remote_ems", False)]
     assert battery.states["remote_ems"] == "off"
+
+
+def test_a_stored_hold_of_a_variant_this_version_no_longer_has_is_still_handed_back_in_full() -> None:
+    """A hold stored with a variant removed since (Sigenergy's limit hold) is restarted by the recipe as it is now:
+    the restore writes each role back as found from the stored snapshot, whatever the variant's own order was."""
+    executor, battery = _sigenergy()
+    found = dict(battery.states)
+    now = _held(executor, battery)
+    assert executor.state.variant == "limit_hold" and battery.states["discharge_limit"] == "0"
+    stored = executor.as_dict()
+    assert SIGENERGY_CONTROL.with_hold("limit_hold") is SIGENERGY_CONTROL, "no such variant in the recipe"
+    again = Executor(
+        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        ExecState.from_dict(stored["state"]),
+    )
+    assert again.restart(now)[0]["reason"] == "restart"
+    _now, results = run(again, battery, now, 8, None, stopping="restart")
+    assert sorted(written(results)) == [("discharge_limit", 23.04), ("remote_ems", False)]
+    assert again.state.phase == "idle" and not again.state.holds_snapshot
+    assert battery.states["remote_ems"] == "off" and battery.states["discharge_limit"] == found["discharge_limit"]
 
 
 def test_a_restore_write_not_taken_is_retried_with_backoff_and_the_others_still_handed_back() -> None:

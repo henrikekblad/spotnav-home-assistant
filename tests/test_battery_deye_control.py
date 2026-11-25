@@ -292,6 +292,65 @@ def test_a_reading_that_never_comes_is_written_after_the_wait_as_before() -> Non
     assert ("discharge_current", 120.0) in written(results)
 
 
+def _restarted_after_both(found: dict[str, str]) -> tuple[Executor, Hybrid, Any]:
+    """A hold after a house cover (both limits written), then a restart that lost the ledger's claims, with the
+    limits reading `found`."""
+    executor, plant = Executor(DEYE_CONTROL), Hybrid(DEYE_CONTROL, dict(STATES), idle_kw=-2.0)
+    now, _results = run(executor, plant, T0, 6, ACTION_DISCHARGE_HOUSE)
+    now, _results = run(executor, plant, now, 6, ACTION_HOLD)
+    assert set(executor.state.written) == {"discharge_current", "charge_current"}
+    stored = executor.as_dict()
+    again = Executor(
+        DEYE_CONTROL, Ledger(), Monitor.from_dict(stored["monitor"]),
+        state=ExecState.from_dict(stored["state"]),
+    )
+    again.restart(now)
+    plant.states.update(found)
+    return again, plant, now
+
+
+def test_two_limits_without_a_reading_wait_together_not_one_after_the_other() -> None:
+    again, plant, now = _restarted_after_both({"discharge_current": "unavailable", "charge_current": "unavailable"})
+    looks = int(RESTORE_READ_WAIT_S // TICK.total_seconds())
+    # The first limit reads (SpotNav's own 0) more than halfway into the wait and is handed back; the other never reads.
+    now, results = run(again, plant, now, looks - 6, None, stopping="restart")
+    assert written(results) == []
+    plant.states["discharge_current"] = "0"
+    now, results = run(again, plant, now, 4, None, stopping="restart")
+    assert written(results) == [("discharge_current", 120.0)]
+    # The other's wait began with the hand-back, not when its turn came: written once that wait has passed.
+    _now, results = run(again, plant, now, 6, None, stopping="restart")
+    assert ("charge_current", 100.0) in written(results)
+
+
+def test_a_later_hand_back_waits_for_its_own_first_reading_again() -> None:
+    again, plant, now = _restarted(found_after="unavailable")
+    looks = int(RESTORE_READ_WAIT_S // TICK.total_seconds())
+    now, results = run(again, plant, now, looks + 3, None, stopping="restart")
+    assert ("discharge_current", 120.0) in written(results)
+    # The limit reads again; a new hold, then it stops reading and the hold is handed back: the wait starts anew.
+    plant.states["discharge_current"] = "120"
+    for _ in range(60):
+        now, _results = run(again, plant, now, 6, ACTION_HOLD)
+        if again.state.phase == "active":
+            break
+    assert again.state.phase == "active" and plant.states["discharge_current"] == "0"
+    plant.states["discharge_current"] = "unavailable"
+    now, results = run(again, plant, now, 6, None)
+    assert again.state.phase == "restoring" and written(results) == []
+
+
+def test_a_stored_hand_back_naming_a_role_this_version_no_longer_has_still_hands_the_rest_back() -> None:
+    """A hand-back stored by a version whose recipe had one more role: the role unknown now is passed over while the
+    others wait for their first reading, never a failure that would hold the whole hand-back at every look."""
+    again, plant, now = _restarted(found_after="unavailable")
+    state = again.state
+    again.state = replace(state, target={**state.target, "gone_since": 1.0}, written=(*state.written, "gone_since"))
+    looks = int(RESTORE_READ_WAIT_S // TICK.total_seconds())
+    _now, results = run(again, plant, now, looks + 3, None, stopping="restart")
+    assert ("discharge_current", 120.0) in written(results)
+
+
 def test_without_the_flag_a_restart_writes_back_at_once_as_every_other_recipe() -> None:
     plain = replace(DEYE_CONTROL, restore_own_only=False)
     again, plant, now = _restarted(plain, found_after="unavailable")

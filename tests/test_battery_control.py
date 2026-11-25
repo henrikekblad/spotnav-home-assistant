@@ -3047,3 +3047,217 @@ async def test_roles_a_hand_back_could_not_write_are_named_with_what_to_set_by_h
     executor.state = replace(executor.state, phase="idle", blocked=None, unrestored=())
     assert not any(need.startswith("restore_by_hand") for need in control.status()["needs"])
     await control.async_stop()
+
+
+async def test_a_restore_that_follows_the_maximum_is_named_by_hand_as_the_entitys_maximum(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    executor = control._executor()
+    assert executor is not None
+    hass.states.async_set(CHARGE, "3000", {"max": 5200.0, "follows_max": False})
+    executor.state = replace(
+        executor.state, phase="blocked", blocked="restore_failed:charge_limit", action="hold",
+        unrestored=("charge_limit",), entities={"charge_limit": CHARGE},
+        restore_values={"charge_limit": commands_module.FOLLOWS_MAX}, snapshot={"charge_limit": "follows_max"},
+    )
+    # The number to set, never the recipe's own word for "follows its maximum".
+    assert f"restore_by_hand:{CHARGE}=5200" in control.status()["needs"]
+    await control.async_stop()
+
+
+async def test_a_mirrored_battery_has_no_dead_man_time_for_a_hardware_test(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    control.facts = replace(control.facts, brand="solis")
+    assert control.hardware_test_deadman() and control.hardware_test_deadman_s() is not None
+    # Read only (mirrored from another Home Assistant): no recipe, so no dead-man step and no time for one.
+    control.facts = replace(control.facts, read_only="remote_homeassistant")
+    assert not control.hardware_test_deadman()
+    assert control.hardware_test_deadman_s() is None
+    await control.async_stop()
+
+
+async def _stored_hold(hass, monkeypatch, hass_storage):
+    """A site whose hold was cut short at a stop: its snapshot is in the store, the plant still holds."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(CHARGE).state == "0"
+    plant.raises = True
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    await control.async_shutdown()
+    plant.raises = False
+    assert hass_storage[store_key(site.entry_id)]["data"]["state"]["snapshot"]
+    return site, controller, plant
+
+
+async def test_a_stored_snapshot_whose_recipe_is_gone_is_kept_and_handed_back_once_the_recipe_is_there_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    snapshot = dict(hass_storage[key]["data"]["state"]["snapshot"])
+    # A release without the brand's recipe: nothing can be written back, and nothing is thrown away.
+    with monkeypatch.context() as patch:
+        patch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+        control = BatteryControl(hass, controller, plan_source=_hold)
+        await control.async_start()
+        assert control.executor is None and hass.states.get(SWITCH).state == "on"
+        await control.async_tick()
+        await control.async_save()
+        kept = hass_storage[key]["data"]["orphaned"]
+        assert [row["key"] for row in kept] == ["battery"] and kept[0]["state"]["snapshot"] == snapshot
+        assert "state" not in hass_storage[key]["data"]
+        assert "no recipe" in caplog.text and CHARGE in caplog.text
+        assert control.snapshot()["orphaned"] == [{
+            "key": "battery", "brand": "sigenergy", "entities": kept[0]["state"]["entities"],
+            "restore_values": kept[0]["state"]["restore_values"],
+        }]
+        await control.async_shutdown()
+        assert hass_storage[key]["data"]["orphaned"] == kept, "still kept after the unload"
+        # Removing the site keeps the store too: its restore values are the only record.
+        await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+        assert hass_storage[key]["data"]["orphaned"] == kept
+    assert hass.states.get(CHARGE).state == "0", "the plant still holds"
+    # The recipe is there again: handed back at the start, before anything else.
+    control = BatteryControl(hass, controller, plan_source=None)
+    await control.async_start()
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    await control.async_save()
+    assert "orphaned" not in hass_storage[key]["data"]
+    assert not hass_storage[key]["data"]["state"]["snapshot"]
+    await control.async_shutdown()
+
+
+async def test_removing_the_site_keeps_a_stored_snapshot_whose_recipe_is_gone(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+    assert key in hass_storage and hass_storage[key]["data"]["state"]["snapshot"]
+
+
+async def test_a_stored_export_limit_whose_recipe_is_gone_is_kept_and_handed_back_once_it_is_there_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _started(hass, site, controller, plan_source=None, sell_source=lambda _now: -12.0)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(EXPORT).state == "0"
+    plant.raises = True
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    await control.async_shutdown()
+    plant.raises = False
+    key = store_key(site.entry_id)
+    assert hass_storage[key]["data"]["export"]["state"]["snapshot"]
+    with monkeypatch.context() as patch:
+        patch.setattr(control_module, "export_control_for", lambda brand: None)
+        patch.setattr(control_module, "read_export_facts", lambda hass, config: (None, {}, None))
+        control = BatteryControl(hass, controller, plan_source=None)
+        await control.async_start()
+        await control.async_save()
+        assert [row["key"] for row in hass_storage[key]["data"]["orphaned"]] == ["export"]
+        assert hass.states.get(EXPORT).state == "0"
+        await control.async_shutdown()
+    control = BatteryControl(hass, controller, plan_source=None)
+    await control.async_start()
+    assert hass.states.get(EXPORT).state == "11.5"
+    await control.async_save()
+    assert "orphaned" not in hass_storage[key]["data"]
+    await control.async_shutdown()
+
+
+@pytest.mark.parametrize("first", ["trial", "hardware_test"])
+async def test_a_test_action_and_a_hardware_test_asked_for_during_a_look_never_both_start(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], first: str
+) -> None:
+    """Both are asked for while a look runs (it holds the lock): each passed its checks before the other started.
+    The one that gets the lock first starts; the other is refused as if asked a moment later."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=None)
+    assert control.hardware_test_refusal() is None
+
+    async def trial() -> str:
+        try:
+            await control.async_trial("hold", None, 5, force=True)
+        except TrialRefused as refused:
+            return f"refused:{refused}"
+        return "started"
+
+    async def hardware_test() -> str:
+        return str(await control.async_hardware_test_start())
+
+    asks = {"trial": trial, "hardware_test": hardware_test}
+    order = [first, *(name for name in asks if name != first)]
+    await control._lock.acquire()
+    tasks = {}
+    for name in order:
+        tasks[name] = hass.async_create_task(asks[name]())
+        await asyncio.sleep(0)  # up to the lock, its checks passed
+    control._lock.release()
+    answers = {name: await task for name, task in tasks.items()}
+    if first == "trial":
+        assert answers == {"trial": "started", "hardware_test": "trial"}
+        assert control.trial is not None and control.verification is None
+    else:
+        assert answers == {"hardware_test": "None", "trial": "refused:verifying"}
+        assert control.trial is None and control.verification is not None
+    await control.async_stop()
+
+
+async def test_a_start_cut_short_before_the_orphans_were_read_never_stores_them_away(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Home Assistant stops while the start still checks the control codes: the unload stores the state, and a
+    snapshot kept for a brand without a recipe must still be in it."""
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    data = hass_storage[key]["data"]
+    orphan = {"key": "battery", **{name: data.pop(name) for name in ("state", "ledger", "monitor")}}
+    orphan["state"] = {**orphan["state"], "brand": "gone_since"}
+    data["orphaned"] = [orphan]
+    reached = asyncio.Event()
+
+    async def waits(self) -> None:
+        reached.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(BatteryControl, "_async_check_codes", waits)
+    control = BatteryControl(hass, controller, plan_source=None)
+    control._start_task = hass.async_create_task(control.async_start())
+    await reached.wait()
+    await control.async_shutdown()
+    assert hass_storage[key]["data"]["orphaned"] == [orphan]
+
+
+async def test_malformed_stored_orphans_never_fail_a_start_the_diagnostics_or_a_removal(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    junk = [
+        1, "text", None, ["battery"], {"key": "other", "state": {}}, {"key": "battery"},
+        {"key": "battery", "state": "text"}, {"key": "export", "state": [1, 2]},
+        {"key": "battery", "state": {"brand": 5, "snapshot": "text", "entities": 7, "restore_values": [1]}},
+        {"key": "export", "state": {"brand": "sigenergy", "phase": "restoring", "target": 3}, "ledger": 4, "monitor": "x"},
+    ]
+    for stored in (junk, "text", {"key": "battery"}, 7):
+        hass_storage[key]["data"]["orphaned"] = stored
+        control = BatteryControl(hass, controller, plan_source=None)
+        await control.async_start()
+        assert isinstance(control.snapshot()["orphaned"], list)
+        for row in control.snapshot()["orphaned"]:
+            assert row["key"] in ("battery", "export")
+        await control.async_save()
+        await control.async_shutdown()
+    # The real snapshot was handed back at the first start; the removal reads the same rows without failing.
+    hass_storage[key]["data"]["orphaned"] = junk
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
