@@ -704,6 +704,16 @@ class Verification:
         result.outcome = f"not_judgeable:{why}"
         self._enter(now, "hand_back")
 
+    def not_applicable(self, now: datetime, outcome: str) -> None:
+        """The running mode cannot be run at a safe size on this plant (`gate.NOT_APPLICABLE_FIXED_CHARGE`): recorded so,
+        and the hardware test goes on with the next mode once the executor has handed back (nothing was written for
+        it)."""
+        result = self.current
+        if result is None or self.stage == "hand_back" or result.action == ACTION_SELF_CONSUME:
+            return
+        result.outcome = outcome
+        self._enter(now, "hand_back")
+
     def after(self, now: datetime, step: StepResult, sample: Sample, capability: Capability) -> None:
         """What the executor did in this look, and the battery's reading."""
         result = self.current
@@ -1385,9 +1395,10 @@ def phase_charge_step(caps_kw: Phases, volts_between_phases: float) -> tuple[int
 
 
 def _passes(result: ModeResult) -> bool:
-    """Whether a mode's outcome lets the hardware test go on: obeyed, or not judgeable at this moment."""
+    """Whether a mode's outcome lets the hardware test go on: obeyed, not judgeable at this moment, or not applicable
+    on this plant (`Verification.not_applicable`)."""
     outcome = result.outcome or ""
-    return outcome == "obeyed" or outcome.startswith("not_judgeable:")
+    return outcome == "obeyed" or outcome.startswith(("not_judgeable:", "not_applicable:"))
 
 
 def _near_full(sample: Sample) -> bool:

@@ -1766,6 +1766,14 @@ class BatteryControl:
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
+            fixed = self._fixed_charge_kw() if self._hw_run else None
+            if fixed is not None and math.isfinite(fixed) and cap is not None and fixed > cap:
+                # The plant charges at its own power (Tesla) and that does not fit under the cap here: the step cannot
+                # run at a safe size, so the test goes on without it (no pass of the charge: control charges from
+                # the grid only once the routine's charge step passed, `gate.allowed_actions`).
+                verification.not_applicable(now, gate.NOT_APPLICABLE_FIXED_CHARGE)
+                action, rate = verification.command(now, sample, charge_max_kw)
+                probe = verification.probe()
             bms_kw = self._bms_charge_kw(executor.control)
             if bms_kw is not None:
                 # A BMS that takes too little now (a full or a cold pack) leaves the step nothing to judge.

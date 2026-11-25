@@ -27,7 +27,9 @@ from custom_components.spotnav.battery.executor import (
 )
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 from custom_components.spotnav.battery.gate import (
+    NOT_APPLICABLE_FIXED_CHARGE,
     hardware_test_passed,
+    mode_verdict,
     restricted,
 )
 from custom_components.spotnav.battery.monitor import Capability
@@ -614,7 +616,9 @@ class _Cloud(_Fake):
                 self.pending.remove((due, states))
 
 
-def _hardware_test(timing: Timing, *, delay_s: float = 410.0) -> tuple[dict[str, str | None], float]:
+def _hardware_test(
+    timing: Timing, *, delay_s: float = 410.0, not_applicable_charge: bool = False
+) -> tuple[dict[str, str | None], float]:
     """The hardware test's modes on the cloud fake: the outcomes and the minutes it took."""
     executor = Executor(TESLA_CONTROL)
     battery = _Cloud(TESLA_CONTROL, dict(TESLA_STATES), soc_pct=42.7, rated_kw=5.0, capacity_kwh=13.5, delay_s=delay_s)
@@ -632,6 +636,8 @@ def _hardware_test(timing: Timing, *, delay_s: float = 410.0) -> tuple[dict[str,
             battery.action = state.action if state.phase == "active" else None
         battery.rate_kw = state.rate_kw
         sample = Sample(battery.power_kw(battery.action, battery.rate_kw), 5.0, battery.soc_pct, 2.0)
+        if not_applicable_charge and verification.current is not None and verification.current.mode == "charge":
+            verification.not_applicable(now, NOT_APPLICABLE_FIXED_CHARGE)
         action, rate = verification.command(now, sample, 10.0)
         result = executor.step(
             inputs(battery, now, action, rate, failed=failed, house_deficit_kw=2.0, headroom_a=40.0, charge_phases=1)
@@ -670,6 +676,22 @@ def test_every_other_recipe_keeps_the_quick_tests_timing_and_ten_minutes() -> No
             assert control.test_total_s is None, control.brand
 
 
+def test_a_fixed_charge_that_does_not_fit_is_not_applicable_and_the_test_still_passes_without_a_charge() -> None:
+    outcomes, _minutes = _hardware_test(quick_for(TESLA_CONTROL), not_applicable_charge=True)
+    assert outcomes == {
+        "hold": "obeyed", "charge": NOT_APPLICABLE_FIXED_CHARGE, "discharge_house": "obeyed", "normal": "restored",
+    }
+    report = {"modes": {name: {"outcome": outcome} for name, outcome in outcomes.items()}}
+    assert hardware_test_passed(report, supported_modes(TESLA_CONTROL))
+    # No pass of the charge: control runs no grid charge until the routine's own charge step passed.
+    assert mode_verdict(NOT_APPLICABLE_FIXED_CHARGE) == "pending"
+    # Any other charge left unrun is no pass.
+    for other in ("not_judgeable:grid_charge_cap", "skipped", None):
+        assert not hardware_test_passed(
+            {"modes": report["modes"] | {"charge": {"outcome": other}}}, supported_modes(TESLA_CONTROL)
+        )
+
+
 def test_the_hardware_tests_deadline_is_the_slow_recipes_own_and_ten_minutes_for_every_other() -> None:
     from types import SimpleNamespace  # noqa: PLC0415
 
@@ -687,3 +709,12 @@ def test_the_hardware_tests_deadline_is_the_slow_recipes_own_and_ten_minutes_for
     assert deadline(GOODWE_CONTROL) == hardware_test.MAX_TEST == timedelta(minutes=10)
 
 
+def test_a_charge_step_not_applicable_shows_as_skipped_and_leaves_the_test_passed() -> None:
+    from custom_components.spotnav import hardware_test  # noqa: PLC0415
+
+    assert hardware_test.battery_step_status(NOT_APPLICABLE_FIXED_CHARGE, False) == "skipped"
+    steps = hardware_test.battery_steps({"modes": {
+        "hold": {"outcome": "obeyed"}, "charge": {"outcome": NOT_APPLICABLE_FIXED_CHARGE},
+        "discharge_house": {"outcome": "obeyed"}, "normal": {"outcome": "restored"},
+    }}, None, False)
+    assert hardware_test.result_of(steps) == "passed"
