@@ -1071,6 +1071,12 @@ class BrandControl:
     #: The hardware test's dead-man step must have passed (timed), not merely been tried, for the test to pass: a recipe
     #: whose every action is a command that stands until it expires (`gate.hardware_test_passed`).
     deadman_must_pass: bool = False
+    #: A hand-back writes a role back only over SpotNav's own value: one that reads neither SpotNav's value nor the
+    #: one found (the vendor app or another controller set it meanwhile, also while Home Assistant was down) is left
+    #: alone (`left_alone`), and after a restart a role with no reading yet is not written blind until it reads or
+    #: `executor.RESTORE_READ_WAIT_S` passed (never for the fuse). For settings whose found value is the owner's (Deye's
+    #: current limits). `False`: as before (a restart restores every written role).
+    restore_own_only: bool = False
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
