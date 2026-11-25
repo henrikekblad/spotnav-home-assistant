@@ -329,6 +329,8 @@ async def async_hand_back_stored(
         state = ExecState.from_dict(part.get("state"))
         control = (control_for if key == "battery" else export_control_for)(state.brand)
         if control is None or not state.holds_snapshot:
+            # A snapshot whose brand has no recipe in this release cannot be written back: it is still held.
+            held = held or state.holds_snapshot
             continue
         executor = Executor(control, Ledger.from_dict(part.get("ledger")), Monitor.from_dict(part.get("monitor")), state)
         executor.restart(dt_util.now())
@@ -354,7 +356,31 @@ async def async_hand_back_stored(
         part |= {"state": executor.state.as_dict(), "ledger": executor.ledger.as_dict(),
                  "monitor": executor.monitor.as_dict()}
         held = held or executor.state.holds_snapshot
-    return held
+    # Snapshots set aside at a start because their brand had no recipe (`BatteryControl._set_aside`), each as its own
+    # part: handed back where the recipe is there again, kept otherwise.
+    kept = []
+    for orphan in _orphans(data.get(ORPHANED)):
+        wrapped = orphan if orphan["key"] == "battery" else {"export": orphan}
+        if await async_hand_back_stored(hass, config, wrapped, deadline_s=max(deadline - loop.time(), 0.0)):
+            kept.append(orphan)
+    if kept:
+        data[ORPHANED] = kept
+    else:
+        data.pop(ORPHANED, None)
+    return held or bool(kept)
+
+
+#: The store's key for snapshots whose brand had no recipe at a start: each the stored `state`, `ledger` and `monitor`
+#: with a `key` ("battery" or "export"), kept until a release with the recipe hands them back.
+ORPHANED: Final = "orphaned"
+
+
+def _orphans(raw: Any) -> list[dict[str, Any]]:
+    """The stored orphans that are well formed (`ORPHANED`)."""
+    return [
+        dict(row) for row in (raw if isinstance(raw, list) else [])
+        if isinstance(row, dict) and row.get("key") in ("battery", "export")
+    ]
 
 
 class ControlNotReachable(RuntimeError):
@@ -528,6 +554,8 @@ class BatteryControl:
         self._failed: tuple[str, ...] = ()
         self._timed_out: tuple[str, ...] = ()
         self._stored: dict[str, Any] = {}
+        #: Stored snapshots whose brand has no recipe in this release (`_set_aside`, the store's `ORPHANED`).
+        self._orphaned: list[dict[str, Any]] = []
         #: What was stored last (`_async_save` writes only a change).
         self._saved: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
@@ -638,6 +666,9 @@ class BatteryControl:
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
         await self._async_check_codes()
+        self._orphaned = _orphans(self._stored.get(ORPHANED))
+        self._take_back("battery", control_for, self._stored)
+        self._set_aside("battery", control_for, self._stored)
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
         self._grandfather_running()
@@ -655,6 +686,36 @@ class BatteryControl:
                 await self._async_until_handed_back("restart")
         await self._async_start_export()
         self._started = True
+
+    def _set_aside(self, key: str, recipe: Callable[[str | None], BrandControl | None], part: dict[str, Any]) -> None:
+        """A stored snapshot whose brand has no recipe in this release (removed or renamed) is taken out of `part`
+        and kept among the orphans (`ORPHANED`), stored again at every save: nothing can write it back now, and it
+        is never run by another brand's recipe or written away. Said in the log with what to set by hand."""
+        state = ExecState.from_dict(part.get("state"))
+        if state.brand is None or not state.holds_snapshot or recipe(state.brand) is not None:
+            return
+        self._orphaned.append(
+            {"key": key, **{name: part.pop(name) for name in ("state", "ledger", "monitor") if name in part}}
+        )
+        values = ", ".join(
+            f"{entity_id}={state.restore_values.get(name, state.snapshot.get(name))}"
+            for name, entity_id in state.entities.items()
+        )
+        _LOGGER.warning(
+            "SpotNav battery control: this version has no recipe for %s, whose settings SpotNav still holds; they"
+            " are kept and handed back by a version that has it. As found, to set by hand: %s", state.brand, values,
+        )
+
+    def _take_back(self, key: str, recipe: Callable[[str | None], BrandControl | None], part: dict[str, Any]) -> None:
+        """An orphan whose brand has its recipe again goes back into `part` (where nothing is held there), so this
+        start hands it back as any stored snapshot."""
+        if ExecState.from_dict(part.get("state")).holds_snapshot:
+            return
+        for orphan in self._orphaned:
+            if orphan["key"] == key and recipe(ExecState.from_dict(orphan.get("state")).brand) is not None:
+                self._orphaned.remove(orphan)
+                part |= {name: orphan[name] for name in ("state", "ledger", "monitor") if name in orphan}
+                return
 
     def _load_gate(self, raw: Any) -> None:
         data = raw if isinstance(raw, dict) else {}
@@ -770,6 +831,8 @@ class BatteryControl:
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
         stored = self._stored.get("export") if isinstance(self._stored.get("export"), dict) else {}
+        self._take_back("export", export_control_for, stored)
+        self._set_aside("export", export_control_for, stored)
         state = ExecState.from_dict(stored.get("state"))
         control = export_control_for(state.brand) or read_export_facts(self.hass, self.site.config)[2]
         if control is None:
@@ -3571,6 +3634,8 @@ class BatteryControl:
             }
         elif not self._started and "export" in self._stored:
             data["export"] = self._stored["export"]
+        if self._orphaned:
+            data[ORPHANED] = [dict(orphan) for orphan in self._orphaned]
         return data
 
     def _needs(self) -> list[str]:
@@ -3833,6 +3898,12 @@ class BatteryControl:
             "expiry": self._expiry_block(),
             # The precise import-limit refusals (the card is sent `not_supported` for `not_trusted`).
             "import_limit_refusal": self._import_limit_refusals(),
+            # Snapshots kept because this version has no recipe for their brand (`_set_aside`).
+            "orphaned": [
+                {"key": orphan["key"], **{name: (orphan.get("state") or {}).get(name)
+                                          for name in ("brand", "entities", "restore_values")}}
+                for orphan in self._orphaned
+            ],
         }
 
     def _import_limit_refusals(self) -> dict[str, str | None] | None:

@@ -3079,3 +3079,97 @@ async def test_a_mirrored_battery_has_no_dead_man_time_for_a_hardware_test(
     assert not control.hardware_test_deadman()
     assert control.hardware_test_deadman_s() is None
     await control.async_stop()
+
+
+async def _stored_hold(hass, monkeypatch, hass_storage):
+    """A site whose hold was cut short at a stop: its snapshot is in the store, the plant still holds."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(CHARGE).state == "0"
+    plant.raises = True
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    await control.async_shutdown()
+    plant.raises = False
+    assert hass_storage[store_key(site.entry_id)]["data"]["state"]["snapshot"]
+    return site, controller, plant
+
+
+async def test_a_stored_snapshot_whose_recipe_is_gone_is_kept_and_handed_back_once_the_recipe_is_there_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    snapshot = dict(hass_storage[key]["data"]["state"]["snapshot"])
+    # A release without the brand's recipe: nothing can be written back, and nothing is thrown away.
+    with monkeypatch.context() as patch:
+        patch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+        control = BatteryControl(hass, controller, plan_source=_hold)
+        await control.async_start()
+        assert control.executor is None and hass.states.get(SWITCH).state == "on"
+        await control.async_tick()
+        await control.async_save()
+        kept = hass_storage[key]["data"]["orphaned"]
+        assert [row["key"] for row in kept] == ["battery"] and kept[0]["state"]["snapshot"] == snapshot
+        assert "state" not in hass_storage[key]["data"]
+        assert "no recipe" in caplog.text and CHARGE in caplog.text
+        assert control.snapshot()["orphaned"] == [{
+            "key": "battery", "brand": "sigenergy", "entities": kept[0]["state"]["entities"],
+            "restore_values": kept[0]["state"]["restore_values"],
+        }]
+        await control.async_shutdown()
+        assert hass_storage[key]["data"]["orphaned"] == kept, "still kept after the unload"
+        # Removing the site keeps the store too: its restore values are the only record.
+        await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+        assert hass_storage[key]["data"]["orphaned"] == kept
+    assert hass.states.get(CHARGE).state == "0", "the plant still holds"
+    # The recipe is there again: handed back at the start, before anything else.
+    control = BatteryControl(hass, controller, plan_source=None)
+    await control.async_start()
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    await control.async_save()
+    assert "orphaned" not in hass_storage[key]["data"]
+    assert not hass_storage[key]["data"]["state"]["snapshot"]
+    await control.async_shutdown()
+
+
+async def test_removing_the_site_keeps_a_stored_snapshot_whose_recipe_is_gone(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
+    key = store_key(site.entry_id)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+    assert key in hass_storage and hass_storage[key]["data"]["state"]["snapshot"]
+
+
+async def test_a_stored_export_limit_whose_recipe_is_gone_is_kept_and_handed_back_once_it_is_there_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _started(hass, site, controller, plan_source=None, sell_source=lambda _now: -12.0)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(EXPORT).state == "0"
+    plant.raises = True
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    await control.async_shutdown()
+    plant.raises = False
+    key = store_key(site.entry_id)
+    assert hass_storage[key]["data"]["export"]["state"]["snapshot"]
+    with monkeypatch.context() as patch:
+        patch.setattr(control_module, "export_control_for", lambda brand: None)
+        patch.setattr(control_module, "read_export_facts", lambda hass, config: (None, {}, None))
+        control = BatteryControl(hass, controller, plan_source=None)
+        await control.async_start()
+        await control.async_save()
+        assert [row["key"] for row in hass_storage[key]["data"]["orphaned"]] == ["export"]
+        assert hass.states.get(EXPORT).state == "0"
+        await control.async_shutdown()
+    control = BatteryControl(hass, controller, plan_source=None)
+    await control.async_start()
+    assert hass.states.get(EXPORT).state == "11.5"
+    await control.async_save()
+    assert "orphaned" not in hass_storage[key]["data"]
+    await control.async_shutdown()
