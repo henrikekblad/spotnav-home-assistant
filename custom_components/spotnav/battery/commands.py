@@ -500,7 +500,8 @@ The entity keys, options and services below were checked against each integratio
   battery is someone else's and only watched (`adapters.DEYE`'s mode rule). The work mode, the grid charge switch and
   current, and the export and peak shaving settings are never written. **Writes**: every control is a settings
   register, and the community fears flash wear (kellerza #706; no limit is stated anywhere), so writes are only on a
-  change of action, read back, and capped at `DEYE_SETTING_WRITES` a day. Live writes wait for a person's hardware
+  change of action, read back, and capped at `DEYE_SETTING_WRITES` a day, every write counted (`count_restores`: a
+  hand-back always runs, but counts, and a cap it spent refuses the next start). Live writes wait for a person's hardware
   test on the plant's firmware (`hardware_test_first`).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
@@ -1188,6 +1189,10 @@ class BrandControl:
     #: (after a change's stop): limits whose enabled pair must never sum below 0 (Fronius: the charge cap at +p beside
     #: the discharge limit at -p), so a change of rate never passes through a pair core refuses. `()`: the order.
     rising_first: tuple[str, ...] = ()
+    #: Restores count against the day's write cap like every other write (`executor._progress`): never held back by
+    #: it (a hand-back, a fuse's too, always runs), but a cap spent by them refuses the next start. For settings whose
+    #: every write is a register write nobody states the wear of (Deye's current limits). `False`: not counted.
+    count_restores: bool = False
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -2833,8 +2838,9 @@ _DY_CHARGE = Role(
     _any_key("battery_max_charging_current_number", "battery_max_charge_current", domains=("number",)),
     step=1.0,
 )
-#: Counted writes a day (restores and peak covers are not counted): half a setting's, as both limits are inverter
-#: settings that nobody says are kept out of flash, and the community worries about wear (kellerza #706).
+#: Register writes a day, every one counted (restores and peak covers too, `BrandControl.count_restores`): half a
+#: setting's, as both limits are inverter settings that nobody says are kept out of flash, and the community worries
+#: about wear (kellerza #706).
 DEYE_SETTING_WRITES: Final = 48
 
 DEYE_CONTROL: Final = BrandControl(
@@ -2856,6 +2862,8 @@ DEYE_CONTROL: Final = BrandControl(
     write_caps={"setting": DEYE_SETTING_WRITES},
     # A limit the app or another controller set meanwhile is theirs, also after a restart: never written back over.
     restore_own_only=True,
+    # Every register write counts against the 48, the hand-backs too (they always run; the next start waits).
+    count_restores=True,
     hardware_test_first=True,
     note="Limits only: the battery's max discharge current at 0 A to hold, its max charge current at 0 A to cover the"
     " house without storing, only while Time of Use is off. No grid charge or sale. Never run on a device; writes"

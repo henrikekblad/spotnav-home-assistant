@@ -3118,7 +3118,7 @@ class Executor:
         renewing = name in state.renew and (
             not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
         )
-        counted = 0 if restoring or renewing else 1
+        counted = 0 if renewing or (restoring and not self.control.count_restores) else 1
         setpoint = role.write_class == "setpoint"
         writes = state.writes_today + (0 if setpoint else counted)
         setpoints = state.setpoint_writes_today + (counted if setpoint else 0)

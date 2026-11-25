@@ -333,6 +333,22 @@ def test_the_days_write_cap_stops_the_changes_and_the_hand_back_still_runs() -> 
     assert plant.states == STATES
 
 
+def test_every_register_write_counts_the_hand_backs_too_and_a_spent_cap_refuses_the_next_start() -> None:
+    executor, plant = _plant()
+    now = T0
+    for _ in range(DEYE_SETTING_WRITES):
+        now, _results = run(executor, plant, now, 6, ACTION_HOLD)
+        now, _results = run(executor, plant, now, 6, None)
+        assert plant.states == STATES, "each hand-back runs"
+    # A hold and its hand-back are two register writes, both counted: the 48 are spent after 24 holds, and no
+    # hold starts again today.
+    assert len(plant.writes) <= DEYE_SETTING_WRITES + 1
+    assert executor.state.writes_today >= DEYE_SETTING_WRITES
+    assert DEYE_CONTROL.count_restores
+    _now, results = run(executor, plant, now, 6, ACTION_HOLD)
+    assert written(results) == [] and plant.states == STATES
+
+
 # --- shadow and the hardware test ------------------------------------------------------------------------------------
 
 
