@@ -163,6 +163,10 @@ def test_control_issues_a_code_for_this_install_and_brand(tmp_path: Path) -> Non
     text = tool.issue(codes, _key(), facts, date(2026, 11, 25))
     code = codes.verify(text, _public(_key()))
     assert code.brand == "foxess" and code.matches_install(INSTALL) and code.matches_firmware(KEY)
+    mail = tool.mail_text("foxess", "sv", text)
+    assert text in mail and mail.startswith("Ämne: SpotNav: din kontrollkod")
+    welcome = tool.mail_text("foxess", "sv", None)
+    assert "{code}" not in welcome and "Hårdvarutest" in welcome and "08–21" in welcome
 
 
 def test_control_refuses_a_report_that_is_not_a_testers_or_a_brand_without_codes(tmp_path: Path) -> None:
@@ -180,6 +184,14 @@ def test_the_tools_brands_are_the_gated_recipes() -> None:
 
     gated = {control.brand for control in commands.CONTROLS if commands.hardware_test_first(control.brand)}
     assert set(_tool().GATED_BRANDS) == gated
+    for brand in gated:
+        for language in ("sv", "en"):
+            text = (ROOT / "tools" / "battery_code_mails" / f"{brand}.{language}.md").read_text()
+            welcome, split, with_code = text.partition(_tool().MAIL_SPLIT)
+            assert split and "{code}" in with_code and "{code}" not in welcome
+            # The owner's rules for texts: no "we", never "smart" or "AI".
+            words = set(text.lower().replace(",", " ").replace(".", " ").split())
+            assert not words & {"we", "us", "our", "vi", "oss", "vår", "vårt", "våra", "smart", "ai"}, (brand, language)
 
 
 def test_show_says_whether_the_signature_is_the_developers() -> None:

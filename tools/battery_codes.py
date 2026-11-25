@@ -2,6 +2,7 @@
 """Issue and read the control codes for battery brands that wait for a person's hardware test (developer's machine).
 
     .venv/bin/python tools/battery_codes.py keygen
+    .venv/bin/python tools/battery_codes.py welcome SN-XXXX [--lang sv|en] [--report FILE]
     .venv/bin/python tools/battery_codes.py control SN-XXXX [--lang sv|en] [--report FILE]
     .venv/bin/python tools/battery_codes.py show CODE
 
@@ -14,6 +15,9 @@ never overwritten), the public key is printed to paste into `custom_components/s
 is a tester's report for a brand that takes a code, and prints the person's e-mail address on top, the code, and the
 e-mail text for the brand (`tools/battery_code_mails/<brand>.<lang>.md`, `{code}` filled in). Read the test's log
 before running it: the code is the developer's approval of that test result.
+
+`welcome SN-XXXX` answers a sign-up (`battery_tester`) the same way, without a code: the reporter's address on top
+and the brand's instructions for the hardware test (the template's first part, before `MAIL_SPLIT`).
 
 `show CODE` decodes a code and says whether its signature is the public key's in `codes.py`.
 
@@ -125,11 +129,19 @@ def tester_facts(meta: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def mail_text(brand: str, language: str, code: str) -> str:
+#: The line in a mail template between the instructions after a sign-up and the mail with the code.
+MAIL_SPLIT = "---8<--- code"
+
+
+def mail_text(brand: str, language: str, code: str | None) -> str:
+    """The brand's mail: with a code, the code mail with it filled in; without, the instructions after a sign-up."""
     path = MAILS / f"{brand}.{language}.md"
     if not path.exists():
         path = MAILS / f"{brand}.en.md"
-    return path.read_text().replace("{code}", code)
+    welcome, _split, with_code = path.read_text().partition(MAIL_SPLIT)
+    if code is None:
+        return welcome.strip() + "\n"
+    return with_code.strip().replace("{code}", code) + "\n"
 
 
 def issue(codes: Any, private: Any, facts: dict[str, Any], today: date) -> str:
@@ -165,6 +177,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("keygen", help="make the key pair (once)")
+    welcome = commands.add_parser("welcome", help="the instructions for a tester's sign-up")
+    welcome.add_argument("ref", help="the report's reference, SN-XXXX")
+    welcome.add_argument("--lang", choices=("sv", "en"), help="the e-mail's language (default: the report's)")
+    welcome.add_argument("--report", type=Path, help="a local copy of the report instead of the relay")
     control = commands.add_parser("control", help="issue a control code for a tester's report")
     control.add_argument("ref", help="the report's reference, SN-XXXX")
     control.add_argument("--lang", choices=("sv", "en"), help="the e-mail's language (default: the report's)")
@@ -187,8 +203,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     meta, report = read_local(args.report) if args.report else fetch_report(args.ref)
     facts = tester_facts(meta, report)
-    code = issue(codes, load_private(), facts, date.today())
     language = args.lang or ("sv" if facts["language"] == "sv" else "en")
+    if args.command == "welcome":
+        if facts["kind"] != "battery_tester" or facts["brand"] not in GATED_BRANDS:
+            raise SystemExit(f"not a tester's sign-up for a brand that takes a code ({facts['kind']}, {facts['brand']})")
+        print(facts["email"] or "(no e-mail address in the report)")
+        print()
+        print(f"{args.ref} · {facts['brand']} · {facts['firmware_key']}")
+        print()
+        print(mail_text(facts["brand"], language, None))
+        return 0
+    code = issue(codes, load_private(), facts, date.today())
     print(facts["email"] or "(no e-mail address in the report)")
     print()
     print(f"{args.ref} · {facts['brand']} · {facts['firmware_key']} · test {facts['result'] or 'unknown'}")
