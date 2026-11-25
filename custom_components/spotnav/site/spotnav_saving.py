@@ -44,14 +44,17 @@ SpotNav's plan would have earned on the same measured day (`would`): the same fi
 less the battery's own, both against plain self-consumption), in the same share. The review comes the night after, so
 a day without one has no `would`. Never inside SpotNav's total: nothing was done.
 
-A part a site does not have, or not yet for the day, is `None` and left out of the total, never shown as 0.
+A part a site does not have, or not yet for the day, is `None` and left out of the total, never shown as 0. A day's
+car part is 0 both where SpotNav started a charge that saved nothing and where it started none; `car_planned` says
+which (`planned_days`), and a period's sums count the days SpotNav controlled the car (`car_controlled_days`), so a
+card can say "not controlled" instead of 0.
 Money is in the area's minor unit (öre).
 """
 
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Final
@@ -78,6 +81,9 @@ class DaySaving:
     car: float | None = None
     heat: float | None = None
     battery_share: float | None = None
+    #: Whether a charge SpotNav started began on the day (`planned_days`): a car part of 0 without one is a day
+    #: SpotNav did not control the car, not one it saved nothing on.
+    car_planned: bool = False
 
     @property
     def total(self) -> float | None:
@@ -245,6 +251,11 @@ def car_days(
     return out, since
 
 
+def planned_days(sessions: Iterable[ChargeSession], zone: tzinfo) -> set[date]:
+    """The local days a charge SpotNav started (`PLANNED`) began on, as `car_days` counts a session's day."""
+    return {session.start.astimezone(zone).date() for session in sessions if session.started_by in PLANNED}
+
+
 def car_hours(sessions: Iterable[ChargeSession], savings: Mapping[str, float | None]) -> dict[datetime, float]:
     """The car's saving per UTC hour its sessions started in: a day's hourly bars put a charge's whole figure in the
     hour the charge started, as `car_days` puts it on the day it started."""
@@ -294,6 +305,7 @@ def day_savings(
     car: Mapping[date, float],
     car_since: date | None,
     today: date,
+    car_planned: Collection[date] = (),
 ) -> dict[date, DaySaving]:
     """Each day's parts (see the module); days after `today` are left out."""
     out: dict[date, DaySaving] = {}
@@ -306,6 +318,7 @@ def day_savings(
             car=None if car_since is None or day < car_since else car.get(day, 0.0),
             heat=heat_part(heat_days.get(day)),
             battery_share=share,
+            car_planned=day in car_planned,
         )
     return out
 
@@ -339,7 +352,9 @@ def period_sums(savings: Mapping[date, DaySaving]) -> dict[str, Any] | None:
     totals = [saving.total for saving in savings.values() if saving.total is not None]
     if not totals:
         return None
-    return {"total": _r(sum(totals)), **out, "days": len(totals)}
+    # The days SpotNav controlled the car on (a charge it started): with none, the car's 0 is no saving at all.
+    controlled = sum(1 for saving in savings.values() if saving.car is not None and saving.car_planned)
+    return {"total": _r(sum(totals)), **out, "days": len(totals), "car_controlled_days": controlled}
 
 
 

@@ -211,7 +211,7 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         # The car's figure from the 10th; the battery under its own control (no part); the heat lowered on two days.
         savings={
             date(2026, 11, day): DaySaving(
-                car=150.0 + 10 * day, heat=60.0 if day in (12, 13) else None, battery_share=0.0
+                car=150.0 + 10 * day, heat=60.0 if day in (12, 13) else None, battery_share=0.0, car_planned=day in (12, 13)
             )
             for day in range(10, 17)
         },
@@ -484,6 +484,39 @@ def test_a_day_without_a_share_says_why_and_the_month_counts_whole_days() -> Non
     perfect = review["perfect"]
     # Days 6 to 15 have a perfect plan; the 7th is partial and left out, the 9th counts in the sums.
     assert perfect["days"] == 9 and perfect["partial"] == 1 and perfect["shares"]["own"] is not None
+
+
+def test_each_day_and_month_stands_against_no_battery_with_what_was_left_at_midnight() -> None:
+    by_day = {row["date"]: row for row in house_history(month_inputs())["review"]["by_day"]}
+    # A day with its perfect plan: the three ways from it, the real one the battery's own (no SpotNav control).
+    tenth = by_day["2026-11-10"]
+    assert tenth["real_vs_none"] == pytest.approx(850.0) and tenth["plan_vs_none"] == pytest.approx(820.0)
+    assert tenth["perfect_vs_none"] == pytest.approx(1100.0) and tenth["controlled"] == 0.0
+    # Before it is worked out: the review's runs against its no-battery cost, the change in the battery at its
+    # end value (none here), and no perfect figure; nothing says who controlled the battery.
+    fourth = by_day["2026-11-04"]
+    assert fourth["real_vs_none"] == pytest.approx(400.0) and fourth["plan_vs_none"] == pytest.approx(500.0)
+    assert fourth["perfect_vs_none"] is None and fourth["controlled"] is None
+    filled = house_history(month_inputs(reviews=[review(date(2026, 11, 4), actual=Run(3000.0, 50.0))]))["review"]["by_day"][0]
+    assert filled["real_vs_none"] == pytest.approx(400.0 + 0.1 * 40.0 * 120.0)
+    bare = house_history(month_inputs(reviews=[review(date(2026, 11, 4), no_battery_cost=None)]))["review"]["by_day"][0]
+    assert bare["real_vs_none"] is None and bare["plan_vs_none"] is None
+    assert house_history(month_inputs())["review"]["by_month"] is None
+    # A year: a row per month, summed over its reviewed days, its share over its whole days.
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 1, 1))))["review"]
+    (november,) = year["by_month"]
+    assert november["month"] == "2026-11" and november["days"] == 13 and november["month_days"] == 15
+    assert november["real_vs_none"] == pytest.approx(sum(row["real_vs_none"] for row in by_day.values()))
+    assert november["perfect_vs_none"] == pytest.approx(sum(row["perfect_vs_none"] or 0 for row in by_day.values()))
+    assert november["own_share"] == house_history(month_inputs())["review"]["perfect"]["shares"]["own"]
+    assert november["share_note"] is None and november["controlled"] == 0.0
+
+
+def test_the_period_counts_the_days_spotnav_controlled_the_car() -> None:
+    saving = house_history(month_inputs())["saving"]
+    assert saving["car_days"] == 7 and saving["car_controlled_days"] == 2
+    none = {day: replace(item, car_planned=False) for day, item in month_inputs().savings.items()}
+    assert house_history(month_inputs(savings=none))["saving"]["car_controlled_days"] == 0
 
 
 def test_own_control_days_say_what_the_battery_earned_and_what_the_plan_would_have() -> None:

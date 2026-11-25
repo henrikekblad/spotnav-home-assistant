@@ -34,6 +34,7 @@ from ..site.spotnav_saving import (
     car_hours,
     day_savings,
     default_share,
+    planned_days,
     session_savings,
 )
 
@@ -166,7 +167,15 @@ async def async_day_savings_by_hour(
         except (TypeError, ValueError):
             continue
     return (
-        day_savings(days, battery_money=battery_money, heat_days=heat_days, car=car, car_since=since, today=today),
+        day_savings(
+            days,
+            battery_money=battery_money,
+            heat_days=heat_days,
+            car=car,
+            car_since=since,
+            today=today,
+            car_planned=planned_days(shown, zone),
+        ),
         since,
         car_hours(shown, savings),
     )

@@ -407,6 +407,7 @@
     "battery": null,
     "battery_days": 0,
     "car": 1960.0,
+    "car_controlled_days": 2,
     "car_days": 7,
     "days": 7,
     "heat": 120.0,

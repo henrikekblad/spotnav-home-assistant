@@ -12,10 +12,13 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
-              by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share, share_note}],
+              by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share, share_note,
+                        real_vs_none, plan_vs_none, perfect_vs_none, controlled}],
+              by_month: [{month, days, month_days, real_vs_none, plan_vs_none, perfect_vs_none, own_share,
+                          share_note, controlled}] | null,
               perfect: (`site/perfect_view.py`) | null} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null},
-     saving: {total, battery, car, heat, battery_days, car_days, heat_days, days} | null,
+     saving: {total, battery, car, heat, battery_days, car_days, heat_days, days, car_controlled_days} | null,
      own_control: {earned, would, days, would_days} | null,
      sun: {gave, days, period_days, estimated_days} | null }
 
@@ -57,11 +60,20 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   reviewed day (the front's month calendar moved here) with its share of its perfect plan in hindsight (`own_share`,
   `plan_share`; `share_note` says why a day with a perfect plan has none: `partial`, under 90 % of it measured, or
   `small`, the perfect plan saved under 5 kr; or `loss` beside an `own_share` of 0: the battery's own way cost more
-  than no battery that day, which the card says instead of "0 %"); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
+  than no battery that day, which the card says instead of "0 %"). Each day also has its ways against the same day
+  with no battery, the energy left at midnight counted, so they can stand side by side: what really happened
+  (`real_vs_none`), SpotNav's plan in the site's mode (`plan_vs_none`, simulated on the same measured day) and the
+  perfect plan (`perfect_vs_none`), from the day's perfect plan where it is worked out, else from the review's runs
+  (no perfect figure then); and `controlled`, the share of the day SpotNav controlled the battery (`None` where not
+  known). A year has `by_month` too (`null` for a day or a month): the same three summed over each month's reviewed
+  days (`days`, against `month_days`, the month's days before today), its share of the perfect plan over its whole
+  days (`own_share`, `share_note` as a day's) and SpotNav's mean share of control. `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
   over the period, where the day boundary washes out). `null` without a battery or with no reviewed day.
 * **What SpotNav saved** (`saving`): the battery, the car and the heat each against its own counterfactual
   (`site/spotnav_saving.py`), per day summed over the period: `{total, battery, car, heat, battery_days, car_days,
-  heat_days, days}` (each part over the days that have it, `days` the days with any part); `null` without any. A
+  heat_days, days, car_controlled_days}` (each part over the days that have it, `days` the days with any part,
+  `car_controlled_days` the days a charge SpotNav started began on: with none the car's 0 is a car SpotNav did not
+  control); `null` without any. A
   month's or a year's bucket has the same sums (`saving`, `saving_battery`, `saving_car`, `saving_heat`, `null` where
   none of its days has the part). A day's hours have the battery's part by the hour it was earned in (the hour's
   arbitrage in the day's controlled share; kept 40 days, `null` on an older day) and the car's in the hour its charge
@@ -110,7 +122,7 @@ from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
 from .perfect_view import perfect_block
 from .spotnav_saving import DaySaving, own_control, period_sums
 from .sun_value import BASIS_HOUR, SunDay, day_values, period_value
-from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
+from .history_period import PERIOD_DAY, PERIOD_YEAR, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
 HISTORY_KEYS: Final = (
@@ -581,12 +593,88 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
                 "plan_saving": _r(review.saving),
                 "own_saving": _r(review.actual_saving),
                 **_day_shares(review),
+                **_day_against_none(review),
+                "controlled": _controlled(inputs, review.day),
             }
             for review in reviews
         ],
+        "by_month": _by_month(inputs, reviews, today) if period.kind == PERIOD_YEAR else None,
         # The days against their perfect plans in hindsight (`site/perfect_view.py`).
         "perfect": perfect_block(reviews),
     }
+
+
+def _controlled(inputs: HouseHistoryInputs, day: date) -> float | None:
+    """The share of [day] SpotNav controlled the battery (`DaySaving.battery_share`), `None` where it is not known."""
+    saving = inputs.savings.get(day)
+    return None if saving is None or saving.battery_share is None else round(saving.battery_share, 3)
+
+
+def _day_against_none(review: DayReview) -> dict[str, Any]:
+    """A day's three ways against the same day with no battery, the energy left at midnight counted: what really
+    happened (`real_vs_none`), SpotNav's plan in the site's mode on the same measured day (`plan_vs_none`, simulated)
+    and the perfect plan in hindsight (`perfect_vs_none`). The day's perfect plan (`hindsight.Facit`) gives all three
+    where it is worked out; before that the review's own runs give the first two (each run's net charged at the
+    review's `end_value`) and the perfect plan has none. `None` each without a no-battery figure."""
+    facit = review.facit
+    if facit is not None and facit.saving is not None:
+        own = facit.candidates.get("own")
+        plan = None if review.mode is None else facit.candidates.get(review.mode)
+        return {
+            "real_vs_none": None if own is None else _r(own.saving),
+            "plan_vs_none": None if plan is None else _r(plan.saving),
+            "perfect_vs_none": _r(facit.saving),
+        }
+    base = review.no_battery_cost
+    if base is None:
+        return {"real_vs_none": None, "plan_vs_none": None, "perfect_vs_none": None}
+    return {
+        "real_vs_none": _r(base - review.net(review.actual)),
+        "plan_vs_none": _r(base - review.net(review.plan)),
+        "perfect_vs_none": None,
+    }
+
+
+def _by_month(inputs: HouseHistoryInputs, reviews: Sequence[DayReview], today: date) -> list[dict[str, Any]]:
+    """A year's reviewed days by month (see the module): each way's sum over the month's days that have it, the
+    days reviewed against the month's days before today, the share of the perfect plan over its whole days
+    (`site/perfect_view.py`) and SpotNav's mean share of control."""
+    months: dict[str, list[DayReview]] = {}
+    for review in reviews:
+        months.setdefault(review.day.isoformat()[:7], []).append(review)
+    out = []
+    for month, days in months.items():
+        figures = [_day_against_none(review) for review in days]
+        perfect = perfect_block(days)
+        first = date.fromisoformat(f"{month}-01")
+        later = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
+        shares = [share for share in (_controlled(inputs, review.day) for review in days) if share is not None]
+
+        def total(key: str, figures: list[dict[str, Any]] = figures) -> float | None:
+            values = [item[key] for item in figures if item[key] is not None]
+            return _r(sum(values)) if values else None
+
+        own = None if perfect is None else perfect["shares"]["own"]
+        own_saving = None if perfect is None else perfect["savings"]["own"]
+        note = None
+        if perfect is not None and own is None:
+            note = SHARE_PARTIAL if perfect["days"] == 0 else SHARE_SMALL
+        elif own is not None and own_saving is not None and own_saving < 0:
+            note = SHARE_LOSS
+        out.append(
+            {
+                "month": month,
+                "days": len(days),
+                "month_days": max(0, (min(later, today) - first).days),
+                "real_vs_none": total("real_vs_none"),
+                "plan_vs_none": total("plan_vs_none"),
+                "perfect_vs_none": total("perfect_vs_none"),
+                "own_share": own,
+                "share_note": note,
+                "controlled": round(sum(shares) / len(shares), 3) if shares else None,
+            }
+        )
+    return out
 
 
 #: Why a day with a perfect plan has no share: under 90 % of it measured, or too small a difference to compare.

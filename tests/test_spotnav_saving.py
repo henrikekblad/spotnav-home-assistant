@@ -17,6 +17,7 @@ from custom_components.spotnav.site.energy_flow import EnergyHour
 from custom_components.spotnav.site.history_period import PERIOD_MONTH, PERIOD_YEAR, period_of
 from custom_components.spotnav.site.house_period import HouseHistoryInputs, house_history
 from custom_components.spotnav.site.spotnav_saving import (
+    planned_days,
     DaySaving,
     GridShares,
     Prices,
@@ -141,6 +142,16 @@ def test_the_battery_s_kwh_to_the_car_are_left_out_of_the_car_s_saving() -> None
     assert none[session.id] == 0.0
 
 
+def test_a_day_says_whether_spotnav_started_a_charge_on_it() -> None:
+    person = charge(PLUG, [11.0], started_by="manual")
+    planned = charge(datetime(2026, 11, 18, 1, tzinfo=UTC), [11.0], charger="c2")
+    assert planned_days([person, planned], ZONE) == {date(2026, 11, 18)}
+    days = day_savings([date(2026, 11, 16), date(2026, 11, 18)], battery_money={}, heat_days={}, car={}, car_since=date(2026, 11, 1),
+                       today=date(2026, 11, 18), car_planned=planned_days([person, planned], ZONE))
+    assert not days[date(2026, 11, 16)].car_planned and days[date(2026, 11, 18)].car_planned
+    assert period_sums(days)["car_controlled_days"] == 1
+
+
 def test_without_the_plug_in_s_prices_there_is_no_figure() -> None:
     session = charge(datetime(2026, 11, 17, 1, tzinfo=UTC), [11.0], plugged=datetime(2026, 11, 10, tzinfo=UTC))
     assert session_savings([session], Prices(slots()), all_grid(), NOW)[session.id] is None
@@ -241,7 +252,7 @@ def test_a_period_sums_each_part_over_the_days_that_have_it() -> None:
     november = {day: item for day, item in _days().items() if day.month == 11}
     assert period_sums(november) == {
         "total": 350.0, "battery": None, "battery_days": 0, "car": 300.0, "car_days": 2, "heat": 50.0,
-        "heat_days": 1, "days": 2,
+        "heat_days": 1, "days": 2, "car_controlled_days": 0,
     }
     assert period_sums({}) is None
 
@@ -263,5 +274,5 @@ def test_the_history_buckets_carry_the_sums(kind: str, keys: tuple[str, str]) ->
         assert (second["saving"], second["saving_car"], second["saving_heat"]) == (350.0, 300.0, 50.0)
         assert answer["saving"] == {
             "total": 1550.0, "battery": 1000.0, "battery_days": 1, "car": 500.0, "car_days": 3, "heat": 50.0,
-            "heat_days": 1, "days": 3,
+            "heat_days": 1, "days": 3, "car_controlled_days": 0,
         }
