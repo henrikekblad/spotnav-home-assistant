@@ -135,6 +135,8 @@ async def test_the_site_settings_view_is_the_administrators_bar_load_balancing(
     expected["site"]["active_control"]["writable"] = False
     # The priority list is written over the WebSocket only: the apps read it.
     expected["priority"]["writable"] = False
+    # "No export at negative prices" is an administrator's switch: the apps read it.
+    expected["export_curtail"]["writable"] = False
     # An app that does not read the power level never meets its keys (its decoder refuses a demand block with them).
     reading = {**expected, "ok": True, "action": "get_site_settings_view"}
     prices = expected["price_settings"]

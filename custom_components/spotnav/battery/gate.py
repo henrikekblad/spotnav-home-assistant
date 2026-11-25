@@ -25,6 +25,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`export_discharge_cap_kw`); Self-consumption never does. It replaced
   `battery_control_allow_sell`, which an early 3.0 build stored: read once at load, as the source of a one-time
   migration (`legacy_mode`, `BatteryControl._migrate_mode`), then removed from the entry; never written or sent.
+* `export_curtail_enabled` (`CONF_EXPORT_CURTAIL`, default off): "No export at negative prices", the site's switch for
+  its export limit (`export_curtail.py`), for a site with or without a battery. It alone arms the export limit
+  (`Options.export_writes`): the battery opt-in and shadow only say nothing about it. A site whose battery control
+  already wrote when the switch came got it turned on once (`BatteryControl._migrate_export`).
 * `battery_wear_minor_per_kwh` (`CONF_WEAR`: a number in the area's minor unit per kWh each way, or absent / `None`
   = the currency's default, `plan_model.WEAR_MINOR_PER_KWH`): what the plan weighs as the battery's wear. A write
   takes a finite number from 0 to `WEAR_MAX_FACTOR` times the currency's default (`valid_change`), or `None` to go
@@ -127,6 +131,9 @@ WEAR_MAX_FACTOR: Final = 10.0
 CONF_ACCEPT_HA_DOWN: Final = "battery_control_accept_ha_down"
 #: The setup the acceptance was given for (`ha_down_setup`): stored beside it, never written by a request.
 CONF_ACCEPT_HA_DOWN_SETUP: Final = "battery_control_accept_ha_down_setup"
+#: "No export at negative prices" (`export_curtail.py`): the site's own switch for its export limit, whether it has
+#: a battery or not. Not `battery_control_*`: the battery opt-in does not arm it.
+CONF_EXPORT_CURTAIL: Final = "export_curtail_enabled"
 #: Every option and its default.
 DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_ENABLED: False,
@@ -134,6 +141,7 @@ DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_AI_TAKEOVER_ACK: False,
     CONF_IMPORT_LIMIT_ACTS: False,
     CONF_ACCEPT_HA_DOWN: False,
+    CONF_EXPORT_CURTAIL: False,
 }
 #: The keys a write may set: the booleans above, the mode and the wear.
 WRITABLE: Final = (*DEFAULTS, CONF_MODE, CONF_WEAR)
@@ -257,6 +265,7 @@ class Options:
     import_limit_acts: bool = False
     accept_ha_down: bool = False
     wear_minor_per_kwh: float | None = None
+    export_curtail: bool = False
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any], *, shadow_default: bool = True) -> Options:
@@ -270,6 +279,7 @@ class Options:
             import_limit_acts=_flag(config.get(CONF_IMPORT_LIMIT_ACTS), False),
             accept_ha_down=_flag(config.get(CONF_ACCEPT_HA_DOWN), False),
             wear_minor_per_kwh=stored_wear(config),
+            export_curtail=_flag(config.get(CONF_EXPORT_CURTAIL), False),
         )
 
     @property
@@ -281,11 +291,20 @@ class Options:
 
     @property
     def writes(self) -> bool:
-        """Whether anything may be written at all (the routine, control, the export limit)."""
+        """Whether the battery may be written to at all (the routine, control). The export limit has its own switch
+        (`export_writes`)."""
         return self.enabled and not self.shadow_only
 
+    @property
+    def export_writes(self) -> bool:
+        """Whether the site's export limit may be written (`CONF_EXPORT_CURTAIL`): its own switch, whatever the
+        battery's opt-in and shadow only say. The shell adds what it alone knows (an untested recipe writes on a beta
+        tester's site only, `control.BatteryControl.export_state`)."""
+        return self.export_curtail
+
     def as_dict(self) -> dict[str, bool | str | float | None]:
-        """The payload's options."""
+        """The payload's options: the battery's. The export limit's switch is not one of them: the site settings
+        view's `export_curtail` block carries it (`export_shell.ExportShell.status`)."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
             CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_ACCEPT_HA_DOWN: self.accept_ha_down,

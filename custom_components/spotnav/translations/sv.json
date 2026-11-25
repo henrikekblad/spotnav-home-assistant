@@ -1184,6 +1184,10 @@
         "battery_control_accept_ha_down": {
           "name": "Home Assistant nere godkänt",
           "description": "Personen godkänner att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet; laddningen begränsas då till vad säkringen klarar med ett tomt hus."
+        },
+        "export_curtail_enabled": {
+          "name": "Ingen export vid negativa priser",
+          "description": "Sätt anläggningens exportgräns till noll medan en såld kWh ger mindre än noll, och återställ den efteråt. För en anläggning med eller utan batteri; batteristyrningens reglage slår inte på den."
         }
       }
     }

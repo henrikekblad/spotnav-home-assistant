@@ -1184,6 +1184,10 @@
         "battery_control_accept_ha_down": {
           "name": "Home Assistantin katkos hyväksytty",
           "description": "Henkilö hyväksyy, että sulake voi palaa, jos Home Assistant pysähtyy tai menettää yhteyden akkuun tai sähkömittariin kotiakun verkkolatauksen aikana; lataus rajataan silloin siihen, mitä sulake kestää tyhjässä talossa."
+        },
+        "export_curtail_enabled": {
+          "name": "Ei vientiä negatiivisilla hinnoilla",
+          "description": "Aseta kohteen vientiraja nollaan, kun myydystä kWh:sta saa alle nollan, ja palauta se sen jälkeen. Kohteelle akulla tai ilman; akun ohjauksen kytkin ei kytke tätä päälle."
         }
       }
     }

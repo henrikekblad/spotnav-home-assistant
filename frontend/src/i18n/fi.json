@@ -2658,5 +2658,18 @@
   "house.plan.run.sauna.heat": "Sauna lämpenee",
   "house.plan.run.sauna.hold": "Sauna on valmis",
   "house.plan.reason.bath": "varattuun aikaan",
-  "house.plan.reason.now": "käynnistetty nyt"
+  "house.plan.reason.now": "käynnistetty nyt",
+  "exportCurtail.title": "Ei vientiä negatiivisilla hinnoilla",
+  "exportCurtail.help": "Kun sähkön myyminen maksaa, SpotNav asettaa invertterin vientirajan nollaan ja palauttaa sen jälkeenpäin. Aurinko pyörittää edelleen taloa, autoa ja akkua. Koskee koko kohdetta.",
+  "exportCurtail.intro": "SpotNav kirjoittaa {brand}-järjestelmäsi vientirajan silloin, kun myydystä kWh:sta saa alle nollan, ja palauttaa sen jälkeen siinä olleen arvon. Jos joku muu muuttaa rajaa sillä välin, SpotNav jättää sen rauhaan.",
+  "exportCurtail.saving": "Viimeisten {days} päivän aikana vienti negatiivisilla hinnoilla maksoi {amount} ({energy}).",
+  "exportCurtail.beta": "Testataan vielä merkillä {brand}: toistaiseksi vain beetatestaajille.",
+  "exportCurtail.need.controlDisabled": "Vientiraja on poistettu käytöstä Home Assistantissa. Ota se käyttöön, jotta tätä voi käyttää.",
+  "exportCurtail.need.limitUnset": "Invertteriin ei ole asetettu vientirajaa. Aseta se ensin invertterin omassa sovelluksessa suurimpaan sallittuun vientiisi. SpotNav laskee sitä sen jälkeen ja palauttaa sinun arvosi, eikä koskaan aseta omaansa.",
+  "exportCurtail.need.importRose": "Talo alkoi ottaa sähköä verkosta, kun raja asetettiin, joten SpotNav palautti rajan. SpotNav yrittää itse uudelleen huomenna.",
+  "exportCurtail.need.notObeyed": "Invertteri ei noudattanut rajaa, joten SpotNav palautti sen ja lopetti. Kytke tämä pois ja päälle yrittääksesi uudelleen.",
+  "exportCurtail.need.notTaken": "Invertteri ei ottanut asetusta vastaan, joten SpotNav lopetti. Kytke tämä pois ja päälle yrittääksesi uudelleen.",
+  "exportCurtail.need.needsHacs": "Vientirajaa ei ole otettu käyttöön invertterissä. Ota se käyttöön invertterin omassa sovelluksessa tai asenna HACS-integraatio ({repo}), jotta SpotNav voi tehdä sen.",
+  "exportCurtail.need.betaOnly": "Merkillä {brand} tämä toimii toistaiseksi vain beetatestaajille. Valitse Beetatestaaja kohdasta Tuki käyttääksesi tätä.",
+  "exportCurtail.need.noGridReading": "Tämä vaatii mittarin kokonaistehon verkkoon päin, jota tällä kohteella ei ole."
 }

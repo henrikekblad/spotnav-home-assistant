@@ -8058,6 +8058,53 @@
   },
   "window_s": 1800
  },
+ "goodwe/export": {
+  "facts": {
+   "charge_block_s": null,
+   "executor_window_s": 1800,
+   "fixed_charge": false,
+   "local_readback": true,
+   "readback_s": null,
+   "role_readback": {
+    "export_enable": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    },
+    "export_limit": {
+     "kind": "echo",
+     "settle_s": 900.0,
+     "wait_s": null
+    }
+   },
+   "roles": {
+    "export_enable": {
+     "answer": false,
+     "lease": null
+    },
+    "export_limit": {
+     "answer": false,
+     "lease": null
+    }
+   },
+   "settle_s": 900.0,
+   "silence_fallback_s": null,
+   "slow": false,
+   "watchdog_renew_s": null,
+   "watchdog_roles": []
+  },
+  "wanted": {
+   "curtail_export@0.0": {
+    "export_enable": true,
+    "export_limit": 0.0
+   },
+   "self_consume@0.0": {
+    "export_enable": "<snapshot>",
+    "export_limit": "<snapshot>"
+   }
+  },
+  "window_s": 1800
+ },
  "huawei/-/balanced": {
   "facts": {
    "charge_block_s": null,
@@ -17601,6 +17648,42 @@
   },
   "window_s": 1800
  },
+ "solax/export": {
+  "facts": {
+   "charge_block_s": null,
+   "executor_window_s": 1800,
+   "fixed_charge": false,
+   "local_readback": false,
+   "readback_s": null,
+   "role_readback": {
+    "export_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
+   "roles": {
+    "export_limit": {
+     "answer": false,
+     "lease": null
+    }
+   },
+   "settle_s": 0.0,
+   "silence_fallback_s": null,
+   "slow": false,
+   "watchdog_renew_s": null,
+   "watchdog_roles": []
+  },
+  "wanted": {
+   "curtail_export@0.0": {
+    "export_limit": 0.0
+   },
+   "self_consume@0.0": {
+    "export_limit": "<snapshot>"
+   }
+  },
+  "window_s": 1800
+ },
  "solinteg/battctrl_idle/balanced": {
   "facts": {
    "charge_block_s": null,
@@ -21164,6 +21247,109 @@
    }
   },
   "window_s": 300
+ },
+ "solis/export": {
+  "facts": {
+   "charge_block_s": null,
+   "executor_window_s": 1800,
+   "fixed_charge": false,
+   "local_readback": false,
+   "readback_s": null,
+   "role_readback": {
+    "export_enable": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "export_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
+   "roles": {
+    "export_enable": {
+     "answer": false,
+     "lease": null
+    },
+    "export_limit": {
+     "answer": false,
+     "lease": null
+    }
+   },
+   "settle_s": 0.0,
+   "silence_fallback_s": null,
+   "slow": false,
+   "watchdog_renew_s": null,
+   "watchdog_roles": []
+  },
+  "wanted": {
+   "curtail_export@0.0": {
+    "export_enable": true,
+    "export_limit": 0.0
+   },
+   "self_consume@0.0": {
+    "export_enable": "<snapshot>",
+    "export_limit": "<snapshot>"
+   }
+  },
+  "window_s": 1800
+ },
+ "sungrow/export": {
+  "facts": {
+   "charge_block_s": null,
+   "executor_window_s": 1800,
+   "fixed_charge": false,
+   "local_readback": false,
+   "readback_s": null,
+   "role_readback": {
+    "export_enable": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "export_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    },
+    "limit_min": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
+   "roles": {
+    "export_enable": {
+     "answer": false,
+     "lease": null
+    },
+    "export_limit": {
+     "answer": false,
+     "lease": null
+    },
+    "limit_min": {
+     "answer": false,
+     "lease": null
+    }
+   },
+   "settle_s": 0.0,
+   "silence_fallback_s": null,
+   "slow": false,
+   "watchdog_renew_s": null,
+   "watchdog_roles": []
+  },
+  "wanted": {
+   "curtail_export@0.0": {
+    "export_enable": true,
+    "export_limit": 0.0
+   },
+   "self_consume@0.0": {
+    "export_enable": "<snapshot>",
+    "export_limit": "<snapshot>"
+   }
+  },
+  "window_s": 1800
  },
  "tesla/-/balanced": {
   "facts": {
@@ -24811,6 +24997,42 @@
     "discharge_power": "<snapshot>",
     "ess_mode": "<snapshot>",
     "grid_setpoint": "<snapshot>"
+   }
+  },
+  "window_s": 1800
+ },
+ "victron/export": {
+  "facts": {
+   "charge_block_s": null,
+   "executor_window_s": 1800,
+   "fixed_charge": false,
+   "local_readback": false,
+   "readback_s": null,
+   "role_readback": {
+    "export_limit": {
+     "kind": "register",
+     "settle_s": 0.0,
+     "wait_s": null
+    }
+   },
+   "roles": {
+    "export_limit": {
+     "answer": false,
+     "lease": null
+    }
+   },
+   "settle_s": 0.0,
+   "silence_fallback_s": null,
+   "slow": false,
+   "watchdog_renew_s": null,
+   "watchdog_roles": []
+  },
+  "wanted": {
+   "curtail_export@0.0": {
+    "export_limit": 0.0
+   },
+   "self_consume@0.0": {
+    "export_limit": "<snapshot>"
    }
   },
   "window_s": 1800

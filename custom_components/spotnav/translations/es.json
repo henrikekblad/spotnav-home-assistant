@@ -1184,6 +1184,10 @@
         "battery_control_accept_ha_down": {
           "name": "Caída de Home Assistant aceptada",
           "description": "La persona acepta que un fusible pueda saltar si Home Assistant se detiene o pierde el contacto con la batería o el contador eléctrico durante una carga desde la red de la batería de la casa; la carga se limita entonces a lo que el fusible permite con la casa vacía."
+        },
+        "export_curtail_enabled": {
+          "name": "Sin exportación con precios negativos",
+          "description": "Pone a cero el límite de exportación de la instalación mientras un kWh vendido rinde menos que nada, y lo restablece después. Para una instalación con o sin batería; el interruptor del control de la batería no lo activa."
         }
       }
     }

@@ -1821,8 +1821,9 @@ export function createCardView(input: CardViewInput): CardView {
     void siteSections.loadSite().then(() => {
       if (!destroyed && settingsOverviewDialog.isOpen()) {
         paintSiteSections();
-        // The site's priority list came with the same read: the site rows show it.
+        // The site's priority list came with the same read: the site rows show it. So did the export switch.
         paintEntities();
+        siteSectionsBuilt.paintSolar();
       }
     });
   }
@@ -2129,6 +2130,9 @@ export function createCardView(input: CardViewInput): CardView {
     writeValue,
     entityRow,
     sectionHost,
+    exportCurtail: () => siteSections?.exportCurtail ?? null,
+    writeExportCurtail: (on) =>
+      siteSections?.writeExportCurtail(on) ?? Promise.resolve(translate(model.language, "settings.error.generic")),
   });
   const { siteSectionBody, solarSectionBody } = siteSectionsBuilt;
   // One notification section for the whole site, per phone (`notification-phones.ts`): it reads the phones itself.

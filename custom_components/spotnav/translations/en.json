@@ -1184,6 +1184,10 @@
         "battery_control_accept_ha_down": {
           "name": "Home Assistant down accepted",
           "description": "The person accepts that a fuse may trip if Home Assistant stops, or loses contact with the battery or the grid meter, during a grid charge of the home battery; the charge is then capped at what the fuse allows with an empty house."
+        },
+        "export_curtail_enabled": {
+          "name": "No export at negative prices",
+          "description": "Set the site's export limit to zero while a sold kWh earns less than nothing, and put it back afterwards. For a site with or without a battery; the battery control switch does not turn it on."
         }
       }
     }

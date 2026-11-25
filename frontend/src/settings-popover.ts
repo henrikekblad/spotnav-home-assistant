@@ -97,6 +97,7 @@ import {
   type BatteryStatus,
   type BatteryTester,
   type SitePriority,
+  type SiteExportCurtail,
   type ImportLimit,
   type PlanCosts,
   type SitePriceSettings,
@@ -564,6 +565,11 @@ export function brandName(brand: string): string {
   return BRAND_NAMES[brand] ?? (brand.charAt(0).toUpperCase() + brand.slice(1));
 }
 
+/** The site view's export block as the Solar section takes it: with the brand's name. */
+export function exportCurtailFacts(block: SiteExportCurtail | null): (SiteExportCurtail & { brandName: string }) | null {
+  return block === null ? null : { ...block, brandName: block.brand === null ? "" : brandName(block.brand) };
+}
+
 export function batteryNeed(language: Language, need: string): string {
   const [kind, param] = need.split(":");
   switch (kind) {
@@ -640,6 +646,8 @@ export interface SiteSectionsInput {
 export class SiteSections {
   /** The site's priority list from the same view read (`loadSite`), `null` before it or where none is stated. */
   priority: SitePriority | null = null;
+  /** "No export at negative prices" from the same view read; `null` before it or where the view has none. */
+  exportCurtail: SiteExportCurtail | null = null;
   battery: BatteryStatus | null = null;
   batteryFound = false;
   heat: HeatAnswer | null = null;
@@ -668,6 +676,7 @@ export class SiteSections {
       const decoded = decodeSiteView(await getSiteSettingsView(hass, target));
       battery = decoded.ok && decoded.value.battery.found;
       this.priority = decoded.ok ? decoded.value.priority : null;
+      this.exportCurtail = decoded.ok ? decoded.value.export_curtail : null;
     } catch {
       // No site view: the battery section stays as it was.
     }
@@ -705,6 +714,34 @@ export class SiteSections {
         }
       })(),
     ]);
+  }
+
+  /**
+   * "No export at negative prices" on or off (`spotnav/battery_control`'s `export_curtail_enabled`, administrators
+   * only): the site's own switch, apart from the battery's. The host reads its view again after a save.
+   */
+  async writeExportCurtail(on: boolean): Promise<string | null> {
+    const hass = this.input.hass();
+    const target = this.input.target();
+    const language = this.language;
+    if (hass === null || target === null) {
+      return translate(language, "battery.error.generic");
+    }
+    try {
+      const decoded = decodeBatteryControl(await batteryControl(hass, target, { export_curtail_enabled: on }));
+      if (!decoded.ok) {
+        return translate(language, "battery.error.generic");
+      }
+      if (!decoded.value.ok) {
+        return translate(language, decoded.value.error === "spotnav_not_admin" ? "battery.error.notAdmin" : "battery.error.generic");
+      }
+      if (this.exportCurtail !== null) {
+        this.exportCurtail = { ...this.exportCurtail, enabled: on };
+      }
+      return null;
+    } catch {
+      return translate(language, "battery.error.generic");
+    }
   }
 
   /** Whether anything heat-related was found: the house's heat, a pool, a spa or a sauna (`heat-model.heatFound`). */
@@ -2251,8 +2288,10 @@ export class SettingsPopover {
         appliesToText: facts.appliesToText,
         writable: view.writable && facts.writable,
         choices: facts.solarForecastChoices,
+        exportCurtail: exportCurtailFacts(view.export_curtail),
       },
       writeForecast: (forecast) => this.writeForecast(view, forecast),
+      writeExportCurtail: (on) => this.sections.writeExportCurtail(on),
     });
   }
 

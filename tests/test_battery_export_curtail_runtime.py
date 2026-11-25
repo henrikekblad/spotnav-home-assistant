@@ -73,6 +73,10 @@ async def test_a_free_plant_would_get_a_zero_export_limit_and_the_value_found_ba
     curtail = diagnostics["export_curtail"]
     assert curtail["control"] == "sigenergy" and curtail["curtailing"] is False and curtail["sell_now"] == 4.0
     assert curtail["totals"]["kwh"] == pytest.approx(count.kwh, abs=1e-4)
+    assert {row["brand"] for row in curtail["brands"] if row["mapped"]} == {
+        "sigenergy", "victron", "sungrow", "solis", "goodwe", "solax"
+    }
+    assert {row["brand"] for row in curtail["commands"]} == {row["brand"] for row in curtail["brands"] if row["mapped"]}
     assert diagnostics["parts"][PART_EXPORT_CURTAIL] == "shadow"
     assert shadow.book.section(SECTION_CURTAIL)["days"]
 
@@ -135,3 +139,136 @@ async def test_the_rule_counts_survive_a_reload(hass: HomeAssistant, monkeypatch
 
     reloaded = site_controller_for(hass, site.entry_id)
     assert reloaded is not None and reloaded.battery_shadow.curtail.as_dict() == kept
+
+
+# --- the export limit of the other brands is found from the site's grid meter ---------------------------------------
+
+_EXPORT_ROWS: dict[str, list[dict[str, Any]]] = {
+    "victron": [
+        {"entity_id": "number.victron_ess_max_feed_in_power", "unique_id": "c0619ab1_system_0_system_ess_max_feed_in_power",
+         "state": "-1", "unit": "W"},
+    ],
+    "goodwe": [
+        {"entity_id": "number.goodwe_grid_export_limit", "unique_id": "goodwe-grid_export_limit-9010KETU000W0000",
+         "state": "10000", "unit": "W"},
+        {"entity_id": "switch.goodwe_grid_export_limit_switch", "unique_id": "grid_export_limit_switch-9010KETU000W0000",
+         "state": "off", "unit": None},
+    ],
+    "solis": [
+        {"entity_id": "number.solis_backflow_power", "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_backflow_power",
+         "state": "8000", "unit": "W"},
+        {"entity_id": "sensor.solis_backflow_power", "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_backflow_power",
+         "state": "7900", "unit": "W"},
+        {"entity_id": "switch.solis_grid_feed_in_power_limit_switch", "unique_id": "solis_modbus_2403123456_43073_4",
+         "state": "on", "unit": None},
+    ],
+    "solax": [
+        {"entity_id": "number.solax_export_control_user_limit", "unique_id": "SolaX_export_control_user_limit",
+         "state": "6000", "unit": "W"},
+    ],
+    "sungrow": [
+        {"entity_id": "number.export_power_limit", "unique_id": "uid_export_power_limit", "platform": "template",
+         "state": "5000", "unit": "W"},
+        {"entity_id": "switch.export_power_limit", "unique_id": "sg_export_power_limit_switch", "platform": "modbus",
+         "state": "off", "unit": None},
+        {"entity_id": "sensor.export_power_limit_min", "unique_id": "sg_export_power_limit_min", "platform": "modbus",
+         "state": "0", "unit": "W"},
+        # The package's own grid sensors are template entities.
+        {"entity_id": "sensor.export_power", "unique_id": "sg_export_power", "platform": "template",
+         "state": "1200", "unit": "W"},
+    ],
+}
+
+
+def _brand(hass: HomeAssistant, name: str) -> str:
+    """A brand's entities (`brands.json`) with its export limit's, registered as its integration does: under a config
+    entry and a device, or (Sungrow's YAML package) under neither. Answers the brand's battery power entity."""
+    import json
+    from pathlib import Path
+
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    brand = json.loads((Path(__file__).parent / "fixtures" / "battery" / "brands.json").read_text(encoding="utf-8"))[name]
+    registry = er.async_get(hass)
+    package = brand["entities"][0].get("device", "x") is None
+    owner = None
+    device_id = None
+    if not package:
+        owner = MockConfigEntry(domain=brand["platform"], entry_id=f"ENTRY_{name}")
+        owner.add_to_hass(hass)
+        device_id = dr.async_get(hass).async_get_or_create(
+            config_entry_id=owner.entry_id, identifiers={(brand["platform"], name)}, name=name,
+            manufacturer=brand["manufacturer"],
+        ).id
+    for row in [*brand["entities"], *_EXPORT_ROWS[name]]:
+        domain, object_id = row["entity_id"].split(".", 1)
+        entry = registry.async_get_or_create(
+            domain, row.get("platform", brand["platform"]), row["unique_id"], device_id=device_id, config_entry=owner,
+            suggested_object_id=object_id,
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION if row.get("disabled") else None,
+        )
+        if row["state"] is not None and not row.get("disabled"):
+            hass.states.async_set(entry.entity_id, row["state"], {"unit_of_measurement": row["unit"]} if row["unit"] else {})
+    return brand["battery"]
+
+
+@pytest.mark.parametrize(
+    ("name", "roles"),
+    [
+        ("victron", {"export_limit": ("number.victron_ess_max_feed_in_power", "-1")}),
+        ("goodwe", {"export_limit": ("number.goodwe_grid_export_limit", "10000"),
+                    "export_enable": ("switch.goodwe_grid_export_limit_switch", "off")}),
+        # Solis's limit is read by the sensor of its register, not by the number's own echo.
+        ("solis", {"export_limit": ("number.solis_backflow_power", "7900"),
+                   "export_enable": ("switch.solis_grid_feed_in_power_limit_switch", "on")}),
+        ("solax", {"export_limit": ("number.solax_export_control_user_limit", "6000")}),
+        ("sungrow", {"export_limit": ("number.export_power_limit", "5000"),
+                     "export_enable": ("switch.export_power_limit", "off"),
+                     "limit_min": ("sensor.export_power_limit_min", "0")}),
+    ],
+)
+async def test_each_brands_export_limit_is_found_from_the_grid_meter_without_a_battery(
+    hass: HomeAssistant, name: str, roles: dict[str, tuple[str, str]]
+) -> None:
+    from custom_components.spotnav.battery.runtime import export_control_found
+    from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE
+
+    meter = _brand(hass, name)
+    facts, reads, control = read_export_facts(hass, {CONF_GRID_POWER_SOURCE: {"power": meter}})
+    assert control is not None and control.brand == name and facts.control_brand == name
+    assert {role: (read.entity_id, read.state) for role, read in reads.items()} == roles
+    assert all(read.found and read.enabled for read in reads.values())
+    assert export_control_found(reads, control)
+
+
+async def test_sungrows_package_is_found_from_one_of_its_template_sensors_too(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.battery.runtime import export_control_found
+    from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE
+
+    _brand(hass, "sungrow")
+    _facts, reads, control = read_export_facts(
+        hass, {CONF_GRID_POWER_SOURCE: {"power": "sensor.nothing", "power_export": "sensor.export_power"}}
+    )
+    assert control is not None and control.brand == "sungrow"
+    assert reads["export_limit"].entity_id == "number.export_power_limit"
+    assert reads["export_enable"].entity_id == "switch.export_power_limit"
+    assert export_control_found(reads, control)
+
+
+async def test_goodwe_on_core_has_the_limit_and_no_switch(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.spotnav.battery.runtime import export_control_found
+    from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE
+
+    meter = _brand(hass, "goodwe")
+    er.async_get(hass).async_remove("switch.goodwe_grid_export_limit_switch")
+    _facts, reads, control = read_export_facts(hass, {CONF_GRID_POWER_SOURCE: {"power": meter}})
+    assert control is not None and set(reads) == {"export_limit"}
+    assert export_control_found(reads, control)
+    # A brand's plant without the limit's entity has no export control to show.
+    er.async_get(hass).async_remove("number.goodwe_grid_export_limit")
+    _facts, reads, control = read_export_facts(hass, {CONF_GRID_POWER_SOURCE: {"power": meter}})
+    assert not export_control_found(reads, control)

@@ -52,9 +52,11 @@ Only your home position, rounded to about 10 km, is sent to Open-Meteo. Details:
 
 ## No export at a negative price
 
-**Shadow unless battery control is on.** When an exported kWh would cost you money, SpotNav wants the inverter to
-stop exporting. It runs with the battery control switch. See
-[Home batteries](home-battery.md#no-export-at-a-negative-price).
+**Off by default, in testing.** When an exported kWh would cost you money, SpotNav can set the inverter's export
+limit to zero and put it back afterwards. It has its own switch in **Settings → Solar**, shown where SpotNav finds
+an export limit it can run (Sigenergy, Victron, Sungrow, Solis, GoodWe, SolaX), with or without a battery. While it
+is off, the row shows what exporting at negative prices cost you in the last 30 days. See
+[No export at negative prices](solar-export.md).
 
 ## Solar surplus for other loads
 

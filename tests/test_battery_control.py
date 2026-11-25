@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav.battery import commands as commands_module, control as control_module, gate
+from custom_components.spotnav.battery import export_shell as export_shell_module
 from custom_components.spotnav.battery.control import BatteryControl, ControlNotReachable, TrialRefused, store_key
 from custom_components.spotnav.battery.verify import TEST_CHARGE_KW
 from custom_components.spotnav.const import CONF_MAIN_FUSE_A
@@ -166,6 +167,8 @@ async def _site(
         return replace(export_original(self, now, control, **kwargs), measurement_ok=True)
 
     monkeypatch.setattr(BatteryControl, "export_inputs", export_inputs)
+    # A beta tester's site for the export limit (its recipes are untested); a test of the gate sets its own.
+    monkeypatch.setattr(export_shell_module, "learning_gate_open", lambda _hass, _site: True)
     if not own:
         await controller.battery_control.async_shutdown()
     return site, controller, plant

@@ -198,11 +198,11 @@ def _run(executor: Executor, plant: FakePlant, start: datetime, looks: int, acti
     return now, results
 
 
-def test_the_export_control_is_sigenergys_grid_export_limitation_and_no_other_brand_has_one() -> None:
-    assert EXPORT_CONTROLS == (SIGENERGY_EXPORT_CONTROL,)
+def test_sigenergys_export_control_is_its_grid_export_limitation() -> None:
+    assert EXPORT_CONTROLS[0] is SIGENERGY_EXPORT_CONTROL
     assert export_control_for("sigenergy") is SIGENERGY_EXPORT_CONTROL
     assert control_for("sigenergy") is not SIGENERGY_EXPORT_CONTROL
-    for brand in ("solaredge", "huawei", "solax", "victron", "goodwe", "enphase", None):
+    for brand in ("solaredge", "huawei", "enphase", "fronius", "kostal", "victron_modbus", None):
         assert export_control_for(brand) is None
     role = SIGENERGY_EXPORT_CONTROL.role("export_limit")
     assert role.match.matches("number", "01J_plant_plant_grid_point_maximum_export_limitation")
@@ -239,27 +239,25 @@ def test_the_export_limit_needs_no_battery_reading_or_fuse_headroom() -> None:
     assert executor.state.phase == "active"
 
 
-def test_a_never_set_limit_is_restored_as_the_plant_maximum_and_unknown_is_never_written_back() -> None:
+def test_a_never_set_limit_is_not_curtailed_and_the_plant_maximum_is_never_written() -> None:
+    # Nothing can set the limit back to "never set", and the plant's maximum could overwrite a grid operator's cap.
     executor, plant = _plant("unknown")
-    now, _results = _run(executor, plant, T0, 4, ACTION_CURTAIL_EXPORT)
-    assert executor.state.restore_values == {"export_limit": 13.2}
-    plant.states["export_limit"] = "unknown"  # looks like the value found, proves nothing after SpotNav's write
-    _now, results = _run(executor, plant, now, 4, "self_consume")
-    assert written(results) == [("export_limit", 13.2)]
-    assert all(value != "unknown" for _role, value in written(results))
-    # Without the plant's maximum there is nothing to restore: it is not started.
-    executor, plant = _plant("unknown", plant_max_kw=None)
-    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
+    _now, results = _run(executor, plant, T0, 4, ACTION_CURTAIL_EXPORT)
     assert written(results) == []
     assert events(results, "not_started")[0]["reason"] == "no_restore_value:export_limit"
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    assert preview(SIGENERGY_EXPORT_CONTROL, inputs(plant, T0, ACTION_CURTAIL_EXPORT)).blocker == (
+        "no_restore_value:export_limit"
+    )
 
 
 def test_an_unknown_read_back_is_never_a_confirmed_write() -> None:
     executor, plant = _plant("11.5", read_only=True)
-    plant.states["export_limit"] = "unknown"
-    plant.plant_max_kw = 13.2
+    now, first = _run(executor, plant, T0, 1, ACTION_CURTAIL_EXPORT)
+    plant.states["export_limit"] = "unknown"  # what the entity shows after the write
     looks = int(READBACK_DEADLINE_S / TICK.total_seconds()) + 4
-    _now, results = _run(executor, plant, T0, looks, ACTION_CURTAIL_EXPORT)
+    _now, results = _run(executor, plant, now, looks, ACTION_CURTAIL_EXPORT)
+    results = [*first, *results]
     assert written(results)[0] == ("export_limit", 0.0)
     assert events(results, "confirmed") == [] and events(results, "external") == []
     assert events(results, "not_taken")[0]["reason"] == "export_limit"
@@ -439,7 +437,7 @@ _JUDGED_S = CURTAIL_GRACE_S + 5 * READING_GAP_S
 
 def test_a_limit_the_inverter_obeys_keeps_running() -> None:
     executor, plant = _plant("11.5")
-    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda limit: 1.0 if limit == "0" else -4.0)
+    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda limit: 0.2 if limit == "0" else -4.0)
     assert written(results) == [("export_limit", 0.0)]
     assert events(results, "monitor") == [] and executor.state.phase == "active"
     # Its regulation around 0 is within the tolerance.
@@ -464,8 +462,10 @@ def test_a_limit_the_inverter_does_not_obey_is_handed_back_and_blocked(export_kw
 
 
 def test_an_unknown_grid_reading_is_never_judged_as_not_obeyed() -> None:
+    # Taken with a reading; one that is lost afterwards is not judged.
     executor, plant = _plant("11.5")
-    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda _limit: None)
+    now, _results = _grid_run(executor, plant, T0, 30.0, lambda _limit: -4.0)
+    _now, results = _grid_run(executor, plant, now, _JUDGED_S, lambda _limit: None)
     assert events(results, "monitor") == [] and executor.state.phase == "active"
     executor, plant = _plant("11.5")
     now, _results = _grid_run(executor, plant, T0, 30.0, lambda _limit: -4.0)

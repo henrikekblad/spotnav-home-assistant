@@ -2658,5 +2658,18 @@
   "house.plan.run.sauna.heat": "La sauna se calienta",
   "house.plan.run.sauna.hold": "Sauna lista",
   "house.plan.reason.bath": "para la hora reservada",
-  "house.plan.reason.now": "iniciado ahora"
+  "house.plan.reason.now": "iniciado ahora",
+  "exportCurtail.title": "Sin exportación con precios negativos",
+  "exportCurtail.help": "Mientras vender electricidad cuesta dinero, SpotNav pone a cero el límite de exportación del inversor y lo restablece después. El sol sigue alimentando la casa, el coche y la batería. Se aplica a toda la instalación.",
+  "exportCurtail.intro": "SpotNav escribe el límite de exportación de tu sistema {brand} mientras un kWh vendido rinde menos que nada, y después restablece el valor que había. Si otra persona cambia el límite entretanto, SpotNav lo deja como está.",
+  "exportCurtail.saving": "En los últimos {days} días, exportar con precios negativos costó {amount} ({energy}).",
+  "exportCurtail.beta": "Todavía en pruebas con {brand}: por ahora solo para probadores beta.",
+  "exportCurtail.need.controlDisabled": "El límite de exportación está desactivado en Home Assistant. Actívalo para usar esto.",
+  "exportCurtail.need.limitUnset": "El inversor no tiene ningún límite de exportación configurado. Configura primero uno en la app del inversor, con lo máximo que puedes exportar. SpotNav lo baja después y restablece el tuyo, y nunca configura uno propio.",
+  "exportCurtail.need.importRose": "La casa empezó a tomar electricidad de la red cuando se aplicó el límite, así que SpotNav lo restableció. SpotNav volverá a intentarlo por sí solo mañana.",
+  "exportCurtail.need.notObeyed": "El inversor no respetó el límite, así que SpotNav lo restableció y se detuvo. Desactiva y activa esto para volver a intentarlo.",
+  "exportCurtail.need.notTaken": "El inversor no aceptó el ajuste, así que SpotNav se detuvo. Desactiva y activa esto para volver a intentarlo.",
+  "exportCurtail.need.needsHacs": "El límite de exportación no está habilitado en el inversor. Habilítalo en la app del inversor, o instala la integración HACS ({repo}) para que SpotNav pueda hacerlo.",
+  "exportCurtail.need.betaOnly": "Con {brand} esto funciona por ahora solo para probadores beta. Marca Probador beta en Soporte para usarlo.",
+  "exportCurtail.need.noGridReading": "Esto necesita la potencia total de red del contador, que esta instalación no tiene."
 }

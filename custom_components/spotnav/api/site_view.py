@@ -27,6 +27,24 @@ charger's site when a charger is named:
   `heat`, `charger:<entry id>`, `spa`, `sauna`, `cooling`, `water_heater`, `battery`, `spa_idle`, `pool_circulation`
   or `pool_heat`; `name` a charger's title (`null` for the other rows). `writable` for an administrator's WebSocket
   connection only (`spotnav/update_site_settings`' `priority`); a webhook reads it.
+* `export_curtail` (additive, since 3.0): "No export at negative prices", the site's switch for its export limit
+  (`battery/export_shell.py`), for a site with or without a battery; `null` while the site is not running.
+  `{found, enabled, brand, state, beta, need, entity_id, saving, writable}`: `found` whether Home Assistant has a
+  brand's export limit SpotNav can run (the row is shown only then); `enabled` the switch
+  (`export_curtail_enabled`, written with `spotnav/battery_control`'s `changes` by an administrator, never over a
+  webhook: `writable`); `brand` (`sigenergy`, `victron`, `sungrow`, `solis`, `goodwe`, `solax`, `null` when none is
+  found); `state` `off`, `on`, `beta_only` (the brand's recipe is untested and the site is not a beta tester's:
+  nothing is written) or `no_control`; `beta` whether the brand's recipe is still untested; `need` at most one thing
+  the person can act on, else `null`: `control_disabled` (the limit's entity, `entity_id`, is disabled in Home
+  Assistant), `limit_unset` (the plant has no export limit set, and SpotNav never writes one in its place),
+  `not_obeyed` (the inverter did not follow the limit: switched off and on tries again), `import_rose` (the site
+  imported under the limit, so it was put back: tried again by itself the next local day), `not_taken` (a write was
+  not taken), `needs_hacs_integration:<owner/repository>` (the limit is not enabled on the inverter and only that
+  integration can enable it), `beta_only`, `no_grid_reading` (the site measures no signed grid power, so nothing
+  could judge the limit); `saving` what the site exported while the sell price was below zero in the last `days`
+  (30), whether the switch was on or not: `{days, kwh, minor, blocked_minor, major_unit, minor_unit}` (`minor` what
+  that export cost in the area's minor unit, `blocked_minor` the part of it on days the limit could not have been
+  run; the units `null` while no price area is known).
 * `setup`: the site's own "Get started" rows (`setup_checklist.capture_site_setup`), in the dashboard's shape.
 
 Refusals are WebSocket errors with stable codes: `spotnav_unsupported_api_version`, `spotnav_unknown_site`,
@@ -35,6 +53,7 @@ Refusals are WebSocket errors with stable codes: `spotnav_unsupported_api_versio
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Final
 
 import voluptuous as vol
@@ -70,6 +89,8 @@ from .common import (
     send_unsupported_version,
     site_of_charger,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 SITE_VIEW_API_VERSION: Final = 1
 
@@ -170,6 +191,19 @@ def battery_found(hass: HomeAssistant, site: ConfigEntry) -> bool:
     return controller is not None and bool(controller.battery_shadow.facts.battery_entity_id)
 
 
+def export_curtail_block(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any] | None:
+    """The site's "No export at negative prices" block (see the module); `None` while the site is not running or
+    its status cannot be read."""
+    controller = site_controller_for(hass, site.entry_id)
+    if controller is None:
+        return None
+    try:
+        return {**controller.battery_control.export.status(), "writable": bool(writable)}
+    except Exception:  # noqa: BLE001 - the view must never fail on one block
+        _LOGGER.debug("site view: the export limit's status could not be read", exc_info=True)
+        return None
+
+
 def import_target_block(site: ConfigEntry) -> dict[str, Any]:
     """Whether the site can measure an import target (`capture_site_demand`'s rule, without a price entry)."""
     capability = solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE))
@@ -213,6 +247,10 @@ def site_settings_view(
         ),
         # The list is written over the WebSocket only: a webhook (the apps) reads it.
         "priority": priority_block(hass, site, writable=writable and active_control_writable is not False),
+        # An administrator's switch, written over the WebSocket only (`spotnav/battery_control`).
+        "export_curtail": export_curtail_block(
+            hass, site, writable=writable and active_control_writable is not False
+        ),
     }
 
 
