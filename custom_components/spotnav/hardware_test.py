@@ -35,8 +35,10 @@ in at most `MAX_TEST` all told (a slow recipe's own `BrandControl.test_total_s`:
   hot-water gate adds its step when it brings one).
 
 **The site's chargers** (`site/charger_test_hold.py`): a test whose battery part would run waits while a charger on
-the site is on, and from its start until its battery part is over, by whatever
-path, every charger is held stopped: no start of any kind goes out, a charge a charger begins by itself is stopped, an OCPP charger's
+the site is on, and from its start until its charge step is over and handed back (`_past_charge`; the later modes
+take nothing from the grid), every charger is held stopped; a stop, the deadline, a failure or an error lets them
+go only once the battery reads handed back, never past the hold's own end (`_release_when_handed_back`), an unload
+at once: no start of any kind goes out, a charge a charger begins by itself is stopped, an OCPP charger's
 charge point is taken out of service with its availability switch (and set back to operative at the end, or at the
 next start after a restart in between), and the
 battery's HA-down cap may count a held charger that cannot draw without Home Assistant at 0 A.
@@ -133,6 +135,13 @@ HOLD_SLACK: Final = timedelta(minutes=1)
 #: How long the unload waits for the OCPP chargers to be set back to operative (s): more than one call's own time
 #: (`charger_test_hold.CALL_S`).
 RESTORE_AT_UNLOAD_S: Final = 35.0
+
+
+def _past_charge(progress: Mapping[str, Any]) -> bool:
+    """Whether a running battery part is past its charge step and handed back from it: a later mode (the charge
+    passed, failed or was not applicable) with nothing held. The chargers' hold is for the charge step only."""
+    mode = progress.get("mode")
+    return mode is not None and mode not in ("hold", "charge") and not progress.get("holding")
 
 
 def store_key(entry_id: str) -> str:
@@ -276,6 +285,9 @@ class HardwareTest:
         self._unsubscribe: Any = None
         self._closed = False
         self._unloading = False
+        #: A release of the chargers' hold that waits for the battery's hand-back (`_release_when_handed_back`):
+        #: no other path lets them go meanwhile, but an unload does at once.
+        self._release_task: asyncio.Task[None] | None = None
 
     async def async_load(self) -> None:
         with contextlib.suppress(Exception):
@@ -552,9 +564,13 @@ class HardwareTest:
             self._tell_running(int(-(-self._max_test().total_seconds() // 60)))
         return None
 
-    def _release_hold(self) -> None:
+    def _release_hold(self, *, waited: bool = False) -> None:
         """End the chargers' hold, and arm again the plans of those whose start it refused, in the background (a run
-        being cancelled cannot cut that short). Never raises."""
+        being cancelled cannot cut that short). Never raises. Not while a release waits for the battery's hand-back
+        (`_release_when_handed_back`; `waited`: that one's own), except at an unload."""
+        pending = self._release_task
+        if not waited and pending is not None and not pending.done() and not (self._closed or self._unloading):
+            return
         try:
             hold = self._hold()
             refused = hold.release()
@@ -567,6 +583,49 @@ class HardwareTest:
         self.hass.async_create_background_task(
             self._async_after_release(hold, refused), f"{DOMAIN} hardware test release"
         )
+
+    def _battery_holding(self) -> bool:
+        """Whether the battery still holds a command of the test's (not yet handed back)."""
+        try:
+            return bool(self.site.battery_control.hardware_test_progress()["holding"])
+        except Exception:  # noqa: BLE001 - no battery control: nothing to wait for
+            _LOGGER.debug("battery_holding: ignored failure (no battery control)", exc_info=True)
+            return False
+
+    def _release_when_handed_back(self) -> None:
+        """A stop, the deadline or a failure while the chargers are still held (in or before the charge step): they
+        go only once the battery reads handed back (a Powerwall's hand-back is a cloud write read back within
+        minutes, longer than the stop waits), never past the hold's own end (`HOLD_SLACK` after the deadline); at
+        that end they go anyway, logged. At once where nothing is held or the battery holds nothing, and at an
+        unload."""
+        try:
+            held = self._hold().until is not None
+        except Exception:  # noqa: BLE001 - no hold: nothing to keep
+            held = False
+        if not held or self._closed or self._unloading or not self._battery_holding():
+            self._release_hold()
+            return
+        if self._release_task is not None and not self._release_task.done():
+            return
+        self._release_task = self.hass.async_create_background_task(
+            self._async_release_after_hand_back(), f"{DOMAIN} hardware test release after the hand-back"
+        )
+
+    async def _async_release_after_hand_back(self) -> None:
+        hold = self._hold()
+        try:
+            while not (self._closed or self._unloading):
+                if not self._battery_holding():
+                    break
+                if hold.until is None:
+                    _LOGGER.warning(
+                        "SpotNav hardware test: the battery was not handed back before the chargers' hold ended; the"
+                        " chargers are let go"
+                    )
+                    break
+                await asyncio.sleep(POLL_S)
+        finally:
+            self._release_hold(waited=True)
 
     @staticmethod
     async def _async_after_release(hold: Any, refused: list[str]) -> None:
@@ -592,8 +651,9 @@ class HardwareTest:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
-        # The run's own `finally` let the chargers go; a run cancelled before it began never got there.
-        self._release_hold()
+        # The run's own `finally` let the chargers go, or waits for the battery's hand-back first; a run cancelled
+        # before it began never got there.
+        self._release_when_handed_back()
         self._finish_stopped(why)
 
     def _max_test(self) -> timedelta:
@@ -642,8 +702,9 @@ class HardwareTest:
                 await self._async_hand_back("error")
         finally:
             # Whatever ended the run (done, a failure, the deadline, the person's stop, an error, a cancel): the
-            # chargers are let go, after the battery was handed back, and the phones told are cleared.
-            self._release_hold()
+            # chargers are let go once the battery reads handed back (bounded by the hold's own end), and the phones
+            # told are cleared.
+            self._release_when_handed_back()
             self._clear_told()
         retry = int(running.get("retry") or 0)
         self._finish()
@@ -679,10 +740,18 @@ class HardwareTest:
             self._release_hold()
             return
         self._running["battery_live"] = True
+        released = False
         try:
-            while control.hardware_test_progress()["running"]:
-                # A charge a charger began by itself under the hold is stopped (bounded per charger).
-                self._hold().observe()
+            while (progress := control.hardware_test_progress())["running"]:
+                if released:
+                    pass
+                elif _past_charge(progress):
+                    # The charge step is over and handed back: the chargers go now, not after the last mode.
+                    self._release_hold()
+                    released = True
+                else:
+                    # A charge a charger began by itself under the hold is stopped (bounded per charger).
+                    self._hold().observe()
                 if dt_util.now() >= deadline:
                     self._running["battery_stopped"] = "deadline"
                     await control.async_hardware_test_stop("hardware_test_deadline")
@@ -695,9 +764,9 @@ class HardwareTest:
         finally:
             self._running["battery_live"] = False
             self._running["battery"] = control.hardware_test_progress()["report"]
-        # The battery part ended normally (handed back by its own engine): the chargers go at once, not after the heat.
-        # On a cancel or an error the run's own `finally` lets them go, after the battery was handed back.
-        self._release_hold()
+        # The battery part ended (handed back by its own engine, or stopped): the chargers go once it reads handed
+        # back, not after the heat. On a cancel or an error the run's own `finally` does the same.
+        self._release_when_handed_back()
 
     async def _async_heat(self, deadline: datetime) -> None:
         heat = self.site.heat_control

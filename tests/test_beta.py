@@ -700,6 +700,101 @@ async def test_the_chargers_are_held_while_the_battery_part_runs_and_let_go_by_e
     await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _done)
 
 
+class _HandsBackBetweenModes(_FakeBattery):
+    """A battery whose executor is idle between modes (the re-arm after each hand-back), as the real one is."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.reads = 0
+
+    def hardware_test_progress(self) -> dict[str, Any]:
+        self.reads += 1
+        if self.reads % 2:
+            # Between two modes: nothing held, the mode the next one.
+            current = next((mode for mode in ("hold", "charge", "discharge_house", "normal") if mode not in self.done),
+                           None)
+            return {"running": self.running, "mode": current, "stage": "rearm", "report": self._report(),
+                    "holding": False, "firmware_key": self.firmware_key()}
+        return super().hardware_test_progress()
+
+
+async def test_the_chargers_go_once_the_charge_step_is_handed_back_not_after_the_last_mode(
+    hass: HomeAssistant,
+) -> None:
+    battery = _HandsBackBetweenModes()
+    runner = await _runner(hass, battery, _FakeHeat(), {"car": _FakeCharger()})
+    hold = runner.site.charger_test_hold
+    progress = battery.hardware_test_progress
+    seen: list[tuple[str | None, bool]] = []
+
+    def watched() -> dict[str, Any]:
+        answer = progress()
+        seen.append((answer["mode"], hold.holds("car")))
+        return answer
+
+    battery.hardware_test_progress = watched  # type: ignore[method-assign]
+    assert await runner.async_start() is None
+    await _finished(runner)
+    await hass.async_block_till_done()
+    # Held through the hold and the charge step; let go before the battery part's last modes.
+    assert all(held for mode, held in seen if mode in ("hold", "charge"))
+    assert any(not held for mode, held in seen if mode in ("discharge_house", "normal"))
+    assert hold.active is False
+    await runner.async_shutdown()
+
+
+class _SlowHandBack(_FakeBattery):
+    """A stop whose hand-back is a cloud write read back later (a Powerwall): still holding until `handed_back`."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, slow=True, **kwargs)
+        self.handed_back = True
+
+    async def async_hardware_test_stop(self, reason: str) -> None:
+        await super().async_hardware_test_stop(reason)
+        self.handed_back = False
+
+    def hardware_test_progress(self) -> dict[str, Any]:
+        return super().hardware_test_progress() | ({} if self.handed_back else {"holding": True})
+
+
+@pytest.mark.parametrize("end", ["stop", "deadline"])
+async def test_a_stop_lets_the_chargers_go_only_once_the_battery_reads_handed_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, end: str
+) -> None:
+    battery = _SlowHandBack()
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": _FakeCharger()})
+    hold = runner.site.charger_test_hold
+    if end == "deadline":
+        monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
+    assert await runner.async_start() is None
+    await asyncio.sleep(0)
+    if end == "stop":
+        await runner.async_stop("stopped")
+    else:
+        await _finished(runner)
+    # Stopped, but the battery still holds the test's command: the chargers stay held.
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert battery.stopped and hold.active is True
+    battery.handed_back = True
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if not hold.active:
+            break
+    assert hold.active is False
+    await runner.async_shutdown()
+
+
+async def test_an_unload_lets_the_chargers_go_at_once_whatever_the_battery_reads(hass: HomeAssistant) -> None:
+    battery = _SlowHandBack()
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": _FakeCharger()})
+    assert await runner.async_start() is None
+    await asyncio.sleep(0)
+    await runner.async_shutdown()
+    assert runner.site.charger_test_hold.active is False
+
+
 async def test_a_charge_begun_during_the_test_is_stopped(hass: HomeAssistant) -> None:
     car = _FakeCharger()
     battery = _FakeBattery(slow=True)
