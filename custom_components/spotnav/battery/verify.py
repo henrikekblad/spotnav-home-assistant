@@ -983,6 +983,23 @@ class Verification:
         if self._expiry_unsafe(now, result, sample, step, phase):
             return
         assert self.expiry_house is not None
+        if self._by_register(expiry, phase):
+            # A long dead-man with a documented fallback: judged by the command reading it (a register fact, seen as
+            # the executor's `expired`), whatever the house does; the battery's power is the cross-check kept.
+            if result.expired:
+                if self.expiry_fallback_at is None:
+                    self.expiry_fallback_at = now
+                    result.readings.append({
+                        "at": now.isoformat(), "fallback": list(result.expired),
+                        "cross_check": "covering" if sample.power_kw < -FLOOR_KW else "not_covering",
+                    })
+                self._expiry_decide(now, result, expiry, (self.expiry_fallback_at - last_write).total_seconds())
+                return
+            if (now - last_write).total_seconds() >= expiry_deadline_s(expiry.window_s) or (
+                elapsed >= expiry_max_s(expiry.window_s)
+            ):
+                self._expiry_outcome(now, result, "ignored")
+            return
         if abs(house - self.expiry_house) > PROBE_HOUSE_TOLERANCE_KW:
             # The house moved: a load that stops on the phase reads as the plant leaving its target.
             self._expiry_outcome(now, result, "not_judgeable:house_changed")
@@ -1048,7 +1065,7 @@ class Verification:
             if sample.power_kw < -FLOOR_KW:
                 self._expiry_outcome(now, result, "not_judgeable:not_obeying")
                 return
-            if sample.grid_kw <= FLOOR_KW:
+            if sample.grid_kw <= FLOOR_KW and not self._by_register(self.expiry, None):
                 # Nothing for the battery to cover: a fallback could not show.
                 self._expiry_outcome(now, result, "not_judgeable:battery_not_discharging")
                 return
@@ -1056,6 +1073,16 @@ class Verification:
             return
         self.expiry_since, self.expiry_house = now, house
         self.expiry_fallback_at, self.expiry_fallback_looks = None, 0
+
+    @staticmethod
+    def _by_register(expiry: Expiry | None, phase: int | None) -> bool:
+        """Whether the mode `expiry` judges the fallback by the command role reading its documented fallback
+        (`Expiry.fallback_values`) instead of the house's power: a long dead-man (`expiry_long`) SpotNav renews, on
+        the whole command (a five-minute silence outlasts any steady house)."""
+        return (
+            expiry is not None and phase is None and expiry.window_s is not None and expiry_long(expiry.window_s)
+            and bool(expiry.fallback_values) and not expiry.silence
+        )
 
     def _expiry_unsafe(
         self, now: datetime, result: ModeResult, sample: Sample, step: StepResult, phase: int | None
