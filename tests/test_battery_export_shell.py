@@ -107,6 +107,29 @@ async def test_the_switch_alone_arms_the_export_limit_whatever_the_battery_optio
     await control.async_stop()
 
 
+async def test_turning_the_battery_control_off_leaves_a_running_curtail_alone(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    _exporting(monkeypatch, hass)
+    control = await _control(hass, controller, -12.0)
+    _switch(hass, site, True)
+    _options(hass, site, enabled=True, shadow_only=False)
+    control._enabled_seen = True
+    _passed(control)
+    await _looks(control, dt_util.now(), 4)
+    assert SET_ZERO in plant.calls and control.export_executor.state.phase == "active"
+    # The battery's opt-in off: the export limit has its own switch, still on, so it is not handed back and set again.
+    plant.calls.clear()
+    await control.async_update_options({gate.CONF_ENABLED: False})
+    assert all(data.get("entity_id") != EXPORT for _domain, _service, data in plant.calls)
+    assert control.export_executor.state.phase == "active" and hass.states.get(EXPORT).state == "0"
+    assert control.export.gate.stretches == 1
+    await control.async_stop()
+    assert hass.states.get(EXPORT).state == "11.5"
+
+
 async def test_the_battery_opt_in_no_longer_arms_the_export_limit(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
@@ -303,6 +326,55 @@ async def test_a_check_that_shows_the_export_goes_on_holds_the_limit_back_until_
     await control.async_stop()
 
 
+async def test_a_check_counts_what_the_battery_and_the_chargers_take_as_theirs(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _control(hass, controller, -12.0)
+    control.export_executor = Executor(replace(SIGENERGY_EXPORT_CONTROL, zero_stated=False))
+    _switch(hass, site, True)
+    _measured(monkeypatch)
+    # The car starts charging 3 kW as the limit is set: the site imports 2.5 kW, all of it the car's.
+    monkeypatch.setattr(
+        BatteryControl, "_grid_import_kw", lambda self: 2.5 if hass.states.get(EXPORT).state == "0" else -3.0
+    )
+    monkeypatch.setattr(export_shell_module.ExportShell, "excused_kw", lambda self: 3.0)
+    await _looks(control, dt_util.now(), 45)
+    assert plant.calls[:2] == [SET_ZERO, SET_BACK]
+    assert [row["outcome"] for row in control.log if row["kind"] == "export_check_done"] == ["obeyed"]
+    assert control.export.gate.check_passed(control.export.snapshot()["key"])
+    await control.async_stop()
+
+
+async def test_a_check_ends_when_the_battery_plan_sells(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    plan: dict[str, Any] = {"now": None}
+    control = await _control(hass, controller, 20.0, plan=lambda _now: plan["now"])
+    control.export_executor = Executor(replace(SIGENERGY_EXPORT_CONTROL, zero_stated=False))
+    _switch(hass, site, True)
+    _exporting(monkeypatch, hass)
+    now = await _looks(control, dt_util.now(), 4)
+    assert plant.calls == [SET_ZERO] and control.export.verification is not None
+    # The plan sells from the battery: a limit at 0 would stop the sale, so the check ends and hands back at once.
+    plan["now"] = ("export_discharge", 3.0, None)
+    await _looks(control, now, 4)
+    assert plant.calls == [SET_ZERO, SET_BACK] and control.export.verification is None
+    key = control.export.snapshot()["key"]
+    assert not control.export.gate.check_passed(key) and not control.export.gate.check_failed(key)
+    await control.async_stop()
+
+
+def test_a_stored_check_that_is_no_text_is_no_outcome() -> None:
+    state = ExportGate.from_dict({"checks": {"k": {"outcome": ["ignored"], "at": 5}, "j": {"outcome": "ignored"}}})
+    assert state.check_outcome("k") is None
+    state.forget_failed()
+    assert "j" not in state.checks and state.check_due("k", dt_util.now(), -3.0)
+
+
 def test_a_failed_check_holds_ordinary_curtails_back_until_it_is_forgotten() -> None:
     state = ExportGate()
     now = dt_util.now()
@@ -481,6 +553,34 @@ async def test_a_limit_someone_else_changed_is_left_alone_for_the_day(
     assert plant.calls == [SET_ZERO], "nothing is written again that day"
     await _looks(control, start + timedelta(days=1), 4)
     assert plant.calls[-1] == SET_ZERO and len(plant.calls) == 2
+    assert [row["reason"] for row in control.log if row["kind"] == "export_unblocked"] == ["next_day"]
+    await control.async_stop()
+
+
+async def test_a_limit_under_which_the_import_rose_is_tried_again_the_next_day(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    _measured(monkeypatch)
+    # A house load starts as the limit is set (or the limit stops the inverter): the site imports.
+    load = {"kw": 2.5}
+    monkeypatch.setattr(
+        BatteryControl, "_grid_import_kw", lambda self: load["kw"] if hass.states.get(EXPORT).state == "0" else -3.0
+    )
+    control = await _control(hass, controller, -5.0)
+    _switch(hass, site, True)
+    start = dt_util.now().replace(hour=10, minute=0, second=0, microsecond=0)
+    now = await _looks(control, start, 45)
+    assert plant.calls == [SET_ZERO, SET_BACK]
+    assert control.export_executor.state.blocked == "not_obeyed:curtail_export:import_rose"
+    await _looks(control, now + timedelta(hours=6), 4)
+    assert plant.calls == [SET_ZERO, SET_BACK], "nothing is written again that day"
+    # The next day it is tried again by itself: the load was the house's own.
+    load["kw"] = 0.0
+    await _looks(control, start + timedelta(days=1), 45)
+    assert plant.calls == [SET_ZERO, SET_BACK, SET_ZERO]
+    assert control.export_executor.state.phase == "active"
     assert [row["reason"] for row in control.log if row["kind"] == "export_unblocked"] == ["next_day"]
     await control.async_stop()
 

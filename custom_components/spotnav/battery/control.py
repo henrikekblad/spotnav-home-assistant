@@ -891,13 +891,15 @@ class BatteryControl:
         async with self._lock:
             await self._async_stop(reason)
 
-    async def _async_stop(self, reason: str) -> None:
+    async def _async_stop(self, reason: str, *, export: bool = True) -> None:
+        """`export` false: the battery alone (its options turned it off while the export limit's own switch still
+        runs the limit)."""
         self.trial = None
         self._end_verification(dt_util.now())
         # The battery first (a grid charge adds import; a lower export limit never does), then the export limit.
         if self.executor is not None:
             await self._async_until_handed_back(reason)
-        if self.export_executor is not None:
+        if export and self.export_executor is not None:
             await self._async_export_until_handed_back(reason)
 
     async def async_shutdown(self) -> None:
@@ -2172,7 +2174,10 @@ class BatteryControl:
                         trial is not None and not self._trial_allowed(trial, after)
                     ):
                         # A test action ends with the options that no longer allow it, forced or not.
-                        await self._async_stop("disabled" if not after.enabled else "shadow_only")
+                        # The export limit has its own switch: while that runs it, it is not handed back here.
+                        await self._async_stop(
+                            "disabled" if not after.enabled else "shadow_only", export=self.export.state(after) != "on"
+                        )
                 except Exception:  # noqa: BLE001
                     self._look_failed("options_stop")
                 try:

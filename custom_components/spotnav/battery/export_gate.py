@@ -154,7 +154,7 @@ class ExportGate:
 
     def forget_failed(self) -> None:
         """The person switched the rule on again: a failed check is tried again."""
-        self.checks = {key: row for key, row in self.checks.items() if row.get("outcome") not in CHECK_FAILED}
+        self.checks = {key: row for key, row in self.checks.items() if not self.check_failed(key)}
         self.check_tried_at = None
 
     # --- the first curtail ---

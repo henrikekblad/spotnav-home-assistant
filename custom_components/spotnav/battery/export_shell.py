@@ -16,8 +16,10 @@ what that executor is asked for:
   of at most half an hour (`export_gate.bridges`), unless the battery's plan sells then (a limit at 0 would stop the
   sale); at most `export_gate.CURTAIL_CHANGES_A_DAY` stretches start in a day.
 * **A change by someone else** blocks the executor (`changed_outside_spotnav`); for the export limit that block ends
-  with the day (nothing is written again that day). A limit not obeyed, or a write not taken, stays blocked until the
-  person switches the rule off and on (`_transitions`).
+  with the day (nothing is written again that day). So does the block of a limit under which the site's import rose
+  (`import_rose`): a house load that started just then looks the same on the grid's power as a limit that stops the
+  inverter, so it is tried again the next day and never held for good on one such reading. A limit under which the
+  export went on, or a write not taken, stays blocked until the person switches the rule off and on (`_transitions`).
 * **The one-time migration** (`migrate`): before the switch, the battery opt-in armed the export limit, and only
   Sigenergy had one (`commands.EXPORT_ARMED_BY_BATTERY`). A site of that brand whose battery control writes when the
   switch arrives gets it turned on once, so nothing stops by an update. Every other site starts with it off.
@@ -62,6 +64,9 @@ _LOGGER = logging.getLogger(__name__)
 
 #: The check's timing: the monitor's own grace for a curtail, then three readings a minute apart.
 CHECK_TIMING: Final = Timing(settle_s=CURTAIL_GRACE_S, readings=3, reading_gap_s=READING_GAP_S)
+
+#: The executor's blocks that end with the local day (see the module); every other one waits for the person.
+_DAY_BLOCKS: Final = ("changed_outside_spotnav", f"not_obeyed:{ACTION_CURTAIL_EXPORT}:import_rose")
 
 #: What the card may be told the person can act on (`ExportShell.status`'s `need`).
 NEED_DISABLED: Final = "control_disabled"
@@ -160,6 +165,12 @@ class ExportShell:
         self._day_passed(executor, now)
         facts = read_export_facts(c.hass, c.site.config)[0]
         key = self.key(executor.control, facts)
+        if self.verification is not None and self._plan_sells(now):
+            # A limit at 0 would stop the battery's sale: the check ends, is handed back and tried again later.
+            self.verification = None
+            c._log([{"at": now.isoformat(), "kind": "export_check_done", "reason": key, "outcome": "ended:battery_sale"}])
+            await c._async_export_release(now, "export_check_ended")
+            return
         if self.verification is not None or self._check_starts(now, executor, key):
             await self._async_check(now, executor, key)
             return
@@ -183,10 +194,11 @@ class ExportShell:
         self.gate.seen_on = on
 
     def _day_passed(self, executor: Executor, now: datetime) -> None:
-        """A limit someone else changed is left alone for the day: the block ends with it."""
+        """A limit someone else changed, or one under which the site's import rose, is left alone for the day: the
+        block ends with it (`_DAY_BLOCKS`)."""
         state = executor.state
         if (
-            state.phase == "blocked" and (state.blocked or "").startswith("changed_outside_spotnav")
+            state.phase == "blocked" and (state.blocked or "").startswith(_DAY_BLOCKS)
             and not state.holds_snapshot and state.released_at is not None
             and state.released_at.astimezone(now.tzinfo).date() < now.date()
         ):
