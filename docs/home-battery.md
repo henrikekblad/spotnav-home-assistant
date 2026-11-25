@@ -439,7 +439,7 @@ after the update waits for a suitable moment*, with what it waits for. While the
 minutes) control steps aside, as for the first check. Each step counts as soon as it has an answer on the new
 version: one that passes stays allowed, one the battery no longer obeys is switched off, and one that could not be
 shown yet keeps its earlier answer until a later run. After five runs the answers on the new version stand alone:
-steps never shown are then off, while those that passed keep running. If hold or the hand-back fails, or neither was
+steps never shown are then off, while those that passed keep running. If hold or the hand-back fails, or is still not
 shown in five runs, control stops exactly as after a failed first check, with the same one line (for a brand that needs the
 hardware test: the checklist asks for it again). After such a failure, or a failed hardware test, the earlier result
 is no longer used: turning the switch off and on runs the check again and control waits for it. A result is never
