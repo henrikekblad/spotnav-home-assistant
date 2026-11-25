@@ -428,8 +428,9 @@ The entity keys, options and services below were checked against each integratio
   write loops of its own: **Charge Start** writes the battery's DC setpoint 1034 (1026, AC, on a BI) at minus **Set
   Charge Rate** (W, the integration's own value, restored by it over a restart, read each tick: what the switch's echo
   and the number's show is exactly what the loop sends; a rate at or above the number's maximum means "follow the
-  maximum", which then moves with the battery's voltage, so a charge is always written one step below it,
-  `charge_power_bound_exclusive`); **Block Discharge** holds the discharge limit 1040 at 0 (the integration's default;
+  maximum", which then moves with the battery's voltage, so a charge is always written 5 % or a step below it,
+  whichever is more, `charge_power_bound_exclusive`, and a write read back following the maximum is not taken,
+  `Role.follows_max`; the rate is written back last as found); **Block Discharge** holds the discharge limit 1040 at 0 (the integration's default;
   or the minimum SoC 1042 at the SoC, its option): the sun is still stored, and since the firmware of October 2026
   the inverter's own standby draw (about 170-260 W) may still come from the battery until the integration adds the
   SoC as the minimum. Each loop writes every half of the integration's timeout (`switch.py` `_loop_interval`), which

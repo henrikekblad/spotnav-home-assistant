@@ -27,11 +27,10 @@ minutes. While it runs, your phones with SpotNav's notices get a message with a 
 What it does, through the integration's own switches:
 
 1. Hold: Block Discharge on; the battery stops covering the house (it still stores sun).
-2. A small grid charge: Block Discharge off, Set Charge Rate to the test's power (at most 2 kW, one step below the
-   rate's maximum, less if the fuse needs it), then Charge Start on.
+2. A small grid charge: Block Discharge off, Set Charge Rate to the test's power (at most 2 kW, at least 5 % below
+   the rate's maximum, less if the fuse needs it), then Charge Start on.
 3. Cover the house: Charge Start off, the inverter's own control.
-4. Hand back: both switches off as found. The charge rate stays at the test's value; set it back if you use it
-   yourself.
+4. Hand back: both switches off as found, then the charge rate as found.
 
 It stops at once and hands back if a write does not read back, if the battery does not do as told or if a phase
 comes near the main fuse. The result is sent to me by itself when the test ends, while Beta tester is on.

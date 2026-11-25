@@ -27,11 +27,10 @@ minuter. Medan det pågår får dina telefoner med SpotNavs aviseringar ett medd
 Vad det gör, med integrationens egna omkopplare:
 
 1. Hålla: Block Discharge på; batteriet slutar täcka huset (det lagrar fortfarande sol).
-2. En liten nätladdning: Block Discharge av, Set Charge Rate till testets effekt (högst 2 kW, ett steg under
+2. En liten nätladdning: Block Discharge av, Set Charge Rate till testets effekt (högst 2 kW, minst 5 % under
    laddeffektens maxvärde, mindre om säkringen kräver det), sedan Charge Start på.
 3. Täcka huset: Charge Start av, växelriktarens egen styrning.
-4. Lämna tillbaka: båda omkopplarna av som de var. Laddeffekten står kvar på testets värde; ställ tillbaka den om du
-   använder den själv.
+4. Lämna tillbaka: båda omkopplarna av som de var, sedan laddeffekten som den var.
 
 Testet avbryts direkt och lämnar tillbaka om en skrivning inte läses tillbaka, om batteriet inte gör som det blir
 tillsagt eller om en fas närmar sig huvudsäkringen. Resultatet skickas till mig av sig självt när testet är klart, så
