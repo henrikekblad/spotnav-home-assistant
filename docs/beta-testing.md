@@ -18,7 +18,9 @@ default. Its **Read more** says the same as this page. The hardware test (below)
 - Control that otherwise waits until SpotNav has learned your home can start at once. An example is the hot-water
   gate's week of shadow ([Hot water](hot-water.md)).
 - A home battery brand not yet tested on a real plant leaves "shadow only", so its check can run
-  ([Home batteries](home-battery.md)). Control still starts only after that check has passed.
+  ([Home batteries](home-battery.md)). Control still starts only after that check has passed. FoxESS, EcoFlow and
+  Marstek need more than beta: a passed hardware test and a control code
+  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek)).
 - Control that a beta period started stays on after the period ends.
 
 ## What it never skips
@@ -36,7 +38,9 @@ default. Its **Read more** says the same as this page. The hardware test (below)
 While the box is ticked, SpotNav sends the same redacted file that **Send debug info** sends
 ([Troubleshooting](troubleshooting.md#send-debug-info)), marked as a beta report.
 
-- Once a night, at a time of its own for each installation, for **14 days**.
+- Once a night, at a time of its own for each installation, for **14 days**. For a battery tester the reports run
+  until 30 days after the control code was entered
+  ([Becoming a tester](home-battery.md#becoming-a-tester-foxess-ecoflow-marstek)).
 - Then the box unticks itself and Support says "The beta period has ended – nothing is sent any more". There is no
   alert.
 - Untick it at any time and nothing more is sent.
