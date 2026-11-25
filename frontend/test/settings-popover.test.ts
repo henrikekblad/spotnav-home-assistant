@@ -597,7 +597,7 @@ describe("the popover from the house card", () => {
     const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
     expect(battery.querySelector("[data-row='battery_tester']")!.textContent).toBe("TestareBli testare");
     expect(battery.querySelector("[data-help='battery_tester']")!.textContent).toBe(
-      "SpotNav kan läsa det här batteriet. Styrningen av FoxESS testas tillsammans med användare: bli testare så får du instruktioner via e-post.",
+      "Styrningen av FoxESS är inte påslagen än. SpotNav slår bara på styrning av ett batterimärke när den har provats under ordnade former på minst en riktig anläggning. Du kan vara den som gör det möjligt: som testare kör du ett kort hårdvarutest som sköter sig självt, och hjälper därmed alla andra med FoxESS att få styrning. Till dess läser SpotNav batteriet och planerar bara vad den skulle ha gjort, i skuggläge.",
     );
     expect(battery.textContent).toContain(translate("sv", "battery.need.testerSignup"));
     battery.querySelector<HTMLButtonElement>("button[data-edit='battery_tester']")!.click();

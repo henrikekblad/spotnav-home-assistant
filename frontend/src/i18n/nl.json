@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Aangemeld",
   "battery.tester.value.tested": "Resultaat verstuurd",
   "battery.tester.value.control_code": "Code ingevoerd",
-  "battery.tester.help.none": "SpotNav kan deze batterij uitlezen. De besturing van {brand} wordt samen met gebruikers getest: word tester en je krijgt instructies per e-mail.",
+  "battery.tester.help.none": "De besturing van {brand} staat nog niet aan. SpotNav zet de besturing van een batterijmerk pas aan als die op een gecontroleerde manier is beproefd bij minstens één echte installatie. Jij kunt dat mogelijk maken: als tester start je een korte hardwaretest die vanzelf loopt, en help je zo iedereen met {brand} aan besturing. Tot die tijd leest SpotNav de batterij uit en plant het alleen wat het zou hebben gedaan, in schaduwmodus.",
   "battery.tester.help.asked": "Voer de hardwaretest uit via Ondersteuning → Hardwaretest. Druk één keer op Start: hij draait vanzelf overdag, en het resultaat wordt vanzelf verstuurd.",
   "battery.tester.help.tested": "Het resultaat is verstuurd. Je krijgt een antwoord per e-mail.",
   "battery.tester.help.control_code": "De besturingscode is ingevoerd: SpotNav mag deze batterij besturen.",
