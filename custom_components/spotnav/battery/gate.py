@@ -97,9 +97,9 @@ Pure: no Home Assistant import; times are aware datetimes from the caller.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Final, Literal
 
 from ..core.electric import phase_volts
@@ -608,12 +608,23 @@ def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]
     return next((name for name in names if name not in failed), None)
 
 
+#: Sorts before every stored time: a report without a readable `updated_at` is the oldest.
+_NEVER: Final = datetime.min.replace(tzinfo=UTC)
+
+
+def _decided_at(report: Mapping[str, Any]) -> datetime:
+    """When a report was last written (`updated_at`), as a time: the stored texts carry the offsets of their day."""
+    return parse_time(report.get("updated_at")) or _NEVER
+
+
 def _last_verdict(
-    reports: Mapping[str, Any], *, key: str, brand: str | None, variants: tuple[str, ...], since: datetime | None
+    reports: Mapping[str, Any], *, key: str, brand: str | None, variants: tuple[str, ...], since: datetime | None,
+    void: Collection[str] = (),
 ) -> tuple[str, Mapping[str, Any]] | None:
     """The brand's last decided report under another key (`updated_at`) with that key, when that verdict is a pass that still
-    stands with the recipe's hold variants (`without_removed_hold`) and is later than `since`; `None` otherwise,
-    also when the last verdict is a failure: an older pass says nothing of a plant that stopped obeying since."""
+    stands with the recipe's hold variants (`without_removed_hold`), is later than `since` and is not under a key
+    whose pass is void (`void`); `None` otherwise, also when the last verdict is a failure or void: an older pass
+    says nothing of a plant that stopped obeying since."""
     decided = [
         (name, report) for name, report in reports.items()
         if name != key and firmware_known(name) and isinstance(report, Mapping) and brand is not None
@@ -621,7 +632,9 @@ def _last_verdict(
     ]
     if not decided:
         return None
-    name, last = max(decided, key=lambda item: str(item[1].get("updated_at") or ""))
+    name, last = max(decided, key=lambda item: _decided_at(item[1]))
+    if name in void:
+        return None
     if since is not None:
         updated = parse_time(last.get("updated_at"))
         if updated is None or updated <= since:
@@ -629,9 +642,33 @@ def _last_verdict(
     return (name, last) if report_status(without_removed_hold(last, variants)) == "passed" else None
 
 
+def _failed_since(
+    reports: Mapping[str, Any], *, key: str, source: str, brand: str | None
+) -> tuple[frozenset[str], frozenset[str]]:
+    """The modes and the hold variants the brand's reports under other keys show as failed, written after the
+    report `source`: a key the plant passed through whose check never became a verdict (hold or normal still open
+    there) but where a mode was ignored, a hold variant failed or the capability per phase was withdrawn."""
+    after = _decided_at(reports[source])
+    modes: set[str] = set()
+    tried: set[str] = set()
+    for name, report in reports.items():
+        if (
+            name in (key, source) or not isinstance(report, Mapping) or report.get("brand") != brand
+            or _decided_at(report) <= after
+        ):
+            continue
+        modes |= {mode for mode, row in _modes(report).items() if mode_verdict(row.get("outcome")) == "fail"}
+        if per_phase(report) == "failed":
+            modes.add(MODE_PER_PHASE)
+        tried |= {
+            str(row.get("variant")) for row in variants_tried(report) if mode_verdict(row.get("outcome")) == "fail"
+        }
+    return frozenset(modes), frozenset(tried)
+
+
 def control_report(
     current: Mapping[str, Any] | None, reports: Mapping[str, Any], *, key: str, brand: str | None,
-    variants: tuple[str, ...] = (), since: datetime | None = None,
+    variants: tuple[str, ...] = (), since: datetime | None = None, void: Collection[str] = (),
 ) -> Mapping[str, Any] | None:
     """The report control runs on for `key` (owner rule 2026-11-24: control never stops because of an update).
     `current` is the routine's own report for the key. While the routine still has runs left on it and has not
@@ -642,7 +679,11 @@ def control_report(
     nothing is carried: no such report, the check on the key failed or gave up (`MAX_ATTEMPTS`), every mode decided,
     or the hold that passed before already failed on this key. `since`: when the plant last failed a check that
     left no failed report in `reports` (a person's hardware test, a failed check forgotten by turning control on
-    again): only a pass later than that is carried. The carried report names its source
+    again): only a pass later than that is carried. `void`: the keys whose stored pass does not count (held back by
+    the release, a person's hardware test failed there since); such a key is no source, and when it holds the last
+    verdict nothing older is carried either. What failed on a key the plant passed through after that report
+    (`_failed_since`) is not carried past it: a mode stays off, and with the hold variant that passed failed there
+    nothing is carried. The carried report names its source
     (`carried_from`); a measured expiry is never carried (`expiry_measured`: a cap is lifted only by a measurement
     on the firmware read now)."""
     if not firmware_known(key) or report_status(current) == "failed":
@@ -650,19 +691,20 @@ def control_report(
     attempts = (current or {}).get("attempts")
     if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
         return current
-    found = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since)
+    found = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since, void=void)
     if found is None:
         return current
     source, last = found
+    failed_modes, failed_variants = _failed_since(reports, key=key, source=source, brand=brand)
     held = hold_variant(last)
-    if held is not None and any(
+    if held is not None and (held in failed_variants or any(
         row.get("variant") == held and mode_verdict(row.get("outcome")) == "fail" for row in variants_tried(current)
-    ):
+    )):
         return current
     modes: dict[str, Any] = dict(_modes(current))
     carried = False
     for name, row in _modes(last).items():
-        if name.startswith(MODE_EXPIRY) or mode_verdict(row.get("outcome")) != "pass":
+        if name.startswith(MODE_EXPIRY) or name in failed_modes or mode_verdict(row.get("outcome")) != "pass":
             continue
         if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending":
             modes[name] = row

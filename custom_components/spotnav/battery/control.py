@@ -1207,12 +1207,14 @@ class BatteryControl:
         control = control_for(self.facts.control_brand)
         if control is None:
             return own
-        sources = {name: report for name, report in self.reports.items() if not blocked(control, name)}
+        # A key held back by this release, or one a person's hardware test failed on since its pass (also kept by a
+        # version that stored no `carry_after`): its report is no pass, and hides no older one.
+        void = {name for name in self.reports if blocked(control, name)} | set(self.hardware_failed)
         since = gate.parse_time(self.carry_after)
         if self.carry_after is not None and since is None:
             return own  # a stored time that cannot be read: nothing is carried
         return gate.control_report(
-            own, sources, key=key, brand=control.brand, variants=control.variant_names(), since=since
+            own, self.reports, key=key, brand=control.brand, variants=control.variant_names(), since=since, void=void
         )
 
     def carried_from(self) -> str | None:

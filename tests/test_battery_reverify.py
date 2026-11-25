@@ -288,3 +288,79 @@ async def test_a_failed_hardware_test_leaves_no_older_pass_to_run_on_after_an_up
     assert control.state() == "waiting" and control.allowed() == frozenset()
     assert control._data()["gate"]["carry_after"] is not None
     await control.async_stop()
+
+
+# --- what failed after the report that would carry ---------------------------------------------------------------------
+
+
+def test_what_failed_on_a_later_key_whose_check_never_finished_is_not_carried_past_it() -> None:
+    options = gate.Options(enabled=True, shadow_only=False)
+    old = _report("A | sigen 1", per_phase="obeyed", hold=_row("obeyed", variant="pv_first"))
+    waiting = "not_judgeable:battery_not_discharging"
+    # On B the hold could not be judged, so its report never became a verdict, but the charge was ignored there.
+    charge = _report("B | sigen 1", at="2026-11-05T10:00:00+00:00", hold=waiting, normal="skipped", charge="ignored")
+    carried = gate.control_report(None, {"A | sigen 1": old, "B | sigen 1": charge}, key="C | sigen 1", brand="sigenergy")
+    allowed = gate.allowed_actions(carried, options)
+    assert carried["carried_from"] == "A | sigen 1" and "grid_charge" not in allowed
+    assert {"hold", "discharge_house"} <= allowed
+    # The capability per phase withdrawn on B while control ran there on A's report stays withdrawn on C.
+    withdrawn = gate.per_phase_failed(
+        {"key": "B | sigen 1", "brand": "sigenergy", "attempts": 0, "modes": {}}, "partial",
+        dt_util.parse_datetime("2026-11-05T10:00:00+00:00"),
+    )
+    carried = gate.control_report(
+        None, {"A | sigen 1": old, "B | sigen 1": withdrawn}, key="C | sigen 1", brand="sigenergy"
+    )
+    assert gate.per_phase(carried) != "verified" and "hold" in gate.allowed_actions(carried, options)
+    # The hold variant that passed on A was ignored on B: no hold to run on, so nothing is carried.
+    hold = _report("B | sigen 1", at="2026-11-05T10:00:00+00:00", normal="skipped", hold=_row(
+        waiting, variants=[{"variant": "pv_first", "outcome": "ignored"}]))
+    assert gate.control_report(
+        None, {"A | sigen 1": old, "B | sigen 1": hold}, key="C | sigen 1", brand="sigenergy",
+        variants=("pv_first", "other"),
+    ) is None
+    # What failed before the pass says nothing: the pass is later.
+    before = _report("0 | sigen 1", at="2026-10-20T10:00:00+00:00", hold=waiting, normal="skipped", charge="ignored")
+    carried = gate.control_report(None, {"0 | sigen 1": before, "A | sigen 1": old}, key="C | sigen 1", brand="sigenergy")
+    assert "grid_charge" in gate.allowed_actions(carried, options)
+
+
+def test_the_last_verdict_is_the_last_in_time_whatever_the_stored_offsets() -> None:
+    # The night the clocks go back: the failure (01:10 UTC) is later than the pass (00:30 UTC), though its text sorts
+    # before it.
+    old = _report("A | sigen 1", at="2026-10-25T02:30:00+02:00")
+    failed = _report("B | sigen 1", at="2026-10-25T02:10:00+01:00", hold="ignored")
+    assert gate.control_report(
+        None, {"A | sigen 1": old, "B | sigen 1": failed}, key="C | sigen 1", brand="sigenergy"
+    ) is None
+
+
+def test_a_key_whose_pass_is_void_is_no_source_and_hides_no_older_pass() -> None:
+    old = _report("A | sigen 1")
+    newer = _report("B | sigen 1", at="2026-11-05T10:00:00+00:00")
+    assert gate.control_report(None, {"A | sigen 1": old}, key="C | sigen 1", brand="sigenergy", void={"A | sigen 1"}) is None
+    # The last verdict is the void one (held back by the release, a person's failed hardware test): what passed
+    # before it says nothing of the plant now.
+    assert gate.control_report(
+        None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy", void={"B | sigen 1"}
+    ) is None
+    assert gate.control_report(
+        None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy", void={"A | sigen 1"}
+    )["carried_from"] == "B | sigen 1"
+
+
+async def test_a_hardware_test_that_failed_before_the_time_was_kept_leaves_no_pass_to_run_on(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    _hardware_test_ends(control, hold="ignored", normal="restored")
+    failed_on = control.firmware_key()
+    # As stored by a version that kept the failed key only (`hardware_failed`), not when it failed.
+    control.carry_after = None
+    hass.states.async_set(FIRMWARE, NEW_FIRMWARE)
+    control.facts = control._read_facts()
+    assert failed_on in control.hardware_failed and control.firmware_key() != failed_on
+    assert control.carried_from() is None and control.state() == "waiting" and control.allowed() == frozenset()
+    await control.async_stop()
