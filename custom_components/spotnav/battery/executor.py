@@ -216,7 +216,7 @@ from .commands import (
     native,
     reading,
 )
-from .facts import BatteryFacts, EntityFact, find_entity
+from .facts import SHARED_PLATFORMS, BatteryFacts, EntityFact, find_entity
 from .gate import MIN_RATE_KW, phase_split_kw
 from .ledger import READBACK_DEADLINE_S, Ledger, same
 from .learned import SOURCE_LEARNED
@@ -389,10 +389,13 @@ class RoleRead:
 
 
 def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: EntityFact) -> dict[str, RoleRead]:
-    """Each role's entity among the battery integration's entities, found by the integration's unique-id key."""
+    """Each role's entity among the battery integration's entities, found by the integration's unique-id key. On a
+    shared platform (`facts.SHARED_PLATFORMS`) a role that is written is found only on the battery's own device."""
     reads: dict[str, RoleRead] = {}
+    shared = battery.platform in SHARED_PLATFORMS
+    written = {role.name for role in control.roles if role.method != "sensor"}
     for role in (*control.roles, *(role for role, _value, _why in control.watched)):
-        found = find_entity(role.match, entities, battery)
+        found = find_entity(role.match, entities, battery, own_device_only=shared and role.name in written)
         if found is None:
             continue
         state = answered(role, found.state, found.attributes)

@@ -293,6 +293,10 @@ def to_kwh(state: str | None, unit: str | None) -> float | None:
 
 #: A battery's voltage that can be a reading of one (V); below or above it the entity is something else.
 _VOLTAGE_RANGE: Final = (5.0, 1000.0)
+#: Platforms whose one config entry holds every device of their kind (the MQTT broker: kellerza's Sunsynk add-on beside
+#: a BMS or a second system): a control SpotNav writes is taken only on the battery's own device there
+#: (`find_entity`'s `own_device_only`), never as the only one in the entry.
+SHARED_PLATFORMS: Final = frozenset({"mqtt"})
 #: Units a current or an amp-hour size is read in. The community Victron Modbus integration puts `A` on its Ah register.
 _CURRENT_UNITS: Final = frozenset({"A", "Ah"})
 EST_CAPACITY_FROM_AH: Final = "capacity_from_ah"
@@ -333,9 +337,12 @@ def _bms_charge_kw(entity: EntityFact | None, volts: float) -> float | None:
     return amps * volts / 1000.0
 
 
-def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
+def find_entity(
+    match: Match, entities: Sequence[EntityFact], battery: EntityFact, *, own_device_only: bool = False
+) -> EntityFact | None:
     """The entity `match` names: the one on the battery's device, else the only one in its entry, else none
-    (two plants in one entry and none on the battery's device cannot be told apart)."""
+    (two plants in one entry and none on the battery's device cannot be told apart). `own_device_only`: only the one
+    on the battery's device (a control written on a shared platform, `SHARED_PLATFORMS`)."""
     package = package_of(battery.platform, battery.unique_id)
     if package is None:
         in_scope = lambda entity: entity.platform == battery.platform  # noqa: E731
@@ -352,7 +359,7 @@ def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFac
     own = [entity for entity in found if battery.device_id is not None and entity.device_id == battery.device_id]
     if own:
         return own[0]
-    return found[0] if len(found) == 1 else None
+    return found[0] if len(found) == 1 and not own_device_only else None
 
 
 def _fact(adapter: Adapter, role: FactRole, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:

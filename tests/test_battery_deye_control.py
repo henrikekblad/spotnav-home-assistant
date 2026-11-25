@@ -124,6 +124,30 @@ def test_each_role_is_the_integrations_number_and_the_card_offers_to_enable_it(i
                        for role in DEYE_CONTROL.roles), other
 
 
+def test_over_mqtt_a_limit_is_only_the_one_on_the_batterys_own_device() -> None:
+    """The MQTT broker's entry holds every MQTT device: a number of the same name on another device (a BMS, a second
+    system) is never taken for a limit SpotNav writes, even as the only one; on the battery's device it is."""
+    from custom_components.spotnav.battery.executor import role_reads  # noqa: PLC0415
+    from custom_components.spotnav.battery.facts import EntityFact  # noqa: PLC0415
+
+    def fact(key: str, device: str, domain: str = "number", serial: str = "2201010101") -> EntityFact:
+        return EntityFact(
+            entity_id=f"{domain}.{device}_{key}", platform="mqtt", unique_id=f"{serial}_{key}", device_id=device,
+            config_entry_id="broker", state="100", unit="A",
+        )
+
+    battery = fact("battery_power", "inverter", domain="sensor")
+    others = [fact("battery_max_discharge_current", "bms", serial="9999"),
+              fact("battery_max_charge_current", "bms", serial="9999")]
+    assert role_reads(DEYE_CONTROL, [battery, *others], battery) == {}
+    own = [fact("battery_max_discharge_current", "inverter"), fact("battery_max_charge_current", "inverter")]
+    reads = role_reads(DEYE_CONTROL, [battery, *others, *own], battery)
+    assert {name: read.entity_id for name, read in reads.items()} == {
+        "discharge_current": "number.inverter_battery_max_discharge_current",
+        "charge_current": "number.inverter_battery_max_charge_current",
+    }
+
+
 # --- the actions -----------------------------------------------------------------------------------------------------
 
 
