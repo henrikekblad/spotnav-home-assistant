@@ -52,6 +52,7 @@ from .api.house_history import async_setup_house_history_api, forget_cached_hist
 from .api.saving import forget_cached_savings
 from .api.house_loads import async_setup_house_loads_api, forget_cached_loads
 from .api.power_month import async_setup_power_month_api
+from .api.strings import async_setup_strings_api
 from .api.target_suggestion import async_setup_target_suggestion_api
 from .api.own_mode import async_setup_own_mode_api
 from .api.plan_preview import async_setup_plan_preview_api
@@ -264,6 +265,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_own_mode_api(hass)
     async_setup_import_target_api(hass)
     async_setup_power_month_api(hass)
+    async_setup_strings_api(hass)
     async_setup_house_api(hass)
     async_setup_plan_api(hass)
     async_setup_house_now_api(hass)

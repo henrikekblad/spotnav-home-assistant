@@ -11,8 +11,8 @@ Assistant's empty 200 that the app reads as "pair again". Only a removed entry o
 * **The site's own actions**, bound to this site (a `site_id` in the body is never read): `get_site` (below), the
   site actions of the charger webhook (`api/site_webhook.py`: `get_house`, `get_house_now`, `get_house_history`,
   `get_house_loads`, `get_heat`, `get_heat_history`, `get_plan`, `get_site_settings_view`, `battery_control`,
-  `update_heat`, `heat_boost`), `update_site_settings` (the site-bound path, load balancing refused), `get_power_month` and
-  `suggest_import_target`. A site without a charger answers them all.
+  `update_heat`, `heat_boost`), `update_site_settings` (the site-bound path, load balancing refused), `get_power_month`,
+  `suggest_import_target` and `get_strings` (the card's words, `api/strings.py`). A site without a charger answers them all.
 * **Every action of the charger webhook** (`api/webhook.py:ACTIONS`) for one charger of this site, named by
   `charger_id` in the body: the same answer the charger's own webhook gives. A body without `charger_id` is
   `spotnav_charger_required` (400); an id that names no SpotNav charger `spotnav_unknown_charger` (404); a charger of
@@ -70,6 +70,7 @@ from .notification_phones import WEBHOOK_ACTION as NOTIFICATION_PHONES_ACTION, w
 from .power_month import POWER_MONTH_API_VERSION, PowerMonthRefusal, power_month_answer
 from .site_settings import async_site_webhook_update_site_settings
 from .site_webhook import SiteHandler, site_handlers
+from .strings import WEBHOOK_ACTION as STRINGS_ACTION, async_webhook_strings
 from .target_suggestion import SUGGEST_API_VERSION, suggestion_answer
 from .webhook import Call, ACTIONS, async_answer_webhook, charger_call
 
@@ -171,6 +172,7 @@ SITE_ENTRY_ACTIONS: Final[dict[str, SiteHandler | _SiteAction]] = {
     "update_site_settings": _update_site_settings,
     "get_power_month": _site_read("get_power_month", POWER_MONTH_API_VERSION, _power_month),
     "suggest_import_target": _site_read("suggest_import_target", SUGGEST_API_VERSION, _suggestion),
+    STRINGS_ACTION: async_webhook_strings,
 }
 
 

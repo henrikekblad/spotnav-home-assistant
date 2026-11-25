@@ -112,11 +112,11 @@ async def test_setup_registers_the_hashed_url_computed_off_the_loop(
     assert urls == [card_asset.card_asset_url(MANIFEST["version"], real())]
 
 
-#: The language files the build wrote: every language but English, each named by its content.
+#: The language files the build wrote: every language, each named by its content (English for the app only).
 LANGUAGE_FILES = sorted(card_asset.LANGUAGE_DIR_PATH.glob("*.json"))
 
 
-def test_every_language_but_english_is_a_content_named_file_in_the_package() -> None:
+def test_every_language_is_a_content_named_file_in_the_package() -> None:
     import hashlib
     import re
 
@@ -124,7 +124,7 @@ def test_every_language_but_english_is_a_content_named_file_in_the_package() -> 
     assert card_asset.LANGUAGE_DIR_PATH == PACKAGE / "www" / "i18n"
     names = [path.name for path in LANGUAGE_FILES]
     assert sorted(name.split(".")[0] for name in names) == sorted(
-        ["sv", "nb", "da", "fi", "de", "nl", "fr", "es"]
+        ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"]
     )
     bundle = card_asset.CARD_ASSET_PATH.read_text(encoding="utf-8")
     for path in LANGUAGE_FILES:
@@ -132,8 +132,9 @@ def test_every_language_but_english_is_a_content_named_file_in_the_package() -> 
         content = path.read_bytes()
         assert path.name.split(".")[1] == hashlib.sha256(content).hexdigest()[:8]
         assert isinstance(json.loads(content), dict)
-        # The card is compiled with the names, so the bundle's hash follows every translation.
-        assert path.name in bundle
+        # The card is compiled with the names, so the bundle's hash follows every translation. English is
+        # bundled: its file is for the paired app (`get_strings`) and the card never asks for it.
+        assert (path.name in bundle) is not path.name.startswith("en.")
 
 
 async def test_the_language_files_are_served_as_json_and_cached_hard(

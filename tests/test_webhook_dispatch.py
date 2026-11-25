@@ -69,6 +69,8 @@ async def test_every_documented_action_has_a_handler() -> None:
         "sauna",
         # SpotNav 3.0: the charger's home's webhook (`api/site_access.py`).
         "get_site_access",
+        # The card's words for the app (`api/strings.py`).
+        "get_strings",
     }
 
 
