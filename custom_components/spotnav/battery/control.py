@@ -97,7 +97,7 @@ from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.phase_peaks import MIN_READY_DAYS, Learned, plant_phase_w
-from . import gate, optin
+from . import codes, gate, optin
 from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
@@ -757,7 +757,6 @@ class BatteryControl:
         if not self.control_codes:
             return
         from ..support_report import install_hash  # noqa: PLC0415 - the bundle imports every part
-        from . import codes  # noqa: PLC0415
 
         install = install_hash(await instance_id.async_get(self.hass))
         kept: dict[str, dict[str, Any]] = {}
