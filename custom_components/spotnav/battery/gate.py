@@ -12,8 +12,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
   runs only once that passed, under every fuse rule. A recipe marked `hardware_test_first` (FoxESS, EcoFlow,
   Marstek) counts as shadow only, whatever is stored and on a beta site too, until a person's hardware test passed
-  on the plant's firmware key (`hardware_test_passed`, kept by the shell per key); the checklist says so
-  (`hardware_test_first`) and the test itself runs.
+  on the plant's firmware key (`hardware_test_passed`, kept by the shell per key) and the developer's control code for
+  the installation and brand was entered (`codes.py`, `tester.py`: the code approves the test's result, so control
+  needs both); the checklist says so (`tester_signup`, `hardware_test_first`, `control_code`) and the test itself
+  runs once the person signed up as a tester.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
