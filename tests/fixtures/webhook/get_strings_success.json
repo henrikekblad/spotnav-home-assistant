@@ -1,0 +1,14 @@
+{
+  "action": "get_strings",
+  "api_version": 1,
+  "hash": "737f61dc",
+  "language": "sv",
+  "ok": true,
+  "strings": {
+    "heat.measured": "Inne {value}",
+    "house.title": "Huset",
+    "learning.daysLeft.one": "{days} dygn kvar",
+    "learning.daysLeft.other": "{days} dygn kvar"
+  },
+  "unchanged": false
+}

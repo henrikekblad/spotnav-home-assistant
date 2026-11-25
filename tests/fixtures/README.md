@@ -80,3 +80,6 @@ names keep their placeholders (`{make} {nickname_or_model} …`). `tests/car_cat
 off with a test that may run, `on_running.json` a beta period with a hardware test running, `on_done_failed.json` a
 finished test whose charge step failed (sent by itself, `sent_ref`), `on_done_partial.json` a finished test whose battery was skipped (outside control) while the heat
 path passed (the day's slot left), `ended.json` the period ended by itself (no site).
+
+`webhook/get_strings_*.json` are `get_strings` on the webhooks from a small language directory of their own (`tests/test_strings_api.py`):
+Swedish words, the same language again with its hash held (`unchanged`), and a language the card has no words for (English).

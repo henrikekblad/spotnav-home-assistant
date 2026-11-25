@@ -48,6 +48,7 @@ from .entity_config import (
 from .notification_phones import WEBHOOK_ACTION as NOTIFICATION_PHONES_ACTION, webhook_phone_notifications
 from .import_target import webhook_later_departure, webhook_release_import_target, webhook_take_what_fits
 from .power_month import webhook_get_power_month
+from .strings import WEBHOOK_ACTION as STRINGS_ACTION, async_webhook_strings
 from .target_suggestion import webhook_suggest_import_target
 from .own_mode import webhook_fix_own_mode
 from .plan_preview import async_webhook_plan_preview
@@ -724,6 +725,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "suggest_import_target": webhook_suggest_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
     SITE_ACCESS_ACTION: webhook_get_site_access,
+    STRINGS_ACTION: async_webhook_strings,
     **CAMERA_ACTIONS,
     **SITE_ACTIONS,
 }
