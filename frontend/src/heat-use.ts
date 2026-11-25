@@ -13,7 +13,7 @@
 //   it.
 // Every figure is the backend's; text is written with `textContent` only.
 
-import { kwhText, moneyMinorAsMajor as useMoney } from "./format";
+import { kwhFineText, kwhText, moneyMinorAsMajor as useMoney } from "./format";
 import type { HeatHistory, HeatPart } from "./heat-history";
 import type { UseUnit } from "./heat-tabs";
 import { bucketWords } from "./house-history";
@@ -132,7 +132,7 @@ export function useLegend(
     swatch.dataset["series"] = partSeries(answer.parts, part);
     swatch.setAttribute("aria-hidden", "true");
     const sum = figure(language, answer, unit, part.kwh, part.cost);
-    const words = partWord(language, part);
+    const words = part.estimated ? `${partWord(language, part)} ${translate(language, "house.loads.estimated")}` : partWord(language, part);
     button.append(swatch, element(doc, "span", undefined, sum === null ? words : `${words} ${sum}`));
     button.addEventListener("click", () => {
       const next = new Set(hidden);
@@ -242,6 +242,10 @@ export function useNotes(language: Language, answer: HeatHistory, unit: UseUnit)
   }
   if (answer.parts.some((part) => part.kind === "pool" || part.kind === "spa" || part.kind === "sauna")) {
     notes.push(translate(language, "heat.use.loadsNote"));
+  }
+  const clamped = answer.parts.reduce((sum, part) => sum + part.clamped_kwh, 0);
+  if (clamped > 0) {
+    notes.push(translate(language, "house.loads.clamped", { kwh: kwhFineText(language, clamped) }));
   }
   return notes;
 }
