@@ -92,7 +92,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   so it is not used. The selects and switches are left out in the integration's essential-only (read-only) mode,
   so the mode is then unknown. On firmware with the V2 time-of-use (register 33289
   = 0xAA55) the charge and discharge periods are twelve switches (43707, `switch_sensors.py` line 217) beside a
-  "Self-Use" mode; they are not read, so "Self-Use" with such periods on still reads free. The firmware is
+  "Self-Use" mode; each is read (`43707_<bit>`), and one on is the inverter's own schedule (not free). The firmware is
   `hmi_version` (33002, line 41; the device's `sw_version` is "Protocol <n>", the Modbus protocol, not the
   firmware). The battery's counters are `total_battery_charge_energy` and `total_battery_discharge_energy`
   (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
@@ -1157,6 +1157,13 @@ SOLIS: Final = Adapter(
         ModeRule(_key("43110_select", "select"), frozenset({"Self-Use"}), "storage mode"),
         ModeRule(_key("43135_1", "switch"), frozenset({"off"}), "remote force charge", required=False),
         ModeRule(_key("43135_2", "switch"), frozenset({"off"}), "remote force discharge", required=False),
+        # The V2 time-of-use periods (43707 bits 0-11, `switch_sensors.py` lines 216-231): any one on is the inverter's
+        # own schedule beside "Self-Use", so the plant is not SpotNav's to run.
+        *(
+            ModeRule(_key(f"43707_{bit}", "switch"), frozenset({"off"}), f"time-of-use {kind} period {bit % 6 + 1}",
+                     required=False)
+            for bit, kind in ((bit, "charge" if bit < 6 else "discharge") for bit in range(12))
+        ),
     ),
     reserves=(ReserveSource(_key("solis_modbus_inverter_overdischarge_soc", "number", "sensor")),),
     # The inverter's rated output, from the model chosen in the integration's setup: the advisory `device_limit` (W)

@@ -92,13 +92,10 @@ def test_read_back_kinds_per_brand_keep_the_old_control_facts() -> None:
     assert kinds["ferroamp"] == {"command": "answer"}
     # EcoFlow's controls are the integration's own state: the battery's power judges the effect.
     assert set(kinds["ecoflow"].values()) == {"echo"}
-    # Solis's numbers show the value written until the next poll; the force select reads its register's cache.
-    assert kinds["solis"] == {
-        "charge_power": "echo", "discharge_power": "echo", "rc_timeout": "echo", "rc_force": "register",
-        "grid_charge_allowed": "register",
-    }
+    # Solis's roles are each read back by their registers (the force from its switches and the powers' sensors).
+    assert set(kinds["solis"].values()) == {"register"}
     local = {control.brand for control in CONTROLS if control.local_readback}
-    assert local == {"solax", "goodwe", "tesla", "ferroamp", "ecoflow", "solis"}
+    assert local == {"solax", "goodwe", "tesla", "ferroamp", "ecoflow"}
 
 
 def test_a_recipe_measurement_of_a_phase_expiry_names_its_phases() -> None:

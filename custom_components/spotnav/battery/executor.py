@@ -390,8 +390,13 @@ def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: E
         found = find_entity(role.match, entities, battery)
         if found is None:
             continue
+        state = answered(role, found.state, found.attributes)
+        if role.compose is not None:
+            # Read back from more than its own entity (`commands.Role.parts`): no part, no reading.
+            parts = tuple(find_entity(match, entities, battery) for match in role.parts)
+            state = role.compose(state, tuple(None if part is None else part.state for part in parts))
         reads[role.name] = RoleRead(
-            entity_id=found.entity_id, state=answered(role, found.state, found.attributes), found=True,
+            entity_id=found.entity_id, state=state, found=True,
             enabled=not found.disabled, step=found.step,
             device_id=found.device_id,
         )

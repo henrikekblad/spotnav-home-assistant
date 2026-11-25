@@ -241,6 +241,9 @@ def _state_of(control: BrandControl, name: str, state: State | None) -> str | No
         role = control.role(name)
     except KeyError:
         return state.state
+    if role.compose is not None:
+        # Read back from its parts too (`commands.Role.parts`), which only the registry lookup finds: no evidence.
+        return None
     return answered(role, state.state, state.attributes)
 
 
@@ -260,7 +263,7 @@ async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | 
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
         services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
-        options=role.write_as,
+        power_field=role.power_field, duration_field=role.duration_field,
     )
     try:
         await _async_service(hass, domain, service, data)
@@ -3400,7 +3403,8 @@ class BatteryControl:
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
             services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
-            duration=role.lease, options=role.write_as,
+            duration=role.lease, power_field=role.power_field,
+            duration_field=role.duration_field,
         )
         try:
             await _async_service(self.hass, domain, service, data)

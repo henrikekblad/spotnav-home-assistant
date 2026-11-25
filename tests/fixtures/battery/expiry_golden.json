@@ -16496,18 +16496,18 @@
  "solis/-/balanced": {
   "facts": {
    "charge_block_s": null,
-   "executor_window_s": 60,
+   "executor_window_s": 300,
    "fixed_charge": false,
-   "local_readback": true,
+   "local_readback": false,
    "readback_s": null,
    "role_readback": {
     "charge_power": {
-     "kind": "echo",
+     "kind": "register",
      "settle_s": 0.0,
      "wait_s": null
     },
     "discharge_power": {
-     "kind": "echo",
+     "kind": "register",
      "settle_s": 0.0,
      "wait_s": null
     },
@@ -16522,7 +16522,7 @@
      "wait_s": null
     },
     "rc_timeout": {
-     "kind": "echo",
+     "kind": "register",
      "settle_s": 0.0,
      "wait_s": null
     }
@@ -16542,7 +16542,7 @@
     },
     "rc_force": {
      "answer": false,
-     "lease": null
+     "lease": true
     },
     "rc_timeout": {
      "answer": false,
@@ -16552,7 +16552,7 @@
    "settle_s": 0.0,
    "silence_fallback_s": null,
    "slow": false,
-   "watchdog_renew_s": 20,
+   "watchdog_renew_s": 120,
    "watchdog_roles": [
     "rc_force"
    ]
@@ -17621,70 +17621,80 @@
     ]
    ]
   },
-  "services": {},
+  "services": {
+   "rc_force": {
+    "charge:2000": [
+     "solis_modbus",
+     "solis_force_battery_charge",
+     {
+      "duration": 5,
+      "power": 2000
+     }
+    ],
+    "discharge:1500": [
+     "solis_modbus",
+     "solis_force_battery_discharge",
+     {
+      "duration": 5,
+      "power": 1500
+     }
+    ],
+    "stop": [
+     "solis_modbus",
+     "solis_stop_force_charge_discharge",
+     {}
+    ]
+   }
+  },
   "wanted": {
    "discharge_house@1.0": {
-    "charge_power": "<snapshot>",
-    "discharge_power": "<snapshot>",
     "rc_force": "<snapshot>",
     "rc_timeout": "<snapshot>"
    },
    "discharge_house@3.0": {
-    "charge_power": "<snapshot>",
-    "discharge_power": "<snapshot>",
     "rc_force": "<snapshot>",
     "rc_timeout": "<snapshot>"
    },
    "export_discharge@1.0": {
-    "charge_power": "<snapshot>",
     "discharge_power": 1000.0,
-    "rc_force": "Solis RC Force Battery Discharge",
-    "rc_timeout": 1.0
+    "rc_force": "discharge:1000",
+    "rc_timeout": 5.0
    },
    "export_discharge@3.0": {
-    "charge_power": "<snapshot>",
     "discharge_power": 3000.0,
-    "rc_force": "Solis RC Force Battery Discharge",
-    "rc_timeout": 1.0
+    "rc_force": "discharge:3000",
+    "rc_timeout": 5.0
    },
    "grid_charge@1.0": {
     "charge_power": 1000.0,
-    "discharge_power": "<snapshot>",
-    "rc_force": "Solis RC Force Battery Charge",
-    "rc_timeout": 1.0
+    "rc_force": "charge:1000",
+    "rc_timeout": 5.0
    },
    "grid_charge@3.0": {
     "charge_power": 3000.0,
-    "discharge_power": "<snapshot>",
-    "rc_force": "Solis RC Force Battery Charge",
-    "rc_timeout": 1.0
+    "rc_force": "charge:3000",
+    "rc_timeout": 5.0
    },
    "hold@1.0": {
     "charge_power": 0.0,
-    "discharge_power": "<snapshot>",
-    "rc_force": "Solis RC Force Battery Charge",
-    "rc_timeout": 1.0
+    "rc_force": "charge:0",
+    "rc_timeout": 5.0
    },
    "hold@3.0": {
     "charge_power": 0.0,
-    "discharge_power": "<snapshot>",
-    "rc_force": "Solis RC Force Battery Charge",
-    "rc_timeout": 1.0
+    "rc_force": "charge:0",
+    "rc_timeout": 5.0
    },
    "self_consume@1.0": {
-    "charge_power": "<snapshot>",
-    "discharge_power": "<snapshot>",
     "rc_force": "<snapshot>",
     "rc_timeout": "<snapshot>"
    },
    "self_consume@3.0": {
-    "charge_power": "<snapshot>",
-    "discharge_power": "<snapshot>",
     "rc_force": "<snapshot>",
     "rc_timeout": "<snapshot>"
    }
   },
-  "window_s": 60
+  "window_s": 300
  },
  "tesla/-/balanced": {
   "facts": {

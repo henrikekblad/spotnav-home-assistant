@@ -148,13 +148,16 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "set_charge_power"),
         ("select", "force_mode"),
     ),
-    # `solis_modbus`'s RC force: its powers and timeout, the select, and "Allow Grid to Charge the Battery" (read for
-    # a grid charge). None of them exists with the integration's "essential sensors only".
+    # `solis_modbus`'s RC force, written through its services and read from the register's two switches; the powers
+    # and the timeout as numbers (each read back by the sensor of the same unique id, which the integration creates
+    # and enables with it), and "Allow Grid to Charge the Battery" (read for a grid charge). None of them exists with
+    # the integration's "essential sensors only".
     "solis": (
+        ("switch", "43135_1"),
+        ("switch", "43135_2"),
         ("number", "solis_modbus_inverter_rc_force_charge_power"),
         ("number", "solis_modbus_inverter_rc_force_discharge_power"),
         ("number", "solis_modbus_inverter_rc_timeout"),
-        ("select", "43135_select"),
         ("switch", "43110_5"),
     ),
 }

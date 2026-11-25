@@ -381,41 +381,40 @@ The entity keys, options and services below were checked against each integratio
   client at a time), so no `marstek_modbus` entity exists, and its presence marks the battery as run by someone else
   (`coexist.OUTSIDE_INTEGRATIONS`), never written over.
 * **Solis** hybrids (`SOLIS_CONTROL`; **never run on a plant**), `solis_modbus`, Pho3niX90/solis_modbus v4.5.0
-  (`f92ead8`, read 2026-11-25; `plans/research_integrations/solis_control_2026-11-22.md`, its Recipe A). The
-  inverter's remote-control force: the select "RC Force Charge/Discharge" (register 43135, unique id
-  `<serial>_43135_select`, options "None", "Solis RC Force Battery Charge", "Solis RC Force Battery Discharge") with
-  the numbers "RC Force Battery Charge Power" (43136) and "RC Force Battery Discharge Power" (43129) (W, x10, step
-  10) and "RC Timeout" (43282, minutes, 1-30). The firmware latches the powers and the timeout only when they are
-  written **after** 43135 is enabled (the integration's issue #352): the select's own write re-sends all three from
-  the integration's cache straight after 43135, in one batch (`companion_writes`, `solis_select_entity.py`), so the
-  numbers go first (the cache takes their value) and the select last. The select is the only one of these entities
-  that writes every time it is set: a number set to the value it shows and a switch turned on that is on write
-  nothing (`solis_number_sensor.py` `set_native_value`, `solis_binary_sensor.py` `set_register_bit`), so the select
-  is also what SpotNav renews the dead-man with (each renewal re-sends 43135, both powers and the timeout, so
-  whichever of them restarts the inverter's timer is written). Its "None" (no force) reads as no reading everywhere
-  else, so this role compares it as `SOLIS_RC_OFF` and writes it back as "None" (`Role.normalize`, `Role.write_as`).
-  **Hold**: RC force charge at 0 W, seen on a tester's S6-EH3P (2026-11-23, 68 min at 0 W with the house at about
-  1.8 kW and the discharge limit at 40 A; in daylight a sun surplus still charged it, so not an idle hold).
-  **Grid charge**: RC force charge at the rate (the outside EMS on that plant runs it so, at up to 8.8 kW asked);
-  the battery's BMS bounds it (`bms_charge_limit`: 10 A x 377 V held it at 3.7 kW in a cold garage). It needs
-  "Allow Grid to Charge the Battery" (43110 bit 5) on: whether a force charge draws from the grid without it is not
-  known, so the grid charge refuses while it reads off (read, never written). **Discharge to the grid**: RC force
-  discharge at the rate, a battery power (the house is covered first; the rest is sold, as the outside EMS's
-  discharge "tracking house load" showed). What a force discharge at 0 W does is not known and it is never written.
-  **Discharge to the house**: the inverter's own Self-Use, written as nothing (it also stores a sun surplus).
-  **The dead-man** is the RC Timeout: the force reverts by itself that long after the last write (the integration's
-  word, `__init__.py` line 108: "command self-reverts after this"; its PV-shutdown note says 44280 reverts to 0 after
-  the RC Timeout unless refreshed). SpotNav writes it at 1 minute and renews the select every 20 s; **not measured**
-  (which write restarts the timer is not stated anywhere), so it is `stated` and lifts no cap until the hardware test
-  and the routine have timed it on the plant's firmware (`gate.expiry_lifts`). The hand-back is the select back to
-  "None" first (one write ends the force), then the powers and the timeout as found; a change of action writes a
-  power or the timeout that falls before the force and one that rises after it (`mode_limits`). A plant is taken only
-  in the Storage Mode "Self-Use" with no force running (`adapters.SOLIS`'s mode rules: the switches "RC Force Battery
-  Charge" and "RC Force Battery Discharge" of the same register) and the select at "None" (`requires`): an outside
-  EMS that drives the force (Enequi on the tester's plant) shows there and is never written over. The V2 time-of-use
-  periods (43707) and Remote Dispatch (44100) are not read, nor is SolisCloud's own strategy, which writes the same
-  registers. How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of
-  flash wear on the RC registers: setpoints the maker states nothing about (500 a day; renewals are not counted).
+  (`f92ead8`, read 2026-11-25; `plans/research_integrations/solis_control_2026-11-22.md` Recipe A,
+  `plans/review_solis_control_2026-11-25.md`). The inverter's remote-control force (register 43135) through the
+  integration's services `solis_force_battery_charge` / `solis_force_battery_discharge` (`__init__.py`
+  `_force_battery`: 43135, then the power, then the RC Timeout 43282, in one write batch, the order issue #352 needs)
+  and `solis_stop_force_charge_discharge` (43135 = 0 alone). The select "RC Force Charge/Discharge" is never written:
+  its own write re-sends the powers and the timeout from the integration's register cache (`companion_writes`), which
+  holds whatever was last written by anyone. The services take no device (one inverter per Home Assistant: with more
+  the call is refused, a write not taken). Read back: the force from the register's two switches "RC Force Battery
+  Charge" / "... Discharge" (`<serial>_43135_1` / `_2`, updated on every register update) and the powers' sensors
+  (43136/43129: a register reading, never the numbers' own optimistic echo), composed as `charge:<W>`,
+  `discharge:<W>` or `stop` (`Role.compose`). Before a force, the power it runs at and the timeout are written as
+  numbers with no force running and each read back by its register (the numbers show the value written at once, the
+  register only once the write was executed, `modbus_controller.py` line 250), so a force whose call reaches the
+  inverter only in part (a batch dropped after 43135 on a link outage) still runs at a power and a timeout SpotNav
+  saw taken. **Hold**: force charge at 0 W (seen on a tester's S6-EH3P, 68 min at 0 W with the house at about
+  1.8 kW; in daylight a sun surplus still charged it). **Grid charge**: force charge at the rate, within the BMS's
+  present charge limit (`bms_charge_limit`: 10 A x 377 V held it at 3.7 kW in a cold garage); it needs "Allow Grid to
+  Charge the Battery" (43110 bit 5) on, read and never written. **Discharge to the grid**: force discharge at the
+  rate, a battery power (the house is covered first). What a force discharge at 0 W does is not known; never sent.
+  **Discharge to the house**: the inverter's own Self-Use, written as nothing. **The hand-back** stops the force
+  first, then sets both force powers to 0 (never back to the value found: someone's next force by hand through the
+  select would run at it) and the timeout to its value found. **The dead-man** is the RC Timeout, sent at 5 minutes
+  (the firmware's default) with each call and renewed every 2 minutes (`renewal_cap` 800 a day); stated by the
+  integration (`__init__.py` line 108, "command self-reverts after this") and timed by the hardware test (from a
+  renewal, so it also shows a renewal restarts it), never lifting a cap (`gate.SILENCE_FALLBACK_MAX_S`). A force that
+  lapses by itself (a renewal lost) is handed back and started again (`command_role`). **Another system's force**
+  (an outside EMS, SolisCloud): a plant is taken only in "Self-Use" with no force running and no V2 time-of-use
+  period on (`adapters.SOLIS`'s mode rules); a force SpotNav did not write, seen at any time, is given up at once and
+  nothing more is written to the force, the powers or the timeout (`command_role`, `mode_limits`), and it marks the
+  battery as run by someone else (`outside_control.REASON_FOREIGN_COMMAND`). Below its Force Charge SOC (43018) the
+  inverter charges from the grid by itself at its Force-charge Power Limitation (43027): declared as its own import
+  (`AutonomousImport`, from the research, unverified). Remote Dispatch (44100) and SolisCloud's strategy are not read.
+  How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
+  on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -605,6 +604,16 @@ class Role:
     #: `duration` in minutes (`service_call`).
     device_field: str = "device_id"
     lease: bool = False
+    #: For a service role: the call's fields for the power (W) and a lease's minutes, where the integration names them
+    #: otherwise (Solis's `power_watts`, `duration_minutes`); an empty `device_field` sends no device at all (the
+    #: integration finds its one inverter itself).
+    power_field: str = "power"
+    duration_field: str = "duration"
+    #: The role is read back from more than its own entity (`parts`, found as `match` is): `compose(own state, the
+    #: parts' states)` is the state compared, `None` when it cannot be told (Solis: the force's two switches and the
+    #: force powers' register readings make `charge:<W>`, `discharge:<W>` or `stop`).
+    parts: tuple[Match, ...] = ()
+    compose: Callable[[str | None, tuple[str | None, ...]], str | None] | None = None
     #: A read that is the register's "never set" (restored as the rating): its kind (`charge`, `discharge`).
     unset_as_rating: str | None = None
     #: Read as unset when `unknown` (Sigenergy 2.0.1 shows the all-ones value as `unknown`).
@@ -643,10 +652,6 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
-    #: For a select: the option written for a value SpotNav compares it by (`service_call`), where the option itself
-    #: reads as no reading: Solis's "None" (no force running), compared as `SOLIS_RC_OFF` (`normalize` reads it so).
-    #: Empty: every value is written as it is.
-    write_as: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if (self.readback == "answer") != (self.answer is not None):
@@ -869,7 +874,7 @@ class AutonomousImport:
     """What a plant may import from the grid by itself, uncommanded, while SpotNav runs it (a top-up below its
     reserve, a schedule of its own, a set grid input): counted with every HA-down cap (`gate`'s `own_import_a`,
     whatever the trigger: the SoC drifts while Home Assistant is down) and in the executor's live room while the
-    trigger may fire. Data only; no recipe declares one yet."""
+    trigger may fire. Data only; Solis declares one (its own force charge below its Force Charge SOC)."""
 
     #: A fixed figure (kW), or a number or sensor to read it from (`entity`, times `scale` to kW); read first, the
     #: figure where it reads nothing, and no grid charge at all where neither is known.
@@ -2330,60 +2335,90 @@ MARSTEK_CONTROL: Final = BrandControl(
 
 # --- Solis (solis_modbus, see the module) ----------------------------------------------------------------------------
 
-#: The options of `solis_modbus`'s select "RC Force Charge/Discharge" (43135, `sensor_data/select_sensors.py`).
-SOLIS_RC_CHARGE: Final = "Solis RC Force Battery Charge"
-SOLIS_RC_DISCHARGE: Final = "Solis RC Force Battery Discharge"
-#: Its third option, "None" (no force running), is compared as this: "None" reads as no reading everywhere else
-#: (`reading`, the ledger), so the role's `normalize` reads it so and `write_as` writes it back as "None".
-SOLIS_RC_NONE_OPTION: Final = "None"
-SOLIS_RC_OFF: Final = "No force"
-#: The RC Timeout SpotNav writes (s; the register is in whole minutes, 1-30) and how often it renews the force: the
-#: inverter's own dead-man, stated by the integration and not yet measured (see the module).
-SOLIS_RC_WINDOW_S: Final = 60.0
-SOLIS_RC_RENEW_S: Final = 20
-#: The RC Timeout written (whole minutes): always the recipe's own window, whatever window a caller passes, so no path
-#: writes a longer one than the expiry the gate is told of.
-SOLIS_RC_TIMEOUT_MIN: Final = float(max(1, min(30, int(SOLIS_RC_WINDOW_S) // 60)))
+#: The RC Timeout SpotNav sends with each force (s; the register is in whole minutes, 1-30: the firmware's default 5)
+#: and how often it renews the force (two renewals may be lost before it lapses): the inverter's own dead-man, stated
+#: by the integration and timed by the hardware test, never lifting a cap (longer than `gate.SILENCE_FALLBACK_MAX_S`).
+SOLIS_RC_WINDOW_S: Final = 300.0
+SOLIS_RC_RENEW_S: Final = 120
+#: The renewals a day (`BrandControl.renewal_cap`): a day of force at one every two minutes is 720.
+SOLIS_RENEWALS_A_DAY: Final = 800
+#: What the force reads when none runs (both switches off), and the services that write it: 43135 with the power and
+#: the timeout in one batch (`__init__.py` `_force_battery`, issue #352's order), and 43135 = 0 alone.
+SOLIS_RC_STOP: Final = "stop"
+_SOLIS_SERVICES: Final = {
+    "charge": "solis_modbus.solis_force_battery_charge",
+    "discharge": "solis_modbus.solis_force_battery_discharge",
+    SOLIS_RC_STOP: "solis_modbus.solis_stop_force_charge_discharge",
+}
+#: The force powers' register readings (the sensors of 43136 and 43129: updated only by a poll or an executed write,
+#: never by the number's own optimistic echo).
+_SOLIS_CHARGE_READ: Final = _key("solis_modbus_inverter_rc_force_charge_power", "sensor")
+_SOLIS_DISCHARGE_READ: Final = _key("solis_modbus_inverter_rc_force_discharge_power", "sensor")
 
 
-def _solis_force(state: str | None) -> str | None:
-    """The force select's state as compared: "None" is `SOLIS_RC_OFF`, no force running; `None` for no reading."""
-    if state is None or state.strip().lower() in ("", "unavailable", "unknown"):
+def _solis_force(charge: str | None, parts: tuple[str | None, ...]) -> str | None:
+    """The force as compared, from the switch "RC Force Battery Charge" (the role's own entity), the switch "RC Force
+    Battery Discharge" and the two power readings: `charge:<W>`, `discharge:<W>` or `stop`; `None` when one of them
+    reads nothing."""
+    discharge, charge_w, discharge_w = (*parts, None, None, None)[:3]
+    states = [state if state is None else state.strip().lower() for state in (charge, discharge)]
+    if any(state not in ("on", "off") for state in states):
         return None
-    return SOLIS_RC_OFF if state.strip() == SOLIS_RC_NONE_OPTION else state
+    if states == ["off", "off"]:
+        return SOLIS_RC_STOP
+    text = charge_w if states[0] == "on" else discharge_w
+    try:
+        watts = float(text) if text is not None else math.nan
+    except ValueError:
+        return None
+    if not math.isfinite(watts) or states == ["on", "on"]:
+        return None
+    return f"{'charge' if states[0] == 'on' else 'discharge'}:{int(round(watts))}"
 
 
-# The force itself, written last (its write re-sends the powers and the timeout from the integration's cache after
-# 43135, issue #352) and renewed: the only one of these entities that writes each time it is set.
+# The force, written through the integration's services with its power and the timeout in one call (no cached
+# companion is ever re-sent) and read back from the register's two switches and the power readings.
 _SOLIS_FORCE = Role(
-    "rc_force", "select", _key("43135_select", "select"), normalize=_solis_force,
-    write_as={SOLIS_RC_OFF: SOLIS_RC_NONE_OPTION}, write_class="setpoint",
+    "rc_force", "service", _key("43135_1", "switch"), services=_SOLIS_SERVICES, device_field="", lease=True,
+    power_field="power_watts", duration_field="duration_minutes",
+    parts=(_key("43135_2", "switch"), _SOLIS_CHARGE_READ, _SOLIS_DISCHARGE_READ), compose=_solis_force,
+    write_class="setpoint", step=10.0, scale=1000.0,
 )
-# Numbers show the value written at once and the register at the next poll of its group: Home Assistant's echo, the
-# battery's power judges the effect.
+def _solis_register(_own: str | None, parts: tuple[str | None, ...]) -> str | None:
+    """A number read back by its register (the sensor of the same register), never by its own optimistic echo."""
+    return parts[0] if parts else None
+
+
+# The force powers and the timeout, written before the force (with no force running, nothing re-sends them) and each
+# read back by its register: the force then runs at a power and a timeout SpotNav saw the inverter take, even if its
+# own call reaches the inverter only in part. The powers are never set back to the value found: a hand-back leaves
+# them at 0 (the integration's select re-sends them from its cache whenever someone sets a force by hand).
 _SOLIS_CHARGE = Role(
-    "charge_power", "number", _key("solis_modbus_inverter_rc_force_charge_power", "number"), scale=1000.0, step=10.0,
-    write_class="setpoint", readback="echo",
+    "charge_power", "number", _key("solis_modbus_inverter_rc_force_charge_power", "number"), scale=1000.0,
+    step=10.0, restored=False, write_class="setpoint", parts=(_SOLIS_CHARGE_READ,), compose=_solis_register,
 )
 _SOLIS_DISCHARGE = Role(
     "discharge_power", "number", _key("solis_modbus_inverter_rc_force_discharge_power", "number"), scale=1000.0,
-    step=10.0, write_class="setpoint", readback="echo",
+    step=10.0, restored=False, write_class="setpoint", parts=(_SOLIS_DISCHARGE_READ,), compose=_solis_register,
 )
+# The RC Timeout: set before the force and sent with it again; handed back as found once no force runs.
 _SOLIS_TIMEOUT = Role(
     "rc_timeout", "number", _key("solis_modbus_inverter_rc_timeout", "number"), step=1.0, write_class="setpoint",
-    readback="echo",
+    parts=(_key("solis_modbus_inverter_rc_timeout", "sensor"),), compose=_solis_register,
 )
 # "Allow Grid to Charge the Battery" (43110 bit 5): read for a grid charge, never written.
 _SOLIS_GRID_CHARGE = Role("grid_charge_allowed", "switch", _key("43110_5", "switch"), restored=False)
 
 
-def _solis(option: str, power: str | None = None) -> Callable[[float, int], tuple[Want, ...]]:
-    """The force's power (W, 0 for a hold), the timeout, then the force: the select last, so its own write re-sends
-    the two before the firmware latches them."""
+def _solis(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
+    """The force's power and the timeout first, then the force of `kind` at that power (a charge at 0 W for a hold)."""
 
     def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
-        size = 0.0 if power is None else native(_SOLIS_CHARGE, rate_kw)
-        return (Want(power or "charge_power", size), Want("rc_timeout", SOLIS_RC_TIMEOUT_MIN), Want("rc_force", option))
+        watts = int(native(_SOLIS_FORCE, rate_kw))
+        power = "charge_power" if kind == "charge" else "discharge_power"
+        return (
+            Want(power, float(watts)), Want("rc_timeout", SOLIS_RC_WINDOW_S / 60), Want("rc_force", f"{kind}:{watts}"),
+        )
 
     return build
 
@@ -2391,48 +2426,59 @@ def _solis(option: str, power: str | None = None) -> Callable[[float, int], tupl
 SOLIS_CONTROL: Final = BrandControl(
     brand="solis",
     adapter=SOLIS,
-    roles=(_SOLIS_CHARGE, _SOLIS_DISCHARGE, _SOLIS_TIMEOUT, _SOLIS_FORCE, _SOLIS_GRID_CHARGE),
+    roles=(_SOLIS_FORCE, _SOLIS_TIMEOUT, _SOLIS_CHARGE, _SOLIS_DISCHARGE, _SOLIS_GRID_CHARGE),
     states={
         # RC force charge at 0 W: the battery covers nothing (seen 68 min on a tester's plant); a sun surplus is
         # still stored.
-        ACTION_HOLD: _solis(SOLIS_RC_CHARGE),
-        ACTION_GRID_CHARGE: _solis(SOLIS_RC_CHARGE, "charge_power"),
+        ACTION_HOLD: lambda _rate, watchdog_s: _solis("charge")(0.0, watchdog_s),
+        ACTION_GRID_CHARGE: _solis("charge"),
         # The inverter's own Self-Use covers the house: everything as found (no force).
         ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
         # A battery power: the house is covered first, the rest sold. Never at 0 W (what that does is not known).
-        ACTION_EXPORT_DISCHARGE: _solis(SOLIS_RC_DISCHARGE, "discharge_power"),
+        ACTION_EXPORT_DISCHARGE: _solis("discharge"),
     },
-    # The powers and the timeout first (the integration's cache takes them), the force last. Back: the force off
-    # first (one write ends it), then the powers and the timeout as found.
+    # The power and the timeout first, each read back by its register while no force runs, then the force's call
+    # (which sends them again with 43135). Back: the force stopped first (43135 = 0 alone), then both force powers at 0
+    # and the timeout as found.
     enter_order=("charge_power", "discharge_power", "rc_timeout", "rc_force"),
     restore_order=("rc_force", "charge_power", "discharge_power", "rc_timeout"),
     # SpotNav's own force is not someone else's while it runs (the adapter's mode rules read 43135's switches).
     own_states={"remote force charge": frozenset({"on"}), "remote force discharge": frozenset({"on"})},
     # A force standing when SpotNav would start is another controller's (an outside EMS, SolisCloud).
-    requires=(("rc_force", frozenset({SOLIS_RC_OFF}), "rc_force_running"),),
+    requires=(("rc_force", frozenset({SOLIS_RC_STOP}), "rc_force_running"),),
     action_requires=((ACTION_GRID_CHARGE, "grid_charge_allowed", frozenset({"off"}), "grid_charge_not_allowed"),),
-    # A hold's peak cover and a charge's stop: the force off, the inverter's own Self-Use.
+    # A hold's peak cover and a charge's stop: the force stopped, the inverter's own Self-Use.
     peak_first={ACTION_HOLD: ("rc_force",), ACTION_GRID_CHARGE: ("rc_force",)},
-    # The powers and the timeout act while a force runs: on a change of action one that falls is written before the
-    # force and one that rises after it, so a hold that ends never charges at the power found, and a longer timeout
-    # is never left with a force.
+    # The powers and the timeout act in a force: never written while another system's force runs (`command_role`), and
+    # on a change of action a timeout that falls is written before the force's change, one that rises after it.
     mode_limits=("charge_power", "discharge_power", "rc_timeout"),
-    # The RC Timeout: the force reverts by itself (the select back at "None") within a minute of the last write.
-    # Stated by the integration, not measured: no cap is lifted until the plant's own tests timed it.
+    command_role="rc_force",
+    # The RC Timeout: the force reverts by itself (both switches off) that long after the last call. Stated by the
+    # integration, timed by the hardware test; longer than any window that lifts a cap.
     expiry=Expiry(
         "device_deadman", "spotnav", SOLIS_RC_WINDOW_S, ("rc_force",), renew_s=SOLIS_RC_RENEW_S,
-        note="RC Timeout 43282 at 1 minute; each renewal of the select re-sends 43135, both powers and the timeout",
-        fallback_values=(("rc_force", SOLIS_RC_OFF),),
+        note="RC Timeout 43282 at 5 minutes, sent with each force call; renewed every 2 minutes",
+        fallback_values=(("rc_force", SOLIS_RC_STOP),),
+    ),
+    renewal_cap=SOLIS_RENEWALS_A_DAY,
+    deadman_must_pass=True,
+    # Below its Force Charge SOC (43018) the inverter charges from the grid by itself at its Force-charge Power
+    # Limitation (43027, W): the research's reading of the protocol, not seen on a plant.
+    autonomous_import=AutonomousImport(
+        entity=_key("solis_modbus_inverter_battery_force_charge_limit", "number", "sensor"), scale=0.001,
+        trigger="below_reserve", reserve=_key("solis_modbus_inverter_force_charge_soc", "number", "sensor"),
+        why="the inverter's own force charge below its Force Charge SOC (unverified)",
     ),
     # How a three-phase S6-EH3P spreads a grid charge is not stated: the whole charge on one phase.
     grid_charge_phases=1,
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
     bms_charge_limit=True,
     hardware_test_first=True,
-    note="The inverter's RC force through solis_modbus (Pho3niX90). Hold: force charge at 0 W; grid charge: force"
-    " charge at the rate, within the BMS's charge limit; sale: force discharge. The RC Timeout ends the force within"
-    " a minute if Home Assistant stops (stated, not yet measured). Never run on a plant; writes only after a passed"
-    " hardware test.",
+    recipe_rev=2,
+    note="The inverter's RC force through solis_modbus's services (Pho3niX90). Hold: force charge at 0 W; grid"
+    " charge: force charge at the rate, within the BMS's charge limit; sale: force discharge. Each call sends its"
+    " power and a 5-minute RC Timeout; SpotNav renews every 2 minutes (stated, timed by the hardware test). Never run"
+    " on a plant; writes only after a passed hardware test.",
 )
 
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
@@ -2444,6 +2490,8 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "solinteg": _SOLINTEG_NORMAL,
     "ferroamp": {"command": "auto"},
     "ecoflow": {"modbus_control": False, "battery_mode": _EF_AUTOMATIC},
+    # Both force powers at 0 once the force is stopped: never back to the value found (see the recipe).
+    "solis": {"charge_power": 0.0, "discharge_power": 0.0},
 }
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
@@ -2589,7 +2637,8 @@ def export_table() -> list[dict[str, Any]]:
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
     services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
-    duration: bool = False, options: Mapping[str, str] | None = None,
+    duration: bool = False, power_field: str = "power",
+    duration_field: str = "duration",
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
@@ -2598,29 +2647,28 @@ def service_call(
     Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
     integration's service, for the battery's device in the role's `device_field`, with the power where the value has
     one and, where the role is a lease (`Role.lease`, passed as `duration`), the window as the duration in
-    minutes. A select's value is written as the option `options` names for it (`Role.write_as`), else as it is."""
+    minutes."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":
-        # A value compared by another name is written as its option (`Role.write_as`).
-        option = options.get(value, value) if options and isinstance(value, str) else value
-        return "select", "select_option", {"entity_id": entity_id, "option": option}
+        return "select", "select_option", {"entity_id": entity_id, "option": value}
     if method == "switch":
         # A restore writes the state found ("on"/"off" as read), an action a bool.
         on = value is True or (isinstance(value, str) and value.strip().lower() in ("on", "true"))
         return "switch", "turn_on" if on else "turn_off", {"entity_id": entity_id}
     if method == "button":
         return "button", "press", {"entity_id": entity_id}
-    if not isinstance(value, str) or services is None or device_id is None:
+    if not isinstance(value, str) or services is None or (device_field and device_id is None):
         raise ValueError(f"no service call for {value!r}")
     kind, _, power = value.partition(":")
     full = services.get(kind)
     if full is None:
         raise ValueError(f"no service for {kind!r}")
     domain, service = full.split(".", 1)
-    data: dict[str, Any] = {device_field: device_id}
+    # An empty device field: the integration finds its one device itself (Solis's services take no device).
+    data: dict[str, Any] = {device_field: device_id} if device_field else {}
     if power:
-        data["power"] = int(power)
+        data[power_field] = int(power)
         if duration:
-            data["duration"] = max(1, min(1440, watchdog_s // 60))
+            data[duration_field] = max(1, min(1440, watchdog_s // 60))
     return domain, service, data
