@@ -78,6 +78,7 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from ..util import error_text
 from .. import time_zones
 from ..const import (
     CONF_CHARGER_ENTRY_IDS,
@@ -1526,7 +1527,7 @@ class BatteryPlanShadow:
             _LOGGER.debug("SpotNav battery plan: no plan (%s)", no_plan.reason)
         except PlanInputError as err:
             self.status, self.reason = STATUS_NO_PLAN, f"invalid_input:{err.code}"
-            _LOGGER.debug("SpotNav battery plan: the inputs were refused (%s)", err)
+            _LOGGER.debug("SpotNav battery plan: the inputs were refused (%s)", error_text(err))
         except Exception:  # noqa: BLE001 - the plan must never disturb the site
             self.status, self.reason = STATUS_NO_PLAN, FAILED
             _LOGGER.debug("SpotNav battery plan: the plan failed", exc_info=True)

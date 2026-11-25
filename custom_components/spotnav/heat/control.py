@@ -100,6 +100,7 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from ..util import error_text
 from ..core.parse import aware_instant
 from .. import time_zones
 from ..const import CONF_HEAT_OFFSET_HOME, DOMAIN
@@ -1279,7 +1280,7 @@ class HeatControl:
         try:
             await self._async_set_number(entity_id, line["home"])
         except Exception as err:  # noqa: BLE001 - the line stays; the person may try again
-            _LOGGER.warning("SpotNav heat control: putting %s back failed: %s", entity_id, err)
+            _LOGGER.warning("SpotNav heat control: putting %s back failed: %s", entity_id, error_text(err))
             return "write_failed"
         finally:
             self._save()
@@ -1699,7 +1700,7 @@ class HeatControl:
             try:
                 await self._async_set_number(paths.entity_of(key), snapshot.written)
             except Exception as err:  # noqa: BLE001 - tried again at the next look, until the value has expired
-                _LOGGER.warning("SpotNav heat control: renewing %s failed: %s", paths.entity_of(key), err)
+                _LOGGER.warning("SpotNav heat control: renewing %s failed: %s", paths.entity_of(key), error_text(err))
                 if now - self._renew_ok.get(key, snapshot.at) >= paths.EXPIRY:
                     await failed(now, "renew_failed")
                 continue
@@ -1755,7 +1756,7 @@ class HeatControl:
         try:
             await self._async_call(relay, closed)
         except Exception as err:  # noqa: BLE001 - any error is a write not taken
-            _LOGGER.warning("SpotNav heat control: switching %s %s failed: %s", relay, "on" if closed else "off", err)
+            _LOGGER.warning("SpotNav heat control: switching %s %s failed: %s", relay, "on" if closed else "off", error_text(err))
             await self._async_failed(now, "write_failed")
             return
         if self._read(relay) == closed:
@@ -2134,7 +2135,7 @@ class HeatControl:
         try:
             await self._async_call(b, closed)
         except Exception as err:  # noqa: BLE001 - any error is a write not taken
-            _LOGGER.warning("SpotNav heat control: switching %s %s failed: %s", b, "on" if closed else "off", err)
+            _LOGGER.warning("SpotNav heat control: switching %s %s failed: %s", b, "on" if closed else "off", error_text(err))
             await self._async_failed_b(now, "write_failed")
             return
         if self.pending_b is not None and self._read(b) == closed:

@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 
+from ..util import error_text
 from .. import time_zones
 from ..core.parse import aware_instant
 from .hold import (
@@ -203,7 +204,7 @@ class HoldPart:
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001 - refused: counted at once, the load paused to the next day
-            _LOGGER.warning("SpotNav %s: %s.%s on %s failed: %s", self.name, domain, service, data.get("entity_id"), err)
+            _LOGGER.warning("SpotNav %s: %s.%s on %s failed: %s", self.name, domain, service, data.get("entity_id"), error_text(err))
             held.pending = None
             if not home:
                 held.prior, held.written = held.written, value

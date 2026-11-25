@@ -51,6 +51,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from ..util import error_text
 from .. import time_zones
 from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
@@ -643,7 +644,7 @@ class WaterHeaterControl:
         try:
             await self._async_call(self.entity, on)
         except Exception as err:  # noqa: BLE001 - not read back: the look after `READ_BACK` gives it up
-            _LOGGER.warning("SpotNav water heater: switching %s %s failed: %s", self.entity, "on" if on else "off", err)
+            _LOGGER.warning("SpotNav water heater: switching %s %s failed: %s", self.entity, "on" if on else "off", error_text(err))
 
     def _judge_meter(self, now: datetime, switch: str, power: float | None) -> None:
         """Whether the meter on the switch's device is the element's (`meter_seen`, see `_watch_meter`): trusted once

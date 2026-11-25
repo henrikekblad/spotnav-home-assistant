@@ -32,3 +32,10 @@ def amps_at_floor(amps: float, floor: float, *, rounding: Any = math.floor) -> i
     if whole < floor - 1e-9 <= amps:
         return float(floor)
     return whole
+
+
+def error_text(err: BaseException) -> str:
+    """An exception as a log line shows it: its text, or its type where the text is empty (a `TimeoutError` from
+    `asyncio.timeout`, a bare `HomeAssistantError`), so a warning never ends in "failed: " and nothing after."""
+    text = str(err).strip()
+    return text if text else type(err).__name__
