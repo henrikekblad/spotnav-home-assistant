@@ -145,7 +145,8 @@ from datetime import datetime
 from typing import Any, Final, Literal
 
 from .commands import ACTION_CURTAIL_EXPORT, WATCHDOG_RENEW_S, BrandControl, Expiry, Phases
-from .executor import HEADROOM_MARGIN_A, RATE_UP_DWELL_S, Executor, StepResult
+from .executor import HEADROOM_MARGIN_A, RATE_UP_DWELL_S, REARM_S, Executor, StepResult
+from .ledger import READBACK_DEADLINE_S
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES, phase_volts
 from .gate import (
     EXPIRY_LOOK_S,
@@ -291,6 +292,30 @@ class Timing:
             settle_s=10.0, readings=2, reading_gap_s=10.0, command_timeout_s=240.0, phase_settle_s=0.0,
             zero_settle_s=ZERO_SETTLE_S,
         )
+
+
+#: A slow recipe's hardware test (`quick_for`): the settle once a command is taken (s, one cloud poll of the battery's
+#: power), and the room past its re-arm and read-backs for the looks themselves (s).
+SLOW_TEST_SETTLE_S: Final = 60.0
+SLOW_TEST_SLACK_S: Final = 120.0
+
+
+def quick_for(control: BrandControl) -> Timing:
+    """The hardware test's timing for a recipe: `Timing.quick`, and for a slow one (`BrandControl.slow`, Tesla's cloud)
+    a command's wait long enough for what the executor itself waits before it is taken: the re-arm after the previous
+    mode's hand-back (`BrandControl.rearm_s`), then each role written and read back in turn at its longest wait
+    (`BrandControl.readback_s`), and a cloud poll of settle. Every other recipe's timing is `Timing.quick`'s."""
+    quick = Timing.quick()
+    if not control.slow:
+        return quick
+    rearm = REARM_S if control.rearm_s is None else max(REARM_S, control.rearm_s)
+    readback = control.readback_s or READBACK_DEADLINE_S
+    command_s = rearm + len(control.roles) * readback + SLOW_TEST_SLACK_S
+    return Timing(
+        settle_s=SLOW_TEST_SETTLE_S, readings=quick.readings, reading_gap_s=quick.reading_gap_s,
+        command_timeout_s=max(quick.command_timeout_s, command_s), phase_settle_s=quick.phase_settle_s,
+        zero_settle_s=quick.zero_settle_s,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -677,6 +702,16 @@ class Verification:
         if result is None or self.stage == "hand_back" or result.action == ACTION_SELF_CONSUME:
             return
         result.outcome = f"not_judgeable:{why}"
+        self._enter(now, "hand_back")
+
+    def not_applicable(self, now: datetime, outcome: str) -> None:
+        """The running mode cannot be run at a safe size on this plant (`gate.NOT_APPLICABLE_FIXED_CHARGE`): recorded so,
+        and the hardware test goes on with the next mode once the executor has handed back (nothing was written for
+        it)."""
+        result = self.current
+        if result is None or self.stage == "hand_back" or result.action == ACTION_SELF_CONSUME:
+            return
+        result.outcome = outcome
         self._enter(now, "hand_back")
 
     def after(self, now: datetime, step: StepResult, sample: Sample, capability: Capability) -> None:
@@ -1360,9 +1395,10 @@ def phase_charge_step(caps_kw: Phases, volts_between_phases: float) -> tuple[int
 
 
 def _passes(result: ModeResult) -> bool:
-    """Whether a mode's outcome lets the hardware test go on: obeyed, or not judgeable at this moment."""
+    """Whether a mode's outcome lets the hardware test go on: obeyed, not judgeable at this moment, or not applicable
+    on this plant (`Verification.not_applicable`)."""
     outcome = result.outcome or ""
-    return outcome == "obeyed" or outcome.startswith("not_judgeable:")
+    return outcome == "obeyed" or outcome.startswith(("not_judgeable:", "not_applicable:"))
 
 
 def _near_full(sample: Sample) -> bool:

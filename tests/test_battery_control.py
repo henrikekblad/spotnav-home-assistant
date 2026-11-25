@@ -1183,7 +1183,7 @@ def test_no_other_recipe_is_bounded_by_its_entitys_range(brand: str, monkeypatch
     # Every entity of the plant answers with that range.
     monkeypatch.setattr(control_module, "plant_entity_id", lambda _hass, _config, _match: "number.any")
     assert bare._within_charge_power(5.0) == 5.0 and bare._within_charge_power(None) is None
-    assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek"]
+    assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek", "kostal"]
 
 
 async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(
@@ -2505,6 +2505,32 @@ async def test_a_hardware_test_runs_under_shadow_only_in_minutes_and_leaves_the_
     assert control.reports == {}, "the test never counts as the verification routine"
     assert control.state() == "shadow_only"
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
+async def test_a_hardware_test_goes_on_without_a_fixed_charge_that_does_not_fit_under_the_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # A plant that charges at its own power (Tesla's), here far more than the cap leaves: the charge step cannot run
+    # at a safe size, so it is not applicable, nothing is charged, and the test still passes.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    fixed = replace(commands_module.SIGENERGY_CONTROL, fixed_charge=True, fixed_charge_kw=50.0)
+    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: fixed.with_hold(variant))
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert await control.async_hardware_test_start() is None
+    started = now = dt_util.now()
+    while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
+        now = await _looks(control, now, 1)
+    report = control.hardware_test_progress()["report"]
+    assert {mode: row["outcome"] for mode, row in report["modes"].items()} == {
+        "hold": "obeyed", "charge": gate.NOT_APPLICABLE_FIXED_CHARGE, "discharge_house": "obeyed",
+        "normal": "restored",
+    }
+    assert not any("Grid First" in str(call[2].get("option")) for call in plant.calls), "no charge was commanded"
+    assert gate.hardware_test_passed(report, control._supported_modes())
+    await control.async_stop()
 
 
 async def test_a_hardware_test_charges_no_harder_than_the_batterys_own_charge_power_entity_takes(

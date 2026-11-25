@@ -282,6 +282,7 @@ def _control(
         ({"cap": 4.0, "per_phase_only": True, "caps": (1.0, 1.0, 2.0)}, 4.0),
         ({"cap": 4.0, "brand": "foxess"}, 0.0),  # a limits-only recipe: no grid charge at all
         ({"cap": None, "brand": "foxess"}, 0.0),
+        ({"cap": 4.0, "brand": "deye"}, 0.0),  # Deye / Sunsynk: limits only too
     ],
 )
 def test_the_plans_cap_is_zero_where_control_runs_no_grid_charge(kwargs: dict[str, Any], expected: float | None) -> None:

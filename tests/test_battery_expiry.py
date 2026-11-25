@@ -94,8 +94,11 @@ def test_read_back_kinds_per_brand_keep_the_old_control_facts() -> None:
     assert set(kinds["ecoflow"].values()) == {"echo"}
     # Solis's roles are each read back by their registers (the force from its switches and the powers' sensors).
     assert set(kinds["solis"].values()) == {"register"}
+    # Kostal's switches and rate are the integration's own state (its loops send them); 1080 is read, never written.
+    assert kinds["kostal"] == {"management_mode": "register", "block_discharge": "echo", "charge_rate": "echo",
+                               "charge_start": "echo"}
     local = {control.brand for control in CONTROLS if control.local_readback}
-    assert local == {"solax", "goodwe", "tesla", "ferroamp", "ecoflow"}
+    assert local == {"solax", "goodwe", "tesla", "ferroamp", "ecoflow", "kostal"}
 
 
 def test_a_recipe_measurement_of_a_phase_expiry_names_its_phases() -> None:

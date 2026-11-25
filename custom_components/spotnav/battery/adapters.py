@@ -162,8 +162,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   is on (`commands.ECOFLOW_CONTROL`).
 
 * Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
-  one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
-  integrations renew; none of it is written here). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
+  one adapter for two integrations (the control, on `kostal_modbus_control` only, is `commands.KOSTAL_CONTROL`). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
   REST): sensors `<entry id>_<module id>_<data id>` (`sensor.py` line 867), the level `devices:local:battery_SoC`
   (line 237) and the battery power `devices:local:battery_P` (line 229); the module part is why the match is on
   `battery_soc` after `_` or `:`, and why `P` alone is never matched. The inverter's own floor is the number
@@ -177,16 +176,18 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   `battery_work_capacity` (1068, Wh, `sensor.py` line 844, disabled by default; its own Predbat sensor says the
   inverter's figure may be the gross size, so the size is the integration's own and not more), `software_version`
   (the inverter's UI/SW, `sensor.py` line 1044, disabled by default) and `battery_mgmt_mode` (register 1080, "No external
-  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free only in the
-  first. Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
+  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free in the
+  first and the last (Modbus is the door SpotNav's own control needs, `commands.KOSTAL_CONTROL`; who uses it is read
+  from the integration's switches, `charge_start`, `discharge_start`, `block_charge`, `block_discharge` and
+  `inverter_control`, free while off, and its `predbat_mode` sensor, free unless "Enabled"). Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
   limits the integration itself writes (0 to block, `const.py` lines 37-38), not the battery's 1076/1078 rating: not read.
   The battery's power is discharge-positive on both, negated by the site (core: Predbat's template uses
   `scb_battery_power` as the discharge-positive power without inverting it, `templates/kostal.yaml` line 127; Modbus:
   register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
 
 * Fronius (Gen24, Gen24 Plus, Tauro, Verto Plus; BYD or Reserva battery), core `fronius` (home-assistant/core `42f4a32`,
-  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`): read only (the Modbus limits and
-  their revert timer are not written here). Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
+  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`). The Modbus limits are written by
+  `commands.FRONIUS_CONTROL` (behind a person's hardware test); this adapter reads. Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
   (`sensor.py` line 1266: `state_of_charge`, line 1069; `capacity_designed`, line 1033; only for a storage that reports
   a serial) and `<inverter id>-modbus-<key>` for what the Modbus settings read (lines 1200-1202): the counters
   `storage_energy_charged_total` and `storage_energy_discharged_total` (Wh, DC side, line 512), `battery_power_limit_reference`
@@ -197,7 +198,10 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   self-consumption; a limit in force is someone's. Schedules and the Energy Cost Assistant in the inverter's web UI are
   invisible to Home Assistant. The battery's power is discharge-positive (`power_battery`, disabled by default,
   `sensor.py` line 926; its `power_battery_discharge` is the positive part, line 936), negated by the site. The firmware
-  is the device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's. The size is
+  is the battery device's `sw_version`, which on the SolarNet device is the logger's software, not the inverter's, and
+  which a Gen24 (no logger info, `config_flow.py` line 67) does not have at all: then the storage device's (the one
+  with the level, `sensor.py` line 1154, the storage controller's software; `firmware_device`). The inverter's own
+  firmware is on no device, so its update is not seen as a firmware change. The size is
   the storage's *designed* capacity, not the usable or aged one; `capacity_maximum` (line 1026) is not read.
 
 * Homevolt (Tibber, Polarium), core `homevolt` (home-assistant/core `42f4a32`, pyHomevolt 0.7.0 `634bcbc`, read 2026-11-23,
@@ -218,8 +222,9 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   unverified on hardware (the library's fixture reads -17 at idle).
 
 * Deye and Sunsynk hybrids (the Deye profiles `deye_hybrid` 1p, `deye_p3` 3p LV and HV), read 2026-11-23
-  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`), read only (the control is the time-of-use
-  programmes and the grid-charge settings, which stay as registers with no timeout). `solarman` (davidrapan/ha-solarman
+  (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`); control is limits only
+  (`commands.DEYE_CONTROL`: the battery's max charge and discharge currents; the time-of-use programmes and the
+  grid-charge settings, which stay as registers with no timeout, are never written). `solarman` (davidrapan/ha-solarman
   `84982c5`; the domain is shared with other makers' profiles that name their items alike, `solis_hybrid`, `sofar_hybrid`
   and more, so only a device whose manufacturer is "Deye", which the profile's `info` gives the device registry,
   `common.py` line 167, or "Sunsynk" is read): unique id `<entry id>_<slug of the item's name>_<platform>` (`entity.py`
@@ -701,6 +706,10 @@ class Adapter:
     #: Set for a YAML package read through a platform other brands share: the adapter is chosen only for a battery
     #: entity whose unique id is the package's, and its entities are looked for by that scope (`PackageScope`).
     package: PackageScope | None = None
+    #: Where the battery's own device has no software version and the adapter no firmware entity: the fact whose
+    #: entity's device carries the firmware instead (Fronius: a Gen24 has no logger info, so its SolarNet device, where
+    #: the battery's power is, has no version; the storage's device has its software). `None`: the battery's device.
+    firmware_device: FactRole | None = None
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -1235,7 +1244,8 @@ ECOFLOW: Final = Adapter(
     reserves=(ReserveSource(_key("battery_reserve_effective")),),
 )
 
-#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module): read only.
+#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module; the control is
+#: `commands.KOSTAL_CONTROL`, on the HACS integration only).
 KOSTAL: Final = Adapter(
     brand="kostal",
     label="Kostal Plenticore",
@@ -1247,12 +1257,29 @@ KOSTAL: Final = Adapter(
     },
     modes=(
         # Core's select reads "None" when the inverter's own smart or timed control is off, which is no reading to
-        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default).
+        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default). External
+        # control over Modbus is a door, not a controller: who writes through it is what the switches below, Predbat
+        # and the battery's behaviour say (`outside_control.py`); SpotNav's own control needs it
+        # (`commands.KOSTAL_CONTROL`).
+        # Digital I/O is a box of someone else's (a ripple-control receiver, an EMS) driving the battery.
         ModeRule(
             Match(("sensor", "select"), re.compile(r"(?:^|_)(?:battery_mgmt_mode|devices:local)$")),
-            frozenset({"No external battery management"}),
+            frozenset({"No external battery management", "External battery management via Modbus protocol"}),
             "battery management",
         ),
+        # `kostal_modbus_control`'s own commands (`switch.py`, mutually exclusive): any of them on is someone's command
+        # (an automation, a person, the integration's Predbat control) unless it is SpotNav's (`own_states`).
+        *(
+            ModeRule(_key(key, "switch"), frozenset({"off"}), label, required=False)
+            for key, label in (
+                ("charge_start", "Charge Start"), ("discharge_start", "Discharge Start"),
+                ("block_charge", "Block Charge"), ("block_discharge", "Block Discharge"),
+                ("inverter_control", "Inverter Control"),
+            )
+        ),
+        # Predbat in an active control mode: the integration's Charge Start then runs Predbat's logic, and its reserve
+        # hold writes the minimum SoC while Charge Start is off (`sensor.py` `KostalPredbatModeSensor`).
+        ModeRule(_key("predbat_mode"), frozenset({"Not installed", "Disabled"}), "Predbat", required=False),
     ),
     reserves=(ReserveSource(Match(("number",), re.compile(r"_devices:local_battery:minsoc$"))),),
 )
@@ -1262,7 +1289,8 @@ def _fronius(key: str, *domains: str) -> Match:
     return Match(domains or ("sensor",), re.compile(rf"-{re.escape(key)}$"))
 
 
-#: Fronius through core `fronius` (see the module): read only. Its unique ids join the parts with a hyphen.
+#: Fronius through core `fronius` (see the module); its control is `commands.FRONIUS_CONTROL`. Its unique ids join the
+#: parts with a hyphen.
 FRONIUS: Final = Adapter(
     brand="fronius",
     label="Fronius",
@@ -1287,6 +1315,7 @@ FRONIUS: Final = Adapter(
         ),
     ),
     reserves=(ReserveSource(_fronius("battery_minimum_reserve", "number")),),
+    firmware_device="soc",
 )
 
 #: Homevolt through core `homevolt` (see the module): read only. A sensor's key is a display key with spaces.
@@ -1301,8 +1330,8 @@ HOMEVOLT: Final = Adapter(
     ),
 )
 
-#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module): read
-#: only. Both platforms are shared with other devices, so only these makers' devices are read.
+#: Deye and Sunsynk hybrids through `solarman` (the Deye profiles) or kellerza's MQTT add-on (see the module); control
+#: is limits only (`commands.DEYE_CONTROL`). Both platforms are shared with other devices, so only these makers' devices are read.
 DEYE: Final = Adapter(
     brand="deye",
     label="Deye / Sunsynk",

@@ -29,6 +29,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
 from .adapters import ADAPTERS, Adapter, Match, _goodwe, _key, _tesla
+from .adapters import _fronius
 from .facts import BatteryFacts
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,6 +84,14 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "foxess": (
         ("number", "max_discharge_current"),
         ("number", "max_charge_current"),
+    ),
+    # Deye / Sunsynk: the battery's current limits, `solarman`'s numbers and kellerza's add-on's (published only once
+    # the add-on's "advanced" or "battery" sensor group is listed).
+    "deye": (
+        ("number", "battery_max_discharging_current_number"),
+        ("number", "battery_max_charging_current_number"),
+        ("number", "battery_max_discharge_current"),
+        ("number", "battery_max_charge_current"),
     ),
     # The Solinteg plugin of `solax_modbus` (enabled by default but for the three phase numbers).
     "solinteg": (
@@ -160,10 +169,28 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "solis_modbus_inverter_rc_timeout"),
         ("switch", "43110_5"),
     ),
+    # `kostal_modbus_control` enables its switches and rates by default; the battery management mode (register 1080,
+    # which must read Modbus before anything is written) ships disabled.
+    "kostal": (
+        ("sensor", "battery_mgmt_mode"),
+        ("switch", "block_discharge"),
+        ("number", "charge_rate"),
+        ("switch", "charge_start"),
+    ),
+    # Core `fronius` creates its Modbus controls enabled, and only where the inverter accepts control over Modbus;
+    # listed so a person's own disable is offered. Grid charging is read for a grid charge, never written.
+    "fronius": (
+        ("number", "battery_charge_power_limit"),
+        ("number", "battery_discharge_power_limit"),
+        ("switch", "battery_charge_power_limit_enabled"),
+        ("switch", "battery_discharge_power_limit_enabled"),
+        ("switch", "battery_grid_charging"),
+    ),
 }
 
-#: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.
-_BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesla": _tesla}
+#: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`, `_fronius`); `_key` for
+#: the rest.
+_BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesla": _tesla, "fronius": _fronius}
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
 _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabler.USER)

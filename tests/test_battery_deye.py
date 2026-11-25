@@ -1,5 +1,6 @@
 """Deye and Sunsynk hybrids through `solarman` (davidrapan `84982c5`, the Deye profiles) or kellerza's MQTT add-on
-(`49efe3f`): read only, found by the key at the end of the unique id and only on a device made by Deye or Sunsynk.
+(`49efe3f`): found by the key at the end of the unique id and only on a device made by Deye or Sunsynk. The control
+(limits only) is in `test_battery_deye_control.py`.
 
 The `solarman` registry is the fixture `deye` in `tests/fixtures/battery/brands.json`; kellerza's
 (`<inverter serial>_<slug of the name>`) is built here.
@@ -27,7 +28,7 @@ def _mqtt(key: str, state: str, unit: str | None = None, domain: str = "sensor")
     )
 
 
-def test_deye_and_sunsynk_makers_on_both_platforms_are_the_deye_adapter_and_it_is_read_only() -> None:
+def test_deye_and_sunsynk_makers_on_both_platforms_are_the_deye_adapter_and_its_control_is_limits_only() -> None:
     assert adapter_for("solarman", "Deye") is DEYE
     assert adapter_for("solarman", "Sunsynk") is DEYE
     assert adapter_for("mqtt", "Sunsynk") is DEYE
@@ -35,7 +36,7 @@ def test_deye_and_sunsynk_makers_on_both_platforms_are_the_deye_adapter_and_it_i
     assert adapter_for("solarman", "Solis") is None
     assert adapter_for("solarman", None) is None
     assert adapter_for("mqtt", "Shelly") is None
-    assert all(control.brand != "deye" for control in commands.CONTROLS)
+    assert commands.control_for("deye") is commands.DEYE_CONTROL
     assert DEYE.hold is None and DEYE.grid_charge is None
 
 

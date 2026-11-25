@@ -418,6 +418,91 @@ The entity keys, options and services below were checked against each integratio
   hand-back waits for a reading of the force first (`_command_unread`). Remote Dispatch (44100) and SolisCloud's strategy are not read.
   How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
   on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
+* **Kostal Plenticore** (plus G1-G3, BI, MP G3; `KOSTAL_CONTROL`; **never run on a plant**), HACS
+  `kostal_modbus_control`, mbuhansen/kostal_plenticore_battery_control 4.3.0 (`3bd84ac`, read 2026-11-25;
+  `plans/research_integrations/kostal_control_2026-11-23.md`). Modbus TCP, which acts only with the inverter's
+  installer setting "Battery management: External via protocol (Modbus TCP)" (register 1080 = 2; any other value and
+  the inverter ignores every write without an error: the sensor `battery_mgmt_mode`, disabled by default, must read so
+  before anything is written, `requires`). Core `kostal_plenticore` has no setpoint and is never written (its manual
+  charge has no rate and no timeout). Unique ids `<config entry id>_<key>`. The integration's switches start and stop
+  write loops of its own: **Charge Start** writes the battery's DC setpoint 1034 (1026, AC, on a BI) at minus **Set
+  Charge Rate** (W, the integration's own value, restored by it over a restart, read each tick: what the switch's echo
+  and the number's show is exactly what the loop sends; a rate at or above the number's maximum means "follow the
+  maximum", which then moves with the battery's voltage, so a charge is always written 5 % or a step below it,
+  whichever is more, `charge_power_bound_exclusive`, and a write read back following the maximum is not taken,
+  `Role.follows_max`; the rate is written back last as found); **Block Discharge** holds the discharge limit 1040 at 0 (the integration's default;
+  or the minimum SoC 1042 at the SoC, its option): the sun is still stored, and since the firmware of October 2026
+  the inverter's own standby draw (about 170-260 W) may still come from the battery until the integration adds the
+  SoC as the minimum. Each loop writes every half of the integration's timeout (`switch.py` `_loop_interval`), which
+  must match the installer's timeout on the inverter (30 or 60 s seen, not readable). **The dead-man is the
+  inverter's**: without a write for that long it falls back to its own control, so a command ends by itself within a
+  minute of Home Assistant stopping (the switches are not restored over a restart), but **not** while Home Assistant
+  runs and SpotNav alone stalls (`Expiry` renewer `integration`: never lifts a cap, and the integration's loops give
+  SpotNav no write that stops them and leaves the command standing, so the hardware test cannot time it; a grid
+  charge is always under the HA-down cap, `grid_charge_phases` 1). Switches are mutually exclusive in the
+  integration (turning one on turns the others off): a change of action turns the old switch off first (a charge's
+  stop by `peak_first`, a hold's release by the enter order), so SpotNav never sees its own switch turned off by the
+  integration. Turning Charge Start off writes a "stop setpoint" from the live balance and then lets the inverter's
+  timeout run out; the integration waits that timeout and 15 s before its next switch writes anything (a hold right
+  after a charge starts up to 75 s late). Never written or relied on: Discharge Start (no sale), Block Charge,
+  Inverter Control, EMS Grid Protection (left as found; it only ever lowers a charge), the SoC limits, the I/O
+  outputs. The others' switches and an active Predbat (whose Charge Start runs Predbat's logic and whose reserve hold
+  writes 1042) are read by `adapters.KOSTAL`'s mode rules. Nothing in Kostal's interface description says whether the
+  battery registers are kept in flash; the integration and evcc say they are volatile and lapse with the timeout:
+  setpoints at `SETPOINT_WRITES_UNSTATED`.
+* **Fronius** (Gen24, Gen24 Plus, Tauro, Verto Plus with a BYD or Reserva battery), core `fronius` over Modbus TCP
+  (SunSpec model 124; home-assistant/core `d33dfe3a`, 2026-11-23, in releases from 2026.11.0; `number.py`, `switch.py`,
+  `coordinator.py`, `heartbeat.py`; `plans/research_integrations/fronius_control_2026-11-23.md`). **Never run on a
+  device.** Numbers `battery_charge_power_limit` (InWRte) and `battery_discharge_power_limit` (OutWRte), % of the
+  battery's WChaMax (`battery_power_limit_reference`, the adapter's rating), -100 to 100, step 1, each acting only
+  while its switch (`battery_charge_power_limit_enabled` / `battery_discharge_power_limit_enabled`, one register,
+  StorCtl_Mod) is on; a **negative** limit forces the other direction at least that fast. A hold is the discharge
+  limit at 0 (a sun surplus is still stored), a discharge to the house the charge limit at 0 (it stores nothing), a
+  grid charge the discharge limit at minus the rate's share of WChaMax, rounded down, 1 % at least (a minimum),
+  with the charge limit at the same share as its cap (the research note: +p is what holds the total, so neither
+  the sun nor the grid takes it above the rate). The rate is a share of the rating **as read** (`rating_read`): a learnt rating
+  (WChaMax unread) is no base, the charge then does not start (`rated_unknown`). No discharge to the grid: a
+  negative charge limit would be the first write of its kind and its sign is unconfirmed on a plant. The values
+  are written before the switches, a switch turned off before the other one comes on where it matters
+  (`peak_first` for the grid charge), and in a grid charge (both on, +p and -p) the limit that rises first
+  (`rising_first`): core refuses a pair of enabled limits
+  whose sum is below 0 (`_refused_battery_limits`), and a found negative value is handed back as 100, no limit
+  (`Role.restored_below`), so a momentary pair never sums below 0. The core writes the setpoint, writes the
+  enable bit again where it was already on (the device takes a changed limit only so) and reads the model back at
+  once: read back by its `register`. Grid charging (`battery_grid_charging`, ChaGriSet) is read, never written: it
+  is no part of the revert timer and stays when Home Assistant stops; off (or the web UI's "Battery charging from
+  other sources" off, which cannot be read), no grid charge runs. The minimum reserve (MinRsvPct) is never written.
+  **The revert timer** (InOutWRte_RvrtTms) drops both limits when no write comes for its period; core writes 3600 s
+  and resends active limits every 15 minutes only with its opt-in option "Revert the power and battery limits if Home
+  Assistant stops" on (0 otherwise): a dead-man the integration renews, not SpotNav (`renewer` `integration`), which
+  never lifts a cap and keeps a stalled SpotNav's command alive while Home Assistant runs. SpotNav writes nothing to
+  renew it (core's heartbeat does), hands back on every stop and unload, and a grid charge is always under the
+  HA-down cap (`grid_charge_phases` 1: how a three-phase Gen24 spreads a forced charge is not stated). The option
+  is in the config entry, not an entity: not read, only asked for in the docs. A limit switch on when SpotNav would
+  start is someone else's (`requires`). Schedules, the Energy Cost Assistant and a grid operator's dynamic power
+  reduction live in the web UI and cannot be read (`strategy_unread`). Nothing says whether model 124 is kept in
+  flash: setpoints the maker states nothing about (500 a day).
+* **Deye / Sunsynk / Sol-Ark** hybrids (`DEYE_CONTROL`; **never run on a device; limits only**), `solarman`
+  (davidrapan/ha-solarman `84982c5`, the Deye profiles `deye_hybrid` and `deye_p3`) or kellerza's Sunsynk add-on over
+  MQTT (`49efe3f`); read 2026-11-23 and 2026-11-25 (`plans/research_integrations/deye_sunsynk_control_2026-11-23.md`).
+  Numbers "Battery Max Charging Current" / "Battery Max Discharging Current" (A, 0-240 on 1p, 0-350 on 3p LV; holding
+  0xD2/0xD3 on 1p, 0x6C/0x6D on 3p), on kellerza "Battery Max Charge current" / "... Discharge current" (210/211 and
+  108/109). `solarman` reads the register first and skips a write of the value it holds, writes it with FC16 and
+  shows the value only once the logger acknowledged the write (`entity.py` `write`); the next poll shows the register.
+  Nothing else is written with it (no companion registers, no cache). A **hold** is the discharge current at 0 (the
+  battery covers nothing; a sun surplus is still stored: evcc's `holddischarge` on the 3p template), a **discharge for
+  the house** the charge current at 0. Both only lower a limit, so if Home Assistant stops the battery only covers
+  less: no fuse cap is needed and nothing expires (`NO_EXPIRY`). The hand-back writes both back as found; a limit
+  someone else changed meanwhile (the vendor app, Predbat, evcc) is given up and not written back over them.
+  **No grid charge and no sale.** There is no power setpoint and no dead-man on any route: a grid charge is the
+  owner's six time-of-use programmes (each slot's SoC, power and charge source), which would have to be rewritten
+  (evcc #34394, #36312), so it is not mapped. **Time of Use on** means the inverter runs its own programmes: the
+  battery is someone else's and only watched (`adapters.DEYE`'s mode rule). The work mode, the grid charge switch and
+  current, and the export and peak shaving settings are never written. **Writes**: every control is a settings
+  register, and the community fears flash wear (kellerza #706; no limit is stated anywhere), so writes are only on a
+  change of action, read back, and capped at `DEYE_SETTING_WRITES` a day, every write counted (`count_restores`: a
+  hand-back always runs, but counts, and a cap it spent refuses the next start). Live writes wait for a person's hardware
+  test on the plant's firmware (`hardware_test_first`).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -433,10 +518,13 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import (
-    ECOFLOW, FERROAMP, FOXESS, GOODWE, HUAWEI, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, SOLIS, TESLA, VICTRON,
+    ECOFLOW, FERROAMP, FOXESS, GOODWE, HUAWEI, KOSTAL, MARSTEK, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, SOLIS, TESLA,
+    VICTRON,
     Adapter,
     Match, _goodwe, _key, _tesla,
 )
+from .adapters import FRONIUS, _fronius
+from .adapters import DEYE, _any_key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -447,6 +535,9 @@ from .plan_model import (
 
 #: The value a role had before SpotNav first wrote it.
 SNAPSHOT: Final = "<snapshot>"
+#: How a number that follows its own maximum is read (`Role.follows_max`): a text, never a number, so a value written
+#: to it never reads back as taken while the entity follows its maximum instead.
+FOLLOWS_MAX: Final = "follows_max"
 #: Values a recipe cannot fix on its own, filled in by `BrandControl.wanted` from the plant's readings when the
 #: action is entered: `floor(SoC now)` (Tesla's reserve under a hold), the depth of discharge that makes the cut-off
 #: the SoC now (GoodWe's hold), and a share of the battery's rated power for a power in kW (`pct_of_rated`). Left as
@@ -655,6 +746,11 @@ class Role:
     #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
     #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
     restored_below: tuple[float, float] | None = None
+    #: The attribute that is true while the number follows its own maximum instead of the value it shows (Kostal's
+    #: Set Charge Rate: a value at or above the maximum, which moves with the battery's voltage). The role then reads
+    #: `FOLLOWS_MAX` (`answered`): a write that latched it is not taken (no number read back), and the restore of a
+    #: value found so writes the entity's maximum again (`control.resolve_follows_max`). `None`: no such attribute.
+    follows_max: str | None = None
 
     def __post_init__(self) -> None:
         if (self.readback == "answer") != (self.answer is not None):
@@ -1000,6 +1096,10 @@ class BrandControl:
     slow: bool = False
     min_change_s: float = 0.0
     rearm_s: float | None = None
+    #: How long a person's hardware test of the recipe may run in all (s; `hardware_test.HardwareTest._max_test`),
+    #: `None`: the test's own ten minutes. A slow recipe's modes each wait for its re-arm and its cloud read-backs
+    #: (`verify.quick_for`), so its test takes about an hour.
+    test_total_s: float | None = None
     #: The plant charges at its own rate and the recipe cannot set it (Tesla): the gate and the executor use that rate
     #: (`fixed_rate_kw`) and refuse a grid charge that does not fit under the fuse cap instead of lowering it.
     fixed_charge: bool = False
@@ -1051,6 +1151,10 @@ class BrandControl:
     #: models take less than the recipe allows (Marstek: 2500 W on a Venus E, 1500 W on a Venus A). `None` for every
     #: other recipe, whose entities' ranges are never read (Home Assistant's default 0..100 would read as 0.1 kW).
     charge_power_bound: str | None = None
+    #: That entity's maximum itself means something else (Kostal's Set Charge Rate: "follow the battery's maximum",
+    #: which then moves with its voltage and would read as someone else's change), so a charge is bounded one of the
+    #: role's steps below it. `False` for every other recipe.
+    charge_power_bound_exclusive: bool = False
     #: The battery's BMS bounds a grid charge live: its present charge-current limit times its voltage
     #: (`facts.BatteryFacts.bms_charge_kw`), read every look, for the check's charge step, a live grid charge, a test
     #: action and the plan's cap alike; it only ever lowers a cap (Solis: a cold Dyness at 10 A x 377 V takes 3.7 kW
@@ -1071,6 +1175,24 @@ class BrandControl:
     #: The hardware test's dead-man step must have passed (timed), not merely been tried, for the test to pass: a recipe
     #: whose every action is a command that stands until it expires (`gate.hardware_test_passed`).
     deadman_must_pass: bool = False
+    #: The recipe's shares of the rated power (`pct_of_rated`) are of the rating as the plant reads it (Fronius's
+    #: WChaMax, the base its limits are a percentage of): a rating learnt where the plant reads none
+    #: (`learned.with_learned`) is no base for them, so they stay unresolved (`rated_unknown`). `False`: any rating.
+    rating_read: bool = False
+    #: A hand-back writes a role back only over SpotNav's own value: one that reads neither SpotNav's value nor the
+    #: one found (the vendor app or another controller set it meanwhile, also while Home Assistant was down) is left
+    #: alone (`left_alone`), and after a restart a role with no reading yet is not written blind until it reads or
+    #: `executor.RESTORE_READ_WAIT_S` passed (never for the fuse). For settings whose found value is the owner's (Deye's
+    #: current limits). `False`: as before (a restart restores every written role).
+    restore_own_only: bool = False
+    #: Number roles of which any that rises from what it reads to its target is written ahead of the brand's order
+    #: (after a change's stop): limits whose enabled pair must never sum below 0 (Fronius: the charge cap at +p beside
+    #: the discharge limit at -p), so a change of rate never passes through a pair core refuses. `()`: the order.
+    rising_first: tuple[str, ...] = ()
+    #: Restores count against the day's write cap like every other write (`executor._progress`): never held back by
+    #: it (a hand-back, a fuse's too, always runs), but a cap spent by them refuses the next start. For settings whose
+    #: every write is a register write nobody states the wear of (Deye's current limits). `False`: not counted.
+    count_restores: bool = False
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -1275,7 +1397,8 @@ def native(role: Role, kw: float) -> float:
 
 def pct_of_rated(kw: float) -> str:
     """A power in kW as a share of the battery's rated power, for a role in percent (GoodWe's eco power): resolved by
-    `BrandControl.wanted` with the rating."""
+    `BrandControl.wanted` with the rating. A negative power is the same share, negative (Fronius's discharge limit
+    below 0 forces a charge)."""
     return f"{_PCT_PREFIX}{kw!r}>"
 
 
@@ -1311,7 +1434,9 @@ def _resolve(
         if rated_kw is None or not math.isfinite(rated_kw) or rated_kw <= 0:
             return value
         kw = float(value[len(_PCT_PREFIX):-1])
-        return float(min(max(math.floor(kw / rated_kw * 100.0 + 1e-9), 1), 100))
+        share = float(min(max(math.floor(abs(kw) / rated_kw * 100.0 + 1e-9), 1), 100))
+        # A negative power is a negative share (Fronius's forcing limits), its size rounded down as a positive one.
+        return -share if kw < 0 else share
     return value
 
 
@@ -1369,6 +1494,12 @@ def answered(role: Role, state: str | None, attributes: Mapping[str, Any] | None
     write is never confirmed by its own request (the ledger waits, then retries or hands back) and a refused one is
     never someone else's change. Without a transaction in the attributes (no request seen since the integration
     started; a restart does not restore the attributes) the state is read as it is."""
+    if (
+        role.follows_max is not None and attributes and attributes.get(role.follows_max) is True
+        and state is not None and state.strip().lower() not in _NO_READING
+    ):
+        # The number follows its own maximum, whatever it shows (`Role.follows_max`).
+        return FOLLOWS_MAX
     spec = role.answer
     if spec is None or state is None or not attributes or attributes.get(spec.transaction) is None:
         return state
@@ -1632,6 +1763,9 @@ def _se(mode: str, **limits: Callable[[float], float]) -> Callable[[float, int],
 
 SOLAREDGE_CONTROL: Final = BrandControl(
     brand="solaredge",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLAREDGE,
     roles=(_SE_TIMEOUT, _SE_CHARGE, _SE_DISCHARGE, _SE_MODE, _SE_CONTROL_MODE, _SE_POLICY),
     states={
@@ -1673,6 +1807,9 @@ def _hw_run(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
 
 HUAWEI_CONTROL: Final = BrandControl(
     brand="huawei",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=HUAWEI,
     roles=(_HW_FORCIBLE, _HW_DISCHARGE, _HW_CHARGE),
     states={
@@ -1715,6 +1852,9 @@ def _sx(option: str, sign: float = 0.0) -> Callable[[float, int], tuple[Want, ..
 
 SOLAX_CONTROL: Final = BrandControl(
     brand="solax",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLAX,
     roles=(_SX_REPEAT, _SX_POWER, _SX_CONTROL, _SX_TRIGGER),
     states={
@@ -1812,6 +1952,9 @@ SOLINTEG_PHASES: Final = PhaseControl(
 
 SOLINTEG_CONTROL: Final = BrandControl(
     brand="solinteg",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=SOLINTEG,
     roles=(_SOL_MODE, _SOL_TARGET),
     states={
@@ -1943,6 +2086,9 @@ VICTRON_PHASES: Final = PhaseControl(
 
 VICTRON_CONTROL: Final = BrandControl(
     brand="victron",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=VICTRON,
     roles=(_VIC_CHARGE, _VIC_DISCHARGE, _VIC_GRID),
     states={
@@ -2019,6 +2165,9 @@ def _gw_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
 
 GOODWE_CONTROL: Final = BrandControl(
     brand="goodwe",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=GOODWE,
     roles=(_GW_ECO_SOC, _GW_ECO_POWER, _GW_DEPTH, _GW_MODE),
     states={
@@ -2064,6 +2213,9 @@ TESLA_CHARGE_BLOCK_S: Final = 1800.0
 
 TESLA_CONTROL: Final = BrandControl(
     brand="tesla",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=TESLA,
     roles=(_TS_RESERVE, _TS_GRID),
     states={
@@ -2087,6 +2239,9 @@ TESLA_CONTROL: Final = BrandControl(
     fixed_charge=True,
     fixed_charge_kw=5.0,
     write_caps={"setting": TESLA_WRITES_PER_DAY},
+    # The hardware test: three modes after one another, each after a 15-minute re-arm and two cloud read-backs of up
+    # to 7 minutes (`verify.quick_for`); about 55 minutes when the cloud is at its slowest, with room for the looks.
+    test_total_s=75 * 60.0,
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
@@ -2126,6 +2281,9 @@ FERROAMP_HOLDS: Final = (
 
 FERROAMP_CONTROL: Final = BrandControl(
     brand="ferroamp",
+    # Not field-tested on a plant of the brand: writes only after a passed hardware test (a plant whose control
+    # already ran keeps it, `GATED_AFTER_RUNNING`).
+    hardware_test_first=True,
     adapter=FERROAMP,
     roles=(_FA_CMD,),
     states={
@@ -2489,6 +2647,229 @@ SOLIS_CONTROL: Final = BrandControl(
     " on a plant; writes only after a passed hardware test.",
 )
 
+# --- Kostal Plenticore (kostal_modbus_control, see the module) -------------------------------------------------------
+
+#: What the integration's `battery_mgmt_mode` reads (register 1080 = 2, `const.py` `BATTERY_MGMT_MODE_MAP`) when the
+#: installer set "External via protocol (Modbus TCP)": the only mode in which the inverter takes a write.
+KOSTAL_MGMT_MODBUS: Final = "External battery management via Modbus protocol"
+#: The inverter's external-control timeout (s): an installer's web setting (30 and 60 s seen), not readable. The
+#: longer one: a plant set to 30 s falls back sooner. Renewed by the integration's loops at half its own setting.
+KOSTAL_TIMEOUT_S: Final = 60.0
+
+# Set Charge Rate: the integration's own value (W, step 100), which Charge Start's loop sends as the setpoint at every
+# tick; its state is that value, so the echo is what the inverter is sent. A value at or above its maximum latches
+# "follow the maximum" (`follows_max` true): such a write is not taken. Written back last as found (the integration
+# keeps it over a restart, and the person's own Charge Start runs at it): a rate that followed the maximum by writing
+# the maximum again.
+_KO_RATE = Role(
+    "charge_rate", "number", _key("charge_rate", "number"), scale=1000.0, step=100.0,
+    write_class="setpoint", readback="echo", follows_max="follows_max",
+)
+# The two switches SpotNav turns on. Their state is the integration's flag (on at once, its loop after any settling
+# wait), so the battery's power judges the effect.
+_KO_CHARGE = Role("charge_start", "switch", _key("charge_start", "switch"), write_class="setpoint", readback="echo")
+_KO_HOLD = Role("block_discharge", "switch", _key("block_discharge", "switch"), write_class="setpoint", readback="echo")
+# Register 1080: read before anything is written, never written (an installer's setting).
+_KO_MGMT = Role("management_mode", "sensor", _key("battery_mgmt_mode"), restored=False)
+
+
+def _ko_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    """The rate first, read back, then Charge Start, whose loop sends it."""
+    return (Want("charge_rate", native(_KO_RATE, rate_kw)), Want("charge_start", True))
+
+
+KOSTAL_CONTROL: Final = BrandControl(
+    brand="kostal",
+    adapter=KOSTAL,
+    roles=(_KO_MGMT, _KO_HOLD, _KO_RATE, _KO_CHARGE),
+    states={
+        # Block Discharge: the battery covers nothing; the sun is still stored.
+        ACTION_HOLD: lambda _rate, _w: (Want("block_discharge", True),),
+        ACTION_GRID_CHARGE: _ko_charge,
+        # The inverter's own control covers the house: no switch on.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
+    },
+    # A hold's switch off before the rate and Charge Start (the integration would turn it off itself, and SpotNav would
+    # read its own switch changed); a charge's Charge Start off first on every change and hand-back (`peak_first`).
+    enter_order=("block_discharge", "charge_rate", "charge_start"),
+    restore_order=("charge_start", "block_discharge", "charge_rate"),
+    # SpotNav's own switches are not someone else's while they run (the adapter's mode rules read every switch).
+    own_states={"Charge Start": frozenset({"on"}), "Block Discharge": frozenset({"on"})},
+    requires=(("management_mode", frozenset({KOSTAL_MGMT_MODBUS}), "external_control_off"),),
+    peak_first={ACTION_HOLD: ("block_discharge",), ACTION_GRID_CHARGE: ("charge_start",)},
+    # The inverter's own timeout, renewed by the integration's loops (not by SpotNav): it ends a command when Home
+    # Assistant stops, never when SpotNav alone stalls, so it never lifts a cap (`gate.expiry_lifts`). Stated by the
+    # integration, evcc and owners; no write of SpotNav's stops the loops and leaves the command standing (turning a
+    # switch off writes the stop at once), so it has no silence and is not timed by the hardware test.
+    expiry=Expiry(
+        "device_deadman", "integration", KOSTAL_TIMEOUT_S, integration="kostal_modbus_control",
+        note="the inverter's external-control timeout (installer setting, 30 or 60 s seen), written every half of it"
+        " by the integration's switch loops",
+    ),
+    # A three-phase hybrid; how it spreads a grid charge over the phases is not stated: all of it on one.
+    grid_charge_phases=1,
+    # The inverter's own strategy (smart battery control, time control, core's select) is not in this integration's
+    # entry: the person acknowledges that SpotNav's commands override whatever runs.
+    strategy_unread=True,
+    # A minimum SoC hold (the integration's other option) may let the inverter reach it from the grid (unverified):
+    # a hold that charges from the grid did not take.
+    hold_grid_guard=True,
+    hacs_roles=("management_mode", "block_discharge", "charge_rate", "charge_start"),
+    hacs_repo="mbuhansen/kostal_plenticore_battery_control",
+    # Kostal's interface description says nothing of flash; the integration and evcc call the registers volatile.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    charge_power_bound="charge_rate",
+    charge_power_bound_exclusive=True,
+    hardware_test_first=True,
+    note="Needs kostal_modbus_control (mbuhansen) and the installer's External via protocol (Modbus TCP). Hold: Block"
+    " Discharge; grid charge: Set Charge Rate and Charge Start. The integration renews them; the inverter falls back"
+    " by itself within its timeout when Home Assistant stops, so a grid charge still runs under the HA-down cap. Never"
+    " run on a plant; writes only after a passed hardware test.",
+)
+
+# --- Fronius Gen24 (core fronius over Modbus, see the module) ------------------------------------------------------
+
+#: The revert period core `fronius` writes with every limit while its option "Revert the power and battery limits if
+#: Home Assistant stops" is on (s; `const.AUTO_REVERT_SECONDS`), and resends the active limits within (every 15 min).
+FRONIUS_REVERT_S: Final = 3600.0
+
+# The two limits (% of WChaMax, -100..100, step 1) and their switches (StorCtl_Mod's two bits), each read back by core's
+# refresh right after the write. A limit found below 0 (someone's forcing value left behind its switch) is handed back
+# as 100, no limit: never a force to leave for the next one who turns its switch on.
+_FR_CHARGE = Role(
+    "charge_limit", "number", _fronius("battery_charge_power_limit", "number"), step=1.0, write_class="setpoint",
+    restored_below=(0.0, 100.0),
+)
+_FR_DISCHARGE = Role(
+    "discharge_limit", "number", _fronius("battery_discharge_power_limit", "number"), step=1.0,
+    write_class="setpoint", restored_below=(0.0, 100.0),
+)
+_FR_CHARGE_ON = Role(
+    "charge_limit_on", "switch", _fronius("battery_charge_power_limit_enabled", "switch"), write_class="setpoint"
+)
+_FR_DISCHARGE_ON = Role(
+    "discharge_limit_on", "switch", _fronius("battery_discharge_power_limit_enabled", "switch"),
+    write_class="setpoint",
+)
+# Read for a grid charge, never written (ChaGriSet keeps its value whatever happens to Home Assistant).
+_FR_GRID_CHARGING = Role("grid_charging", "switch", _fronius("battery_grid_charging", "switch"), restored=False)
+
+
+def _fr_hold(_rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    return (Want("discharge_limit", 0.0), Want("discharge_limit_on", True))
+
+
+def _fr_charge(rate_kw: float, watchdog_s: int) -> tuple[Want, ...]:
+    """The discharge limit at minus the rate's share of WChaMax: a forced charge at least that fast; and the charge
+    limit at the same share: at most that fast, so neither the sun nor the grid takes the charge above the rate
+    (`fronius_control_2026-11-23.md`: a charge cap of +p is what holds the total). The pair sums to 0, which core
+    accepts. A rate of nothing is a hold."""
+    if rate_kw <= 0:
+        return _fr_hold(rate_kw, watchdog_s)
+    return (
+        Want("charge_limit", pct_of_rated(rate_kw)), Want("charge_limit_on", True),
+        Want("discharge_limit", pct_of_rated(-rate_kw)), Want("discharge_limit_on", True),
+    )
+
+
+FRONIUS_CONTROL: Final = BrandControl(
+    brand="fronius",
+    adapter=FRONIUS,
+    roles=(_FR_CHARGE, _FR_DISCHARGE, _FR_CHARGE_ON, _FR_DISCHARGE_ON, _FR_GRID_CHARGING),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (not an idle hold).
+        ACTION_HOLD: _fr_hold,
+        ACTION_GRID_CHARGE: _fr_charge,
+        # It covers the house and stores nothing (a sun surplus is exported).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_limit", 0.0), Want("charge_limit_on", True)),
+        # No sale yet: a negative charge limit has not been seen on a plant (see the module).
+    },
+    # The values first (a value written while its switch is off does nothing), the charge limit's switch before the
+    # discharge limit's: from a discharge to the house into a hold or a charge it goes off before the other comes on.
+    # Back: both switches off first (the inverter's own priority list again), then the values as found.
+    enter_order=("charge_limit", "discharge_limit", "charge_limit_on", "discharge_limit_on"),
+    restore_order=("discharge_limit_on", "charge_limit_on", "discharge_limit", "charge_limit"),
+    # SpotNav's own limits are not someone else's while they run (the adapter's mode rules read the two switches).
+    own_states={"charge limit": frozenset({"on"}), "discharge limit": frozenset({"on"})},
+    # A limit in force when SpotNav would start is another controller's (evcc, a script, a person).
+    requires=(
+        ("charge_limit_on", frozenset({"off"}), "charge_limit_in_force"),
+        ("discharge_limit_on", frozenset({"off"}), "discharge_limit_in_force"),
+    ),
+    action_requires=((ACTION_GRID_CHARGE, "grid_charging", frozenset({"off"}), "grid_charging_off"),),
+    # A hold's peak cover and a charge's stop: the discharge limit's switch off, the battery covers the house again.
+    peak_first={ACTION_HOLD: ("discharge_limit_on",), ACTION_GRID_CHARGE: ("discharge_limit_on",)},
+    # The inverter's revert timer, written and renewed by core only with its option on: a dead-man the integration
+    # keeps alive (never SpotNav, so a stalled SpotNav's limit stands while Home Assistant runs), never lifting a cap.
+    expiry=Expiry(
+        "device_deadman", "integration", FRONIUS_REVERT_S, integration="fronius",
+        note="InOutWRte_RvrtTms at 3600 s, resent every 15 minutes by core, only with its revert option on (not read)",
+    ),
+    # Web-UI schedules, the Energy Cost Assistant and dynamic power reduction cannot be read from Home Assistant.
+    strategy_unread=True,
+    # How a three-phase Gen24 spreads a forced charge over its phases is not stated: the whole charge on one phase.
+    grid_charge_phases=1,
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    rating_read=True,
+    # A grid charge holds both limits on at +p and -p: a change of rate writes the one that rises first, so the pair
+    # never sums below 0 on the way (core refuses that pair).
+    rising_first=("charge_limit", "discharge_limit"),
+    hardware_test_first=True,
+    note="Modbus limits through core fronius (HA 2026.11 or later). Hold: the discharge limit at 0; grid charge: the"
+    " discharge limit below 0 (a forced charge at the rate's share of WChaMax); house: the charge limit at 0. No"
+    " sale. Core's revert option is the only dead-man and never lifts a cap. Never run on a device; writes only"
+    " after a passed hardware test.",
+)
+
+# --- Deye / Sunsynk / Sol-Ark (limits only; see the module) --------------------------------------------------------
+
+#: The battery's own current limits (A), as `solarman`'s Deye profiles name them (`Battery Max Charging Current`,
+#: `... Discharging Current`: `<entry id>_battery_max_charging_current_number`) and kellerza's add-on
+#: (`Battery Max Charge current`: `<serial>_battery_max_charge_current`, the add-on's sensor groups "advanced" or
+#: "battery"). Whole amps (both round to an integer register). Restored as found. `solarman` shows a value once the
+#: logger acknowledged it, kellerza's add-on reads its settings every 5 s: the ledger's own read-back wait.
+_DY_DISCHARGE = Role(
+    "discharge_current", "number",
+    _any_key("battery_max_discharging_current_number", "battery_max_discharge_current", domains=("number",)),
+    step=1.0,
+)
+_DY_CHARGE = Role(
+    "charge_current", "number",
+    _any_key("battery_max_charging_current_number", "battery_max_charge_current", domains=("number",)),
+    step=1.0,
+)
+#: Register writes a day, every one counted (restores and peak covers too, `BrandControl.count_restores`): half a
+#: setting's, as both limits are inverter settings that nobody says are kept out of flash, and the community worries
+#: about wear (kellerza #706).
+DEYE_SETTING_WRITES: Final = 48
+
+DEYE_CONTROL: Final = BrandControl(
+    brand="deye",
+    adapter=DEYE,
+    roles=(_DY_DISCHARGE, _DY_CHARGE),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (evcc's `holddischarge`; not an idle hold).
+        ACTION_HOLD: lambda _rate, _w: (Want("discharge_current", 0.0),),
+        # It covers the house and stores nothing (a sun surplus is exported, or curtailed in a zero-export work mode).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_current", 0.0),),
+        # No grid charge and no sale: only by rewriting the owner's time-of-use programmes (see the module).
+    },
+    enter_order=("discharge_current", "charge_current"),
+    restore_order=("discharge_current", "charge_current"),
+    # A hold's peak cover gives the discharge current back.
+    peak_first={ACTION_HOLD: ("discharge_current",)},
+    # Lower limits never add import, so nothing needs to end by itself (`NO_EXPIRY`, the default).
+    write_caps={"setting": DEYE_SETTING_WRITES},
+    # A limit the app or another controller set meanwhile is theirs, also after a restart: never written back over.
+    restore_own_only=True,
+    # Every register write counts against the 48, the hand-backs too (they always run; the next start waits).
+    count_restores=True,
+    hardware_test_first=True,
+    note="Limits only: the battery's max discharge current at 0 A to hold, its max charge current at 0 A to cover the"
+    " house without storing, only while Time of Use is off. No grid charge or sale. Never run on a device; writes"
+    " only after a passed hardware test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -2505,6 +2886,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
     VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL, ECOFLOW_CONTROL, MARSTEK_CONTROL, SOLIS_CONTROL,
+    KOSTAL_CONTROL, FRONIUS_CONTROL, DEYE_CONTROL,
 )
 
 
@@ -2573,6 +2955,14 @@ def hardware_test_first(brand: str | None) -> bool:
     return control is not None and control.hardware_test_first and not control.field_tested
 
 
+#: The brands whose recipe was gated by `hardware_test_first` after control could already run on them (2026-11-25).
+#: A plant of one whose control ran before (switched on, with a passed routine check on its firmware key now) counts
+#: as passed and as having its control code (`BatteryControl._grandfather_running`): control never stops by an update.
+GATED_AFTER_RUNNING: Final = frozenset(
+    {"solaredge", "huawei", "solax", "solinteg", "victron", "goodwe", "tesla", "ferroamp"}
+)
+
+
 def export_control_for(brand: str | None) -> BrandControl | None:
     """The brand's export-limit control, `None` for a brand SpotNav has none for."""
     return next((control for control in EXPORT_CONTROLS if control.brand == brand), None)
@@ -2605,8 +2995,9 @@ EXPORT_LIMIT_TABLE: Final[tuple[Mapping[str, Any], ...]] = (
     {"brand": "goodwe", "integration": "core goodwe (library goodwe 66dfcdd)", "mapped": False,
      "entity": "number `grid_export_limit` (W on ET/EH, register 47510; % on DT, register 40328)",
      "note": "A setting written to the inverter; the unit depends on the model."},
-    {"brand": "fronius", "integration": "core fronius (Solar API)", "mapped": False, "entity": None,
-     "note": "The core integration reads only; an export limit needs Modbus, not checked."},
+    {"brand": "fronius", "integration": "core fronius (d33dfe3a)", "mapped": False, "entity": None,
+     "note": "No feed-in limit entity: its AC power limit (model 123) caps the inverter's whole AC output, not the"
+     " feed-in, and the web UI's dynamic power reduction is not written over Modbus."},
 )
 
 

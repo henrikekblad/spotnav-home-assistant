@@ -200,6 +200,7 @@ from typing import Any, Final, Literal
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    FOLLOWS_MAX,
     NORMAL,
     SNAPSHOT,
     TOLD_ACTION_REASONS,
@@ -215,9 +216,10 @@ from .commands import (
     native,
     reading,
 )
-from .facts import BatteryFacts, EntityFact, find_entity
+from .facts import SHARED_PLATFORMS, BatteryFacts, EntityFact, find_entity
 from .gate import MIN_RATE_KW, phase_split_kw
 from .ledger import READBACK_DEADLINE_S, Ledger, same
+from .learned import SOURCE_LEARNED
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     CONFIRM_READINGS,
@@ -329,6 +331,9 @@ _BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget", "renewal_
 #: A command that lapses by itself (its documented fallback read while it runs, `BrandControl.command_role`) is handed
 #: back and may start again; this many lapses in a day block the control (`lapsed_repeatedly`, clearing by itself).
 LAPSES_A_DAY: Final = 3
+#: How long a hand-back of a recipe that restores only its own values waits for a first reading of a role after a
+#: restart before writing it back as before (s; `BrandControl.restore_own_only`): a few slow polls.
+RESTORE_READ_WAIT_S: Final = 180.0
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
 RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
@@ -384,10 +389,13 @@ class RoleRead:
 
 
 def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: EntityFact) -> dict[str, RoleRead]:
-    """Each role's entity among the battery integration's entities, found by the integration's unique-id key."""
+    """Each role's entity among the battery integration's entities, found by the integration's unique-id key. On a
+    shared platform (`facts.SHARED_PLATFORMS`) a role that is written is found only on the battery's own device."""
     reads: dict[str, RoleRead] = {}
+    shared = battery.platform in SHARED_PLATFORMS
+    written = {role.name for role in control.roles if role.method != "sensor"}
     for role in (*control.roles, *(role for role, _value, _why in control.watched)):
-        found = find_entity(role.match, entities, battery)
+        found = find_entity(role.match, entities, battery, own_device_only=shared and role.name in written)
         if found is None:
             continue
         state = answered(role, found.state, found.attributes)
@@ -1119,6 +1127,17 @@ def _unset(role: Role, state: str | None) -> bool:
     return value is not None and value >= 4_000_000.0
 
 
+def _rises(target: Native | None, read: RoleRead | None) -> bool:
+    """Whether a number role's target is above what it reads now (`BrandControl.rising_first`)."""
+    if read is None or isinstance(target, bool) or not isinstance(target, int | float):
+        return False
+    try:
+        now = float(read.state) if read.state is not None else None
+    except ValueError:
+        return False
+    return now is not None and math.isfinite(now) and float(target) > now
+
+
 def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native | None:
     """What a restore writes back for a role found reading `state`; `None` when that cannot be known."""
     if role.method == "number":
@@ -1126,6 +1145,9 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
             rating = _rating(facts, role.unset_as_rating)
             return None if rating is None else round(rating * role.scale, 6)
         text = reading(role, state)
+        if role.follows_max is not None and text == FOLLOWS_MAX:
+            # Found following its own maximum: written back as the maximum then (`control.resolve_follows_max`).
+            return FOLLOWS_MAX
         try:
             value = None if text is None else float(text)
         except ValueError:
@@ -1245,6 +1267,9 @@ class Executor:
         #: Since when a hand-back has waited for a first reading of the command role (`BrandControl.command_role`):
         #: nothing is written blind (after a restart the integration may not have polled yet); `_command_unread`.
         self.command_wait_since: datetime | None = None
+        #: Since when a hand-back has waited for a first reading of a role it would write back
+        #: (`BrandControl.restore_own_only`, `_restore_unread`); not stored.
+        self.restore_wait_since: datetime | None = None
         #: In the running expiry test, the control's silence was put in the target (`Expiry.silence`: a dead-man the
         #: integration renews, stopped by a write); not stored: a restart ends the test.
         self.silenced = False
@@ -1255,6 +1280,11 @@ class Executor:
     def _sense(self, inputs: ExecInputs) -> None:
         facts = inputs.facts
         self._soc_pct, self._rated_kw, self._capacity_kwh = facts.soc_pct, facts.max_charge_kw, facts.capacity_kwh
+        if self.control.rating_read:
+            # Shares of the rating as the plant reads it (Fronius's WChaMax), never of a learnt one or a lower plant
+            # maximum: a learnt rating below the real base would ask for more than the rate (`BrandControl.rating_read`).
+            learnt = facts.sources.get("rated_charge") == SOURCE_LEARNED
+            self._rated_kw = None if learnt else facts.rated_charge_kw
         optional = self.control.optional_names()
         self._absent = frozenset(
             name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
@@ -1782,6 +1812,17 @@ class Executor:
                 expected: str | None = claim.owned
             elif name not in state.written and name in state.snapshot:
                 expected = reading(role, state.snapshot[name])
+            elif self._restores_own_only(state, name):
+                # No claim (the ledger lost or released it): SpotNav's own value or the one found; anything else
+                # someone else set meanwhile, never written back over (`BrandControl.restore_own_only`).
+                now_read = reading(role, read.state)
+                ours = (state.wrote.get(name), state.restore_values.get(name))
+                if now_read is None or any(
+                    value is not None and same(value, now_read, _tolerance(role, read)) for value in ours
+                ):
+                    break
+                events += self._gave_up(inputs.now, name, entity_id, now_read, why="changed_while_not_owned")
+                continue
             else:
                 break
             if expected is None:
@@ -2671,6 +2712,10 @@ class Executor:
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
             target = self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind)
+            unresolved = self.control.unresolved(target)
+            if unresolved is not None:
+                # A value that depends on a reading gone missing (the rating, the SoC) is never written as it stands.
+                return events + self._begin_restore(now, unresolved)
             # The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
             # timeout) is written again with the new command: with an action change every quarter hour it would
             # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
@@ -2714,9 +2759,12 @@ class Executor:
                 return events + self._begin_restore(now, "headroom_too_small")
             if down or up:
                 house, _behind = self._grid_terms(inputs, action, None)
+                target = self._wanted(action, rate, state.restore_values, house_kw=house)
+                unresolved = self.control.unresolved(target)
+                if unresolved is not None:
+                    return events + self._begin_restore(now, unresolved)
                 self.state = replace(
-                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, house_kw=house),
-                    sent=(), rate_changed_at=now, house_kw=house,
+                    state, rate_kw=rate, target=target, sent=(), rate_changed_at=now, house_kw=house,
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
@@ -3008,6 +3056,14 @@ class Executor:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
+            if self.control.rising_first:
+                # A limit that rises goes ahead of one that falls (after a change's stop): an enabled pair never
+                # sums below 0 on the way (`BrandControl.rising_first`).
+                rising = tuple(
+                    name for name in self.control.rising_first
+                    if name not in state.lead and _rises(state.target.get(name), inputs.reads.get(name))
+                )
+                order = (*state.lead, *rising, *(name for name in order if name not in state.lead and name not in rising))
         # A role whose value must change goes before a role that is only renewed: renewals never hold back a write
         # the action owes (an action that flips at every look must still write its command, and be counted).
         renewals: list[str] = []
@@ -3045,6 +3101,8 @@ class Executor:
             return []
         state = self.state
         name = self._next_role(state, inputs)
+        if restoring and name is not None and self._restore_unread(state, inputs, name):
+            return []
         if name is None or self._capped(state, inputs, name) or (restoring and self._limit_waits(state, inputs, name)):
             return []
         role = self.control.role(name)
@@ -3060,7 +3118,7 @@ class Executor:
         renewing = name in state.renew and (
             not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
         )
-        counted = 0 if restoring or renewing else 1
+        counted = 0 if renewing or (restoring and not self.control.count_restores) else 1
         setpoint = role.write_class == "setpoint"
         writes = state.writes_today + (0 if setpoint else counted)
         setpoints = state.setpoint_writes_today + (counted if setpoint else 0)
@@ -3091,6 +3149,27 @@ class Executor:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _restores_own_only(self, state: ExecState, name: str) -> bool:
+        """Whether a hand-back of `name` is checked against SpotNav's own values (`BrandControl.restore_own_only`): a
+        role SpotNav wrote, restored now."""
+        return self.control.restore_own_only and state.phase == "restoring" and name in state.written
+
+    def _restore_unread(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
+        """Whether the hand-back waits for a first reading of `name` before writing it back
+        (`BrandControl.restore_own_only`): after a restart the integration may not have read the inverter yet, and a
+        value found then may be someone else's (`_precheck` judges it once it reads). Never for the fuse; at most
+        `RESTORE_READ_WAIT_S`, then written as before."""
+        if not self._restores_own_only(state, name) or state.reason in _FUSE_REASONS:
+            self.restore_wait_since = None
+            return False
+        read = inputs.reads.get(name)
+        if reading(self.control.role(name), None if read is None else read.state) is not None:
+            self.restore_wait_since = None
+            return False
+        since = self.restore_wait_since or inputs.now
+        self.restore_wait_since = since
+        return (inputs.now - since).total_seconds() < RESTORE_READ_WAIT_S
 
     def _limit_waits(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
         """In a hand-back, whether a limit that acts in the plant's modes (`BrandControl.mode_limits`) must wait before

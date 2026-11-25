@@ -36,8 +36,11 @@ SIGEN_KEYS = [
 
 
 def _uid(brand: str, key: str) -> str:
-    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`)."""
-    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}"}.get(brand, f"PLANT_{key}")
+    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`,
+    Fronius: `<inverter id>-modbus-<key>`)."""
+    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}", "fronius": f"123456789-modbus-{key}"}.get(
+        brand, f"PLANT_{key}"
+    )
 
 
 def _plant(
@@ -365,6 +368,8 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
 #: The adapter's fields that hold no entity; every other field is walked for `Match`es. A new field must be named in
 #: one of the two, so a new kind of read cannot be left out of what the confirm enables.
 _NO_ENTITY_FIELDS = {"brand", "label", "platforms", "manufacturer", "plant_phase_sign", "plant_max_attribute", "package"}
+# A fact's name (the device of its entity carries the firmware), not an entity of its own.
+_NO_ENTITY_FIELDS |= {"firmware_device"}
 _ENTITY_FIELDS = {
     "facts", "modes", "grid_status", "hold", "grid_charge", "plant_max", "reserves", "plant_phase_power",
     "cell_temperature", "soc_packs", "preheat", "dc_power", "plant_load_power", "plant_pv_power",

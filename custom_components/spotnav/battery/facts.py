@@ -9,7 +9,7 @@ A brand without an adapter gets its level from a `battery` sensor on the battery
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
@@ -293,6 +293,10 @@ def to_kwh(state: str | None, unit: str | None) -> float | None:
 
 #: A battery's voltage that can be a reading of one (V); below or above it the entity is something else.
 _VOLTAGE_RANGE: Final = (5.0, 1000.0)
+#: Platforms whose one config entry holds every device of their kind (the MQTT broker: kellerza's Sunsynk add-on beside
+#: a BMS or a second system): a control SpotNav writes is taken only on the battery's own device there
+#: (`find_entity`'s `own_device_only`), never as the only one in the entry.
+SHARED_PLATFORMS: Final = frozenset({"mqtt"})
 #: Units a current or an amp-hour size is read in. The community Victron Modbus integration puts `A` on its Ah register.
 _CURRENT_UNITS: Final = frozenset({"A", "Ah"})
 EST_CAPACITY_FROM_AH: Final = "capacity_from_ah"
@@ -333,9 +337,12 @@ def _bms_charge_kw(entity: EntityFact | None, volts: float) -> float | None:
     return amps * volts / 1000.0
 
 
-def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
+def find_entity(
+    match: Match, entities: Sequence[EntityFact], battery: EntityFact, *, own_device_only: bool = False
+) -> EntityFact | None:
     """The entity `match` names: the one on the battery's device, else the only one in its entry, else none
-    (two plants in one entry and none on the battery's device cannot be told apart)."""
+    (two plants in one entry and none on the battery's device cannot be told apart). `own_device_only`: only the one
+    on the battery's device (a control written on a shared platform, `SHARED_PLATFORMS`)."""
     package = package_of(battery.platform, battery.unique_id)
     if package is None:
         in_scope = lambda entity: entity.platform == battery.platform  # noqa: E731
@@ -352,7 +359,7 @@ def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFac
     own = [entity for entity in found if battery.device_id is not None and entity.device_id == battery.device_id]
     if own:
         return own[0]
-    return found[0] if len(found) == 1 else None
+    return found[0] if len(found) == 1 and not own_device_only else None
 
 
 def _fact(adapter: Adapter, role: FactRole, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
@@ -642,6 +649,7 @@ def battery_facts(
     found_states: Mapping[str, str] | None = None,
     sw_version: str | None = None,
     adapter: Adapter | None = None,
+    device_version: Callable[[str], str | None] | None = None,
 ) -> BatteryFacts:
     """What SpotNav knows of the site's battery. `entities` are the battery integration's entities (its config
     entry's); `manufacturer` is the battery device's; `external_planner` names a battery planner found running
@@ -649,7 +657,9 @@ def battery_facts(
     before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found.
     `sw_version`: the battery device's software version in the device registry, the firmware where the adapter
     names no firmware entity or it reads nothing (`device_firmware`). `adapter`: the adapter to read with, in place
-    of the one of the battery's platform (a mirrored battery's, `mirrored.match_adapter`)."""
+    of the one of the battery's platform (a mirrored battery's, `mirrored.match_adapter`). `device_version`: a
+    device's software version by its id, for an adapter whose firmware is on another device
+    (`Adapter.firmware_device`) where the battery's own has none."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
     if adapter is None:
@@ -673,6 +683,10 @@ def battery_facts(
         return None if entity is None else to_kw(entity.state, entity.unit)
 
     soc_entity, capacity_entity, firmware_entity = found.get("soc"), found.get("capacity"), found.get("firmware")
+    if firmware_entity is None and sw_version is None and adapter.firmware_device is not None and device_version:
+        holder = found.get(adapter.firmware_device)
+        if holder is not None and holder.device_id is not None:
+            sw_version = device_version(holder.device_id)
     soc_pct = None if soc_entity is None else _percent(soc_entity.state)
     if soc_pct is None and adapter.soc_packs:
         soc_pct, packs_read = packs_soc(adapter.soc_packs, entities, battery)

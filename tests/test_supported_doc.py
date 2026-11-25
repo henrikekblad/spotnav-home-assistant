@@ -90,6 +90,9 @@ def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_do
     # FoxESS: grid meter, battery power and level read, untested; its limits-only commands mapped, never run.
     row = next(row for name, row in rows.items() if name.startswith("FoxESS"))
     assert row[2] == "Yes, untested: grid meter, battery power, battery level" and row[3] == gen.CONTROL_MAPPED
+    # Deye / Sunsynk: read untested; its limits-only commands mapped, never run.
+    row = next(row for name, row in rows.items() if name.startswith("Deye"))
+    assert row[2].startswith("Yes, untested: ") and row[3] == gen.CONTROL_MAPPED
     # SAJ: the Modbus integration's battery power and level are read, untested, and read only.
     row = next(row for name, row in rows.items() if name.startswith("SAJ"))
     assert row[2].startswith("Yes, untested: battery power, battery level") and row[3].startswith("Not mapped: read only")

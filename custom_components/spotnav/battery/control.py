@@ -99,6 +99,8 @@ from . import gate, optin
 from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    FOLLOWS_MAX,
+    GATED_AFTER_RUNNING,
     NORMAL,
     OUTPUT_TYPE_PHASES,
     BrandControl,
@@ -148,7 +150,7 @@ from .verify import (
     TEST_CHARGE_KW,
     TEST_CHARGE_SOC_MAX_PCT,
     Sample,
-    Timing,
+    quick_for,
     Verification,
     expiry_long,
     expiry_max_s,
@@ -162,6 +164,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION: Final = 1
+#: The share below a charge entity's maximum a recipe with `charge_power_bound_exclusive` stays at least (Kostal: the
+#: maximum moves with the battery's voltage between the read and the write), where the entity's step is less.
+EXCLUSIVE_BOUND_MARGIN: Final = 0.05
 #: How long a stop or unload keeps stepping the hand-back before it leaves the rest to the next start (s).
 HAND_BACK_DEADLINE_S: Final = 30.0
 #: How long the shell waits for an entity to change after a write, between looks during a hand-back (s).
@@ -258,9 +263,25 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
     return reads
 
 
+def resolve_follows_max(hass: HomeAssistant, op: Op) -> Op | None:
+    """A write of `FOLLOWS_MAX` (the restore of a number found following its own maximum, `Role.follows_max`) as the
+    entity's maximum now, which the integration takes as "follow the maximum" again; any other write as it is.
+    `None` when the entity shows no maximum: the write is not made."""
+    if op.method != "number" or op.value != FOLLOWS_MAX:
+        return op
+    state = None if op.entity_id is None else hass.states.get(op.entity_id)
+    maximum = None if state is None else _float(state.attributes.get("max"))
+    return None if maximum is None else replace(op, value=maximum)
+
+
 async def _async_call(hass: HomeAssistant, op: Op, executor: Executor) -> str | None:
     """One write as a service call; why it was not taken (`_failure`), `None` when it was."""
     role = executor.control.role(op.role)
+    resolved = resolve_follows_max(hass, op)
+    if resolved is None:
+        _LOGGER.warning("Battery control: %s shows no maximum to follow; it was not written", op.role)
+        return "service_failed"
+    op = resolved
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
         services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field, duration=role.lease,
@@ -477,6 +498,9 @@ class BatteryControl:
         #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
         #: one passes again.
         self.hardware_failed: list[str] = []
+        #: The brands gated after running (`commands.GATED_AFTER_RUNNING`) this plant was looked at for
+        #: grandfathering (`_grandfather_running`), granted or not: each is decided once and never again.
+        self.grandfather_checked: list[str] = []
         #: The person's sign-up as a tester for the plant's brand (`battery/tester.py`: `brand`, `asked_at`, `ref`, and
         #: once a test's result went `result_ref`, `result_at`), `None` before one; never the e-mail address.
         self.tester: dict[str, Any] | None = None
@@ -616,6 +640,7 @@ class BatteryControl:
         await self._async_check_codes()
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
+        self._grandfather_running()
         # The battery first (a grid charge left standing adds import), then the export limit.
         control = control_for(state.brand) or control_for(self.facts.control_brand)
         if control is not None:
@@ -644,6 +669,10 @@ class BatteryControl:
         self.hardware_failed = (
             [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
         )
+        checked = data.get("grandfather_checked")
+        self.grandfather_checked = (
+            [brand for brand in checked if isinstance(brand, str)] if isinstance(checked, list) else []
+        )
         tester, codes = data.get("tester"), data.get("control_codes")
         self.tester = dict(tester) if isinstance(tester, dict) and isinstance(tester.get("brand"), str) else None
         self.control_codes = {
@@ -662,6 +691,10 @@ class BatteryControl:
         install = install_hash(await instance_id.async_get(self.hass))
         kept: dict[str, dict[str, Any]] = {}
         for brand, stored in self.control_codes.items():
+            if stored.get("grandfathered") is True and brand in GATED_AFTER_RUNNING:
+                # Control ran on the plant before its brand was gated (`_grandfather_running`): no code text to check.
+                kept[brand] = stored
+                continue
             text = stored.get("code")
             try:
                 code = codes.verify(text) if isinstance(text, str) else None
@@ -675,6 +708,52 @@ class BatteryControl:
                 continue
             kept[brand] = stored
         self.control_codes = kept
+
+    def _grandfather_running(self) -> None:
+        """A plant of a brand gated after its control could already run (`commands.GATED_AFTER_RUNNING`) whose control
+        ran: the routine's check passed here for the brand on any firmware key and recipe revision (`reports`; a key
+        with an unread firmware is no evidence). It counts as the brand's first pass here (`hardware_brands`) and as
+        having its control code (a `grandfathered` record with the date): control never stops by an update (owner
+        rule), and no tester sign-up or code is asked of it. Whether control is switched on now and the key now do not
+        matter: an integration updated in the same restart, a firmware the routine has not re-passed yet or control
+        switched off at the update keep it, and the routine checks the key now as it always did. Never for a plant a
+        person's hardware test passed on (`hardware_brands`: the code approves that pass) or that a tester signed up
+        for. Decided once per plant and brand (`grandfather_checked`), granted or not: a plant with no passed report
+        when its brand is first seen is never looked at again, and a pass voided later by a block stays void."""
+        control = self._gated_control()
+        if control is None or control.brand not in GATED_AFTER_RUNNING or control.brand in self.grandfather_checked:
+            return
+        self.grandfather_checked = [*self.grandfather_checked, control.brand]
+        if (
+            control.brand in self.control_codes or control.brand in self.hardware_brands
+            or (self.tester is not None and self.tester.get("brand") == control.brand)
+        ):
+            # A record already, a person's hardware test passed here (its pass is the routine's report too) or a
+            # tester's sign-up: the developer's code approves that one.
+            return
+        passed = [
+            key for key, report in self.reports.items()
+            if isinstance(report, dict) and report.get("brand") == control.brand and gate.firmware_known(key)
+            and gate.report_status(report) == "passed"
+        ]
+        if not passed:
+            return
+        key = passed[-1]
+        now = dt_util.now()
+        self.hardware_brands.append(control.brand)
+        self.control_codes = dict(self.control_codes) | {control.brand: {
+            "grandfathered": True, "brand": control.brand, "entered_at": now.isoformat(), "firmware_key": key,
+        }}
+        self._log([{"at": now.isoformat(), "kind": "control_grandfathered", "reason": key}])
+        _LOGGER.info(
+            "SpotNav battery control: %s control already ran here (passed on %s); it goes on without a hardware test "
+            "or a control code", control.brand, key,
+        )
+
+    def grandfathered(self) -> bool:
+        """Whether the plant's gated brand holds a `grandfathered` record (`_grandfather_running`)."""
+        brand = self.gated_brand()
+        return brand is not None and (self.control_codes.get(brand) or {}).get("grandfathered") is True
 
     def _void_blocked_passes(self) -> None:
         """At each look: a recipe this release holds back on the plant (`commands.BLOCKED`) voids the plant's stored
@@ -897,9 +976,10 @@ class BatteryControl:
     def tester_view(self) -> dict[str, Any] | None:
         """The battery section's tester block (`spotnav/battery_control`'s `tester`), `None` for a plant whose recipe
         takes no code: `stage` `none` (not signed up, or beta mode off: `tester_active`), `asked` (signed up, no test result sent), `tested` (a test's
-        result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail)."""
+        result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail). `None` too
+        for a plant whose control ran before its brand was gated (`grandfathered`): it has nothing to sign up for."""
         brand = self.gated_brand()
-        if brand is None:
+        if brand is None or self.grandfathered():
             return None
         tester = self.tester if self.tester_active() else None
         code = self.control_codes.get(brand)
@@ -1123,6 +1203,7 @@ class BatteryControl:
         # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
         self._ha_down_setup_look()
+        self._grandfather_running()
         self._void_blocked_passes()
         options = self.options()
         await self._async_read_sources(now)
@@ -1671,6 +1752,14 @@ class BatteryControl:
         entity_id = plant_entity_id(self.hass, self.site.config, role.match)
         state = None if entity_id is None else self.hass.states.get(entity_id)
         bound = None if state is None else _float(state.attributes.get("max"))
+        if bound is not None and control.charge_power_bound_exclusive:
+            # The maximum itself means "follow the battery's maximum" (Kostal's Set Charge Rate), and it moves with
+            # the battery's voltage between this read and the write: a margin of `EXCLUSIVE_BOUND_MARGIN` or the
+            # entity's step below it, whichever is larger, on the step.
+            step = role.step or 0.0
+            bound -= max(step, bound * EXCLUSIVE_BOUND_MARGIN)
+            if step:
+                bound = math.floor(bound / step + 1e-9) * step
         found = None if bound is None or not role.scale else bound / role.scale
         if found is not None and found < gate.MIN_RATE_KW:
             found = None
@@ -1695,7 +1784,11 @@ class BatteryControl:
                 self.hardware_brands.append(control.brand)
             self.hardware_failed = [known for known in self.hardware_failed if known != key]
             self._keep_report(key, gate.merge_report(None, report, key=key, attempts=1, now=now))
-        elif (done or gate.failed_mode(report) is not None) and control.brand in self.hardware_brands:
+        elif control.brand in self.hardware_brands and (
+            gate.failed_mode(report) is not None or (done and not self.grandfathered())
+        ):
+            # A grandfathered plant's control already ran: only a mode that failed stops it, never a test that could
+            # not judge (the sun, no room under the fuse).
             self.hardware_failed = [*(known for known in self.hardware_failed if known != key), key][-MAX_REPORTS:]
 
     async def _async_verify(self, now: datetime) -> StepResult | None:
@@ -1722,6 +1815,14 @@ class BatteryControl:
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
+            fixed = self._fixed_charge_kw() if self._hw_run else None
+            if fixed is not None and math.isfinite(fixed) and cap is not None and fixed > cap:
+                # The plant charges at its own power (Tesla) and that does not fit under the cap here: the step cannot
+                # run at a safe size, so the test goes on without it (no pass of the charge: control charges from
+                # the grid only once the routine's charge step passed, `gate.allowed_actions`).
+                verification.not_applicable(now, gate.NOT_APPLICABLE_FIXED_CHARGE)
+                action, rate = verification.command(now, sample, charge_max_kw)
+                probe = verification.probe()
             bms_kw = self._bms_charge_kw(executor.control)
             if bms_kw is not None:
                 # A BMS that takes too little now (a full or a cold pack) leaves the step nothing to judge.
@@ -1853,7 +1954,7 @@ class BatteryControl:
         return None
 
     async def async_hardware_test_start(self) -> str | None:
-        """Start the battery part of a person's hardware test (`verify.Timing.quick`, `stop_on_fail`): hold, a small
+        """Start the battery part of a person's hardware test (`verify.quick_for`, `stop_on_fail`): hold, a small
         grid charge under the HA-down cap, a discharge for the house, the plant's own dead-man timed where SpotNav can
         silence it (`_hardware_test_deadman`), and the hand-back, through the executor with every rule. Answers the
         refusal code, `None` once it started."""
@@ -1869,7 +1970,7 @@ class BatteryControl:
             self.verification = Verification(
                 executor, now, firmware=self.facts.firmware,
                 modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if deadman is not None else ())),
-                tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+                tried=gate.variants_tried(self.report()), timing=quick_for(executor.control), stop_on_fail=True,
                 charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
             )
             self._hw_run = True
@@ -1892,10 +1993,14 @@ class BatteryControl:
         # test stops renewing it after the hold and times the inverter's fallback, as the routine's mode `expiry`
         # does, so a recipe never run on a plant has its dead-man seen before control relies on it. Its window may be
         # longer than any the gate takes (`verify.expiry_long`): it then lifts no cap, the timing is the evidence.
+        # Not for a recipe gated after its control could already run (`GATED_AFTER_RUNNING`): its first pass is the
+        # routine's own modes, as its control ran on (SolarEdge's and SolaX's 30-minute timeouts would hold the test
+        # that long, and Huawei's hold is a stop, which has no lease).
         hold = base.states.get(ACTION_HOLD)
         window = expiry.window_s
         if (
-            base.hardware_test_first and hold is not None and not base.slow and not base.fixed_charge
+            base.hardware_test_first and base.brand not in GATED_AFTER_RUNNING
+            and hold is not None and not base.slow and not base.fixed_charge
             and expiry.kind in ("device_deadman", "device_lease") and expiry.renewer == "spotnav"
             and window is not None and window > 0
             and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(window))}
@@ -3402,6 +3507,11 @@ class BatteryControl:
             self._log([{"at": dt_util.now().isoformat(), "kind": "refused", "reason": op.role}])
             return "refused"
         role = executor.control.role(op.role)
+        resolved = resolve_follows_max(self.hass, op)
+        if resolved is None:
+            _LOGGER.warning("Battery control: %s shows no maximum to follow; it was not written", op.role)
+            return "service_failed"
+        op = resolved
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
             services=role.services, watchdog_s=executor.watchdog_s, device_field=role.device_field,
@@ -3440,6 +3550,7 @@ class BatteryControl:
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
                      "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
                      "hardware_failed": list(self.hardware_failed),
+                     "grandfather_checked": list(self.grandfather_checked),
                      "tester": None if self.tester is None else dict(self.tester),
                      "control_codes": {brand: dict(code) for brand, code in self.control_codes.items()}},
         }

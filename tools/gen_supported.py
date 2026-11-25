@@ -742,7 +742,7 @@ UNKNOWN = "Unknown"
 #: The makers `docs/home-battery.md` offers the control for (the first brand); the others with commands are not yet.
 CONTROL_IN_TESTING: frozenset[str] = frozenset({"sigenergy"})
 CONTROL_OPT_IN = "Opt-in, in testing"
-CONTROL_MAPPED = "Mapped, never run on a device"
+CONTROL_MAPPED = "Mapped, never run on a device: a hardware test and a control code first"
 
 #: Sources: `battery/adapters.py`, `battery/commands.py`, `battery/coexist.py`, `site/site_detection.py`, and the
 #: research notes `plans/research_integrations/` (`battery_local_control_guide_2026-11-14.md`, `site.md`,
@@ -843,11 +843,15 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Fronius (GEN24 with BYD)",
-        "`fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
+        "`fronius`, Home Assistant core. Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
         keys=("fronius",),
         adapter="fronius",
-        control="Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve)",
-        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute. "
+        note="Control is core's Modbus battery limits (Home Assistant 2026.11 or later, \"Inverter control via "
+        "Modbus\" on): the discharge limit at 0 to hold, below 0 to charge from the grid, the charge limit at 0 to "
+        "cover the house; no sale yet. It runs only after the site's own hardware test passed on its firmware. "
+        "Grid charging and the reserve are never set. A limit stays until changed, or about an hour after Home "
+        "Assistant stops with the integration's revert option on, so a grid charge is capped as all on one phase. "
+        "Web-UI schedules and the Energy Cost Assistant cannot be read. The meter updates about once a minute. "
         "The ratings, the floor and the counters are read only where the inverter accepts control over Modbus; the "
         "size is the battery's designed capacity.",
     ),
@@ -889,8 +893,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "cloud integrations",
         keys=("solarman", "mqtt/sunsynk"),
         adapter="deye",
-        control="Not mapped: read only. Work mode and programme slots are written in community setups, not confirmed",
-        note="Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
+        note="Control is limits only: a hold sets the battery's max discharging current to 0 A, a discharge for the "
+        "house its max charging current, both handed back as found, at most 48 writes a day, and only while Time "
+        "of Use is off. No grid charge or sale: that would mean rewriting the owner's time-of-use programmes, and "
+        "there is no setpoint and no dead-man. Nothing is written until a hardware test has passed on the plant's "
+        "firmware. Only devices that name Deye or Sunsynk as the maker are read. The size is read only where "
         "`solarman` has learnt it, and the ratings and the floor are learnt. The mode is read from the time-of-use "
         "setting: with it on, the inverter runs its own programmes.",
     ),
@@ -932,13 +939,6 @@ OVERVIEW: tuple[Overview, ...] = (
         note="Core does not support ennexOS devices such as the Tripower X. The size is not read: the integration's "
         "Battery Capacity Total is a percentage. The mode is not readable, so SMA's Forecast-based Charging and the "
         "Sunny Home Manager are not seen.",
-    ),
-    Overview(
-        "Kostal (Plenticore)",
-        "`kostal_plenticore`, Home Assistant core: not read",
-        control="Not mapped. Power control is Modbus \"external battery control\", set up by the installer; no Home "
-        "Assistant integration for it was found",
-        note="External control falls back to the inverter's own after a timeout.",
     ),
     Overview(
         "E3/DC (S10 E, S10 X, S10 mini)",
@@ -1095,10 +1095,14 @@ OVERVIEW: tuple[Overview, ...] = (
         "`kostal_plenticore`, Home Assistant core; `kostal_modbus_control`, HACS (mbuhansen/kostal_plenticore_battery_control)",
         keys=("kostal_plenticore", "kostal_modbus_control"),
         adapter="kostal",
-        control="Not mapped: read only. Control is Modbus (port 1502) and needs the installer's setting \"External via "
-        "protocol\" and its timeout; the inverter hands back by itself when the writes stop",
-        note="The size is read through the Modbus integration only, and the ratings are learnt. The mode is read "
-        "only when the Modbus integration's Battery Management Mode is enabled.",
+        control="Mapped for the Modbus integration only",
+        note="Control needs the Modbus integration and the installer's setting \"External via protocol (Modbus TCP)\": "
+        "a hold is Block Discharge, a grid charge Set Charge Rate with Charge Start. The integration repeats them "
+        "within the inverter's timeout, so the inverter hands back by itself when Home Assistant stops; SpotNav does "
+        "not count on it and caps a grid charge as all on one phase. Nothing is written until a hardware test has "
+        "passed on the inverter's firmware. Not with Predbat in a control mode, nor while another of the "
+        "integration's switches runs. The size is read through the Modbus integration only, and the ratings are "
+        "learnt. The mode is read only when the Modbus integration's Battery Management Mode is enabled.",
     ),
     Overview(
         "Marstek (Venus E, C, D, A)",
@@ -1163,7 +1167,9 @@ def overview_section() -> list[str]:
         f"- **SpotNav controls**: *{CONTROL_OPT_IN}* is [SpotNav's own battery control]"
         "(home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing), off by default. "
         f"*{CONTROL_MAPPED}* means SpotNav has the commands for that integration behind the same switch and the same "
-        "check of the battery, but nobody has run them on a battery yet. *Not mapped* means SpotNav only reads, "
+        "check of the battery, but nobody has run them on a battery yet: nothing is written until a hardware test has "
+        "passed on the plant and its result was approved with a control code ([Becoming a tester]"
+        "(home-battery.md#becoming-a-tester); a plant whose control already ran keeps it). *Not mapped* means SpotNav only reads, "
         "with what the integration itself could do locally. Without control SpotNav still plans in shadow where it "
         "reads the battery's level, and still signals a grid charge to your own planner or automation.",
         "- **Unknown** is where neither SpotNav's tables nor our notes say. Corrections are welcome: "
