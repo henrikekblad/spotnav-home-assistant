@@ -643,3 +643,32 @@ def test_a_malformed_stored_log_is_dropped_never_raised_on(junk: Any) -> None:
     history = SolarHistory()
     history.restore({"first": "2026-03-01T00:00:00+00:00", "pv": junk, "pvh": junk})
     assert not history.pv and not history.held
+
+
+def test_the_review_looks_for_dead_days_only_among_the_days_still_to_review(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The nightly review runs on the event loop: a year of kept hours is not walked for a night's one day."""
+    from zoneinfo import ZoneInfo
+
+    from custom_components.spotnav.site import solar_shadow_store as store
+
+    history, log = SolarHistory(), IssueLog(tz=TZ)
+    old, late = date(2025, 3, 1), date(2026, 3, 1)
+    _snowed_in(history, old)
+    _snowed_in(history, late)
+    zone = ZoneInfo(TZ)
+    assert store.dead_days(history, zone) == {old, late}
+    first = hour_key(datetime(late.year, late.month, late.day, tzinfo=zone))
+    assert store.dead_days(history, zone, first) == {late}
+    asked: list[int | None] = []
+    real = store.dead_days
+
+    def counted(history: SolarHistory, zone: Any, first: int | None = None) -> set[date]:
+        asked.append(first)
+        return real(history, zone, first)
+
+    monkeypatch.setattr(store, "dead_days", counted)
+    # Nothing waits for a review: nothing is walked.
+    assert log.review(history, datetime(2026, 3, 4, 1, tzinfo=UTC)) == [] and asked == []
+    log.record(ISSUE_DAY_AHEAD, late, "own", {"own": {datetime(2026, 3, 1, 10, tzinfo=UTC): 3.0}}, {})
+    assert log.review(history, datetime(2026, 3, 4, 1, tzinfo=UTC)) == []
+    assert asked == [first] and log.skipped_days == {"2026-03-01": "zero_production"}
