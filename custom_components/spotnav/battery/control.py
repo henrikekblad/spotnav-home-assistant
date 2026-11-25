@@ -1504,9 +1504,19 @@ class BatteryControl:
         (`_charge_entity_max_kw`), for a live charge, a test action and the plan alike; never raised."""
         control = control_for(self.facts.brand)
         entity_kw = None if control is None else self._charge_entity_max_kw(control)
+        bms_kw = None if control is None else self._bms_charge_kw(control)
+        if bms_kw is not None:
+            entity_kw = bms_kw if entity_kw is None else min(entity_kw, bms_kw)
         if entity_kw is None:
             return cap
         return entity_kw if cap is None else min(cap, entity_kw)
+
+    def _bms_charge_kw(self, control: BrandControl) -> float | None:
+        """What the battery's BMS takes now (kW: its present charge-current limit times the voltage,
+        `facts.BatteryFacts.bms_charge_kw`; 0 while it takes nothing), only for a recipe that names it
+        (`BrandControl.bms_charge_limit`: Solis, whose cold pack holds a force charge far under the rating); `None`
+        for every other recipe and where it reads nothing. A bound only: it never raises a cap."""
+        return self.facts.bms_charge_kw if control.bms_charge_limit else None
 
     def _charge_entity_max_kw(self, control: BrandControl) -> float | None:
         """The largest grid charge the recipe's charge power entity takes (kW: its `max` over the role's scale), only
@@ -1564,13 +1574,20 @@ class BatteryControl:
             headroom_a=inputs.headroom_a, phase_point_kw=inputs.phase_point_kw,
             volts_between_phases=inputs.volts_between_phases,
         )
-        # The charge step never asks for more than the battery's rating or its own charge power entity takes.
-        charge_max_kw = _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control))
+        # The charge step never asks for more than the battery's rating, its own charge power entity or its BMS takes.
+        charge_max_kw = _least(
+            _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(executor.control)),
+            self._bms_charge_kw(executor.control),
+        )
         action, rate = verification.command(now, sample, charge_max_kw)
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
+            bms_kw = self._bms_charge_kw(executor.control)
+            if bms_kw is not None:
+                # A BMS that takes too little now (a full or a cold pack) leaves the step nothing to judge.
+                cap = bms_kw if cap is None else min(cap, bms_kw)
             if cap is not None and cap < gate.MIN_RATE_KW:
                 if self._phase_charge_possible():
                     # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most

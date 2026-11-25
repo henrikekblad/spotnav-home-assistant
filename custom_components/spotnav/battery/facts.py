@@ -151,6 +151,10 @@ class BatteryFacts:
     capacity_kwh: float | None = None
     rated_charge_kw: float | None = None
     rated_discharge_kw: float | None = None
+    #: The BMS' present charge-current limit times the battery's voltage now (kW), where the adapter reads both
+    #: (`charge_current`, `voltage`), whatever the rating says; `None` elsewhere. Unlike `rated_charge_kw` it is never
+    #: learnt or lifted: a recipe that names it (`commands.BrandControl.bms_charge_limit`) bounds a grid charge by it.
+    bms_charge_kw: float | None = None
     firmware: str | None = None
     #: The whole plant's maximum output (kW) where the adapter reads one: the battery charges and discharges
     #: through it (`max_charge_kw`, `max_discharge_kw`).
@@ -304,6 +308,17 @@ def _from_amps(entity: EntityFact | None, volts: float | None) -> tuple[float | 
     if amps is None or amps <= 0:
         return None, None
     return amps * volts / 1000.0, entity.entity_id
+
+
+def _bms_charge_kw(entity: EntityFact | None, volts: float) -> float | None:
+    """The BMS' present charge-current limit (A) times the voltage (kW): 0 where the BMS takes no charge now (a full
+    or a cold pack), `None` where it reads nothing or is not in amperes."""
+    if entity is None or (entity.unit or "A") != "A":
+        return None
+    amps = number_from_state(entity.state)
+    if amps is None or amps < 0:
+        return None
+    return amps * volts / 1000.0
 
 
 def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
@@ -657,7 +672,9 @@ def battery_facts(
     estimates: list[str] = []
     volts_entity = found.get("voltage")
     volts = _volts(volts_entity)
+    bms_charge_kw: float | None = None
     if volts is not None and volts_entity is not None:
+        bms_charge_kw = _bms_charge_kw(found.get("charge_current"), volts)
         if capacity_kwh is None:
             capacity_kwh, source = _from_amps(found.get("capacity_ah"), volts)
             if source is not None:
@@ -718,6 +735,7 @@ def battery_facts(
         capacity_kwh=capacity_kwh,
         rated_charge_kw=rated_charge_kw,
         rated_discharge_kw=rated_discharge_kw,
+        bms_charge_kw=bms_charge_kw,
         plant_max_kw=plant_max_kw,
         reserve_soc_pct=reserve_soc_pct,
         firmware=_firmware(firmware_entity, sw_version, sources),
