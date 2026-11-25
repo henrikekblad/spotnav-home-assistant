@@ -11,17 +11,19 @@ switch before. If another system runs the battery, pause it first: the test refu
 
 **The hardware test.** In the SpotNav card: Settings → Support → Hardware test, then Start. That is all: there is
 nothing else to do or to watch. The test waits by itself for a suitable moment (the house using more than the sun
-gives, the battery between its limits, no car charging) and runs only in waking hours, 08–21. Tesla's cloud is slow
-(a change can take minutes to show), so the test takes longer than for other brands. While it runs, your phones with
-SpotNav's notices get a message with a "Stop the test" button.
+gives, the battery between its limits, no car charging) and runs only in waking hours, 08–21. Tesla's cloud is slow:
+a change can take several minutes to show, and SpotNav waits a quarter of an hour between two steps. So the test
+takes between half an hour and an hour, never more than 75 minutes. Meanwhile no car charge starts on the site, and
+your phones with SpotNav's notices get a message with a "Stop the test" button.
 
 What it does, through Tesla's cloud:
 
 1. Hold: grid charging off, and the Backup Reserve two points under the level now (rounded down), so the Powerwall
    neither covers the house nor charges from the grid.
 2. A grid charge: grid charging on, and the Backup Reserve as high as the Powerwall reaches in 30 minutes. The charge
-   power is the Powerwall's own (SpotNav counts 5 kW per Powerwall), and SpotNav starts no charge that does not fit
-   under the fuse.
+   power is the Powerwall's own (SpotNav counts 5 kW per Powerwall) and cannot be lowered. If it does not fit under
+   the fuse, the test skips the step and can still pass; control then charges from the grid only once SpotNav's own
+   check has later seen a charge that fits.
 3. Cover the house: the Backup Reserve and grid charging back as they were; the Powerwall covers the house itself.
 4. Hand back: the Backup Reserve first, then grid charging, back to the values they had. For 15 minutes after,
    SpotNav watches that the cloud keeps them.

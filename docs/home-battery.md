@@ -144,6 +144,11 @@ power limits (installer password); SolaX through the integration's remote contro
     a hand-back SpotNav watches that the reserve and the switch stay as it set them back; one that shows SpotNav's
     value again is written again twice, and then the switch's line says the control is blocked until the reserve is
     set back. A hand-back the cloud refuses outright is tried again every hour.
+  * The **hardware test** waits for all of that at each step (the 15-minute re-arm after each hand-back and up to
+    7 minutes per write for the cloud), so on a Powerwall it takes half an hour to an hour, at most 75 minutes, and
+    no car charge starts on the site meanwhile. Where the Powerwall's own charge power does not fit under the fuse
+    cap, the test skips its charge step (it cannot charge at a smaller power) and can still pass; control then charges
+    from the grid only once SpotNav's own check has seen a charge that fits.
 
 **If GoodWe or Tesla Powerwall control goes wrong, restore by hand** (note the values before you turn control on):
 

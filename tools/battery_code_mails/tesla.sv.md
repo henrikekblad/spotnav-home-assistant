@@ -11,17 +11,19 @@ nätet innan. Styr ett annat system batteriet, pausa det först: testet vägrar 
 
 **Hårdvarutestet.** I SpotNav-kortet: Inställningar → Support → Hårdvarutest, tryck sedan på Start. Det är allt: du
 behöver inte göra eller titta på något mer. Testet väntar själv på ett lämpligt tillfälle (huset drar mer än solen
-ger, batteriet ligger mellan sina gränser, ingen bil laddar) och körs bara dagtid, 08–21. Teslas moln är långsamt
-(en ändring kan ta minuter att synas), så testet tar längre än för andra märken. Medan det pågår får dina telefoner
-med SpotNavs aviseringar ett meddelande med knappen "Stoppa testet".
+ger, batteriet ligger mellan sina gränser, ingen bil laddar) och körs bara dagtid, 08–21. Teslas moln är långsamt:
+en ändring kan ta flera minuter att synas, och SpotNav väntar en kvart mellan två steg. Därför tar testet mellan en
+halvtimme och en timme, aldrig mer än 75 minuter. Under tiden startar ingen billaddning på anläggningen, och dina
+telefoner med SpotNavs aviseringar får ett meddelande med knappen "Stoppa testet".
 
 Vad det gör, via Teslas moln:
 
 1. Hålla: laddning från nätet av, och Backup Reserve två procentenheter under nivån nu (avrundat nedåt), så att
    Powerwallen inte täcker huset och inte laddar från nätet.
 2. En nätladdning: laddning från nätet på, och Backup Reserve så högt som Powerwallen når på 30 minuter. Laddeffekten
-   är Powerwallens egen (SpotNav räknar 5 kW per Powerwall), och SpotNav startar ingen laddning som inte ryms under
-   säkringen.
+   är Powerwallens egen (SpotNav räknar 5 kW per Powerwall) och kan inte sänkas. Ryms den inte under säkringen hoppar
+   testet över steget och kan ändå gå igenom; styrningen laddar då inte från nätet förrän SpotNavs egen kontroll
+   senare har sett en laddning som ryms.
 3. Täcka huset: Backup Reserve och laddning från nätet tillbaka som de var; Powerwallen täcker huset själv.
 4. Lämna tillbaka: Backup Reserve först, sedan laddningen från nätet, till de värden de hade. I 15 minuter efteråt
    ser SpotNav efter att molnet behåller dem.

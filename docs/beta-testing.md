@@ -65,7 +65,7 @@ test.
 - Each step is read back and shown as it runs.
 - Any step that fails, or a write that does not read back, ends the test and hands everything back at once.
 
-It takes at most ten minutes and costs at most a few kronor of grid energy. Only you start it: at most once a day
+It takes at most ten minutes (a Tesla Powerwall, through its slow cloud, up to 75) and costs at most a few kronor of grid energy. Only you start it: at most once a day
 per site, and once more after a SpotNav update or a new plant firmware. **Pressing Start is all you do.** A test with a
 battery part waits by itself for a moment that suits every step (the house using more than the sun gives, so the
 battery covers it; its level between 30 and 80 %; no car charging; room under the fuse) and runs then; the dialog
