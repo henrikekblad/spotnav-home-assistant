@@ -558,3 +558,65 @@ def test_the_zero_hours_of_a_skipped_day_do_not_train_the_factors() -> None:
     b = so.learn(with_snow, PLANES, POS, TZ, UPTO)
     assert b.ratio.overall == pytest.approx(a.ratio.overall, rel=0.02)
     assert b.pos_own.overall == pytest.approx(a.pos_own.overall, rel=0.02)
+
+
+def _snowy_winter_then_spring(history: SolarHistory, restart_on: date | None = None) -> tuple[SolarHistory, dict[int, int]]:
+    """A 10 kWp plant far north read day by day from November: under snow until 10 March, then clear of it."""
+    position, planes = (63.8, 20.3), [(30.0, 180.0, 10.0)]
+    first, end = hour_key(datetime(2026, 11, 15, tzinfo=UTC)), hour_key(datetime(2027, 5, 1, tzinfo=UTC))
+    truth: dict[int, int] = {}
+    for day_first in range(first, end, 24):
+        for key in range(day_first, day_first + 24):
+            start = key_start(key)
+            hs = hour_sun(start, *position)
+            made = 0.0
+            if hs.daylight:
+                kt = 0.25 + 0.7 * ((key // 24 * 7919) % 100) / 100
+                made = array_kw(hs, planes, hs.mean_clear * kt, hs.mean_clear * kt * kt * 0.8, 5.0)
+                if start.date() < date(2027, 3, 10):
+                    made *= 0.03
+            truth[key] = round(made * 100)
+        # Each read brings the last two days, as the shell asks for them.
+        history.merge_pv({key_start(key): truth[key] / 100 for key in range(day_first - 24, day_first + 24) if key in truth})
+        if restart_on is not None and key_start(day_first).date() == restart_on:
+            again = SolarHistory()
+            again.restore(json.loads(json.dumps(history.as_dict())))
+            history = again
+    return history, truth
+
+
+def test_a_history_begun_under_snow_loses_no_real_hour_once_spring_has_shown_the_plant() -> None:
+    history, truth = _snowy_winter_then_spring(SolarHistory())
+    assert max(truth.values()) > 700  # hours far above anything the winter showed
+    assert history.pv == truth
+    assert history.diagnostics()["pv_held_hours"] == 0
+
+
+def test_the_hours_held_back_survive_a_restart_and_come_in_when_the_bound_has_risen() -> None:
+    history, truth = _snowy_winter_then_spring(SolarHistory(), restart_on=date(2027, 3, 14))
+    assert history.pv == truth
+
+
+def test_hours_above_the_bound_are_held_out_of_the_history_until_it_rises() -> None:
+    history = SolarHistory()
+    winter = {datetime(2026, 12, 1, tzinfo=UTC) + timedelta(hours=h): 0.2 for h in range(100)}
+    history.merge_pv(winter)
+    clear = datetime(2027, 3, 10, 11, tzinfo=UTC)
+    assert history.merge_pv({clear: 6.0})  # kept aside, so the store is written
+    assert hour_key(clear) not in history.pv
+    assert history.diagnostics()["pv_held_hours"] == 1
+    assert history.diagnostics()["pv_rejected_hours"] == 0
+    history.merge_pv({datetime(2027, 3, 11, tzinfo=UTC) + timedelta(hours=h): 3.0 for h in range(20)})
+    assert history.pv[hour_key(clear)] == 600
+    assert history.diagnostics()["pv_held_hours"] == 0
+
+
+def test_a_spike_corrected_in_the_statistics_is_taken_at_the_next_read() -> None:
+    history = _history(days=30)
+    hour = datetime(2026, 5, 20, 11, tzinfo=UTC)
+    good = history.pv[hour_key(hour)]
+    history.merge_pv({hour: 5170.65})
+    assert history.pv[hour_key(hour)] == good
+    assert history.merge_pv({hour: 1.23})
+    assert history.pv[hour_key(hour)] == 123
+    assert history.diagnostics()["pv_rejected_hours"] == 0

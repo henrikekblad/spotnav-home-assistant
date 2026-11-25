@@ -24,7 +24,8 @@ models.py`, round 2). Nothing here plans; the shell (`site/solar_shadow.py`) log
 **Learning** (`learn`): from the completed local days up to `upto`, every hour with measured production, per weather
 run as kept, except the hours of a dead day (measured about zero under a forecast of real sun: snow on the panels or
 a broken statistic, `solar_shadow_store.dead_days`), which would teach the factors that the sun makes nothing.
-The history itself never holds an implausible hour (see `solar_shadow_store`), so `cap_kwh` is a real one. Each cell's ratio is shrunk toward its learner's window-wide ratio with `SHRINK_KWH` kWh of
+The history itself never holds an implausible hour (rejected or held back, see `solar_shadow_store`), so `cap_kwh`
+is a real one. Each cell's ratio is shrunk toward its learner's window-wide ratio with `SHRINK_KWH` kWh of
 pseudo-forecast; hours whose reference is under `MIN_REF_KWH` are skipped. **The weather run** of a forecast hour is
 1 for leads up to `LEAD_RUN1_MAX_H` hours, else 2 (the experiment's rule). A learned forecast is capped at the
 larger of its unscaled reference and the highest hour ever measured.

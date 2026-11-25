@@ -5,10 +5,15 @@ Pure: the clock is passed in. Storage is untrusted: a malformed value is dropped
 
 * **Inputs** (`SolarHistory`), per UTC hour, `KEEP_DAYS` days:
   * `pv`: the measured production (hundredths of a kWh), from the Energy dashboard's statistics. **An implausible
-    hour never stays** (a statistic's reset or spike once made one hour 5170 kWh on a 14 kWp plant): an hour above
-    `PV_ABSOLUTE_MAX_KWH`, or, with at least `PV_BOUND_MIN_HOURS` producing hours kept, above `PV_BOUND_MARGIN` times
-    the 95th percentile of the producing hours (a real peak hour is about 1.2-1.5 times it), is rejected when it
-    arrives and dropped on load, counted in the diagnostics (`pv_rejected_hours`) and not asked for again.
+    hour never stays** (a statistic's reset or spike once made one hour 5170 kWh on a 14 kWp plant). An hour above
+    `PV_ABSOLUTE_MAX_KWH` is rejected when it arrives and dropped on load (`pv_rejected_hours` in the diagnostics,
+    until a later read brings a real value for it). With at least `PV_BOUND_MIN_HOURS` producing hours known, an
+    hour above `PV_BOUND_MARGIN` times their 95th percentile (a real peak hour is about 1.2-1.5 times it) is
+    **held back**, not thrown away: it is kept and stored beside the history (`held`, `pv_held_hours`), counts in
+    the percentile, and comes in as soon as the bound has risen past it. Nothing else knows the plant's size (no
+    setting; the planes are fitted from this very history), and a history begun in a dark or snowed-in winter has
+    a bound far under the spring's real hours: thrown away, they would be gone for good, since the statistics are
+    read back only `PV_READ_HOURS`.
   * Per weather run (`RUNS`: 1 and 2, as Open-Meteo's `_previous_day1` / `_previous_day2`): the GHI and beam (W/m2),
     cloud cover (%) and temperature (°C) as forecast. A live fetch fills an hour's run 1 from the first fetch made at
     most `SNAPSHOT_MAX_LEAD_H[1]` hours before it, run 2 from the first made within `SNAPSHOT_MAX_LEAD_H[2]`
@@ -93,6 +98,7 @@ _BOUNDS: Final = {"g": (0, 1500), "b": (0, 1500), "c": (0, 100), "t": (-80, 70)}
 _KWH_MAX: Final = 1_000_000  # hundredths: 10 MWh in an hour
 #: A measured hour above this (kWh) is never real for a home, whatever the history says.
 PV_ABSOLUTE_MAX_KWH: Final = 100.0
+_PV_ABSOLUTE_MAX: Final = round(PV_ABSOLUTE_MAX_KWH * 100)
 PV_BOUND_MIN_HOURS: Final = 48
 PV_BOUND_MARGIN: Final = 2.5
 #: Never tighter than this (kWh), so a small plant's clear hour is not cut by a cloudy history.
@@ -113,46 +119,62 @@ class SolarHistory:
         default_factory=lambda: {run: {name: {} for name in _WEATHER_FIELDS} for run in RUNS}
     )
     provider: dict[int, dict[int, int]] = field(default_factory=lambda: {run: {} for run in RUNS})
-    #: Hours whose measured value was implausible (see the module): not asked for again, counted. Not stored.
+    #: Hours measured above the bound, held back until it rises past them (see the module). Stored.
+    held: dict[int, int] = field(default_factory=dict)
+    #: Hours whose last measured value was above the absolute bound (see the module): counted. Not stored.
     rejected_pv: set[int] = field(default_factory=set)
 
     # ---- recording
 
     def merge_pv(self, kwh_by_hour: Mapping[datetime, float]) -> bool:
-        """The measured production per completed hour (kWh); whether anything changed."""
-        touched: dict[int, int | None] = {}
+        """The measured production per completed hour (kWh); whether anything kept changed."""
+        changed = False
         bound = self.pv_bound()
         for start, kwh in kwh_by_hour.items():
             value = _int(kwh * 100 if isinstance(kwh, (int, float)) else None, 0, _KWH_MAX)
-            key = hour_key(start)
-            if value is None or key in self.rejected_pv:
+            if value is None:
                 continue
-            if value > bound:  # never replaces a good value with a spike
+            key = hour_key(start)
+            if value > _PV_ABSOLUTE_MAX:
                 self.rejected_pv.add(key)
                 continue
-            if self.pv.get(key) != value:
-                touched.setdefault(key, self.pv.get(key))
-                self.pv[key] = value
-        self.drop_implausible_pv()
-        return any(self.pv.get(key) != before for key, before in touched.items())
+            self.rejected_pv.discard(key)
+            # Above the bound it is held, and never replaces a good value; the sorting below takes it in if the
+            # bound allows it after all.
+            series, other = (self.held, None) if value > bound else (self.pv, self.held)
+            if series.get(key) != value:
+                series[key] = value
+                changed = True
+            if other is not None and other.pop(key, None) is not None:
+                changed = True
+        return self.drop_implausible_pv() or changed
 
     def pv_bound(self) -> int:
-        """The highest hour (hundredths of a kWh) accepted now (see the module)."""
-        bound = round(PV_ABSOLUTE_MAX_KWH * 100)
-        producing = sorted(value for value in self.pv.values() if value > 0)
-        if len(producing) >= PV_BOUND_MIN_HOURS:
-            p95 = producing[int(len(producing) * 0.95)]
-            bound = min(bound, max(round(PV_BOUND_FLOOR_KWH * 100), round(p95 * PV_BOUND_MARGIN)))
-        return bound
+        """The highest hour (hundredths of a kWh) taken into the history now (see the module)."""
+        producing = sorted(
+            value for series in (self.pv, self.held) for value in series.values() if 0 < value <= _PV_ABSOLUTE_MAX
+        )
+        if len(producing) < PV_BOUND_MIN_HOURS:
+            return _PV_ABSOLUTE_MAX
+        p95 = producing[int(len(producing) * 0.95)]
+        return min(_PV_ABSOLUTE_MAX, max(round(PV_BOUND_FLOOR_KWH * 100), round(p95 * PV_BOUND_MARGIN)))
 
     def drop_implausible_pv(self) -> bool:
-        """Drop the kept hours above the bound; they are remembered as rejected."""
-        bound = self.pv_bound()
-        bad = [key for key, value in self.pv.items() if value > bound]
-        for key in bad:
+        """Sort the hours by the bound as it is now: out of the history above it (held back, or rejected above the
+        absolute bound), back in from the held ones under it. Whether anything moved."""
+        impossible = [key for key, value in self.pv.items() if value > _PV_ABSOLUTE_MAX]
+        for key in impossible:
             del self.pv[key]
             self.rejected_pv.add(key)
-        return bool(bad)
+        bound = self.pv_bound()
+        above = [key for key, value in self.pv.items() if value > bound]
+        for key in above:
+            self.held.setdefault(key, self.pv[key])  # a held value is the later read
+            del self.pv[key]
+        back = [key for key, value in self.held.items() if value <= bound]
+        for key in back:
+            self.pv[key] = self.held.pop(key)
+        return bool(impossible or above or back)
 
     @staticmethod
     def run_for_lead(lead_h: float) -> int | None:
@@ -236,6 +258,7 @@ class SolarHistory:
             pv=dict(self.pv),
             weather={run: {name: dict(values) for name, values in fields.items()} for run, fields in self.weather.items()},
             provider={run: dict(values) for run, values in self.provider.items()},
+            held=dict(self.held),
             rejected_pv=set(self.rejected_pv),
         )
 
@@ -244,7 +267,7 @@ class SolarHistory:
     def prune(self, now: datetime) -> bool:
         oldest = hour_key(now) - KEEP_DAYS * 24
         changed = False
-        series_list: list[dict[int, int]] = [self.pv, *self.provider.values()]
+        series_list: list[dict[int, int]] = [self.pv, self.held, *self.provider.values()]
         for fields in self.weather.values():
             series_list.extend(fields.values())
         self.rejected_pv = {key for key in self.rejected_pv if key >= oldest}
@@ -256,7 +279,7 @@ class SolarHistory:
         return changed
 
     def _named(self) -> dict[str, dict[int, int]]:
-        named: dict[str, dict[int, int]] = {"pv": self.pv}
+        named: dict[str, dict[int, int]] = {"pv": self.pv, "pvh": self.held}
         for run in RUNS:
             for name in _WEATHER_FIELDS:
                 named[f"{name}{run}"] = self.weather[run][name]
@@ -280,6 +303,7 @@ class SolarHistory:
             return
         first = hour_key(start)
         self.pv = decode(raw.get("pv"), first, 0, _KWH_MAX)
+        self.held = decode(raw.get("pvh"), first, 0, _PV_ABSOLUTE_MAX)
         self.drop_implausible_pv()
         for run in RUNS:
             for name in _WEATHER_FIELDS:
@@ -296,6 +320,7 @@ class SolarHistory:
 
         return {
             "pv": span(self.pv),
+            "pv_held_hours": len(self.held),
             "pv_rejected_hours": len(self.rejected_pv),
             **{f"weather_run{run}": span(self.weather[run]["g"]) for run in RUNS},
             **{f"provider_run{run}": span(self.provider[run]) for run in RUNS},
