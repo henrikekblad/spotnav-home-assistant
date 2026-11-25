@@ -82,7 +82,7 @@ POLL_S: Final = 2.0
 BATTERY_STEPS: Final = (("hold", "hold"), ("charge", "charge"), ("discharge", "discharge_house"),
                         ("hand_back", "normal"))
 #: The step that times the plant's own dead-man (the verification's mode `expiry`), shown only where the battery part
-#: runs it (`BatteryControl.hardware_test_deadman`: EcoFlow), before the hand-back; and the time it adds.
+#: runs it (`BatteryControl.hardware_test_deadman`: EcoFlow, Solis), before the hand-back; and the time it adds.
 DEADMAN_STEP: Final = ("deadman", "expiry")
 DEADMAN_EXTRA: Final = timedelta(minutes=5)
 #: Refusals that mean the part is not there to test (no step shown), rather than not testable now.

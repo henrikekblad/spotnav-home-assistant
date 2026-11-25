@@ -1741,10 +1741,23 @@ class BatteryControl:
 
     def _hardware_test_deadman(self, control: BrandControl) -> Expiry | None:
         """The dead-man a hardware test times after its hold (`gate.deadman_testable`: one the integration renews and
-        SpotNav can silence, EcoFlow's), `None` for every other recipe."""
+        SpotNav can silence, EcoFlow's; or, for a recipe that waits for a hardware test, one SpotNav renews in its
+        hold, Solis's), `None` for every other recipe."""
         base = control.with_phases(False)
         expiry = base.expiry
-        return expiry if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge) else None
+        if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge):
+            return expiry
+        # A dead-man SpotNav renews in the hold's own writes (Solis's RC Timeout, renewed by the force select): the
+        # test stops renewing it after the hold and times the inverter's fallback, as the routine's mode `expiry`
+        # does, so a recipe never run on a plant has its dead-man seen before control relies on it.
+        hold = base.states.get(ACTION_HOLD)
+        if (
+            base.hardware_test_first and hold is not None
+            and gate.expiry_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge)
+            and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(expiry.window_s or 0))}
+        ):
+            return expiry
+        return None
 
     def hardware_test_deadman(self) -> bool:
         """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
