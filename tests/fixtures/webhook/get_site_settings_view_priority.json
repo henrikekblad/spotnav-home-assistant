@@ -8,6 +8,24 @@
     "ca",
     "cb"
   ],
+  "export_curtail": {
+    "beta": false,
+    "brand": null,
+    "enabled": false,
+    "entity_id": null,
+    "found": false,
+    "need": null,
+    "saving": {
+      "blocked_minor": 0.0,
+      "days": 30,
+      "kwh": 0.0,
+      "major_unit": null,
+      "minor": 0.0,
+      "minor_unit": null
+    },
+    "state": "no_control",
+    "writable": false
+  },
   "import_target": {
     "available": false,
     "reason": "needs_total_grid_power"
