@@ -457,6 +457,7 @@ class IssueLog:
             if day in dead:
                 self.skipped_days[key[2]] = REASON_ZERO_PRODUCTION
                 continue
+            self.skipped_days.pop(key[2], None)  # its statistics came right after all
             pairs = [
                 (value / 100, measured)
                 for offset, value in enumerate(values)
@@ -532,7 +533,7 @@ class IssueLog:
     def restore(self, raw: Any) -> None:
         if not isinstance(raw, Mapping):
             return
-        for row in raw.get("forecasts") or []:
+        for row in _rows(raw.get("forecasts")):
             if not isinstance(row, list) or len(row) != 5 or not all(isinstance(v, str) for v in row):
                 continue
             start = aware_utc(row[3])
@@ -546,19 +547,23 @@ class IssueLog:
                 except ValueError:
                     values.append(None)
             self.forecasts[(row[0], row[1], row[2])] = (first, values)
-        for row in raw.get("issues") or []:
+        for row in _rows(raw.get("issues")):
             if isinstance(row, list) and len(row) == 3 and isinstance(row[0], str) and _iso_day(row[1]):
                 if isinstance(row[2], dict):
                     self.issues[(row[0], row[1])] = row[2]
-        for row in raw.get("skipped") or []:
+        for row in _rows(raw.get("skipped")):
             if isinstance(row, list) and len(row) == 2 and _iso_day(row[0]) and isinstance(row[1], str):
                 self.skipped_days[row[0]] = row[1]
-        for row in raw.get("reviews") or []:
+        for row in _rows(raw.get("reviews")):
             if not isinstance(row, list) or len(row) != 7 or not all(isinstance(v, str) for v in row[:3]):
                 continue
             score = DayScore.from_row(row[3:])
             if score is not None and _iso_day(row[2]):
                 self.reviews[(row[0], row[1], row[2])] = score
+
+
+def _rows(raw: Any) -> list[Any]:
+    return raw if isinstance(raw, list) else []
 
 
 def _iso_day(raw: Any) -> bool:

@@ -620,3 +620,26 @@ def test_a_spike_corrected_in_the_statistics_is_taken_at_the_next_read() -> None
     assert history.merge_pv({hour: 1.23})
     assert history.pv[hour_key(hour)] == 123
     assert history.diagnostics()["pv_rejected_hours"] == 0
+
+
+def test_a_skipped_day_whose_statistics_come_right_is_reviewed_and_no_longer_listed_as_skipped() -> None:
+    history, log = SolarHistory(), IssueLog(tz=TZ)
+    day = date(2026, 3, 1)
+    _snowed_in(history, day)
+    log.record(ISSUE_DAY_AHEAD, day, "own", {"own": {datetime(2026, 3, 1, 10, tzinfo=UTC): 3.0}}, {})
+    log.review(history, datetime(2026, 3, 4, 1, tzinfo=UTC))
+    assert log.skipped_days == {"2026-03-01": "zero_production"}
+    history.merge_pv({datetime(2026, 3, 1, 10, tzinfo=UTC): 2.5})
+    assert len(log.review(history, datetime(2026, 3, 5, 1, tzinfo=UTC))) == 1
+    assert log.skipped_days == {}
+
+
+@pytest.mark.parametrize("junk", [5, "text", True, {"a": 1}, [5, None, [1, 2], ["2026-03-01", 7], [["x"], "y"]]])
+def test_a_malformed_stored_log_is_dropped_never_raised_on(junk: Any) -> None:
+    for name in ("forecasts", "issues", "skipped", "reviews"):
+        log = IssueLog(tz=TZ)
+        log.restore({name: junk})
+        assert not log.forecasts and not log.issues and not log.skipped_days and not log.reviews
+    history = SolarHistory()
+    history.restore({"first": "2026-03-01T00:00:00+00:00", "pv": junk, "pvh": junk})
+    assert not history.pv and not history.held
