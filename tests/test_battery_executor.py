@@ -1390,6 +1390,26 @@ def test_a_restart_restores_the_stored_snapshot_before_anything_else() -> None:
     assert battery.states["remote_ems"] == "off"
 
 
+def test_a_stored_hold_of_a_variant_this_version_no_longer_has_is_still_handed_back_in_full() -> None:
+    """A hold stored with a variant removed since (Sigenergy's limit hold) is restarted by the recipe as it is now:
+    the restore writes each role back as found from the stored snapshot, whatever the variant's own order was."""
+    executor, battery = _sigenergy()
+    found = dict(battery.states)
+    now = _held(executor, battery)
+    assert executor.state.variant == "limit_hold" and battery.states["discharge_limit"] == "0"
+    stored = executor.as_dict()
+    assert SIGENERGY_CONTROL.with_hold("limit_hold") is SIGENERGY_CONTROL, "no such variant in the recipe"
+    again = Executor(
+        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        ExecState.from_dict(stored["state"]),
+    )
+    assert again.restart(now)[0]["reason"] == "restart"
+    _now, results = run(again, battery, now, 8, None, stopping="restart")
+    assert sorted(written(results)) == [("discharge_limit", 23.04), ("remote_ems", False)]
+    assert again.state.phase == "idle" and not again.state.holds_snapshot
+    assert battery.states["remote_ems"] == "off" and battery.states["discharge_limit"] == found["discharge_limit"]
+
+
 def test_a_restore_write_not_taken_is_retried_with_backoff_and_the_others_still_handed_back() -> None:
     executor, battery = _sigenergy()
     now = _held(executor, battery)
