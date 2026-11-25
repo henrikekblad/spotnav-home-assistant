@@ -79,3 +79,29 @@ def test_the_coexistence_row_names_the_web_uis_own_control_and_no_aggregator() -
     row = coexistence_for(platform="fronius")
 
     assert row is not None and row.brand == "fronius" and row.aggregators == ()
+
+
+def test_the_firmware_is_the_storages_software_where_the_solarnet_device_has_none() -> None:
+    """A Gen24 has no logger info, so its SolarNet device (where the battery's power is) has no software version: the
+    firmware the reports are kept under is the storage device's (the one with the level)."""
+    from custom_components.spotnav.battery.facts import battery_facts  # noqa: PLC0415
+    from tests.test_battery_facts import BRANDS, _entities  # noqa: PLC0415
+
+    brand = BRANDS["fronius"]
+    entities = _entities(brand)
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+    versions = {"battery": "3.16", "solarnet": None}
+    asked: list[str] = []
+
+    def version(device_id: str) -> str | None:
+        asked.append(device_id)
+        return versions.get(device_id)
+
+    facts = battery_facts(battery, entities, manufacturer="Fronius", device_version=version)
+    assert facts.firmware == "3.16" and facts.sources["firmware"] == "device sw_version" and asked == ["battery"]
+    # The battery's own device keeps the first word where it has a version.
+    facts = battery_facts(battery, entities, manufacturer="Fronius", sw_version="1.39.5-1", device_version=version)
+    assert facts.firmware == "1.39.5-1"
+    # Without the storage's level (no serial reported) the firmware stays unknown: nothing is tested or written.
+    no_level = [entity for entity in entities if not entity.unique_id.endswith("-state_of_charge")]
+    assert battery_facts(battery, no_level, manufacturer="Fronius", device_version=version).firmware is None

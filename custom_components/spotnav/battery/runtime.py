@@ -302,6 +302,7 @@ def read_battery_facts(
         external_planner=external_planner(hass),
         found_states=found,
         sw_version=_device_sw_version(devices, device),
+        device_version=lambda device_id: _device_sw_version(devices, devices.async_get(device_id)),
     )
 
 

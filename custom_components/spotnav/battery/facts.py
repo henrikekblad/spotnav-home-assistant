@@ -9,7 +9,7 @@ A brand without an adapter gets its level from a `battery` sensor on the battery
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
@@ -642,6 +642,7 @@ def battery_facts(
     found_states: Mapping[str, str] | None = None,
     sw_version: str | None = None,
     adapter: Adapter | None = None,
+    device_version: Callable[[str], str | None] | None = None,
 ) -> BatteryFacts:
     """What SpotNav knows of the site's battery. `entities` are the battery integration's entities (its config
     entry's); `manufacturer` is the battery device's; `external_planner` names a battery planner found running
@@ -649,7 +650,9 @@ def battery_facts(
     before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found.
     `sw_version`: the battery device's software version in the device registry, the firmware where the adapter
     names no firmware entity or it reads nothing (`device_firmware`). `adapter`: the adapter to read with, in place
-    of the one of the battery's platform (a mirrored battery's, `mirrored.match_adapter`)."""
+    of the one of the battery's platform (a mirrored battery's, `mirrored.match_adapter`). `device_version`: a
+    device's software version by its id, for an adapter whose firmware is on another device
+    (`Adapter.firmware_device`) where the battery's own has none."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
     if adapter is None:
@@ -673,6 +676,10 @@ def battery_facts(
         return None if entity is None else to_kw(entity.state, entity.unit)
 
     soc_entity, capacity_entity, firmware_entity = found.get("soc"), found.get("capacity"), found.get("firmware")
+    if firmware_entity is None and sw_version is None and adapter.firmware_device is not None and device_version:
+        holder = found.get(adapter.firmware_device)
+        if holder is not None and holder.device_id is not None:
+            sw_version = device_version(holder.device_id)
     soc_pct = None if soc_entity is None else _percent(soc_entity.state)
     if soc_pct is None and adapter.soc_packs:
         soc_pct, packs_read = packs_soc(adapter.soc_packs, entities, battery)
