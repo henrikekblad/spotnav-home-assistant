@@ -131,10 +131,11 @@ def test_a_renamed_solis_entity_is_still_found_by_its_unique_id() -> None:
     assert facts.soc_pct == 64.0 and facts.sources["soc"] == "sensor.hus_batteri_procent"
 
 
-def test_solis_has_no_control() -> None:
+def test_solis_is_controlled_only_by_its_rc_force_recipe() -> None:
+    # The adapter itself writes nothing (no hold or grid charge spec); the control is the RC force recipe.
     assert SOLIS.hold is None and SOLIS.grid_charge is None
-    assert commands.control_for("solis") is None
-    assert all(control.brand != "solis" for control in (*commands.CONTROLS, *commands.EXPORT_CONTROLS))
+    assert commands.control_for("solis") is commands.SOLIS_CONTROL
+    assert all(control.brand != "solis" for control in commands.EXPORT_CONTROLS)
     facts = _facts("solis")
     assert facts.hold is None and facts.grid_charge is None
 

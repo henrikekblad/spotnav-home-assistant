@@ -68,7 +68,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   and exist only when the hub sends them. `pinv-L1..L3` is the hub's inverter power per phase on the grid's sign
   (import positive, so negative while it delivers): `plant_phase_sign` -1. Nothing is disabled by default.
 * Solis, `solis_modbus` (Pho3niX90/solis_modbus v4.5.0, `f92ead8`, read 2026-11-22, `plans/v3_solis_modbus_adapter.md`;
-  line numbers at that tag): read only (no control is mapped). Unique ids are `solis_modbus_<serial>_<unique>`
+  line numbers at that tag): the adapter reads only, and the control (`commands.SOLIS_CONTROL`) writes the
+  inverter's RC force (43135 with its powers and timeout). Unique ids are `solis_modbus_<serial>_<unique>`
   (`helpers.py` `unique_id_generator`, lines 48-74; the host or the identification stands in before the serial is
   known), a sensor's `<unique>` being its `"unique"` in `sensor_data/hybrid_sensors.py`, e.g.
   `solis_modbus_inverter_battery_soc`; an editable register is both a sensor and a number of the same unique id
@@ -1138,7 +1139,7 @@ FERROAMP: Final = Adapter(
     # No mode entity: the hub's own control (FerroAI, the person's EnergyCloud settings) is not readable here.
 )
 
-#: Solis through `solis_modbus` (see the module): read only.
+#: Solis through `solis_modbus` (see the module); its control is `commands.SOLIS_CONTROL`.
 SOLIS: Final = Adapter(
     brand="solis",
     label="Solis",
