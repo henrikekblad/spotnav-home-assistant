@@ -209,15 +209,14 @@ Please [tell us](supported.md) what the hardware test says on yours. To help dec
 script (`tools/foxess_watchdog_test.py` in the repository) shows what your inverter does when the remote control stops
 being renewed, with the charge current capped low first; ask before you run it.
 
-**Read only: Solis (hybrid inverters such as the S6-EH3P).** SpotNav reads these through the Solis Modbus integration
-(`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor (*Overdischarge SOC*, the on-grid one)
-and the grid meter. The ratings are the BMS's charge and discharge current limits times the BMS's voltage, an estimate;
-the size is learnt (the integration's *Battery Rated Capacity* is a setting in Ah, not the bank the BMS reports). SpotNav
-counts the battery as running itself only in the *Storage Mode* "Self-Use" with neither *RC Force Battery Charge* nor
-*RC Force Battery Discharge* on; with the integration's read-only (essential-only) option those entities are missing and
-SpotNav cannot tell. Time-of-use periods switched on beside "Self-Use" are not read. SpotNav has no control for Solis and
-writes nothing to it: storage mode, force charge and discharge, and the time-of-use slots stay yours. Read from the
-integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+**Solis (hybrid inverters such as the S6-EH3P): control mapped, never run on a plant.** SpotNav reads these through
+the Solis Modbus integration (`solis_modbus`): the battery's power (*Battery Power Net*) and level, its floor
+(*Overdischarge SOC*, the on-grid one) and the grid meter. The ratings are the BMS's charge and discharge current limits
+times the BMS's voltage, an estimate; the size is learnt (the integration's *Battery Rated Capacity* is a setting in Ah,
+not the bank the BMS reports). SpotNav counts the battery as running itself only in the *Storage Mode* "Self-Use" with
+neither *RC Force Battery Charge* nor *RC Force Battery Discharge* on; with the integration's "essential sensors only"
+option those entities are missing and SpotNav cannot tell (and has nothing to control). Time-of-use periods switched
+on beside "Self-Use" are not read. See [Solis](#solis-mapped-not-yet-tested-on-a-plant) below for the control.
 
 **Marstek (Venus E, C, D, A): read through both integrations, control mapped for the Modbus one, never run on a
 device.** SpotNav reads these through either the Marstek Local API integration
@@ -788,6 +787,61 @@ back.
 
 **If something goes wrong, restore by hand:** in Home Assistant set Battery Mode to Automatic, then turn Modbus
 Control off; after a minute the EcoFlow app works again. Then turn SpotNav's switch off.
+
+### Solis (mapped, not yet tested on a plant)
+
+For a Solis hybrid through the HACS integration **Solis Modbus** (`solis_modbus`, Pho3niX90), with the integration's
+full sensor set (not "essential sensors only"). SpotNav uses the inverter's own **remote-control force**, the same
+controls an outside energy manager uses:
+
+* **Hold:** *RC Force Battery Charge* at 0 W. The battery covers nothing; a sun surplus is still stored. A tester's
+  log showed the battery flat at 0 W for over an hour this way while the house drew 1.8 kW.
+* **Grid charge:** *RC Force Battery Charge* at the rate. It needs **Allow Grid to Charge the Battery** on (SpotNav
+  reads it and never sets it): with it off the plan's grid charge does not run. The battery's BMS has the last word:
+  a cold pack may take only 10 A (about 3.7 kW at 370 V) whatever is asked, so SpotNav asks no more than the BMS's
+  present charge limit times its voltage.
+* **Cover the house:** the inverter's own Self-Use; nothing is written.
+* **Sell:** *RC Force Battery Discharge* at the rate. The house is covered first and the rest goes to the grid.
+* **Hand back:** the force set back to *None* first, then *RC Force Battery Charge Power*, *RC Force Battery Discharge
+  Power* and *RC Timeout* to the values they had.
+
+The powers and the timeout are written first and the select *RC Force Charge/Discharge* last: the inverter takes
+them only when they are written after the force is enabled, and the select's own write sends them again straight
+after it (the integration's combo for issue #352).
+
+**The dead-man.** The force ends by itself when the *RC Timeout* runs out after the last write. SpotNav sets the
+timeout to 1 minute and writes the select again every 20 seconds while a force runs, so if Home Assistant (or SpotNav)
+stops, the inverter goes back to Self-Use within about a minute. This comes from the integration's source and has
+**not been measured** yet: until a plant has shown it, SpotNav reckons a grid charge's fuse cap as for any battery that
+keeps its command (the house at its learned peak, the whole charge on one phase, since Solis does not say how a
+three-phase unit spreads it). Nobody states whether these registers are kept in flash; they are the ones an outside
+energy manager writes all day, and SpotNav's renewals are not counted against its 500 writes a day.
+
+**Another system that runs the force.** An energy manager (Enequi, for one) or SolisCloud's own strategy drives the
+same registers. While one has a force on, SpotNav only watches, and its writes mark the battery as run by someone
+else; SpotNav's own plan keeps running in shadow as a benchmark. The hardware test refuses to run then and asks you
+to pause that system first.
+
+**The hardware test first.** Nobody has run this on a plant yet, so on a Solis SpotNav only shows what it would do (as
+under shadow only, whatever the switch says) until **the site's own hardware test** (Settings → Support → Run
+hardware test) has passed once on the inverter; after a firmware or integration update SpotNav checks the battery
+again by itself. Press Start: the test waits by itself for a moment with the house using more than the sun gives
+(between 08 and 21 for the first pass, with a phone notice and a Stop button while it writes) and runs:
+
+1. **Hold:** the force charge at 0 W; the battery must stop covering the house.
+2. **Small grid charge:** about 1 kW under the fuse cap and within the BMS's limit; the battery must charge.
+3. **Discharge to the house:** back to Self-Use; the battery must cover the house.
+4. **Stops by itself:** the hold again, then SpotNav stops renewing it and times how long the inverter keeps it before
+   it covers the house by itself. About a minute passes; much later (the integration notes a firmware that keeps its
+   own 5 minutes when the order is wrong) or never fails the step, and the battery is handed back either way.
+5. **Hand back:** everything as found.
+
+It aborts and hands back near the fuse, if the battery charges from the grid while it waits, or when anything is
+written by someone else.
+
+**If something goes wrong, restore by hand:** in Home Assistant set *RC Force Charge/Discharge* to *None*, then *RC
+Force Battery Charge Power*, *RC Force Battery Discharge Power* and *RC Timeout* to your values (the timeout's default
+is 5 minutes). Then turn SpotNav's switch off.
 
 ## The signal
 
