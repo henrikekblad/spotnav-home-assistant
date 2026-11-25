@@ -1,4 +1,4 @@
-"""Fronius through core `fronius` (home-assistant/core `42f4a32`): read only, found by the key after the hyphen in the
+"""Fronius through core `fronius` (home-assistant/core `42f4a32`): read, found by the key after the hyphen in the
 unique id (`<serial>-<key>`, `<inverter id>-modbus-<key>`).
 
 The registry is the fixture `fronius` in `tests/fixtures/battery/brands.json`.
@@ -16,9 +16,11 @@ from tests.test_battery_facts import _facts
 from tests.test_site_detection import Registry
 
 
-def test_fronius_is_read_only() -> None:
+def test_fronius_is_controlled_only_by_its_recipe_behind_a_hardware_test() -> None:
     assert adapter_for("fronius", "Fronius") is FRONIUS
-    assert all(control.brand != "fronius" for control in commands.CONTROLS)
+    # The control is `commands.FRONIUS_CONTROL` (`test_battery_fronius_control.py`), never the adapter's own specs.
+    assert commands.control_for("fronius") is commands.FRONIUS_CONTROL
+    assert commands.hardware_test_first("fronius")
     assert FRONIUS.hold is None and FRONIUS.grid_charge is None
 
 

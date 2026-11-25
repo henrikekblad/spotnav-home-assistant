@@ -185,8 +185,8 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   register 582, "negative=charge", `const.py` line 124): sign unverified on hardware.
 
 * Fronius (Gen24, Gen24 Plus, Tauro, Verto Plus; BYD or Reserva battery), core `fronius` (home-assistant/core `42f4a32`,
-  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`): read only (the Modbus limits and
-  their revert timer are not written here). Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
+  read 2026-11-23, `plans/research_integrations/fronius_control_2026-11-23.md`). The Modbus limits are written by
+  `commands.FRONIUS_CONTROL` (behind a person's hardware test); this adapter reads. Its unique ids use a hyphen, `<serial>-<key>` for the storage's sensors
   (`sensor.py` line 1266: `state_of_charge`, line 1069; `capacity_designed`, line 1033; only for a storage that reports
   a serial) and `<inverter id>-modbus-<key>` for what the Modbus settings read (lines 1200-1202): the counters
   `storage_energy_charged_total` and `storage_energy_discharged_total` (Wh, DC side, line 512), `battery_power_limit_reference`
@@ -1262,7 +1262,8 @@ def _fronius(key: str, *domains: str) -> Match:
     return Match(domains or ("sensor",), re.compile(rf"-{re.escape(key)}$"))
 
 
-#: Fronius through core `fronius` (see the module): read only. Its unique ids join the parts with a hyphen.
+#: Fronius through core `fronius` (see the module); its control is `commands.FRONIUS_CONTROL`. Its unique ids join the
+#: parts with a hyphen.
 FRONIUS: Final = Adapter(
     brand="fronius",
     label="Fronius",

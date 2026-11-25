@@ -418,6 +418,36 @@ The entity keys, options and services below were checked against each integratio
   hand-back waits for a reading of the force first (`_command_unread`). Remote Dispatch (44100) and SolisCloud's strategy are not read.
   How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
   on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
+* **Fronius** (Gen24, Gen24 Plus, Tauro, Verto Plus with a BYD or Reserva battery), core `fronius` over Modbus TCP
+  (SunSpec model 124; home-assistant/core `d33dfe3a`, 2026-11-23, in releases from 2026.11.0; `number.py`, `switch.py`,
+  `coordinator.py`, `heartbeat.py`; `plans/research_integrations/fronius_control_2026-11-23.md`). **Never run on a
+  device.** Numbers `battery_charge_power_limit` (InWRte) and `battery_discharge_power_limit` (OutWRte), % of the
+  battery's WChaMax (`battery_power_limit_reference`, the adapter's rating), -100 to 100, step 1, each acting only
+  while its switch (`battery_charge_power_limit_enabled` / `battery_discharge_power_limit_enabled`, one register,
+  StorCtl_Mod) is on; a **negative** limit forces the other direction at least that fast. A hold is the discharge
+  limit at 0 (a sun surplus is still stored), a discharge to the house the charge limit at 0 (it stores nothing), a
+  grid charge the discharge limit at minus the rate's share of WChaMax, rounded down, 1 % at least (a minimum: the
+  sun may add to it, the grid not). The rate is a share of the rating **as read** (`rating_read`): a learnt rating
+  (WChaMax unread) is no base, the charge then does not start (`rated_unknown`). No discharge to the grid: a
+  negative charge limit would be the first write of its kind and its sign is unconfirmed on a plant. Only one
+  switch is on in any action, the values are written before the switches and a switch turned off before the
+  other one comes on where it matters (`peak_first` for the grid charge): core refuses a pair of enabled limits
+  whose sum is below 0 (`_refused_battery_limits`), and a found negative value is handed back as 100, no limit
+  (`Role.restored_below`), so a momentary pair never sums below 0. The core writes the setpoint, writes the
+  enable bit again where it was already on (the device takes a changed limit only so) and reads the model back at
+  once: read back by its `register`. Grid charging (`battery_grid_charging`, ChaGriSet) is read, never written: it
+  is no part of the revert timer and stays when Home Assistant stops; off (or the web UI's "Battery charging from
+  other sources" off, which cannot be read), no grid charge runs. The minimum reserve (MinRsvPct) is never written.
+  **The revert timer** (InOutWRte_RvrtTms) drops both limits when no write comes for its period; core writes 3600 s
+  and resends active limits every 15 minutes only with its opt-in option "Revert the power and battery limits if Home
+  Assistant stops" on (0 otherwise): a dead-man the integration renews, not SpotNav (`renewer` `integration`), which
+  never lifts a cap and keeps a stalled SpotNav's command alive while Home Assistant runs. SpotNav writes nothing to
+  renew it (core's heartbeat does), hands back on every stop and unload, and a grid charge is always under the
+  HA-down cap (`grid_charge_phases` 1: how a three-phase Gen24 spreads a forced charge is not stated). The option
+  is in the config entry, not an entity: not read, only asked for in the docs. A limit switch on when SpotNav would
+  start is someone else's (`requires`). Schedules, the Energy Cost Assistant and a grid operator's dynamic power
+  reduction live in the web UI and cannot be read (`strategy_unread`). Nothing says whether model 124 is kept in
+  flash: setpoints the maker states nothing about (500 a day).
 * Enphase and brands without an adapter: **none**. (Enphase's controls in core are whole-mode switches or a reserve
   trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -437,6 +467,7 @@ from .adapters import (
     Adapter,
     Match, _goodwe, _key, _tesla,
 )
+from .adapters import FRONIUS, _fronius
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -2496,6 +2527,92 @@ SOLIS_CONTROL: Final = BrandControl(
     " on a plant; writes only after a passed hardware test.",
 )
 
+# --- Fronius Gen24 (core fronius over Modbus, see the module) ------------------------------------------------------
+
+#: The revert period core `fronius` writes with every limit while its option "Revert the power and battery limits if
+#: Home Assistant stops" is on (s; `const.AUTO_REVERT_SECONDS`), and resends the active limits within (every 15 min).
+FRONIUS_REVERT_S: Final = 3600.0
+
+# The two limits (% of WChaMax, -100..100, step 1) and their switches (StorCtl_Mod's two bits), each read back by core's
+# refresh right after the write. A limit found below 0 (someone's forcing value left behind its switch) is handed back
+# as 100, no limit: never a force to leave for the next one who turns its switch on.
+_FR_CHARGE = Role(
+    "charge_limit", "number", _fronius("battery_charge_power_limit", "number"), step=1.0, write_class="setpoint",
+    restored_below=(0.0, 100.0),
+)
+_FR_DISCHARGE = Role(
+    "discharge_limit", "number", _fronius("battery_discharge_power_limit", "number"), step=1.0,
+    write_class="setpoint", restored_below=(0.0, 100.0),
+)
+_FR_CHARGE_ON = Role(
+    "charge_limit_on", "switch", _fronius("battery_charge_power_limit_enabled", "switch"), write_class="setpoint"
+)
+_FR_DISCHARGE_ON = Role(
+    "discharge_limit_on", "switch", _fronius("battery_discharge_power_limit_enabled", "switch"),
+    write_class="setpoint",
+)
+# Read for a grid charge, never written (ChaGriSet keeps its value whatever happens to Home Assistant).
+_FR_GRID_CHARGING = Role("grid_charging", "switch", _fronius("battery_grid_charging", "switch"), restored=False)
+
+
+def _fr_hold(_rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    return (Want("discharge_limit", 0.0), Want("discharge_limit_on", True))
+
+
+def _fr_charge(rate_kw: float, watchdog_s: int) -> tuple[Want, ...]:
+    """The discharge limit at minus the rate's share of WChaMax: a forced charge at least that fast (the sun may add
+    to it). A rate of nothing is a hold."""
+    if rate_kw <= 0:
+        return _fr_hold(rate_kw, watchdog_s)
+    return (Want("discharge_limit", pct_of_rated(-rate_kw)), Want("discharge_limit_on", True))
+
+
+FRONIUS_CONTROL: Final = BrandControl(
+    brand="fronius",
+    adapter=FRONIUS,
+    roles=(_FR_CHARGE, _FR_DISCHARGE, _FR_CHARGE_ON, _FR_DISCHARGE_ON, _FR_GRID_CHARGING),
+    states={
+        # The battery covers nothing; a sun surplus is still stored (not an idle hold).
+        ACTION_HOLD: _fr_hold,
+        ACTION_GRID_CHARGE: _fr_charge,
+        # It covers the house and stores nothing (a sun surplus is exported).
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_limit", 0.0), Want("charge_limit_on", True)),
+        # No sale yet: a negative charge limit has not been seen on a plant (see the module).
+    },
+    # The values first (a value written while its switch is off does nothing), the charge limit's switch before the
+    # discharge limit's: from a discharge to the house into a hold or a charge it goes off before the other comes on.
+    # Back: both switches off first (the inverter's own priority list again), then the values as found.
+    enter_order=("charge_limit", "discharge_limit", "charge_limit_on", "discharge_limit_on"),
+    restore_order=("discharge_limit_on", "charge_limit_on", "discharge_limit", "charge_limit"),
+    # SpotNav's own limits are not someone else's while they run (the adapter's mode rules read the two switches).
+    own_states={"charge limit": frozenset({"on"}), "discharge limit": frozenset({"on"})},
+    # A limit in force when SpotNav would start is another controller's (evcc, a script, a person).
+    requires=(
+        ("charge_limit_on", frozenset({"off"}), "charge_limit_in_force"),
+        ("discharge_limit_on", frozenset({"off"}), "discharge_limit_in_force"),
+    ),
+    action_requires=((ACTION_GRID_CHARGE, "grid_charging", frozenset({"off"}), "grid_charging_off"),),
+    # A hold's peak cover and a charge's stop: the discharge limit's switch off, the battery covers the house again.
+    peak_first={ACTION_HOLD: ("discharge_limit_on",), ACTION_GRID_CHARGE: ("discharge_limit_on",)},
+    # The inverter's revert timer, written and renewed by core only with its option on: a dead-man the integration
+    # keeps alive (never SpotNav, so a stalled SpotNav's limit stands while Home Assistant runs), never lifting a cap.
+    expiry=Expiry(
+        "device_deadman", "integration", FRONIUS_REVERT_S, integration="fronius",
+        note="InOutWRte_RvrtTms at 3600 s, resent every 15 minutes by core, only with its revert option on (not read)",
+    ),
+    # Web-UI schedules, the Energy Cost Assistant and dynamic power reduction cannot be read from Home Assistant.
+    strategy_unread=True,
+    # How a three-phase Gen24 spreads a forced charge over its phases is not stated: the whole charge on one phase.
+    grid_charge_phases=1,
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    rating_read=True,
+    hardware_test_first=True,
+    note="Modbus limits through core fronius (HA 2026.11 or later). Hold: the discharge limit at 0; grid charge: the"
+    " discharge limit below 0 (a forced charge at the rate's share of WChaMax); house: the charge limit at 0. No"
+    " sale. Core's revert option is the only dead-man and never lifts a cap. Never run on a device; writes only"
+    " after a passed hardware test.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -2512,6 +2629,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
     VICTRON_CONTROL, GOODWE_CONTROL, TESLA_CONTROL, FOXESS_CONTROL, ECOFLOW_CONTROL, MARSTEK_CONTROL, SOLIS_CONTROL,
+    FRONIUS_CONTROL,
 )
 
 
@@ -2612,8 +2730,9 @@ EXPORT_LIMIT_TABLE: Final[tuple[Mapping[str, Any], ...]] = (
     {"brand": "goodwe", "integration": "core goodwe (library goodwe 66dfcdd)", "mapped": False,
      "entity": "number `grid_export_limit` (W on ET/EH, register 47510; % on DT, register 40328)",
      "note": "A setting written to the inverter; the unit depends on the model."},
-    {"brand": "fronius", "integration": "core fronius (Solar API)", "mapped": False, "entity": None,
-     "note": "The core integration reads only; an export limit needs Modbus, not checked."},
+    {"brand": "fronius", "integration": "core fronius (d33dfe3a)", "mapped": False, "entity": None,
+     "note": "No feed-in limit entity: its AC power limit (model 123) caps the inverter's whole AC output, not the"
+     " feed-in, and the web UI's dynamic power reduction is not written over Modbus."},
 )
 
 

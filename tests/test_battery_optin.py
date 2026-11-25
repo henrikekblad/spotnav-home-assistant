@@ -36,8 +36,11 @@ SIGEN_KEYS = [
 
 
 def _uid(brand: str, key: str) -> str:
-    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`)."""
-    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}"}.get(brand, f"PLANT_{key}")
+    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`,
+    Fronius: `<inverter id>-modbus-<key>`)."""
+    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}", "fronius": f"123456789-modbus-{key}"}.get(
+        brand, f"PLANT_{key}"
+    )
 
 
 def _plant(

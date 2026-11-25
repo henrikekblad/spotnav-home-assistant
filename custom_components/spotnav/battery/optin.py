@@ -29,6 +29,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
 from .adapters import ADAPTERS, Adapter, Match, _goodwe, _key, _tesla
+from .adapters import _fronius
 from .facts import BatteryFacts
 
 _LOGGER = logging.getLogger(__name__)
@@ -160,10 +161,20 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "solis_modbus_inverter_rc_timeout"),
         ("switch", "43110_5"),
     ),
+    # Core `fronius` creates its Modbus controls enabled, and only where the inverter accepts control over Modbus;
+    # listed so a person's own disable is offered. Grid charging is read for a grid charge, never written.
+    "fronius": (
+        ("number", "battery_charge_power_limit"),
+        ("number", "battery_discharge_power_limit"),
+        ("switch", "battery_charge_power_limit_enabled"),
+        ("switch", "battery_discharge_power_limit_enabled"),
+        ("switch", "battery_grid_charging"),
+    ),
 }
 
-#: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.
-_BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesla": _tesla}
+#: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`, `_fronius`); `_key` for
+#: the rest.
+_BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesla": _tesla, "fronius": _fronius}
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
 _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabler.USER)
