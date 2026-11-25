@@ -481,6 +481,20 @@ async def test_parts_there_but_none_ready_is_not_nothing_to_test(hass: HomeAssis
     assert await runner.async_start() == "not_ready"
 
 
+@pytest.mark.parametrize("refusal", ["needs:outside_control:settings_changed", "needs:self_managed:remote force charge:on"])
+async def test_a_battery_run_by_something_else_refuses_the_test_and_asks_to_pause_it(
+    hass: HomeAssistant, refusal: str
+) -> None:
+    """An outside EMS, the battery's own optimiser or a force left standing: SpotNav never tests over it. With nothing
+    else to test the test is refused with its own reason, so the card can ask for that controller to be paused."""
+    runner = await _runner(hass, _FakeBattery(refusal=refusal), _FakeHeat(refusal="busy"))
+    assert runner.view()["blocked"] == hardware_test.BLOCKED_RUN_ELSEWHERE == "battery_run_elsewhere"
+    assert await runner.async_start() == "battery_run_elsewhere"
+    # Another refusal of the battery's is the plain "not ready".
+    runner = await _runner(hass, _FakeBattery(refusal="needs:firmware_unknown"), _FakeHeat(refusal="busy"))
+    assert runner.view()["blocked"] == "not_ready"
+
+
 async def test_nothing_to_test_comes_before_the_days_slot(hass: HomeAssistant) -> None:
     """A site where nothing can be tested says so, even when a test ran today: the day's slot is no reason there."""
     battery, heat = _FakeBattery(), _FakeHeat()

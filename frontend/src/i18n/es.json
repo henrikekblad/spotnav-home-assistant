@@ -875,6 +875,7 @@
   "test.blocked.onceADay": "La próxima prueba podrá ejecutarse {time}.",
   "test.blocked.later": "La prueba no puede ejecutarse ahora.",
   "test.blocked.nothing": "Nada que probar todavía: activa primero el control de la batería o de la calefacción.",
+  "test.blocked.runElsewhere": "Ahora otra cosa controla la batería (otro sistema, o la propia app u optimización de la batería). Ponlo en pausa y luego ejecuta la prueba: SpotNav nunca prueba la batería mientras otra cosa la controla.",
   "test.step.battery": "Batería",
   "test.step.battery.hold": "Batería: mantener",
   "test.step.battery.charge": "Batería: pequeña carga desde la red",

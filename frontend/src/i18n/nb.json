@@ -875,6 +875,7 @@
   "test.blocked.onceADay": "Neste test kan kjøres {time}.",
   "test.blocked.later": "Testen kan ikke kjøres akkurat nå.",
   "test.blocked.nothing": "Ingenting å teste ennå: slå først på styring av batteriet eller varmen.",
+  "test.blocked.runElsewhere": "Noe annet styrer batteriet nå (et annet system, eller batteriets egen app eller optimalisering). Sett det på pause, og kjør så testen: SpotNav tester aldri batteriet mens noe annet styrer det.",
   "test.step.battery": "Batteri",
   "test.step.battery.hold": "Batteri: hold",
   "test.step.battery.charge": "Batteri: liten lading fra nettet",

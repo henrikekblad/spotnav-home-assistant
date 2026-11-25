@@ -875,6 +875,7 @@
   "test.blocked.onceADay": "Der nächste Test kann {time} laufen.",
   "test.blocked.later": "Der Test kann gerade nicht laufen.",
   "test.blocked.nothing": "Noch nichts zu testen: Schalten Sie zuerst die Steuerung von Speicher oder Heizung ein.",
+  "test.blocked.runElsewhere": "Gerade steuert etwas anderes den Speicher (ein anderes System oder die eigene App oder Optimierung des Speichers). Pausieren Sie es und starten Sie dann den Test: SpotNav testet den Speicher nie, während etwas anderes ihn steuert.",
   "test.step.battery": "Speicher",
   "test.step.battery.hold": "Speicher: halten",
   "test.step.battery.charge": "Speicher: kleine Ladung aus dem Netz",

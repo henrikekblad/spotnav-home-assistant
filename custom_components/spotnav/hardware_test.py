@@ -21,9 +21,12 @@ in at most `MAX_TEST` all told:
   phase, a charge of at most 1 kW on the phase with the most room, its sign and phase mapping judged), a discharge
   for the house, where the plant's dead-man is the integration's and SpotNav can silence it (EcoFlow: Modbus Control
   off, `gate.deadman_testable`) a hold left to that dead-man and timed (`DEADMAN_STEP`, `DEADMAN_EXTRA` more), and
-  the hand-back judged. Needs the battery opt-in
-  and everything the card's checklist asks first (acknowledgements, controls to enable); runs under shadow only too,
-  as a forced test action does.
+  the hand-back judged; where the dead-man is SpotNav's own renewal and the recipe waits for a hardware test
+  (Solis's RC Timeout), the hold is left unrenewed and the inverter's fallback timed the same way. Needs the battery
+  opt-in and everything the card's checklist asks first (acknowledgements, controls to enable); runs under shadow
+  only too, as a forced test action does. Never while something else runs the battery (an outside system, its own
+  optimiser, a force left standing): with nothing else to test the test is refused (`BLOCKED_RUN_ELSEWHERE`) and the
+  card asks for that controller to be paused first.
 * **The heat path** (`heat/control.py`, `async_test_start`): engaged, held a minute, released, each write read back.
   Needs heat control running (the opt-in, the check passed, no block, pause or safety reason).
 * **Hot water**: a boost only where a self-ending one exists; none does on this branch, so no step is shown (the
@@ -93,6 +96,11 @@ _HEAT_FAILURES: Final = ("aborted:no_read_back", "aborted:write_failed", "aborte
 ERROR_NO_TEST: Final = "spotnav_no_test"
 #: A test pressed and waiting for a suitable moment (`blocked` while it waits: one is enough).
 BLOCKED_WAITING: Final = "waiting"
+#: Nothing can run now and the battery's part is refused because something else runs the battery (an outside system,
+#: `outside_control`, or the battery's own optimiser or a force left standing, `self_managed`): the person must pause
+#: it first. SpotNav never tests over another controller.
+BLOCKED_RUN_ELSEWHERE: Final = "battery_run_elsewhere"
+_RUN_ELSEWHERE: Final = ("needs:outside_control", "needs:self_managed")
 #: How long a pressed test waits for a moment that suits its battery steps before it gives up (no prompt: the
 #: record says `no_suitable_moment`).
 WAIT_MAX: Final = timedelta(days=3)
@@ -320,8 +328,8 @@ class HardwareTest:
             return None
 
     def blocked(self, now: datetime, version: str | None) -> tuple[str | None, datetime | None]:
-        """Why a test cannot be pressed now (`running`, `waiting`, `once_a_day`, `nothing_to_test`, `not_ready`),
-        and when it may."""
+        """Why a test cannot be pressed now (`running`, `waiting`, `once_a_day`, `nothing_to_test`, `not_ready`,
+        `battery_run_elsewhere`), and when it may."""
         if self.running:
             return "running", None
         if self.waiting is not None:
@@ -334,6 +342,10 @@ class HardwareTest:
         if blocked is not None:
             return blocked, next_at
         if all(why is not None for why in parts.values()):
+            battery = parts.get("battery")
+            if battery is not None and battery.startswith(_RUN_ELSEWHERE):
+                # Another controller runs the battery: it must be paused before the test can write to it.
+                return BLOCKED_RUN_ELSEWHERE, None
             # A part is there but cannot run now (starting, busy, waiting for an acknowledgement): not "nothing".
             return "not_ready", None
         return None, None

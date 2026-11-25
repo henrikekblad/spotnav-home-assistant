@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { betaBox, blockedText, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest } from "../src/beta";
+import { batteryRunElsewhere, betaBox, blockedText, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest } from "../src/beta";
 import { translate } from "../src/i18n";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "beta");
@@ -68,6 +68,18 @@ describe("the words", () => {
     expect(blockedText("en", idle)).toBeNull();
     expect(blockedText("en", { ...idle, blocked: "nothing_to_test" })).toBe(translate("en", "test.blocked.nothing"));
     expect(blockedText("en", { ...idle, blocked: "waiting" })).toBeNull();
+    // Something else runs the battery: pause it first.
+    expect(blockedText("sv", { ...idle, blocked: "battery_run_elsewhere" })).toBe(
+      translate("sv", "test.blocked.runElsewhere"),
+    );
+    expect(translate("sv", "test.blocked.runElsewhere")).toMatch(/^Något annat styr batteriet nu .*Pausa det/);
+    const skipped = { part: "battery", step: "battery", status: "skipped" };
+    expect(batteryRunElsewhere({ ...idle, steps: [{ ...skipped, reason: "needs:outside_control:settings_changed" }] }))
+      .toBe(true);
+    expect(batteryRunElsewhere({ ...idle, steps: [{ ...skipped, reason: "needs:self_managed:remote force charge:on" }] }))
+      .toBe(true);
+    expect(batteryRunElsewhere({ ...idle, steps: [{ ...skipped, reason: "needs:ai_takeover_ack" }] })).toBe(false);
+    expect(batteryRunElsewhere({ ...idle, steps: [] })).toBe(false);
     expect(blockedText("sv", { ...idle, blocked: "once_a_day", nextAt: "2026-11-20T20:15:00+01:00" })).toMatch(/^Nästa test kan köras /);
   });
 
