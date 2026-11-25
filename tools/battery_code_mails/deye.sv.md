@@ -57,8 +57,8 @@ Deye/Sunsynk. Sedan kan du slå på styrningen i avsnittet Hembatteri ("Batteris
 
 Vad styrningen gör på din Deye/Sunsynk: den sätter bara de två strömgränserna (Battery Max Charging Current och
 Battery Max Discharging Current), och bara medan Time of Use är av. Den laddar aldrig från nätet, säljer aldrig och
-ändrar aldrig dina tidsprogram. Den skriver bara när planen ändrar vad batteriet ska göra, högst 48 gånger per dygn,
-eftersom ingen anger hur ofta växelriktaren tål att skrivas till. Om Home Assistant stannar ligger en gräns som
+ändrar aldrig dina tidsprogram. Den skriver bara när planen ändrar vad batteriet ska göra, högst 48 skrivningar per dygn
+(även när en gräns sätts tillbaka), eftersom ingen anger hur ofta växelriktaren tål att skrivas till. Om Home Assistant stannar ligger en gräns som
 SpotNav satt kvar tills Home Assistant är tillbaka; batteriet täcker då mindre av huset, men tar aldrig mer från
 nätet på grund av det.
 

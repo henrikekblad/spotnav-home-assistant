@@ -256,8 +256,9 @@ What to know before you turn it on:
   do, and the checklist says so. The test holds, skips the grid charge, covers the house and hands back.
 * **If Home Assistant stops**, a limit SpotNav set stays: the battery then covers less of the house until Home
   Assistant is back and hands it back. It never takes more from the grid because of it.
-* **Writes a day:** at most 48, and only when the plan changes what the battery should do (a write of the value the
-  inverter already holds is skipped). Nobody states how often these settings may be written; owners worry about the
+* **Writes a day:** at most 48, every write counted (putting a limit back too), and only when the plan changes what
+  the battery should do (a write of the value the inverter already holds is skipped). A hand-back always runs; once
+  the 48 are spent, nothing new starts until the next day. Nobody states how often these settings may be written; owners worry about the
   inverter's flash memory, so SpotNav keeps to half of what it allows other brands' settings.
 * **Restore by hand:** set *Battery Max Charging Current* and *Battery Max Discharging Current* back to your values
   (often the battery's maximum).
