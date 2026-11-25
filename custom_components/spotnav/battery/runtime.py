@@ -52,7 +52,7 @@ from .commands import ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, BrandControl, cont
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
-from .adapters import Match, package_of
+from .adapters import Adapter, Match, PackageScope, package_of
 from .facts import BatteryFacts, EntityFact, battery_facts, device_firmware, find_entity, with_outside_control
 from .mirrored import MIRROR_PLATFORM, MirrorMatch, match_adapter, mirrored_facts, remote_of
 from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
@@ -349,18 +349,40 @@ def _plant_entity(hass: HomeAssistant, config: dict[str, Any], match: Match | No
     return find_entity(match, entities, _entity_fact(battery_entry, hass))
 
 
+def _export_package(entry: er.RegistryEntry) -> tuple[Adapter, PackageScope, str] | None:
+    """For an entity of a YAML package (no config entry, no device) that a brand with an export control is read
+    through (Sungrow's): its adapter, the package's scope and the inverter's suffix; `None` for every other entity."""
+    if entry.config_entry_id is not None or entry.device_id is not None:
+        return None
+    unique_id = str(entry.unique_id or "")
+    for control in EXPORT_CONTROLS:
+        scope = control.adapter.package
+        suffix = None if scope is None or entry.platform not in scope.platforms else scope.suffix(unique_id)
+        if scope is not None and suffix is not None:
+            return control.adapter, scope, suffix
+    return None
+
+
 def _export_anchor(hass: HomeAssistant, config: dict[str, Any]) -> er.RegistryEntry | None:
     """The site entity the plant's export limit is found from: the battery's, else the grid meter's, when it belongs to
-    an integration with an export control (`commands.EXPORT_CONTROLS`). A site without a battery is in scope."""
+    an integration with an export control (`commands.EXPORT_CONTROLS`) or is an entity of such a brand's YAML package
+    (`_export_package`). A site without a battery is in scope."""
     registry = er.async_get(hass)
     candidates: list[Any] = [config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)]
     grid = config.get(CONF_GRID_POWER_SOURCE)
     if isinstance(grid, dict):
         candidates += [grid.get("power"), grid.get("power_export")]
-    platforms = {platform for control in EXPORT_CONTROLS for platform in control.adapter.platforms}
+    platforms = {
+        platform for control in EXPORT_CONTROLS if control.adapter.package is None
+        for platform in control.adapter.platforms
+    }
     for entity_id in candidates:
         entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
-        if entry is not None and entry.config_entry_id is not None and entry.platform in platforms:
+        if entry is None:
+            continue
+        if entry.config_entry_id is not None and entry.platform in platforms:
+            return entry
+        if _export_package(entry) is not None:
             return entry
     return None
 
@@ -371,19 +393,41 @@ def read_export_facts(
     """The plant's facts (its management above all), its export control and that control's role read, as found from
     `_export_anchor`; empty facts and no control when the site has none."""
     anchor = _export_anchor(hass, config)
-    if anchor is None or anchor.config_entry_id is None:
+    if anchor is None:
         return BatteryFacts(), {}, None
     registry = er.async_get(hass)
-    entries = er.async_entries_for_config_entry(registry, anchor.config_entry_id)
-    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == anchor.platform]
-    device = None if anchor.device_id is None else dr.async_get(hass).async_get(anchor.device_id)
     anchor_fact = _entity_fact(anchor, hass)
+    package = _export_package(anchor)
+    if package is not None:
+        # A YAML package: the registry's entities of the package's platforms with the inverter's suffix, read as
+        # the adapter's own platform whichever of them the site's entity is (its template sensors too).
+        adapter, scope, suffix = package
+        entries = [
+            entry for entry in registry.entities.values()
+            if scope.admits(entry.platform, str(entry.unique_id or ""), suffix)
+        ]
+        if anchor_fact.platform not in adapter.platforms:
+            anchor_fact = replace(anchor_fact, platform=adapter.platforms[0])
+        entities = [_entity_fact(entry, hass) for entry in entries]
+    elif anchor.config_entry_id is None:
+        return BatteryFacts(), {}, None
+    else:
+        entries = er.async_entries_for_config_entry(registry, anchor.config_entry_id)
+        entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == anchor.platform]
+    device = None if anchor.device_id is None else dr.async_get(hass).async_get(anchor.device_id)
     facts = battery_facts(
         anchor_fact, entities, manufacturer=None if device is None else device.manufacturer,
         external_planner=external_planner(hass),
     )
     control = export_control_for(facts.control_brand)
     return facts, ({} if control is None else role_reads(control, entities, anchor_fact)), control
+
+
+def export_control_found(reads: Mapping[str, RoleRead], control: BrandControl | None) -> bool:
+    """Whether the site has an export limit SpotNav could run: the brand has a control and its limit's entity is in
+    Home Assistant (enabled or not: a disabled one is the person's to enable)."""
+    read = None if control is None else reads.get("export_limit")
+    return read is not None and read.found
 
 
 class BatteryShadow:
