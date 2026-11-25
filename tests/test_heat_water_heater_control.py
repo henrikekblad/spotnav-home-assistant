@@ -571,3 +571,86 @@ async def test_a_quiet_change_only_meter_at_nothing_stays_a_reading_and_full_hea
     hass.states.async_set(POWER, "2500", {"unit_of_measurement": "W"})
     freezer.tick(timedelta(seconds=POWER_STALE_S + 60))
     assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001
+
+
+async def _stopped_with_the_on_refused(hass: HomeAssistant, freezer: Any) -> tuple[Any, WaterHeaterControl, Relay, datetime, dict[str, Any]]:
+    """Held off at Home Assistant's stop, and the on at the stop refused (the switch's integration already
+    disconnected, as in the beta report): what the heat control's store keeps of the water heater."""
+    site, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    await heater.async_look(now)
+    moment = _outside_windows(heater, now)
+    await heater.async_look(moment)
+    assert switch.calls == ["off"] and heater.held_off
+    switch.fail = True
+    await heater.async_shutdown()
+    assert switch.calls == ["off", "on"] and switch.state == "off"
+    kept = heater.control._data()["water_heater"]  # noqa: SLF001
+    assert kept["entity"] == HEATER and kept["held_off"] is True
+    switch.fail = False
+    switch.calls.clear()
+    return site, heater, switch, moment, kept
+
+
+def _restarted(heater: WaterHeaterControl, kept: dict[str, Any]) -> WaterHeaterControl:
+    fresh = WaterHeaterControl(heater.hass, heater.shadow, heater.control)
+    fresh.restore(kept)
+    fresh._prices = heater._prices  # type: ignore[method-assign]  # noqa: SLF001
+    fresh._started = True  # noqa: SLF001
+    return fresh
+
+
+async def test_an_on_refused_at_the_stop_is_owed_and_given_at_the_next_start_with_control_off(hass: HomeAssistant, freezer) -> None:
+    site, heater, switch, moment, kept = await _stopped_with_the_on_refused(hass, freezer)
+    heat = dict(site.data[CONF_HEAT])
+    heat["water_heater"] = {"entity_id": HEATER, "control": False, "tank_sensor": None}
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    fresh = _restarted(heater, kept)
+    await fresh.async_look(moment + 5 * MIN)
+    await fresh.async_look(moment + 6 * MIN)
+    await fresh.async_look(moment + 10 * MIN)
+    assert switch.calls == ["on"] and switch.state == "on" and not fresh.held_off
+    assert fresh.control._data()["water_heater"]["held_off"] is False  # noqa: SLF001
+
+
+async def test_an_on_owed_from_the_stop_is_given_where_the_water_heater_is_no_longer_chosen(hass: HomeAssistant, freezer) -> None:
+    site, heater, switch, moment, kept = await _stopped_with_the_on_refused(hass, freezer)
+    heat = dict(site.data[CONF_HEAT])
+    heat.pop("water_heater")
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    fresh = _restarted(heater, kept)
+    for minute in (5, 6, 7):
+        await fresh.async_look(moment + minute * MIN)
+    assert switch.calls == ["on"] and switch.state == "on" and not fresh.held_off and fresh.entity is None
+
+
+async def test_an_on_owed_from_the_stop_with_control_on_is_one_on_before_control_resumes(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, switch, moment, kept = await _stopped_with_the_on_refused(hass, freezer)
+    fresh = _restarted(heater, kept)
+    await fresh.async_look(moment + 5 * MIN)
+    # The fail-safe first (on before anything else), written once; control then takes over from a switch read on.
+    assert switch.calls == ["on"] and switch.state == "on"
+    await fresh.async_look(moment + 6 * MIN)
+    # Read on: control takes over as at any start (here an expensive hour, so its own off), no second on.
+    assert switch.calls == ["on", "off"] and fresh.held_off and fresh.reason == "planned_off"
+
+
+async def test_an_on_owed_from_the_stop_waits_for_a_switch_that_is_not_there_yet(hass: HomeAssistant, freezer) -> None:
+    site, heater, switch, moment, kept = await _stopped_with_the_on_refused(hass, freezer)
+    heat = dict(site.data[CONF_HEAT])
+    heat["water_heater"] = {"entity_id": HEATER, "control": False, "tank_sensor": None}
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    # The switch's integration has not come up at the start: nothing written, nothing raised, still owed.
+    hass.states.async_set(HEATER, "unavailable")
+    fresh = _restarted(heater, kept)
+    for minute in (5, 6, 7):
+        await fresh.async_look(moment + minute * MIN)
+    assert switch.calls == [] and fresh.held_off
+    hass.states.async_remove(HEATER)
+    await fresh.async_look(moment + 8 * MIN)
+    assert switch.calls == [] and fresh.held_off
+    # It reads off: the owed on goes once.
+    hass.states.async_set(HEATER, "off")
+    await fresh.async_look(moment + 9 * MIN)
+    await fresh.async_look(moment + 10 * MIN)
+    assert switch.calls == ["on"] and switch.state == "on" and not fresh.held_off
