@@ -11,7 +11,9 @@ The bundle carries English only. Every other language is a file in `www/i18n/`, 
 `<lang>.<hash>.json` by its own content and served from `/spotnav/i18n/`; the card is compiled with
 those names, so it asks for exactly the file this build put there, and a changed translation is a
 new name that may be cached hard too. Because the names are inside the bundle, the bundle's hash
-(`read_bundle_digest`, the debug bundle's `card_bundle_hash`) changes with any translation.
+(`read_bundle_digest`, the debug bundle's `card_bundle_hash`) changes with any translation. English is a
+file there too, `en.<hash>.json`, which the card never asks for: it is the paired app's copy of the card's words
+(`api/strings.py`, `get_strings`).
 """
 
 from __future__ import annotations
