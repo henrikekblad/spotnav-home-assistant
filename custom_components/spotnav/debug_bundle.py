@@ -573,8 +573,9 @@ def _charger_day(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     return {"sessions": day.sessions(), "history_24h": history_block(CHARGER_ALONE_COLUMNS, day.rows)}
 
 
-async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
-    """The whole installation as one redacted, JSON-safe document. Never raises for a bad entry."""
+async def async_build_debug_bundle(hass: HomeAssistant, *, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The whole installation as one redacted, JSON-safe document. Never raises for a bad entry. `extra`: parts a
+    report adds (a battery tester's test log and history, `battery/tester.py`), redacted with the rest."""
     entries = list(hass.config_entries.async_entries(DOMAIN))
     forecast = await async_forecast_capable_domains(hass)
     chargers = [e for e in entries if entry_kind(e) == ENTRY_TYPE_CHARGER]
@@ -667,6 +668,8 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             "warnings_24h": [] if buffer is None else buffer.warnings(),
         },
     }
+    if extra:
+        bundle.update({key: value for key, value in extra.items() if key not in bundle})
     scrubber = await _scrubber(hass, entries)
     # Some parts are read straight from live objects (a controller's diagnostics, a log buffer's records): their
     # containers are copied here, on the loop, so nothing the loop goes on changing is read by the executor. The

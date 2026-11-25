@@ -43,7 +43,12 @@ handing back what it engaged. The deadline does the same. The result
 (`passed` when every part ran, `partial` when a part was skipped, `skipped` when none ran, `failed` when a step
 failed; a partial or skipped test leaves the day's slot, `NOT_COUNTED`), the steps, each engine's own report) is kept per site, shown by the card step by step,
 carried in the debug bundle as `hardware_test` (the relay flags `result` `failed`) and, while beta is on, sent by
-itself as a `beta_test` report; otherwise the card offers "Skicka" (`async_send_test`).
+itself as a `beta_test` report; otherwise the card offers "Skicka" (`async_send_test`). For a battery tester (a brand
+whose control is still being tested, the person signed up and no control code yet: `battery/tester.py`) it goes by
+itself as a `battery_test_result` instead, beta or not, with the test's log and the plant's history over it.
+
+A brand whose recipe waits for a person's hardware test and was never passed on the plant tests only once the person
+signed up as a tester for it (`blocked` `tester_signup`: the card's "Become a tester" in the battery section).
 
 It costs a little grid energy (the charge step: a few minutes at about 2 kW at most), said in the card's "Läs mer".
 """
@@ -333,6 +338,11 @@ class HardwareTest:
         blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
         if blocked is not None:
             return blocked, next_at
+        if parts.get("battery") == "tester_signup" and all(
+            why is not None for name, why in parts.items() if name != "battery"
+        ):
+            # A recipe never tested here: the sign-up as a tester unlocks its first test.
+            return "tester_signup", None
         if all(why is not None for why in parts.values()):
             # A part is there but cannot run now (starting, busy, waiting for an acknowledgement): not "nothing".
             return "not_ready", None
@@ -604,7 +614,7 @@ class HardwareTest:
         retry = int(running.get("retry") or 0)
         self._finish()
         self._retry_if_unjudged(retry, running.get("version"))
-        await self._async_send_if_beta()
+        await self._async_send_after()
 
     def _retry_if_unjudged(self, retry: int, version: str | None) -> None:
         """A run whose battery steps all passed or could not be judged, some not: it runs again by itself at the
@@ -744,10 +754,23 @@ class HardwareTest:
         if self._running is not None:
             self._finish(stopped=why)
 
-    async def _async_send_if_beta(self) -> None:
+    def _tester_sends(self) -> bool:
+        """Whether a finished test with a battery part goes as a tester's result (`battery/tester.sends_result`)."""
+        from .battery.tester import sends_result  # noqa: PLC0415 - the battery package imports this one's site
+
+        record = self.record or {}
+        if not any(step.get("part") == "battery" for step in record.get("steps") or () if isinstance(step, dict)):
+            return False
+        try:
+            return sends_result(self.site.battery_control)
+        except Exception:  # noqa: BLE001 - no battery control: no tester
+            return False
+
+    async def _async_send_after(self) -> None:
+        """A test ended: a tester's result goes by itself, beta or not; otherwise the test goes while beta is on."""
         from .beta import beta_on  # noqa: PLC0415 - see `beta.py`'s imports
 
-        if self.record is None or not beta_on(self.hass) or self._closed:
+        if self.record is None or self._closed or not (self._tester_sends() or beta_on(self.hass)):
             return
         result = await async_send_test(self.hass, self, finishing=True)
         if result.ref is None:
@@ -856,13 +879,22 @@ def latest_record(hass: HomeAssistant) -> dict[str, Any] | None:
 
 
 async def async_send_test(hass: HomeAssistant, runner: HardwareTest, *, finishing: bool = False) -> ReportResult:
-    """Send the site's last finished test as a `beta_test` report (with the beta e-mail address while beta is on).
-    `finishing`: the run's own send, at its end (its task is still the running one)."""
+    """Send the site's last finished test as a `beta_test` report (with the beta e-mail address while beta is on), or
+    a battery tester's as a `battery_test_result` (`battery/tester.py`). `finishing`: the run's own send, at its end
+    (its task is still the running one)."""
     from .beta import beta_of  # noqa: PLC0415 - see `beta.py`'s imports
     from .support_report import KIND_BETA_TEST, ReportResult, async_send_report  # noqa: PLC0415
 
     if runner.record is None or (runner.running and not finishing):
         return ReportResult(error=ERROR_NO_TEST)
+    if runner._tester_sends():  # noqa: SLF001 - the runner's own rule
+        from .battery.tester import async_send_result  # noqa: PLC0415
+
+        result = await async_send_result(hass, runner)
+        if result.ref is not None:
+            runner.sent_ref = result.ref
+            runner._save()  # noqa: SLF001 - the runner's own store
+        return result
     beta = beta_of(hass)
     email = beta.state.email if beta is not None and beta.state.on else None
     result = await async_send_report(hass, "", email, None, kind=KIND_BETA_TEST)

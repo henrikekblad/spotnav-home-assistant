@@ -72,13 +72,14 @@ from typing import TYPE_CHECKING, Any, Final
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant, State, callback
+from homeassistant.helpers import instance_id
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.util import dt as dt_util
 
 from ..util import error_text
-from ..beta import learning_gate_open
+from ..beta import beta_on, learning_gate_open
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
@@ -392,6 +393,13 @@ NEED_HARDWARE_TEST_FIRST: Final = "hardware_test_first"
 #: check after a change of firmware, integration or recipe revision failed (or a later hardware test did): shadow
 #: only until a hardware test passes again on the key now.
 NEED_HARDWARE_TEST_AGAIN: Final = "hardware_test_again"
+#: The checklist's step where such a recipe passed a person's hardware test on this plant and waits for the control
+#: code SpotNav's developer sends once they read the test's result (`battery/codes.py`): shadow only until it is
+#: entered. The code is the developer's approval of the test result: control needs both.
+NEED_CONTROL_CODE: Final = "control_code"
+#: The checklist's step (and the hardware test's refusal) where such a recipe was never tested on this plant and the
+#: person has not signed up as a tester for the brand (`battery/tester.py`): signing up unlocks the hardware test.
+NEED_TESTER_SIGNUP: Final = "tester_signup"
 #: The checklist's step where this SpotNav release holds the brand's recipe back on the plant's firmware or the
 #: recipe's revision (`commands.blocked`): shadow only, whatever was passed.
 NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
@@ -399,6 +407,9 @@ NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
 NEED_RESTORE_BY_HAND: Final = "restore_by_hand"
 #: The needs a hardware test is what answers (never a reason to refuse one).
 _HARDWARE_TEST_NEEDS: Final = frozenset({NEED_HARDWARE_TEST_FIRST, NEED_HARDWARE_TEST_AGAIN})
+#: The needs a hardware test never waits for: what it answers, the tester sign-up (its own refusal,
+#: `hardware_test_refusal`) and the control code (which comes after the test).
+_TEST_IGNORES: Final = _HARDWARE_TEST_NEEDS | {NEED_CONTROL_CODE, NEED_TESTER_SIGNUP}
 #: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
 RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
 #: The plan's cap rule where the battery's own charge power entity holds the charge below the fuse's cap
@@ -459,6 +470,12 @@ class BatteryControl:
         #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
         #: one passes again.
         self.hardware_failed: list[str] = []
+        #: The person's sign-up as a tester for the plant's brand (`battery/tester.py`: `brand`, `asked_at`, `ref`, and
+        #: once a test's result went `result_ref`, `result_at`), `None` before one; never the e-mail address.
+        self.tester: dict[str, Any] | None = None
+        #: The control codes entered per brand (`battery/codes.Code.as_stored` with `entered_at` and the firmware key
+        #: then): with a passed hardware test (`hardware_brands`) they lift a gated recipe's shadow only.
+        self.control_codes: dict[str, dict[str, Any]] = {}
         #: The key and attempt the running verification counts for.
         self._verify_key: str | None = None
         self._verify_attempt = 0
@@ -589,6 +606,7 @@ class BatteryControl:
         reports = self._stored.get("reports")
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
+        await self._async_check_codes()
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
         # The battery first (a grid charge left standing adds import), then the export limit.
@@ -619,6 +637,49 @@ class BatteryControl:
         self.hardware_failed = (
             [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
         )
+        tester, codes = data.get("tester"), data.get("control_codes")
+        self.tester = dict(tester) if isinstance(tester, dict) and isinstance(tester.get("brand"), str) else None
+        self.control_codes = {
+            brand: dict(code) for brand, code in codes.items() if isinstance(brand, str) and isinstance(code, dict)
+        } if isinstance(codes, dict) else {}
+
+    async def _async_check_codes(self) -> None:
+        """Each stored control code checked again (`battery/codes.py`): its text against the public key in this
+        release, its installation and its brand. One that no longer verifies (a key changed in a release, a store
+        edited by hand, one stored without its text) is dropped and logged: control then waits for a code again."""
+        if not self.control_codes:
+            return
+        from ..support_report import install_hash  # noqa: PLC0415 - the bundle imports every part
+        from . import codes  # noqa: PLC0415
+
+        install = install_hash(await instance_id.async_get(self.hass))
+        kept: dict[str, dict[str, Any]] = {}
+        for brand, stored in self.control_codes.items():
+            text = stored.get("code")
+            try:
+                code = codes.verify(text) if isinstance(text, str) else None
+            except codes.CodeError:
+                code = None
+            if code is None or code.brand != brand or not code.matches_install(install):
+                _LOGGER.warning(
+                    "SpotNav battery control: the stored control code for %s no longer verifies and was dropped; "
+                    "control waits for a code again", brand,
+                )
+                continue
+            kept[brand] = stored
+        self.control_codes = kept
+
+    def _void_blocked_passes(self) -> None:
+        """At each look: a recipe this release holds back on the plant (`commands.BLOCKED`) voids the plant's stored
+        pass with the brand (`hardware_brands`), so after the block a hardware test must pass again (and its result
+        is reviewed with the code already given). Logged once."""
+        control = self._gated_control()
+        if control is None or control.brand not in self.hardware_brands or not self.recipe_blocked():
+            return
+        self.hardware_brands = [brand for brand in self.hardware_brands if brand != control.brand]
+        self._log([{"at": dt_util.now().isoformat(), "kind": "hardware_pass_voided", "reason": self.firmware_key()}])
+        _LOGGER.warning("SpotNav battery control: this release blocks the %s recipe here; its stored pass is void",
+                        control.brand)
 
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
@@ -771,18 +832,86 @@ class BatteryControl:
     def hardware_test_due(self) -> str | None:
         """What a recipe that writes only after a person's hardware test (`BrandControl.hardware_test_first`, not yet
         `field_tested`) waits for now, `None` when nothing: `hardware_test_first` before its first pass on this plant;
-        after it, `hardware_test_again` once the routine's check on the key now failed (or gave up), or a later
-        hardware test failed on it. A change of firmware, integration version or recipe revision after the first
-        pass is checked by the routine by itself, and control goes on once that passed."""
-        control = control_for(self.facts.brand)
-        if control is None or not control.hardware_test_first or control.field_tested:
+        `control_code` after that pass until the developer's control code for this installation and brand was
+        entered (`battery/codes.py`: the developer's approval of the test's result, so control needs both; one
+        code per plant and brand); after both, `hardware_test_again` once the routine's check on the key now failed
+        (or gave up), or a later hardware test failed on it. A change of firmware, integration version or recipe
+        revision after the first pass is checked by the routine by itself, and control goes on once that passed: no
+        new code is needed."""
+        control = self._gated_control()
+        if control is None:
             return None
         if control.brand not in self.hardware_brands:
             return NEED_HARDWARE_TEST_FIRST
+        if control.brand not in self.control_codes:
+            return NEED_CONTROL_CODE
         key = self.firmware_key()
         if key in self.hardware_failed or gate.report_status(self.reports.get(key)) == "failed":
             return NEED_HARDWARE_TEST_AGAIN
         return None
+
+    def recipe(self) -> BrandControl | None:
+        """The plant's recipe (`commands.control_for` its brand), `None` for a brand SpotNav has none for."""
+        return control_for(self.facts.brand)
+
+    async def async_store(self) -> None:
+        """Store the state now (a tester's sign-up, a control code: `battery/tester.py`)."""
+        await self._async_save()
+
+    def _gated_control(self) -> BrandControl | None:
+        """The plant's recipe when it writes only after a person's hardware test and the developer's control code
+        (`BrandControl.hardware_test_first`, not yet `field_tested`), `None` for every other plant."""
+        control = control_for(self.facts.brand)
+        if control is None or not control.hardware_test_first or control.field_tested:
+            return None
+        return control
+
+    def gated_brand(self) -> str | None:
+        """The brand that takes a tester sign-up and a control code on this plant (`_gated_control`), `None` else."""
+        control = self._gated_control()
+        return None if control is None else control.brand
+
+    def tester_active(self) -> bool:
+        """Whether the person is a tester for the plant's brand now: signed up for it, and beta mode on (a tester is
+        one while the reports may go: unticking Beta tester ends it, `battery/tester.async_end`)."""
+        brand = self.gated_brand()
+        return (
+            brand is not None and self.tester is not None and self.tester.get("brand") == brand
+            and beta_on(self.hass)
+        )
+
+    def tester_signup_needed(self) -> bool:
+        """Whether the plant's recipe was never passed here and the person is no tester for its brand now
+        (`tester_active`): the hardware test then waits for the sign-up (owner decision 2026-11-25: the sign-up
+        unlocks it)."""
+        brand = self.gated_brand()
+        return brand is not None and brand not in self.hardware_brands and not self.tester_active()
+
+    def tester_view(self) -> dict[str, Any] | None:
+        """The battery section's tester block (`spotnav/battery_control`'s `tester`), `None` for a plant whose recipe
+        takes no code: `stage` `none` (not signed up, or beta mode off: `tester_active`), `asked` (signed up, no test result sent), `tested` (a test's
+        result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail)."""
+        brand = self.gated_brand()
+        if brand is None:
+            return None
+        tester = self.tester if self.tester_active() else None
+        code = self.control_codes.get(brand)
+        if code is not None:
+            stage = "control_code"
+        elif tester is not None and tester.get("result_at") is not None:
+            stage = "tested"
+        elif tester is not None:
+            stage = "asked"
+        else:
+            stage = "none"
+        return {
+            "stage": stage,
+            "brand": brand,
+            "sent_at": None if tester is None else tester.get("asked_at"),
+            "result_sent_at": None if tester is None else tester.get("result_at"),
+            "test_passed": brand in self.hardware_brands,
+            "code_entered_at": None if code is None else code.get("entered_at"),
+        }
 
     def recipe_blocked(self) -> bool:
         """Whether this SpotNav release holds the recipe back on the plant's firmware key or the recipe's revision
@@ -987,6 +1116,7 @@ class BatteryControl:
         # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
         self._ha_down_setup_look()
+        self._void_blocked_passes()
         options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)
@@ -1683,8 +1813,11 @@ class BatteryControl:
             return "no_battery_control"
         if not self.options().enabled:
             return "not_enabled"
+        if self.tester_signup_needed():
+            # A recipe never tested here: the person's sign-up as a tester unlocks its first test.
+            return NEED_TESTER_SIGNUP
         # The hardware test is what a recipe that writes only after one waits for: never its own refusal.
-        needs = [need for need in self._needs() if need not in _HARDWARE_TEST_NEEDS]
+        needs = [need for need in self._needs() if need not in _TEST_IGNORES]
         if needs:
             return f"needs:{needs[0]}"
         if self.trial is not None:
@@ -3252,7 +3385,9 @@ class BatteryControl:
             "reports": dict(self.reports),
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
                      "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
-                     "hardware_failed": list(self.hardware_failed)},
+                     "hardware_failed": list(self.hardware_failed),
+                     "tester": None if self.tester is None else dict(self.tester),
+                     "control_codes": {brand: dict(code) for brand, code in self.control_codes.items()}},
         }
         if executor is not None:
             data |= {
@@ -3318,6 +3453,9 @@ class BatteryControl:
             needs.append(NEED_RECIPE_BLOCKED)
         else:
             due = self.hardware_test_due()
+            if due == NEED_HARDWARE_TEST_FIRST and self.tester_signup_needed():
+                # The first test waits for the person's sign-up as a tester: that is the step to take.
+                due = NEED_TESTER_SIGNUP
             if due is not None:
                 needs.append(due)
         return needs
@@ -3448,6 +3586,8 @@ class BatteryControl:
             "grid_charge_cap": self._cap_status(dt_util.now(), options),
             "per_phase": self._per_phase_block(dt_util.now(), options),
             "plan_costs": self._plan_costs(),
+            # The tester stage for a recipe that takes a control code (`tester_view`), `null` for every other.
+            "tester": self.tester_view(),
         }
 
     def wear_default(self) -> float:

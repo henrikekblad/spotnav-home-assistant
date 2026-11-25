@@ -990,6 +990,7 @@ export async function batteryControl(
   clearOutsideControl = false,
   enableFactEntities = false,
   setImportLimit = false,
+  tester: BatteryTesterAction | null = null,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/battery_control",
@@ -1000,6 +1001,27 @@ export async function batteryControl(
     ...(clearOutsideControl ? { clear_outside_control: true } : {}),
     ...(enableFactEntities ? { enable_fact_entities: true } : {}),
     ...(setImportLimit ? { set_import_limit: true } : {}),
+    ...(tester ?? {}),
+  });
+}
+
+/** A battery tester's action on `spotnav/battery_control` (administrators only): the sign-up, or a control code. */
+export type BatteryTesterAction =
+  | { tester_signup: { email: string; note: string } }
+  | { enter_code: { code: string } };
+
+/** `spotnav/battery_control` for the Support box's hardware test (the tester stage, a control code), naming the
+ * site as `spotnav/beta` does: `unknown` until `decodeBatteryControl()` decodes it. */
+export async function batteryTesterCommand(
+  hass: HomeAssistantLike,
+  target: { site_id: string } | { charger_id: string },
+  tester: BatteryTesterAction | null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/battery_control",
+    api_version: BATTERY_CONTROL_API_VERSION,
+    ...target,
+    ...(tester ?? {}),
   });
 }
 

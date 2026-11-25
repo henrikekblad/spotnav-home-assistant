@@ -2786,9 +2786,28 @@ def _hardware_test_ends(control: BatteryControl, **outcomes: str) -> None:
 _LIMITS_ONLY_PASS: Final = {"hold": "obeyed", "charge": "skipped", "discharge_house": "obeyed", "normal": "restored"}
 
 
-async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold):
+_CODE: Final = {"kind": "control", "install": "ab" * 10, "firmware_digest": "00" * 6, "issued": "2026-11-25",
+                 "brand": "sigenergy", "entered_at": "2026-11-25T12:00:00+01:00"}
+
+
+async def _sign_up(hass: HomeAssistant, control: BatteryControl) -> None:
+    """The person signed up as a tester (`battery/tester.py`): the sign-up stored and beta mode on."""
+    from custom_components.spotnav.runtime import domain_data  # noqa: PLC0415
+
+    control.tester = {"brand": "sigenergy", "asked_at": "2026-11-25T10:00:00+01:00", "ref": "SN-TEST"}
+    await domain_data(hass).beta.async_set(on=True)
+
+
+async def _approve(hass: HomeAssistant, control: BatteryControl) -> None:
+    """The person signed up as a tester and entered the developer's control code (`battery/tester.py`)."""
+    await _sign_up(hass, control)
+    control.control_codes = {"sigenergy": dict(_CODE)}
+
+
+async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold, *, approved: bool = True):
     """The owner's plant with a recipe that writes only after a hardware test and has no grid charge (FoxESS's limits
-    only: its hardware test skips the charge step), opted in with shadow only stored off and the routine passed."""
+    only: its hardware test skips the charge step), opted in with shadow only stored off and the routine passed.
+    `approved`: the person signed up as a tester and has the control code (the test still has to pass)."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     waiting = replace(commands_module.SIGENERGY_CONTROL, hardware_test_first=True)
     waiting = replace(waiting, states={
@@ -2797,16 +2816,24 @@ async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold):
     recipe = {"control": waiting}
     monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
     control = await _started(hass, site, controller, plan_source=plan_source)
+    if approved:
+        await _approve(hass, control)
     return site, controller, plant, control, recipe
 
 
 async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only_until_the_plants_first_pass(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
-    site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage)
-    # Still shadow only, and the checklist says why.
+    site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    # Still shadow only, and the checklist says why: first the sign-up as a tester, which unlocks the test.
     assert control.options().shadow_only and control.state() == "shadow_only"
+    assert control._needs()[-1] == control_module.NEED_TESTER_SIGNUP
+    assert control.hardware_test_refusal() == control_module.NEED_TESTER_SIGNUP
+    assert control.tester_view() == {"stage": "none", "brand": "sigenergy", "sent_at": None, "result_sent_at": None,
+                                     "test_passed": False, "code_entered_at": None}
+    await _sign_up(hass, control)
     assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
+    assert control.tester_view()["stage"] == "asked"
     # The hardware test itself is what it waits for: never refused for it.
     assert control.hardware_test_refusal() is None
     # A forced test action (the owner's service) is refused too: the gate is not shadow only's to override.
@@ -2822,11 +2849,24 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     # A test that did not pass records nothing.
     _hardware_test_ends(control, hold="ignored", normal="restored")
     assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
-    # One that passed is the plant's first pass and stands as the routine's check on this key: control runs.
+    # One that passed is the plant's first pass and stands as the routine's check on this key, but control waits
+    # for the developer's control code: the approval of that result. Still shadow only, nothing forced.
     control.reports.clear()
     _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_test_due() == control_module.NEED_CONTROL_CODE
+    assert control.state() == "shadow_only" and control._needs()[-1] == control_module.NEED_CONTROL_CODE
+    assert control.hardware_test_refusal() is None, "a later test is never refused for the code"
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "control_code"
+    await control.async_look(now + timedelta(seconds=40))
+    assert plant.calls == []
+    # The code entered: both hold, control runs.
+    control.control_codes = {"sigenergy": dict(_CODE)}
+    assert control.tester_view()["stage"] == "control_code" and control.tester_view()["test_passed"]
     assert control.hardware_test_due() is None and control.state() == "on"
     assert control._data()["gate"]["hardware_brands"] == ["sigenergy"]
+    assert control._data()["gate"]["control_codes"]["sigenergy"]["brand"] == "sigenergy"
     assert control_module.NEED_HARDWARE_TEST_FIRST not in control._needs()
     # Now a forced test action runs ...
     await control.async_trial("hold", None, 5, force=True)

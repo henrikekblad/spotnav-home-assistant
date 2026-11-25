@@ -93,6 +93,7 @@
       },
       "charging_kw": null
     },
-    "plan_costs": null
+    "plan_costs": null,
+    "tester": null
   }
 }

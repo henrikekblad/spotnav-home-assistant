@@ -70,6 +70,7 @@
     "preheat": null,
     "report": null,
     "state": "off",
+    "tester": null,
     "trial": null,
     "verification": null,
     "waiting_for": null
