@@ -99,7 +99,7 @@ describe("the periods", () => {
 
 describe("the house history", () => {
   it("decodes every fixture and refuses a newer version or a mistyped field", () => {
-    for (const name of ["villa_month.json", "villa_day.json", "house_alone_year.json", "solar_alone_day.json", "solar_alone_month.json"]) {
+    for (const name of ["villa_month.json", "villa_day.json", "villa_year.json", "house_alone_year.json", "solar_alone_day.json", "solar_alone_month.json"]) {
       expect(decodeHouseHistory(read(`house_history/${name}`)).ok).toBe(true);
     }
     expect(decodeHouseHistory({ ...read("house_history/villa_month.json"), api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
@@ -149,9 +149,10 @@ describe("the house history", () => {
     expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
     // Nothing is behind a switch: the modes, the forecasts and the days are always there.
     expect(body.querySelector("[data-detailed]")).toBeNull();
-    // Each figure once: the bars, the perfect plan with the battery's ways, the money, the forecasts, the days and
-    // last how it is counted. The modes against self-consumption stand in only before the first perfect plan.
-    expect(Array.from(body.querySelectorAll<HTMLElement>("section[data-part]")).map((item) => item.dataset["part"])).toEqual(["perfect", "money", "spotnav-saving", "forecast", "days", "how"]);
+    // Each figure once: the bars, the money, what SpotNav saved, the perfect plan with the battery's ways, its days
+    // beside it, the forecasts and last how it is counted. The modes against self-consumption stand in only before
+    // the first perfect plan.
+    expect(Array.from(body.querySelectorAll<HTMLElement>("section[data-part]")).map((item) => item.dataset["part"])).toEqual(["money", "spotnav-saving", "perfect", "days", "forecast", "how"]);
     body.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     expect(on.onPeriod).toHaveBeenCalledWith("month", "2026-10-01");
     body.querySelector<HTMLButtonElement>("button[data-kind='year']")!.click();
@@ -170,11 +171,13 @@ describe("the house history", () => {
     const body_ = body;
     body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: before }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelector("[data-part='perfect']")).toBeNull();
-    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
+    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2 kr");
     // Self-consumption is the zero the others are measured against, not a row.
     expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
     expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Batteriets egen styrning");
-    expect(body_.querySelector("[data-part='forecast'] [data-row='house']")?.textContent).toBe("Husets last±0,42 kW (1 d)");
+    expect(body_.querySelector("[data-part='forecast'] [data-row='house']")?.textContent).toBe("Husets last±0,42 kW");
+    // The days are said once, in the note: a single day's own.
+    expect(body_.querySelector("[data-part='forecast'] [data-line='forecast-note']")?.textContent).toBe("Medelfel per timme under dygnet.");
     // A day has no day-by-day list.
     expect(body_.querySelector("[data-part='days']")).toBeNull();
     const month = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: house("house_history/villa_month.json") }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
@@ -194,6 +197,61 @@ describe("the house history", () => {
     expect(lost.querySelector("[data-part='days'] tr[data-date='2026-11-06'] td:last-child")?.textContent).toBe("förlust");
   });
 
+  it("puts every way of a day against no battery, the real one named by who ran the battery", () => {
+    const render = (answer: HouseHistory, brand: string | null = null): HTMLElement =>
+      houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16", batteryBrand: brand }).querySelector<HTMLElement>("[data-part='days']")!;
+    const answer = house("house_history/villa_month.json");
+    const heads = (part: HTMLElement): string[] => Array.from(part.querySelectorAll("thead th")).map((cell) => cell.textContent ?? "");
+    // The battery ran itself: its optimiser's name where the card knows it, else the battery's own control.
+    expect(heads(render(answer, "sigenergy"))).toEqual(["Dag", "Sigenergy AI", "SpotNav-planen", "Perfekt", "Andel av perfekt"]);
+    const days = render(answer);
+    expect(heads(days)[1]).toBe("Batteriets egen styrning");
+    expect(days.textContent).not.toContain("Eget");
+    const cells = (part: HTMLElement, date: string): string[] => Array.from(part.querySelectorAll(`tr[data-date='${date}'] td`)).map((cell) => cell.textContent ?? "");
+    // One rule for the table's amounts (whole kr, as some are 10 kr or more); the perfect plan only where worked out.
+    expect(cells(days, "2026-11-10")).toEqual(["tis 10 nov.", "9 kr", "8 kr", "11 kr", "77 %"]);
+    expect(cells(days, "2026-11-04")).toEqual(["ons 4 nov.", "4 kr", "5 kr", "–", "–"]);
+    // Which days these are, and what every column is measured against.
+    expect(days.querySelector("[data-line='days-intro']")?.textContent).toBe("De 13 av periodens 15 dygn som har granskats. Granskningarna sparas i 30 dygn, så äldre dygn saknas.");
+    expect(days.querySelector("[data-line='days-note']")?.textContent).toMatch(/^Alla belopp mot samma dygn utan batteri.*SpotNavs plan \(Balanserad\)/);
+    // SpotNav controlled every day: its name; on some days only: "actual", said why.
+    const by = (share: (date: string) => number | null): HouseHistory => ({ ...answer, review: { ...answer.review!, by_day: answer.review!.by_day.map((day) => ({ ...day, controlled: share(day.date) })) } });
+    expect(heads(render(by(() => 1)))[1]).toBe("SpotNav");
+    const mixed = render(by((date) => (date < "2026-11-10" ? 1 : 0)));
+    expect(heads(mixed)[1]).toBe("Verkligt");
+    expect(mixed.querySelector("[data-line='days-mixed']")?.textContent).toBe("Verkligt: SpotNav styrde batteriet vissa dygn och batteriet styrde sig självt de andra.");
+    // Small amounts only: two decimals for all of them.
+    const small = by(() => 0);
+    small.review!.by_day = small.review!.by_day.map((day) => ({ ...day, real_vs_none: 35, plan_vs_none: -700, perfect_vs_none: 900 }));
+    expect(cells(render(small), "2026-11-10").slice(1, 4)).toEqual(["0,35 kr", "−7,00 kr", "9,00 kr"]);
+  });
+
+  it("shows a year a month a row, saying how many of a month's days are reviewed", () => {
+    const answer = house("house_history/villa_year.json");
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "year" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const part = body.querySelector("[data-part='days']")!;
+    expect(part.querySelector("h4")?.textContent).toBe("Månad för månad");
+    expect(part.querySelectorAll("tbody tr")).toHaveLength(1);
+    const row = Array.from(part.querySelectorAll("tr[data-month='2026-11'] td")).map((cell) => cell.textContent);
+    expect(row).toEqual(["november13 av 15 dygn", "92 kr", "93 kr", "104 kr", "77 %"]);
+    // A month every day of which is reviewed says no count.
+    answer.review!.by_month = answer.review!.by_month!.map((month) => ({ ...month, month_days: month.days }));
+    const whole = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "year" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(whole.querySelector("tr[data-month='2026-11'] td")?.textContent).toBe("november");
+  });
+
+  it("says the forecasts' days once where they agree, and per row where they do not", () => {
+    const answer = house("house_history/villa_month.json");
+    const render = (value: HouseHistory): HTMLElement =>
+      houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: value }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" }).querySelector<HTMLElement>("[data-part='forecast']")!;
+    const same = render(answer);
+    expect(same.querySelector("[data-row='house']")?.textContent).toBe("Husets last±0,50 kW");
+    expect(same.querySelector("[data-line='forecast-note']")?.textContent).toBe("Medelfel per timme, i snitt över 2 granskade dygn (granskningarna sparas i 30 dygn).");
+    const apart = render({ ...answer, forecast: { ...answer.forecast, sun: { mae: 0.2, days: 1 } } });
+    expect(apart.querySelector("[data-row='sun']")?.textContent).toBe("Sol±0,20 kWh på 1 dygn");
+    expect(apart.querySelector("[data-line='forecast-note']")?.textContent).toBe("Medelfel per timme, i snitt över de granskade dygnen (granskningarna sparas i 30 dygn).");
+  });
+
   it("opens a month with the shares of the perfect plan, summed so the day boundary washes out", () => {
     const answer = house("house_history/villa_month.json");
     const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
@@ -203,9 +261,11 @@ describe("the house history", () => {
     expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("1 ofullständigt dygn räknas inte med.");
-    // It comes before the money, with one table of what each way saved and the battery's work: a block per way.
+    // After the money, with one table of what each way saved and the battery's work: a block per way; the days
+    // follow it.
     const parts = Array.from(body.querySelectorAll<HTMLElement>("[data-part]")).map((item) => item.dataset["part"]);
-    expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));
+    expect(parts.indexOf("perfect")).toBeGreaterThan(parts.indexOf("money"));
+    expect(parts.indexOf("days")).toBe(parts.indexOf("perfect") + 1);
     expect(body.querySelector("[data-part='perfect-details']")).toBeNull();
     expect(part.querySelectorAll("table")).toHaveLength(1);
     expect(Array.from(part.querySelectorAll("thead th")).map((cell) => cell.textContent)).toEqual(["", "Sparat", "Cykler", "Växlingar", "Från nätet", "Till nätet"]);
@@ -249,7 +309,7 @@ describe("the house history", () => {
     expect(rows[1]!.dataset["inForce"]).toBe("true");
     expect(rows[0]!.querySelector<HTMLElement>(".spotnav-house-compare-fill")!.style.width).toBe("77%");
     expect(shown({}).querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
-      "Det som fanns kvar vid midnatt räknas med dygnets eget pris för en av dygnen, tills nästa dygns priser finns.",
+      "Det som fanns kvar vid midnatt räknas med dygnets eget pris för 1 av dygnen, tills nästa dygns priser finns.",
     );
     const clamped = shown({ clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } });
     expect(clamped.querySelector("[data-line='perfect-clamped']")?.textContent).toBe("Batteriets egen styrning: över 100 %, visas som 100 % (modellens batteri är idealt).");
@@ -286,7 +346,7 @@ describe("the house history", () => {
     const how = render(answer, { carSince: "2026-11-10" });
     expect(how.querySelector("h4")?.textContent).toBe("Så räknas det");
     const lines = Array.from(how.querySelectorAll("p")).map((line) => line.textContent ?? "");
-    expect(lines[0]).toBe("Siffrorna visar vad som mättes och vad planerna skulle ha gjort.");
+    expect(lines[0]).toBe("Utan batteri betyder samma dygn med samma förbrukning och sol, men inget batteri. Det är jämförelsen för Batteriet sparade, Andel av perfekt och tabellen efter den.");
     expect(lines).toContain("Det SpotNav sparade jämförs med:");
     // The battery ran under its own control in this month: said, and no line for SpotNav's own battery part.
     expect(lines.some((line) => line.startsWith("Batteri: det styrdes av sig självt"))).toBe(true);
@@ -314,6 +374,12 @@ describe("the house history", () => {
     const answer = house("house_history/villa_day.json");
     const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelector("[data-part='perfect'] [data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
+    // The same day on both sides: only the midnight remainder differs, said without day counts; and the whole day
+    // measured needs no "1 of the period's 1 days".
+    expect(body.querySelector("[data-line='perfect-differs']")?.textContent).toBe(
+      "Batteriets egen styrning sparade 9,25 kr här, medan Batteriet sparade under Pengar visar 4 kr. Båda är mot inget batteri, men här räknas det som fanns kvar i batteriet vid midnatt med, under Pengar inte.",
+    );
+    expect(body.querySelector("[data-part='money'] [data-line='reviewed']")).toBeNull();
     // An answer before the perfect plan has none.
     const old = { ...answer, review: { ...answer.review!, perfect: null } };
     expect(houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: old }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" }).querySelector("[data-part='perfect']")).toBeNull();

@@ -104,7 +104,7 @@ describe("the house history's chart", () => {
     expect(grows(reviewed)).toEqual({ saving: 400, cost: 3342 });
     expect(height(reviewed)).toBe(100);
     expect(reviewed.querySelector<HTMLElement>(".spotnav-history-bar-fill")!.style.getPropertyValue("--spotnav-day-dear")).toBe("");
-    expect(reviewed.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,00 kr");
+    expect(reviewed.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4 kr");
     // A swatch per part the bars hold.
     const legendParts = (root: HTMLElement): string[] => Array.from(root.querySelectorAll("[data-part='legend'] li")).map((item) => `${item.querySelector("span")!.dataset["part"]}:${item.textContent}`);
     expect(legendParts(body)).toEqual(["cost:Kostnad", "saving:Sparat av batteriet"]);
@@ -265,14 +265,38 @@ describe("what SpotNav saved in the house history", () => {
     // The heat on two of the seven days, said to be an estimate; no battery row (its own control).
     expect(block.querySelector("[data-row='heat']")?.textContent).toContain("Värme (uppskattat)");
     expect(block.querySelector("[data-row='heat']")?.textContent).toContain("2 dygn");
-    expect(block.querySelector("[data-row='battery']")).toBeNull();
-    expect(rows.length).toBe(3);
+    // The battery ran under its own control: its row says SpotNav did not control it, never "0 kr".
+    expect(block.querySelector("[data-row='battery']")?.textContent).toBe("Batteristyrdes inte");
+    expect(rows.length).toBe(4);
     // SpotNav's saving per part is the card's Earnings tab: a bar here says the cost against no battery alone.
-    expect(bar(body, "2026-11-12").getAttribute("aria-label")).toBe("tors 12 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,00 kr");
+    expect(bar(body, "2026-11-12").getAttribute("aria-label")).toBe("tors 12 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4 kr");
+  });
+
+  it("says when SpotNav controlled nothing, rather than 0 kr", () => {
+    // The car charged only by hand and the battery under its own control: one sentence, no rows.
+    const idle = houseBody(house((answer) => (answer.saving = { ...answer.saving!, heat: null, heat_days: 0, car_controlled_days: 0 })));
+    const block = idle.querySelector("[data-part='spotnav-saving']")!;
+    expect(block.querySelectorAll("[data-row]")).toHaveLength(0);
+    expect(block.querySelector("[data-line='spotnav-none']")?.textContent).toBe("SpotNav styrde inte batteriet eller bilen under månaden.");
+    // Only the car, by hand: its row says so beside the heat SpotNav lowered, and no total for one part.
+    const car = houseBody(house((answer) => (answer.saving = { ...answer.saving!, car_controlled_days: 0 }))).querySelector("[data-part='spotnav-saving']")!;
+    expect(car.querySelector("[data-row='car']")?.textContent).toBe("Bilstyrdes inte");
+    expect(car.querySelector("[data-row='total']")).toBeNull();
+    // Yesterday, without any part and the battery under its own control.
+    const yesterday = houseBody(house((answer) => {
+      answer.saving = null;
+      answer.period = "day";
+      answer.date = "2026-11-15";
+    }));
+    expect(yesterday.querySelector("[data-line='spotnav-none']")?.textContent).toBe("SpotNav styrde inte batteriet i går.");
   });
 
   it("is left out without any part, and an older answer without it still decodes", () => {
-    expect(houseBody(house((answer) => (answer.saving = null))).querySelector("[data-part='spotnav-saving']")).toBeNull();
+    expect(houseBody(house((answer) => {
+      answer.saving = null;
+      answer.review = null;
+      answer.own_control = null;
+    })).querySelector("[data-part='spotnav-saving']")).toBeNull();
     const raw = read("house_history", "villa_month.json");
     delete raw["saving"];
     for (const item of raw["buckets"] as Record<string, unknown>[]) {

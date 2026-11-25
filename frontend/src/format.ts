@@ -196,6 +196,26 @@ export function moneyMinorAsMajor(language: Language, minor: number, units: Mone
   return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 2)} ${units.major_unit}`;
 }
 
+/** `moneyMinorAsMajor`, but a whole amount without its decimals: "−7 kr", not "−7,00 kr" (and never "−0 kr"). */
+export function moneyTidy(language: Language, minor: number, units: MoneyUnits | null): string {
+  const rounded = Math.round(minor) || 0;
+  if (units !== null && units.major_unit !== null && rounded % 100 === 0) {
+    return `${formatFixed(language, rounded / 100 || 0, 0)} ${units.major_unit}`;
+  }
+  return moneyMinorAsMajor(language, minor, units);
+}
+
+/** One rule for a column of amounts (minor units), so its figures read alike: whole major units where any is 10 or
+ * more ("24 kr", "0 kr"), else two decimals ("0,35 kr", "7,00 kr"); never "−0". */
+export function moneyColumn(language: Language, values: ReadonlyArray<number | null>, units: MoneyUnits | null): (minor: number) => string {
+  if (units === null || units.major_unit === null) {
+    return (minor) => moneyMinorAsMajor(language, minor, units);
+  }
+  const decimals = values.some((value) => value !== null && Math.abs(value) >= 1000) ? 0 : 2;
+  const unit = units.major_unit;
+  return (minor) => `${formatFixed(language, Number((minor / 100).toFixed(decimals)) || 0, decimals)} ${unit}`;
+}
+
 /** An amount in a currency the way the language writes money, or the plain form if the code is unknown. */
 export function localeMoney(language: Language, value: number, currency: string, label: string | null): string {
   try {

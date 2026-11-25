@@ -2,13 +2,14 @@
 // card's header. The decoded answer and the dialog's body: the card's own period picker (`house-tabs.ts`), the bars
 // of the period (what the house cost per hour, day or month, with the battery's saving hatched on top: the comparison
 // the card's tabs do not have), the money (what the period cost, the battery against no battery, what the sun gave),
-// what SpotNav saved as sums (its bars are the card's Earnings tab), the battery's ways against the perfect plan (each
-// way's share, saving and work once), the forecasts' errors, each reviewed day, and last how it all is counted. Every
+// what SpotNav saved as sums (its bars are the card's Earnings tab; a part it did not control says so), the battery's
+// ways against the perfect plan (each way's share, saving and work once), each reviewed day (a year: each month) with
+// every way against the one baseline, no battery, the forecasts' errors, and last how it all is counted. Every
 // figure is the period's own and stands once. The energy flow is the card's own tab. Every figure is the backend's;
 // text is written with `textContent` only.
 
-import { dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajor as amount } from "./format";
-import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
+import { dateLabel, formatFixed, formatNumber, kwhText, moneyColumn, moneyTidy as amount } from "./format";
+import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, ownOptimiser, type EnergyFlow, type PerfectFigures } from "./house-model";
 import { hasPerfect, onlyPartial, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { element } from "./dom";
@@ -21,6 +22,7 @@ import {
   periodBars,
   periodStart,
   section,
+  shiftPeriod,
   statusLine,
   type HistoryPeriod,
   type PeriodBar,
@@ -112,6 +114,9 @@ export interface HouseSaving {
   car_days: number;
   heat_days: number;
   days: number;
+  /** The days SpotNav controlled the car on (a charge it started); `null` from a backend before it. With none, the
+   * car's 0 is a car SpotNav did not control. */
+  car_controlled_days: number | null;
 }
 
 export interface HouseCost {
@@ -134,6 +139,28 @@ export interface HouseReviewDay {
   plan_share: number | null;
   /** Why a day with a perfect plan has no share: under 90 % measured, or too small a difference to compare. */
   share_note: "partial" | "small" | "loss" | null;
+  /** The day's ways against the same day with no battery, the energy left at midnight counted: what really happened,
+   * SpotNav's plan in the site's mode (simulated) and the perfect plan; `null` without one (and from a backend before
+   * them). */
+  real_vs_none: number | null;
+  plan_vs_none: number | null;
+  perfect_vs_none: number | null;
+  /** The share of the day SpotNav controlled the battery (0-1), `null` where not known. */
+  controlled: number | null;
+}
+
+/** A year's month of reviewed days (`review.by_month`): the day figures summed over its `days` reviewed of
+ * `month_days` (its days before today), its share of the perfect plan over its whole days. */
+export interface HouseReviewMonth {
+  month: string;
+  days: number;
+  month_days: number;
+  real_vs_none: number | null;
+  plan_vs_none: number | null;
+  perfect_vs_none: number | null;
+  own_share: number | null;
+  share_note: "partial" | "small" | "loss" | null;
+  controlled: number | null;
 }
 
 export interface HouseReview {
@@ -152,6 +179,8 @@ export interface HouseReview {
   modes: Record<string, { saving: number | null; days: number }>;
   mode: string | null;
   by_day: HouseReviewDay[];
+  /** A year's months (`null` for a day or a month, and from a backend before it). */
+  by_month: HouseReviewMonth[] | null;
   /** The period's days against their perfect plans (`site/perfect_view.py`); `null` without one. */
   perfect: PerfectFigures | null;
 }
@@ -203,6 +232,7 @@ function savingSums(value: unknown): HouseSaving | null {
     car_days: count(source.car_days),
     heat_days: count(source.heat_days),
     days: count(source.days),
+    car_controlled_days: "car_controlled_days" in source ? count(source.car_controlled_days) : null,
   };
 }
 
@@ -227,6 +257,12 @@ function count(value: unknown): number {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^\d{4}-\d{2}$/;
+
+function monthKey(value: unknown): string {
+  const raw = text(value);
+  return MONTH.test(raw) ? raw : bad();
+}
 
 export function isoDay(value: unknown): string {
   const raw = text(value);
@@ -338,8 +374,29 @@ function review(value: unknown): HouseReview | null {
         own_share: "own_share" in item ? numberOrNull(item.own_share) : null,
         plan_share: "plan_share" in item ? numberOrNull(item.plan_share) : null,
         share_note: "share_note" in item ? shareNote(item.share_note) : null,
+        real_vs_none: newNumber(item, "real_vs_none"),
+        plan_vs_none: newNumber(item, "plan_vs_none"),
+        perfect_vs_none: newNumber(item, "perfect_vs_none"),
+        controlled: newNumber(item, "controlled"),
       };
     }),
+    by_month:
+      "by_month" in source && source.by_month !== null
+        ? list(source.by_month).map((raw) => {
+            const item = record(raw);
+            return {
+              month: monthKey(item.month),
+              days: count(item.days),
+              month_days: count(item.month_days),
+              real_vs_none: numberOrNull(item.real_vs_none),
+              plan_vs_none: numberOrNull(item.plan_vs_none),
+              perfect_vs_none: numberOrNull(item.perfect_vs_none),
+              own_share: numberOrNull(item.own_share),
+              share_note: shareNote(item.share_note),
+              controlled: numberOrNull(item.controlled),
+            };
+          })
+        : null,
     perfect: "perfect" in source ? decodePerfect(source.perfect) : null,
   };
 }
@@ -413,6 +470,47 @@ export interface HouseHistoryInput {
   carSince?: string | null;
   /** Where the figures come from and what was assumed (`house-view.ts`), shown last. */
   sources?: HTMLElement | null;
+  /** The battery's brand (`BatteryView.brand`), so the battery's own control is named by its optimiser where known. */
+  batteryBrand?: string | null;
+}
+
+/** Who ran the battery over some days, by SpotNav's share of each day's control (`null`: not known, which is not
+ * SpotNav): SpotNav on every day, the battery's own control on every day, or both. */
+export type Runner = "spotnav" | "own" | "mixed";
+
+export function runnerOf(shares: ReadonlyArray<number | null>): Runner {
+  const values = shares.map((share) => share ?? 0);
+  if (values.length > 0 && values.every((share) => share >= 0.99)) {
+    return "spotnav";
+  }
+  return values.every((share) => share <= 0.01) ? "own" : "mixed";
+}
+
+/** What really happened, named by who ran the battery: "SpotNav", its own optimiser ("Sigenergy AI") or "the
+ * battery's own control", and "actual" where both ran it on different days. */
+export function runnerName(language: Language, runner: Runner, brand: string | null | undefined): string {
+  if (runner === "spotnav") {
+    return "SpotNav";
+  }
+  if (runner === "mixed") {
+    return translate(language, "hist.house.runner.mixed");
+  }
+  return ownOptimiser(brand) ?? translate(language, "house.compare.own");
+}
+
+/** The period's real way's name (see `runnerName`) over its reviewed days. */
+function realName(input: HouseHistoryInput, answer: HouseHistory): string {
+  const days = answer.review?.by_day ?? [];
+  return runnerName(input.language, runnerOf(days.map((day) => day.controlled)), input.batteryBrand);
+}
+
+/** "today", "yesterday", "that day", "in the month", "in the year": the period shown, for a sentence. */
+function whenWords(language: Language, answer: HouseHistory): string {
+  if (answer.period === "day") {
+    const key = answer.date === answer.today ? "today" : answer.date === shiftPeriod("day", answer.today, -1) ? "yesterday" : "day";
+    return translate(language, `hist.when.${key}`);
+  }
+  return translate(language, `hist.when.${answer.period}`);
 }
 
 const monthNames = new Map<string, Intl.DateTimeFormat>();
@@ -575,46 +673,60 @@ function moneySection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
   if (rows.length > 0) {
     block.append(note(doc, translate(language, "hist.house.baselinesNote")));
   }
-  block.append(
-    note(
-      doc,
-      translate(language, "hist.house.reviewed", { days: String(rows.length > 0 ? measured : reviewed.days), total: String(Math.max(reviewed.days, reviewed.period_days)) }),
-      "reviewed",
-    ),
-  );
+  // How much of the period is measured, only where it is not all of it ("1 of the period's 1 days" says nothing).
+  const shownDays = rows.length > 0 ? measured : reviewed.days;
+  const periodDays = Math.max(reviewed.days, reviewed.period_days);
+  if (shownDays < periodDays) {
+    block.append(note(doc, translate(language, "hist.house.reviewed", { days: String(shownDays), total: String(periodDays) }), "reviewed"));
+  }
   if (reviewed.archived > 0) {
     block.append(note(doc, translate(language, "hist.house.archived", { days: String(reviewed.archived) })));
   }
   return block;
 }
 
-/** What SpotNav saved over the period: the total and a row per part the period has, each with its days where fewer
- * than the period's counted days; the heat said to be an estimate. `null` without any part. */
+/** What SpotNav saved over the period: a row per part SpotNav controlled, each with its days where fewer than the
+ * period's counted days, the total only over two parts or more, the heat said to be an estimate; a part the site has
+ * that SpotNav did not control says so ("not controlled"), never "0 kr"; and where SpotNav controlled nothing at all,
+ * one sentence instead of the rows. `null` with no part at all. */
 function spotnavSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
   const saving = answer.saving;
-  if (saving === null) {
+  const hasBattery = answer.review !== null || answer.own_control !== null || (saving?.battery ?? null) !== null;
+  if (saving === null && !hasBattery) {
     return null;
   }
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.house.spotnav"), "spotnav-saving");
-  block.append(figureRow(doc, translate(language, "hist.house.spotnav.total"), amount(language, saving.total, answer.money), "total"));
-  const rows = (
+  const carIdle = saving !== null && saving.car !== null && saving.car_controlled_days === 0;
+  const controlled = (
     [
-      ["battery", saving.battery, saving.battery_days],
-      ["car", saving.car, saving.car_days],
-      ["heat", saving.heat, saving.heat_days],
+      ["battery", saving?.battery ?? null, saving?.battery_days ?? 0],
+      ["car", carIdle ? null : saving?.car ?? null, saving?.car_days ?? 0],
+      ["heat", saving?.heat ?? null, saving?.heat_days ?? 0],
     ] as const
   ).filter(([, value]) => value !== null);
-  for (const [key, value, days] of rows) {
+  const idle = [...(hasBattery && (saving?.battery ?? null) === null ? (["battery"] as const) : []), ...(carIdle ? (["car"] as const) : [])];
+  if (controlled.length === 0) {
+    const which = idle.length === 2 ? "both" : idle[0] ?? "battery";
+    block.append(note(doc, translate(language, `hist.house.spotnav.none.${which}`, { when: whenWords(language, answer) }), "spotnav-none"));
+    return block;
+  }
+  if (controlled.length > 1) {
+    block.append(figureRow(doc, translate(language, "hist.house.spotnav.total"), amount(language, saving!.total, answer.money), "total"));
+  }
+  for (const [key, value, days] of controlled) {
     const figure = amount(language, value!, answer.money);
     block.append(
       figureRow(
         doc,
         translate(language, `hist.house.spotnav.${key}`),
-        days < saving.days ? translate(language, `hist.house.savedDays.${pluralForm(language, days)}`, { figure, days: String(days) }) : figure,
+        days < saving!.days ? translate(language, `hist.house.savedDays.${pluralForm(language, days)}`, { figure, days: String(days) }) : figure,
         key,
       ),
     );
+  }
+  for (const key of idle) {
+    block.append(figureRow(doc, translate(language, `hist.house.spotnav.${key}`), translate(language, "hist.house.spotnav.notControlled"), key, true));
   }
   block.append(note(doc, translate(language, "hist.house.spotnav.note")));
   return block;
@@ -644,12 +756,12 @@ function modesSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
       (mode === reviewed.mode ? ` · ${translate(language, "house.compare.inForce")}` : "");
     block.append(figureRow(doc, name, figure, mode, figures?.saving == null));
   }
-  block.append(figureRow(doc, translate(language, "house.compare.own"), amount(language, reviewed.own_saving, answer.money), "own"));
+  const ownName = realName(input, answer);
+  block.append(figureRow(doc, ownName, amount(language, reviewed.own_saving, answer.money), "own"));
   block.append(note(doc, translate(language, "hist.house.modesNote")));
   const perfect = reviewed.perfect;
   if (perfect !== null) {
     // Only incomplete days so far: say so, and the cells' temperature where the battery reports it.
-    const ownName = translate(language, "house.compare.own");
     const notes = hasPerfect(perfect) ? perfectNotes(doc, language, perfect, ownName, answer.period === "day") : [];
     const temperature = perfectTemperature(doc, language, perfect);
     block.append(...notes, ...(temperature === null ? [] : [temperature]));
@@ -668,7 +780,7 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
     return null;
   }
   const { doc, language } = input;
-  const ownName = translate(language, "house.compare.own");
+  const ownName = realName(input, answer);
   const block = section(doc, translate(language, "perfect.headingPeriod"), "perfect");
   // No headline: the rows below give every way's share, and repeating two of them above was noise.
   block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode, answer.money));
@@ -687,7 +799,8 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
     block.append(
       note(
         doc,
-        translate(language, "hist.house.perfectDiffers", {
+        // The same days on both sides: only what was left at midnight differs, and the day counts say nothing.
+        translate(language, perfect.days === reviewed.battery_days ? "hist.house.perfectDiffersMidnight" : "hist.house.perfectDiffers", {
           name: ownName,
           own,
           battery: amount(language, reviewed.battery_saving, answer.money),
@@ -705,71 +818,145 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
   return block;
 }
 
+/** Each forecast's mean error per hour over the period's reviewed days: the days said once in the note where every
+ * row has the same count, else in each row ("±0,42 kW på 3 dygn"). */
 function forecastSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement {
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.forecast.heading"), "forecast");
-  const rows: Array<[string, TranslationKey, ForecastError | null, string]> = [
-    ["house", "hist.forecast.house", answer.forecast.house, "kW"],
-    ["sun", "hist.forecast.sun", answer.forecast.sun, "kWh"],
-    ["sun_corrected", "hist.forecast.sunCorrected", answer.forecast.sun_corrected, "kWh"],
-    ["soc", "hist.forecast.soc", answer.forecast.soc, "%"],
-  ];
-  let any = false;
-  for (const [key, label, error, unit] of rows) {
-    if (error === null) {
-      continue;
-    }
-    any = true;
-    const value = unit === "%" ? `±${formatNumber(language, error.mae, 0)} %` : `±${formatFixed(language, error.mae, error.mae < 1 ? 2 : 1)} ${unit}`;
-    block.append(figureRow(doc, translate(language, label), `${value} (${translate(language, "hist.days", { days: String(error.days) })})`, key));
+  const rows = (
+    [
+      ["house", "hist.forecast.house", answer.forecast.house, "kW"],
+      ["sun", "hist.forecast.sun", answer.forecast.sun, "kWh"],
+      ["sun_corrected", "hist.forecast.sunCorrected", answer.forecast.sun_corrected, "kWh"],
+      ["soc", "hist.forecast.soc", answer.forecast.soc, "%"],
+    ] as Array<[string, TranslationKey, ForecastError | null, string]>
+  ).filter(([, , error]) => error !== null);
+  if (rows.length === 0) {
+    block.append(note(doc, translate(language, "hist.forecast.none")));
+    return block;
   }
-  block.append(note(doc, translate(language, any ? "hist.forecast.note" : "hist.forecast.none")));
+  const counts = new Set(rows.map(([, , error]) => error!.days));
+  const same = counts.size === 1 ? rows[0]![2]!.days : null;
+  for (const [key, label, error, unit] of rows) {
+    const value = unit === "%" ? `±${formatNumber(language, error!.mae, 0)} %` : `±${formatFixed(language, error!.mae, error!.mae < 1 ? 2 : 1)} ${unit}`;
+    const figure = same === null ? translate(language, `hist.house.savedDays.${pluralForm(language, error!.days)}`, { figure: value, days: String(error!.days) }) : value;
+    block.append(figureRow(doc, translate(language, label), figure, key));
+  }
+  const text =
+    answer.period === "day"
+      ? translate(language, "hist.forecast.noteDay")
+      : same === null
+        ? translate(language, "hist.forecast.note")
+        : translate(language, `hist.forecast.noteDays.${pluralForm(language, same)}`, { days: String(same) });
+  block.append(note(doc, text, "forecast-note"));
   return block;
 }
 
+/** The table's share cell: the share, "loss" where the battery lost money against no battery, why there is none. */
+function shareCell(doc: Document, language: Language, share: number | null, why: HouseReviewDay["share_note"]): HTMLElement {
+  const text =
+    why === "loss"
+      ? translate(language, "hist.house.share.loss")
+      : share !== null
+        ? `${formatNumber(language, share, 0)} %`
+        : why === null
+          ? "–"
+          : translate(language, `hist.house.share.${why}`);
+  return element(doc, "td", share === null && why !== null ? C.muted : undefined, text);
+}
+
+/** The battery's ways side by side against the one baseline, no battery: a row a day in a month, a row a month in a
+ * year (summed, with its days where not all of the month's are reviewed), none for a single day. The real way is
+ * named by who ran the battery. */
 function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
   const reviewed = answer.review;
-  if (reviewed === null || answer.period === "day" || reviewed.by_day.length === 0) {
+  if (reviewed === null || answer.period === "day") {
+    return null;
+  }
+  const year = answer.period === "year";
+  const rows: Array<{ key: string; label: string; sub: string | null; real: number | null; plan: number | null; perfect: number | null; share: number | null; why: HouseReviewDay["share_note"] }> = year
+    ? (reviewed.by_month ?? []).map((month) => ({
+        key: month.month,
+        label: new Intl.DateTimeFormat(input.language, { month: "long", timeZone: "UTC" }).format(new Date(`${month.month}-15T12:00:00Z`)),
+        sub: month.days < month.month_days ? translate(input.language, "hist.house.monthDays", { days: String(month.days), total: String(month.month_days) }) : null,
+        real: month.real_vs_none,
+        plan: month.plan_vs_none,
+        perfect: month.perfect_vs_none,
+        share: month.own_share,
+        why: month.share_note,
+      }))
+    : reviewed.by_day.map((day) => ({
+        key: day.date,
+        label: dateLabel(input.language, day.date),
+        sub: null,
+        real: day.real_vs_none,
+        plan: day.plan_vs_none,
+        perfect: day.perfect_vs_none,
+        share: day.own_share,
+        why: day.share_note,
+      }));
+  if (rows.length === 0) {
     return null;
   }
   const { doc, language } = input;
-  const block = section(doc, translate(language, "hist.house.days"), "days");
+  const block = section(doc, translate(language, year ? "hist.house.months" : "hist.house.days"), "days");
+  // Which rows these are: the reviewed days of the period, kept 30 days.
+  block.append(
+    note(
+      doc,
+      year
+        ? translate(language, "hist.house.daysIntroYear")
+        : translate(language, `hist.house.daysIntro.${pluralForm(language, Math.max(reviewed.days, reviewed.period_days))}`, {
+            days: String(reviewed.days),
+            total: String(Math.max(reviewed.days, reviewed.period_days)),
+          }),
+      "days-intro",
+    ),
+  );
+  const real = realName(input, answer);
   // A table, as the house card's own "Day by day": a figure never breaks over two lines on a phone.
   const table = element(doc, "table", H.table);
   const headRow = element(doc, "tr");
-  const shares = reviewed.by_day.some((day) => day.own_share !== null);
-  for (const key of ["house.days.date", "hist.house.col.battery", "hist.house.col.plan", "hist.house.col.own"] as const) {
-    headRow.append(element(doc, "th", undefined, translate(language, key)));
-  }
-  if (shares) {
-    headRow.append(element(doc, "th", undefined, translate(language, "hist.house.col.share")));
+  const shares = rows.some((row) => row.share !== null || row.why !== null);
+  const heads = [
+    translate(language, year ? "hist.house.col.month" : "house.days.date"),
+    real,
+    translate(language, "hist.house.col.plan"),
+    translate(language, "hist.house.col.perfect"),
+    ...(shares ? [translate(language, "hist.house.col.share")] : []),
+  ];
+  for (const words of heads) {
+    const cell = element(doc, "th", undefined, words);
+    cell.scope = "col";
+    headRow.append(cell);
   }
   const head = element(doc, "thead");
   head.append(headRow);
-  const rows = element(doc, "tbody");
-  for (const day of reviewed.by_day) {
-    const row = element(doc, "tr");
-    row.dataset["date"] = day.date;
-    row.append(element(doc, "td", undefined, dateLabel(language, day.date)));
-    for (const value of [day.battery_saving, day.plan_saving, day.own_saving]) {
-      row.append(element(doc, "td", undefined, value === null ? "–" : amount(language, value, answer.money)));
+  const body = element(doc, "tbody");
+  // One rule for every amount in the table, so its figures read alike.
+  const money = moneyColumn(language, rows.flatMap((row) => [row.real, row.plan, row.perfect]), answer.money);
+  for (const row of rows) {
+    const line = element(doc, "tr");
+    line.dataset[year ? "month" : "date"] = row.key;
+    const first = element(doc, "td", undefined, row.label);
+    if (row.sub !== null) {
+      first.append(element(doc, "br"), element(doc, "span", C.muted, row.sub));
+    }
+    line.append(first);
+    for (const value of [row.real, row.plan, row.perfect]) {
+      line.append(element(doc, "td", undefined, value === null ? "–" : money(value)));
     }
     if (shares) {
-      // A day the battery's own way lost money says "loss", not "0 %".
-      const cell =
-        day.share_note === "loss"
-          ? translate(language, "hist.house.share.loss")
-          : day.own_share !== null
-            ? `${formatNumber(language, day.own_share, 0)} %`
-            : day.share_note === null
-              ? "–"
-              : translate(language, `hist.house.share.${day.share_note}`);
-      row.append(element(doc, "td", day.own_share === null && day.share_note !== null ? C.muted : undefined, cell));
+      line.append(shareCell(doc, language, row.share, row.why));
     }
-    rows.append(row);
+    body.append(line);
   }
-  table.append(head, rows);
-  block.append(table, note(doc, translate(language, "hist.house.daysNote")));
+  table.append(head, body);
+  const mode = reviewed.mode === null ? null : translate(language, `house.mode.${reviewed.mode as (typeof MODES)[number]}`);
+  block.append(table, note(doc, translate(language, mode === null ? "hist.house.daysNoteNoMode" : "hist.house.daysNote", { real, mode: mode ?? "" }), "days-note"));
+  if (runnerOf(reviewed.by_day.map((day) => day.controlled)) === "mixed") {
+    block.append(note(doc, translate(language, "hist.house.daysMixed"), "days-mixed"));
+  }
   return block;
 }
 
@@ -845,15 +1032,16 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
     period.append(note(doc, translate(language, "hist.house.noMeters"), "no-meters"));
   }
   // Every section is shown (the card itself is small now; nothing is behind a "Show details"), each figure once and
-  // for the period chosen. The energy flow is the card's own tab, and SpotNav's saving per part is drawn in its
+  // for the period chosen: the money first, what SpotNav did, the battery against perfect and its days, then the
+  // forecasts and how it is counted. The energy flow is the card's own tab, and SpotNav's saving per part is drawn in its
   // Earnings tab; here its sums stand as rows.
   for (const part of [
     houseBars(input, shownAnswer),
-    perfectSection(input, shownAnswer) ?? modesSection(input, shownAnswer),
     moneySection(input, shownAnswer),
     spotnavSection(input, shownAnswer),
-    forecastSection(input, shownAnswer),
+    perfectSection(input, shownAnswer) ?? modesSection(input, shownAnswer),
     daysSection(input, shownAnswer),
+    forecastSection(input, shownAnswer),
     howSection(input, shownAnswer),
   ]) {
     if (part !== null) {
