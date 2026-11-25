@@ -302,13 +302,15 @@ def _step_status(outcome: Any) -> str:
     return {"pass": "passed", "fail": "failed"}.get(mode_verdict(outcome), "open")
 
 
-def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[str] | None = None) -> bool:
+def hardware_test_passed(
+    report: Mapping[str, Any] | None, supported: Iterable[str] | None = None, *, deadman_required: bool = False,
+) -> bool:
     """Whether a person's finished hardware test (its verification's report) shows the battery doing as told: what a
     recipe with `BrandControl.hardware_test_first` waits for before anything is written outside a test. The hold and
     the hand-back (`normal`) passed; the grid charge passed where the recipe has one (`supported`, the modes it has
     an action for, `verify.supported_modes`; `None`: all), else skipped; the dead-man step (`expiry`, or
-    `expiry:<phase>` per phase, where the test times one) passed or could not be judged; every other step passed,
-    could not be judged or was skipped. A step stopped or still open is no pass."""
+    `expiry:<phase>` per phase, where the test times one) passed or could not be judged (`deadman_required`: passed, and
+    there); every other step passed, could not be judged or was skipped. A step stopped or still open is no pass."""
     if not isinstance(report, Mapping):
         return False
     modes = _modes(report)
@@ -318,6 +320,10 @@ def hardware_test_passed(report: Mapping[str, Any] | None, supported: Iterable[s
         return False
     deadman = [value for name, value in status.items() if name.split(":", 1)[0] == MODE_EXPIRY]
     if any(value not in ("passed", "not_judgeable") for value in deadman):
+        return False
+    if deadman_required and (not deadman or any(value != "passed" for value in deadman)):
+        # A recipe whose every action is a command that stands until it expires (`BrandControl.deadman_must_pass`):
+        # its dead-man must have been timed, not merely tried; a step not judgeable is run again later.
         return False
     return all(value in ("passed", "not_judgeable", "skipped") for value in status.values())
 

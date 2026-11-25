@@ -592,10 +592,15 @@ class HardwareTest:
         the plant's own dead-man."""
         try:
             deadman = bool(self.site.battery_control.hardware_test_deadman())
+            step_s = self.site.battery_control.hardware_test_deadman_s() if deadman else None
         except Exception:  # noqa: BLE001 - no battery control: no dead-man step
             _LOGGER.debug("max_test: ignored failure (no battery control: no dead-man step)", exc_info=True)
-            deadman = False
-        return MAX_TEST + DEADMAN_EXTRA if deadman else MAX_TEST
+            deadman, step_s = False, None
+        if not deadman:
+            return MAX_TEST
+        # A long dead-man (Solis's RC Timeout in minutes): the step's own span and two minutes for the hold before it.
+        long_extra = timedelta(seconds=step_s + 120.0) if isinstance(step_s, (int, float)) else DEADMAN_EXTRA
+        return MAX_TEST + max(DEADMAN_EXTRA, long_extra)
 
     async def _async_run(self, started: datetime) -> None:
         deadline = started + self._max_test()

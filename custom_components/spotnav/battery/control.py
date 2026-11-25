@@ -149,6 +149,8 @@ from .verify import (
     Sample,
     Timing,
     Verification,
+    expiry_long,
+    expiry_max_s,
     phase_charge_step,
     supported_modes,
 )
@@ -1682,7 +1684,9 @@ class BatteryControl:
         if control is None or not control.hardware_test_first or not gate.firmware_known(key):
             return
         report = self.hardware_report or {}
-        if done and gate.hardware_test_passed(report, self._supported_modes()):
+        if done and gate.hardware_test_passed(
+            report, self._supported_modes(), deadman_required=control.deadman_must_pass,
+        ):
             if control.brand not in self.hardware_brands:
                 self.hardware_brands.append(control.brand)
             self.hardware_failed = [known for known in self.hardware_failed if known != key]
@@ -1880,17 +1884,30 @@ class BatteryControl:
         expiry = base.expiry
         if gate.deadman_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge):
             return expiry
-        # A dead-man SpotNav renews in the hold's own writes (Solis's RC Timeout, renewed by the force select): the
+        # A dead-man SpotNav renews in the hold's own writes (Solis's RC Timeout, renewed by the force call): the
         # test stops renewing it after the hold and times the inverter's fallback, as the routine's mode `expiry`
-        # does, so a recipe never run on a plant has its dead-man seen before control relies on it.
+        # does, so a recipe never run on a plant has its dead-man seen before control relies on it. Its window may be
+        # longer than any the gate takes (`verify.expiry_long`): it then lifts no cap, the timing is the evidence.
         hold = base.states.get(ACTION_HOLD)
+        window = expiry.window_s
         if (
-            base.hardware_test_first and hold is not None
-            and gate.expiry_testable(expiry, slow=base.slow, fixed_charge=base.fixed_charge)
-            and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(expiry.window_s or 0))}
+            base.hardware_test_first and hold is not None and not base.slow and not base.fixed_charge
+            and expiry.kind in ("device_deadman", "device_lease") and expiry.renewer == "spotnav"
+            and window is not None and window > 0
+            and set(expiry.renewed_roles) <= {want.role for want in hold(0.0, int(window))}
         ):
             return expiry
         return None
+
+    def hardware_test_deadman_s(self) -> float | None:
+        """How long the hardware test's dead-man step may take here (s: the hold until a renewal, the window and its
+        slack), `None` where the test times none."""
+        control = control_for(self.facts.brand)
+        expiry = None if control is None else self._hardware_test_deadman(control)
+        if expiry is None or expiry.window_s is None:
+            return None
+        renew = float(expiry.renew_s or 0) if expiry_long(expiry.window_s) else 0.0
+        return renew + expiry_max_s(expiry.window_s)
 
     def hardware_test_deadman(self) -> bool:
         """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
