@@ -22,7 +22,10 @@ models.py`, round 2). Nothing here plans; the shell (`site/solar_shadow.py`) log
   without it).
 
 **Learning** (`learn`): from the completed local days up to `upto`, every hour with measured production, per weather
-run as kept. Each cell's ratio is shrunk toward its learner's window-wide ratio with `SHRINK_KWH` kWh of
+run as kept, except the hours of a dead day (measured about zero under a forecast of real sun: snow on the panels or
+a broken statistic, `solar_shadow_store.dead_days`), which would teach the factors that the sun makes nothing.
+The history itself never holds an implausible hour (rejected or held back, see `solar_shadow_store`), so `cap_kwh`
+is a real one. Each cell's ratio is shrunk toward its learner's window-wide ratio with `SHRINK_KWH` kWh of
 pseudo-forecast; hours whose reference is under `MIN_REF_KWH` are skipped. **The weather run** of a forecast hour is
 1 for leads up to `LEAD_RUN1_MAX_H` hours, else 2 (the experiment's rule). A learned forecast is capped at the
 larger of its unscaled reference and the highest hour ever measured.
@@ -37,7 +40,7 @@ from typing import Any, Final
 
 from .. import time_zones
 from .open_meteo import Weather
-from .solar_shadow_store import RUNS, SolarHistory
+from .solar_shadow_store import RUNS, SolarHistory, dead_days
 from .sun_geometry import HourSun, Plane, array_kw, hour_key, hour_sun, key_start
 
 CANDIDATE_OWN: Final = "own"
@@ -220,6 +223,7 @@ def learn(
     daily: dict[tuple[int, date], list[float]] = {}  # (run, day) -> [pv, ghi] for the GHI factor
     ghi_rows: list[tuple[date, int, tuple[Any, ...], float, float]] = []
     hours = 0
+    dead = dead_days(history, zone)
     for key in range(first, end):
         pv = history.pv_kwh(key)
         if pv is None:
@@ -229,6 +233,8 @@ def learn(
         if not hs.daylight:
             continue
         day = start.astimezone(zone).date()
+        if day in dead:
+            continue
         clear = array_kw(hs, planes)
         hours += 1
         for run in RUNS:
@@ -268,7 +274,7 @@ def learn(
         k = known[(run, day)]
         if k is not None:
             pos_ghi.add(day, cell, k * ghi, pv)
-    observed = list(history.pv.values())
+    observed = [value for key, value in history.pv.items() if key_start(key).astimezone(zone).date() not in dead]
     return Factors(
         upto=upto,
         ratio=ratio.factors(upto),
