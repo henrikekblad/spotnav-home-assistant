@@ -10,7 +10,10 @@ the heat pump meter's), the heat pump meter's hourly statistics from the degree-
 trend's first month (eleven months before the period's last) to the last completed hour, its 5-minute rows where the
 recorder still holds them (the period's days and the week before, for the hot-water split and its runs), the outdoor
 sensor's, the chosen indoor sensors' and the immersion heater's hourly means (and the indoor minimums), and the pool's,
-the spa's and the sauna's energy per hour as their shadow counted it (`pool/runtime.py`). The prices
+the spa's and the sauna's energy per hour as the house card's energy flow holds it in heat (the house history's periods
+for the same period, `api/house_history.history_with_periods`, its cache: an estimate takes only what the house had
+left, `site/energy_flow.with_heat_parts`), so the Use tab, the flow's Heat and the heat pie agree; without the
+flow's periods (no grid meter on the Energy dashboard) as their shadow counted it (`pool/runtime.py`). The prices
 are the area's held day documents with the fees as set now (`pricing/period_prices.period_price_slots`). The answer is
 kept per site and period until the next hour (a day with today in it: the next 5-minute row) or, for a finished
 period, until the next day. Refusals as `spotnav/get_house_history`.
@@ -38,7 +41,9 @@ from ..heat.history import (
     HeatHistoryInputs,
     LoadUse,
     ZoneUse,
+    flow_load_uses,
     heat_history,
+    load_kind,
 )
 from ..planning.demand_charge import hour_start
 from ..pricing.price_source import site_price_source
@@ -65,7 +70,7 @@ from .heat import _name, stored_config
 from ..pricing.period_prices import period_price_slots
 from ..site.energy_statistics import short_term_days
 from .house import five_slot, fuse_kw
-from .house_history import ERROR_INVALID_DATE, forecast_maes
+from .house_history import ERROR_INVALID_DATE, forecast_maes, history_with_periods
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -174,6 +179,44 @@ async def _read_means(
     return await get_instance(hass).async_add_executor_job(read)
 
 
+def shadow_load_uses(pool_spa: Any) -> list[LoadUse]:
+    """The pool's, the spa's and the sauna's energy per UTC hour as their shadow counted it, with what of it is an
+    estimate (`pool/runtime.estimated_quarters`; a shadow that cannot tell: all of it), nothing left out."""
+    out: list[LoadUse] = []
+    for kind in ("pool", "spa", "sauna"):
+        if not pool_spa.has_energy(kind):
+            continue
+        hours = pool_spa.energy_hours(kind)
+        estimated: dict[datetime, float] = {}
+        read = getattr(pool_spa, "estimated_quarters", None)
+        if read is None:
+            estimated = dict(hours)
+        else:
+            for part in ("pool_heat", "pool_circulation") if kind == "pool" else (kind,):
+                for moment, kwh in read(part).items():
+                    hour = moment.replace(minute=0, second=0, microsecond=0)
+                    estimated[hour] = estimated.get(hour, 0.0) + kwh
+        out.append(LoadUse(kind, hours, estimated))
+    return out
+
+
+async def _load_uses(hass: HomeAssistant, site: Any, controller: Any, period: Period) -> list[LoadUse]:
+    """The loads as the energy flow counts them in heat (`flow_load_uses` on the house history's periods), else as
+    their shadow counted them (`shadow_load_uses`); none without the pool and spa shadow."""
+    pool_spa = getattr(controller, "pool_spa", None)
+    if pool_spa is None:
+        return []
+    try:
+        _answer, periods = await history_with_periods(hass, site, period.kind, period.first.isoformat())
+    except Exception:  # noqa: BLE001 - without the flow the shadow's own figures are shown
+        _LOGGER.debug("SpotNav heat history: the energy flow's periods could not be read", exc_info=True)
+        periods = None
+    if periods is None:
+        return shadow_load_uses(pool_spa)
+    # Only the loads the flow counts (a part a zone's or the meter's device already reads is left out there too).
+    return [load for load in flow_load_uses(periods) if pool_spa.has_energy(load_kind(load.kind))]
+
+
 async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any) -> dict[str, Any]:
     """The answer for one site and period, or a `PowerMonthRefusal`."""
     controller = site_controller_for(hass, site.entry_id)
@@ -280,12 +323,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             if review is not None:
                 reviews[day] = review
     savings = heat_savings(getattr(shadow, "days", None), period)
-    pool_spa = getattr(controller, "pool_spa", None)
-    loads = (
-        []
-        if pool_spa is None
-        else [LoadUse(kind, pool_spa.energy_hours(kind)) for kind in ("pool", "spa", "sauna") if pool_spa.has_energy(kind)]
-    )
+    loads = await _load_uses(hass, site, controller, period)
     try:
         model_mae = dict(forecast_maes(controller.house_forecast.log).get(KIND_HEAT) or {})
     except Exception:  # noqa: BLE001 - the forecast log is extra: the rest is shown

@@ -637,14 +637,18 @@
   },
   "parts": [
     {
+      "clamped_kwh": 0.0,
       "cost": 85399.43,
+      "estimated": false,
       "key": "pump",
       "kind": "pump",
       "kwh": 581.24,
       "name": null
     },
     {
+      "clamped_kwh": 0.0,
       "cost": 2241.17,
+      "estimated": false,
       "key": "hot_water",
       "kind": "hot_water",
       "kwh": 16.8,

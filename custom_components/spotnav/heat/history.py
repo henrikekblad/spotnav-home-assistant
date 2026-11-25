@@ -78,7 +78,12 @@ written here.
   named it: an air-to-air heat pump), the `MAX_ZONE_PARTS` largest of the period; `other` is every other heat counted
   (further zones, a meter the household moved to heat). `pool`, `spa` and `sauna` are those loads' energy as their
   shadow counted it (`LoadUse`, `pool/runtime.py`: the hours each drew, at its entered power or a typical one; kept
-  `DAYS_KEPT` days), on their own circuits beside the heat pump meter, so added to the use like the zones. A part's
+  `DAYS_KEPT` days), on their own circuits beside the heat pump meter, so added to the use like the zones. They are
+  the figures the house card's energy flow holds in its heat (`flow_load_uses`: an estimate, on time at the part's
+  power, takes only what the house had left after every measured use, `site/energy_flow.with_heat_parts`), so the Use
+  tab, the flow's Heat and the heat pie agree. Each part row has `estimated` (added 2026-11-25 within API version 1:
+  true when any of its energy is an estimate, or some was left out; always false for the meter's and the zones' rows)
+  and `clamped_kwh` (the estimate the house had no room for, left in the house; 0 when it fit). A part's
   `cost` is its hours' energy at their buy price,
   `null` without a priced hour. Parts with no energy in the period are left out.
 * **What SpotNav saved on heat** (`saving`): the sum of the days' heat parts of what SpotNav saved
@@ -97,7 +102,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
 from .. import time_zones
@@ -166,10 +171,38 @@ class ZoneUse:
 
 @dataclass(frozen=True, slots=True)
 class LoadUse:
-    """The pool, the spa or the sauna (`kind`) with its energy per UTC hour start (kWh), as its shadow counted it."""
+    """The pool, the spa or the sauna (`kind`) with its energy per UTC hour start (kWh), as the energy flow counts it
+    in heat (`flow_load_uses`), else as its shadow counted it; of it what is an estimate (`estimated`) and the estimate
+    left out because the house had no room for it (`clamped`), per UTC hour start too."""
 
     kind: str
     hours: Mapping[datetime, float]
+    estimated: Mapping[datetime, float] = field(default_factory=dict)
+    clamped: Mapping[datetime, float] = field(default_factory=dict)
+
+
+#: Less estimated energy (kWh) in a part is rounding: the part is a measurement.
+ESTIMATE_TOLERANCE_KWH: Final = 0.005
+
+
+def load_kind(part: str) -> str:
+    """The load a heat part belongs to (`pool/runtime.PARTS_OF`): the pool's heat pump and circulation are the pool."""
+    return "pool" if part.startswith("pool_") else part
+
+
+def flow_load_uses(periods: Sequence[Any]) -> list[LoadUse]:
+    """The pool's, the spa's and the sauna's energy per UTC hour start as the energy flow's periods hold it in heat
+    (`site/energy_flow.EnergyHour.parts`, each part's share after the clamp), summed by load, in the order pool, spa,
+    sauna; a load without any is left out."""
+    sums: dict[str, tuple[dict[datetime, float], dict[datetime, float], dict[datetime, float]]] = {}
+    for period in periods:
+        hour = period.start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+        for share in period.parts:
+            hours, estimated, clamped = sums.setdefault(load_kind(share.key), ({}, {}, {}))
+            hours[hour] = hours.get(hour, 0.0) + share.kwh
+            estimated[hour] = estimated.get(hour, 0.0) + share.estimated
+            clamped[hour] = clamped.get(hour, 0.0) + share.clamped
+    return [LoadUse(kind, *sums[kind]) for kind in ("pool", "spa", "sauna") if kind in sums]
 
 
 @dataclass(frozen=True, slots=True)
@@ -630,6 +663,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
             bucket["shadow_value"] = (bucket["shadow_value"] or 0.0) + worth
     # The use by what is measured, and what SpotNav saved on heat per bucket (a month's or a year's).
     parts_block: list[dict[str, Any]] = []
+    loads_by_kind = {load.kind: load for load in inputs.loads}
     if inputs.meter is not None and in_period:
         for part_key, kind, name, part_hours in use_parts(inputs, in_period, hot_water_hours(inputs.five, split)):
             part_cost: float | None = None
@@ -649,6 +683,9 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
                     buckets[key]["parts"].append(
                         {"key": part_key, "kwh": _r(kwh, 3), "cost": None if bucket_cost is None else _r(bucket_cost, 3)}
                     )
+            load = loads_by_kind.get(kind)
+            guessed = 0.0 if load is None else sum(v for m, v in load.estimated.items() if m in in_period)
+            clamped = 0.0 if load is None else sum(v for m, v in load.clamped.items() if m in in_period)
             parts_block.append(
                 {
                     "key": part_key,
@@ -656,6 +693,8 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
                     "name": name,
                     "kwh": _r(sum(part_hours.values()), 3),
                     "cost": None if part_cost is None or inputs.money is None else _r(part_cost),
+                    "estimated": guessed > ESTIMATE_TOLERANCE_KWH or clamped > ESTIMATE_TOLERANCE_KWH,
+                    "clamped_kwh": _r(max(0.0, clamped), 3),
                 }
             )
     saved_days = {day: value for day, value in inputs.savings.items() if period.contains(day) and day <= today}
