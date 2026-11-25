@@ -1862,6 +1862,7 @@
   "battery.waiting.busy": "Se odottaa, kun akun ohjaus on varattu.",
   "battery.waiting.startWait": "Odottaa käynnistyksen jälkeen muutaman minuutin ennen kuin SpotNav ohjaa akkua.",
   "battery.need.noBatteryControl": "SpotNav ei vielä osaa ohjata tämän merkin akkuja.",
+  "battery.need.mirroredReadOnly": "Luetaan Remote Home-Assistantin kautta: vain luku. SpotNav suunnittelee akun kanssa mutta ei koskaan ohjaa sitä.",
   "battery.need.firmwareUnknown": "Ota akun laiteohjelmistoanturi käyttöön Home Assistantissa.",
   "battery.need.controlNotFound": "Akun ohjausta {role} ei löydy Home Assistantista.",
   "battery.need.needsHacs": "Akun ohjaus vaatii HACS-integraation ({repo}); Home Assistantin sisäänrakennetusta integraatiosta se puuttuu.",

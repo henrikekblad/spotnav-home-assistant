@@ -565,6 +565,8 @@ export function batteryNeed(language: Language, need: string): string {
   switch (kind) {
     case "no_battery_control":
       return translate(language, "battery.need.noBatteryControl");
+    case "mirrored_read_only":
+      return translate(language, "battery.need.mirroredReadOnly");
     case "firmware_unknown":
       return translate(language, "battery.need.firmwareUnknown");
     case "control_not_found":
@@ -1102,7 +1104,9 @@ export class SiteSections {
     const language = this.language;
     const wrap = element(doc, "div");
     const disabled = needs.filter((need) => need.startsWith("control_disabled:")).map((need) => roleName(need.split(":")[1] ?? ""));
-    const plain = needs.filter((need) => need === "no_battery_control" || need.startsWith("outside_control"));
+    const plain = needs.filter(
+      (need) => need === "no_battery_control" || need === "mirrored_read_only" || need.startsWith("outside_control"),
+    );
     const steps: HTMLElement[] = [];
     for (const need of needs) {
       if (plain.includes(need) || (need.startsWith("control_disabled:") && need !== needs.find((item) => item.startsWith("control_disabled:")))) {
