@@ -29,6 +29,9 @@ Per phase:
   not modelled.
 - Active overload (margin negative) is checked first. Import overload proposes
   a lower current directly; export or unclear overload yields `None`.
+- A charger that takes a current write only every so often (`rate_limit_margin_a`) keeps room free with
+  each write: a raise stops that short of the room, an overload's lowering goes that much further, never
+  below its minimum where the fuse alone allows it, so a house step until its next write needs no stop.
 
 Outcomes stay distinct: a legal setpoint (`0` or `>= min_current_a`), a
 confident pause (`0.0`, `_legalize_or_pause`), and `None` for "no reliable
@@ -138,6 +141,27 @@ DEFAULT_HELP_MARGIN_FACTOR = 0.5
 # Consecutive consistent readings required to confirm a reduction (guards against desync).
 DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS = 3
 
+# A charger that takes a current write only every so often (its policy's `min_interval_s`, 10 s on a local Alfen or
+# Peblar, 60 s on a cloud one) cannot be lowered while that interval runs: a house load that steps up right after a
+# write overloads the fuse, and the lowering the fuse then needs is refused, so the charge is stopped (`safety_stop:
+# rate_limited`, `ChargingController.async_apply_regulated_current`). Each write of such a charger therefore keeps
+# this much room free on every phase it draws on: a typical step of a house's own loads (a kettle, an oven's element,
+# a heat pump's compressor; 1.5 kW is some 6.5 A at 230 V). A step within it fits until the next write is allowed and
+# lowers the charger then; a larger one still stops the charge (the fuse rules are never weaker). It costs the charger
+# that much current only while the fuse, not the request, is what holds it.
+RATE_LIMIT_MARGIN_W = 1500.0
+# The margin is kept only where the interval is at least this long: a shorter one lets the next pass lower in time.
+RATE_LIMIT_MARGIN_FROM_S = 5.0
+
+
+def rate_limit_margin_a(min_interval_s: float, *, confirms_must_lower: bool = False, phase_v: float = 230.0) -> float:
+    """The room (A per phase) a write to a charger with this least interval keeps free (`RATE_LIMIT_MARGIN_W`): 0 for
+    an interval under `RATE_LIMIT_MARGIN_FROM_S`, and for a path whose must-lower write the rate limit never holds
+    back (`confirms_must_lower`: OCPP's `ChangeConfiguration`, read back instead)."""
+    if confirms_must_lower or not min_interval_s >= RATE_LIMIT_MARGIN_FROM_S or phase_v <= 0:
+        return 0.0
+    return RATE_LIMIT_MARGIN_W / phase_v
+
 # How long (s) the site's measurement may stay lost on a phase a charger may draw on before load balancing steps
 # that charger to its minimum current. A reading is stale only once older than the maximum age (120 s by default),
 # so this comes on top of it; the site is recomputed every 30 s, so it spans two of those ticks: a meter's
@@ -242,9 +266,12 @@ def _decide_phase(
     direction_from_current: bool = False,
     increase_reserved_a: float = 0.0,
     held_still: bool = False,
+    write_margin_a: float = 0.0,
 ) -> tuple[float | None, RegulatorReason]:
     """One phase's decision; see the module docstring for the rules. `held_still`: the phase's active power sits
-    still and counts as fresh on another reading of the phase only: no increase on it (`held_still_no_raise`)."""
+    still and counts as fresh on another reading of the phase only: no increase on it (`held_still_no_raise`).
+    `write_margin_a`: the room a rate-limited charger's write keeps free (`rate_limit_margin_a`), left out of a raise
+    and added to a lowering for an overload, never below the charger's minimum where the fuse alone allows it."""
     if (
         measured_current.value is None
         or measured_current.problem is not None
@@ -272,6 +299,10 @@ def _decide_phase(
             # Less EV import can only move the total toward zero on the P axis, so
             # no confirmation run is needed; capped below the current draw.
             ceiling = max(0.0, current + safe_uncredited_headroom_a)
+            if write_margin_a > 0.0 and ceiling >= min_current_a:
+                # The next write is allowed only after the interval: lowered this much further, to the minimum at
+                # most, so a house step in it fits (a ceiling under the minimum pauses as without the margin).
+                ceiling = max(min_current_a, ceiling - write_margin_a)
             proposed = round_down_to_step(min(requested_current_a, ceiling), floor=min_current_a)
             return _legalize_or_pause(
                 proposed, min_current_a, "reducing_current_due_to_active_import_overload"
@@ -302,6 +333,10 @@ def _decide_phase(
         # Room another writer was given and has not drawn yet is not given again.
         increase_headroom = max(0.0, increase_headroom - increase_reserved_a)
         cap = current + increase_headroom
+        if write_margin_a > 0.0 and cap >= min_current_a:
+            # A rate-limited charger's write keeps room free for a house step until its next write; never so much
+            # that the margin alone pauses (or keeps from starting) a charge the fuse allows, nor below its draw.
+            cap = max(min_current_a, current, cap - write_margin_a)
         proposed = round_down_to_step(min(requested_current_a, cap), floor=min_current_a)
         return _legalize_or_pause(proposed, min_current_a, "increase_within_safe_uncredited_margin")
 
@@ -575,6 +610,7 @@ def decide_charging_current(
             direction_from_current=direction_sources.get(phase) == "signed_current",
             increase_reserved_a=(increase_reserved_by_phase or {}).get(phase, 0.0),
             held_still=site_result.phase_signed_active_power_held_still.get(phase) is not None,
+            write_margin_a=request.write_margin_a,
         )
         per_phase[phase] = (value, reason)
         if headroom is not None and headroom < 0.0:
@@ -774,7 +810,11 @@ def magnitude_overload_lowering(
         )
         exporting = bool(known.get(phase)) and (signed_power.get(phase) or 0.0) < 0.0
         if margin < 0.0 and not exporting:
-            ceilings[phase] = max(0.0, measured.value + margin)
+            ceiling = max(0.0, measured.value + margin)
+            if request.write_margin_a > 0.0 and not request.switch_only and ceiling >= request.min_current_a:
+                # The rate-limited charger's next write comes only after its interval: further, to its minimum at most.
+                ceiling = max(request.min_current_a, ceiling - request.write_margin_a)
+            ceilings[phase] = ceiling
     if not ceilings:
         return held
     limiting_phase = min(ceilings, key=lambda phase: ceilings[phase])
@@ -843,7 +883,9 @@ def magnitude_decision(
             direction=None,
             confirmed_direction=None,
         )
-        room = max(0.0, room - (increase_reserved_by_phase or {}).get(phase, 0.0))
+        # Less the room a rate-limited charger's write keeps free (`rate_limit_margin_a`); a raise only, so the
+        # margin never lowers the charger here.
+        room = max(0.0, room - (increase_reserved_by_phase or {}).get(phase, 0.0) - request.write_margin_a)
         caps[phase] = measured.value + room
     drawn = max(basis[phase].measured_current_a or 0.0 for phase in phases)
     if drawn < SWITCHED_DRAWING_FROM_A or requested <= drawn:

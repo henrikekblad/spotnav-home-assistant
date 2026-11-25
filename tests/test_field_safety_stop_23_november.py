@@ -59,8 +59,9 @@ _WOBBLE = (0.03, 0.07, -0.05, 0.04, 0.02, 0.06, -0.03, 0.05)
 class _Night:
     """The site, the car at an Alfen over modbus and the house, a pass every five seconds."""
 
-    def __init__(self, hass: HomeAssistant, freezer, name: str, signed: bool) -> None:
+    def __init__(self, hass: HomeAssistant, freezer, name: str, signed: bool, amps: int = 12) -> None:
         self.hass = hass
+        self.amps = amps
         self.freezer = freezer
         self.name = name
         self.signed = signed
@@ -76,7 +77,7 @@ class _Night:
         self.sc = None
         self.entry_id = ""
         hass.states.async_set(f"switch.{self.charger}", "off")
-        hass.states.async_set(f"number.{self.charger}_limit", "12", _AMPERE)
+        hass.states.async_set(f"number.{self.charger}_limit", str(amps), _AMPERE)
 
     @property
     def on(self) -> bool:
@@ -105,7 +106,7 @@ class _Night:
         self.hass.states.async_set(f"switch.{self.charger}", "off")
 
     def car_a(self) -> float:
-        return float(min(self.limit, 12)) if self.on else 0.0
+        return float(min(self.limit, self.amps)) if self.on else 0.0
 
     async def step(self) -> None:
         hass = self.hass
@@ -150,12 +151,19 @@ class _Night:
         assert self.stops == stops + 1 and not self.on, self.log()
 
 
-async def _the_night(hass: HomeAssistant, monkeypatch, freezer, name: str, *, signed: bool = False) -> _Night:
-    """The plan's window is open (22:45 to 04:30) and its charge runs at 12 A."""
+async def _the_night(
+    hass: HomeAssistant, monkeypatch, freezer, name: str, *, signed: bool = False, amps: int = 12, margin: bool = False
+) -> _Night:
+    """The plan's window is open (22:45 to 04:30) and its charge runs at `amps` (12 A that night). Without `margin`,
+    load balancing as it was that night: no room kept free after a write to the rate-limited charger
+    (`regulator.RATE_LIMIT_MARGIN_W`), so the night's safety stop comes as it came."""
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+    from custom_components.spotnav.site import regulator
 
     monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
-    night = _Night(hass, freezer, name, signed)
+    if not margin:
+        monkeypatch.setattr(regulator, "RATE_LIMIT_MARGIN_W", 0.0)
+    night = _Night(hass, freezer, name, signed, amps)
     entry = make_entry(
         hass,
         entry_id=night.charger,
@@ -198,12 +206,12 @@ async def _the_night(hass: HomeAssistant, monkeypatch, freezer, name: str, *, si
 
     now = dt_util.utcnow()
     window = {"start": (now - timedelta(hours=2)).isoformat(), "end": (now + timedelta(hours=3)).isoformat()}
-    await install_schedule(cc, {"periods": [window], "amps": 12})
+    await install_schedule(cc, {"periods": [window], "amps": amps})
     await hass.async_block_till_done()
     if not night.starts:
-        assert await cc.async_start(amps=12, cause="plan_window")
+        assert await cc.async_start(amps=amps, cause="plan_window")
     await night.run(120.0)
-    assert night.on and night.car_a() == 12.0, night.log()
+    assert night.on and night.car_a() == float(amps), night.log()
     assert cc.session_runner.session.owner == "plan"
     return night
 
