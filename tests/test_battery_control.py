@@ -1155,7 +1155,7 @@ def _bare_control(brand: str, entities: dict[str, tuple[str, dict[str, Any]]], m
     control = BatteryControl.__new__(BatteryControl)
     control.hass = SimpleNamespace(states=SimpleNamespace(get=states.get))  # type: ignore[assignment]
     control.site = SimpleNamespace(config={})  # type: ignore[assignment]
-    control.facts = SimpleNamespace(brand=brand)  # type: ignore[assignment]
+    control.facts = SimpleNamespace(brand=brand, control_brand=brand)  # type: ignore[assignment]
     control.executor = None
     control._look_id, control._charge_bound = 0, None
     return control

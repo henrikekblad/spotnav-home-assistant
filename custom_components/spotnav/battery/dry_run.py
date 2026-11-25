@@ -79,7 +79,7 @@ class HoldDryRun:
         self.monitor = monitor
 
     def _adopt(self, facts: BatteryFacts, write: Mapping[str, Any], now: datetime) -> str:
-        control = control_for(facts.brand)
+        control = control_for(facts.control_brand)
         role = None if control is None else control.role(str(write.get("role")))
         entity_id, read = write.get("entity_id"), write.get("read")
         if role is not None and role.method == "button":
@@ -106,7 +106,7 @@ class HoldDryRun:
             roles = {str(write.get("role")): self._adopt(facts, write, now) for write in writes if isinstance(write, Mapping)}
             failing = [f"{verdict}:{role}" for role, verdict in roles.items() if verdict not in _FINE]
             read_back = failing[0] if failing else "possible" if roles else "not_possible:no_entity"
-            control = control_for(facts.brand, variant)
+            control = control_for(facts.control_brand, variant)
             idle = control is not None and control.hold_idle()
             event = self.monitor.start(Command("hold", now, 0.0, before_kw=facts.power_kw, written=False, idle=idle))
             detail = decision.detail | {"read_back": read_back, "read_back_roles": roles}

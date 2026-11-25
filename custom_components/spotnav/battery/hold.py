@@ -222,7 +222,7 @@ def _main_role(brand: str | None, reads: Mapping[str, RoleRead], variant: str | 
 
 def _main(inputs: HoldInputs) -> tuple[str | None, str | None]:
     """The main role's entity and state."""
-    name = _main_role(inputs.facts.brand, inputs.reads, inputs.variant)
+    name = _main_role(inputs.facts.control_brand, inputs.reads, inputs.variant)
     read = None if name is None else inputs.reads[name]
     return (None, None) if read is None else (read.entity_id, read.state)
 
@@ -244,7 +244,7 @@ def _exec_inputs(inputs: HoldInputs) -> ExecInputs:
 def would_hold(inputs: HoldInputs, writes_today: int = 0) -> Preview:
     """What the executor would write for a hold now (`executor.preview`); `no_brand_control` for a brand it has no
     commands for."""
-    control = control_for(inputs.facts.brand, inputs.variant)
+    control = control_for(inputs.facts.control_brand, inputs.variant)
     if control is None:
         return Preview("no_brand_control")
     return preview(control, _exec_inputs(inputs), writes_today=writes_today)
@@ -330,7 +330,7 @@ def _restore_reason(inputs: HoldInputs, memory: HoldMemory) -> str | None:
         return "measurement_lost"
     if inputs.headroom_a is None or inputs.headroom_a < RESTORE_HEADROOM_A:
         return "headroom_low"
-    control = control_for(facts.brand)
+    control = control_for(facts.control_brand)
     if control is None:
         return "no_brand_control"
     # The hold's own writes turn Remote EMS on: that is SpotNav's, not the plant's own management. A reading that
@@ -376,7 +376,7 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
         return replace(memory, armed_since=now), None
     if (now - memory.armed_since).total_seconds() < ARM_S:
         return memory, None
-    control = control_for(facts.brand)
+    control = control_for(facts.control_brand)
     if control is None:
         management = None if facts.management.state == "free" else f"{facts.management.state}:{facts.management.reason}"
     else:
@@ -429,7 +429,7 @@ def _note(memory: HoldMemory, action: HoldAction, reason: str, inputs: HoldInput
     if reason in memory.noted:
         return memory, None
     detail = _detail(inputs)
-    control = control_for(inputs.facts.brand, inputs.variant)
+    control = control_for(inputs.facts.control_brand, inputs.variant)
     if control is not None:
         detail["would_write"] = control.wanted(ACTION_HOLD, 0.0)
     entity_id, read = _main(inputs)

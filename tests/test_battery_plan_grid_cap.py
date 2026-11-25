@@ -152,7 +152,7 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
 
     class Fake:
         executor = SimpleNamespace(control=SimpleNamespace(phased=True))
-        facts = SimpleNamespace(brand="sigenergy")
+        facts = SimpleNamespace(brand="sigenergy", control_brand="sigenergy")
 
         def options(self) -> Any:
             return SimpleNamespace(accept_ha_down=False)
@@ -238,7 +238,7 @@ def _control(
 
     class Fake:
         executor = None
-        facts = SimpleNamespace(brand=brand)
+        facts = SimpleNamespace(brand=brand, control_brand=brand)
 
         def options(self) -> Any:
             return SimpleNamespace(accept_ha_down=False)

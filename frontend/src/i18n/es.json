@@ -1863,6 +1863,7 @@
   "battery.waiting.busy": "Espera mientras el control de la batería está ocupado.",
   "battery.waiting.startWait": "Espera unos minutos tras un arranque antes de que SpotNav controle la batería.",
   "battery.need.noBatteryControl": "SpotNav aún no puede controlar baterías de esta marca.",
+  "battery.need.mirroredReadOnly": "Leída a través de Remote Home-Assistant: solo lectura. SpotNav planifica con esta batería pero nunca la controla.",
   "battery.need.firmwareUnknown": "Activa el sensor de firmware de la batería en Home Assistant.",
   "battery.need.controlNotFound": "No se encuentra el control {role} de la batería en Home Assistant.",
   "battery.need.needsHacs": "El control de la batería requiere la integración HACS ({repo}); la integración incluida en Home Assistant no lo tiene.",

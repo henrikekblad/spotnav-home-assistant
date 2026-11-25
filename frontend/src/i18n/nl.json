@@ -1863,6 +1863,7 @@
   "battery.waiting.busy": "Het wacht zolang de batterijsturing bezig is.",
   "battery.waiting.startWait": "Wacht na een start enkele minuten voordat SpotNav de batterij aanstuurt.",
   "battery.need.noBatteryControl": "SpotNav kan batterijen van dit merk nog niet aansturen.",
+  "battery.need.mirroredReadOnly": "Gelezen via Remote Home-Assistant: alleen lezen. SpotNav plant met deze batterij maar stuurt haar nooit aan.",
   "battery.need.firmwareUnknown": "Schakel de firmwaresensor van de batterij in Home Assistant in.",
   "battery.need.controlNotFound": "De besturing {role} van de batterij is niet gevonden in Home Assistant.",
   "battery.need.needsHacs": "De besturing van de batterij vereist de HACS-integratie ({repo}); de ingebouwde integratie van Home Assistant heeft die niet.",

@@ -1012,6 +1012,29 @@ dashboard shows nothing from SpotNav, not an unchecked figure), as Wh per hour f
 SpotNav never uses it as a source itself. The picker lists every SpotNav entry; only a site that has a solar
 forecast chosen gives anything.
 
+## Mirrored from another Home Assistant
+
+Some inverters take only one Modbus client, so the battery's integration (SolaX Modbus, say) runs on another Home
+Assistant and reaches this one through [Remote Home-Assistant](https://github.com/custom-components/remote_homeassistant)
+(HACS). SpotNav reads such a battery, read only:
+
+* **How the brand is found.** Remote Home-Assistant keeps the other instance's entity ids (after the entry's
+  entity prefix, which SpotNav takes off) but not its unique ids or devices. SpotNav tries each brand it knows on the
+  mirrored entities by the brand's own keys in those ids, with the unit each needs (the level in %, the size in Wh or
+  kWh). A brand counts only when the level is found and the battery entity reads a power; the brand that finds the
+  most wins. When two brands find as much, the battery stays unknown, and the diagnostics say which tied
+  (`detected` → battery → `mirror`).
+* **What you see.** The level, the size and the counters the brand's integration names, read on the other instance.
+  A size or a rating that is not mirrored (SolaX Modbus disables its size by default) is learnt from the plan's own
+  quarter hours, as for any battery. The firmware is not mirrored.
+* **Never controlled.** The battery's settings card says *Read through Remote Home-Assistant: read only*. SpotNav plans
+  with the battery as a comparison and writes nothing to it, whatever the brand: a write would go to the other instance
+  outside its own integration's checks.
+* **Keep the entity ids.** A renamed entity on the other instance is not found. Mirror the battery's power, level and
+  size at least; the mode selects let SpotNav see who runs the battery.
+* **The power's sign** is your site setting. Where the battery entity is the brand's own battery power entity, the
+  diagnostics say whether the setting agrees with the brand's convention (`power_sign`).
+
 ## When another system runs your battery
 
 Many home batteries are run by something else: the maker's own optimiser (Sigen AI mode, FusionSolar

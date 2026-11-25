@@ -1863,6 +1863,7 @@
   "battery.waiting.busy": "Den venter mens batteristyringen er opptatt.",
   "battery.waiting.startWait": "Venter noen minutter etter start før SpotNav styrer batteriet.",
   "battery.need.noBatteryControl": "SpotNav kan ikke styre batterier av dette merket ennå.",
+  "battery.need.mirroredReadOnly": "Leses via Remote Home-Assistant: kun lesing. SpotNav planlegger med batteriet, men styrer det aldri.",
   "battery.need.firmwareUnknown": "Aktiver batteriets fastvaresensor i Home Assistant.",
   "battery.need.controlNotFound": "Batteriets styring {role} finnes ikke i Home Assistant.",
   "battery.need.needsHacs": "Batteriets styring krever HACS-integrasjonen ({repo}); Home Assistants innebygde integrasjon mangler den.",

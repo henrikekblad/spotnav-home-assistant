@@ -1863,6 +1863,7 @@
   "battery.waiting.busy": "Sie wartet, solange die Speichersteuerung beschäftigt ist.",
   "battery.waiting.startWait": "Wartet nach einem Start einige Minuten, bevor SpotNav die Batterie steuert.",
   "battery.need.noBatteryControl": "SpotNav kann Speicher dieser Marke noch nicht steuern.",
+  "battery.need.mirroredReadOnly": "Über Remote Home-Assistant gelesen: nur lesend. SpotNav plant mit diesem Speicher, steuert ihn aber nie.",
   "battery.need.firmwareUnknown": "Aktiviere den Firmware-Sensor des Speichers in Home Assistant.",
   "battery.need.controlNotFound": "Die Steuerung {role} des Speichers fehlt in Home Assistant.",
   "battery.need.needsHacs": "Die Steuerung des Speichers braucht die HACS-Integration ({repo}); der eingebauten Integration von Home Assistant fehlt sie.",

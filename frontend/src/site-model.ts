@@ -106,6 +106,9 @@ export interface BatteryOptions {
 export interface BatteryStatus {
   /** Whether the site's battery facts name a battery (`true` from a Home Assistant before the key). */
   battery_found: boolean;
+  /** Set when SpotNav may only read the battery (`remote_homeassistant`: mirrored from another Home Assistant), `null`
+   * otherwise and from a Home Assistant before the key. */
+  battery_read_only: string | null;
   options: BatteryOptions;
   state: string;
   line: string;
@@ -383,6 +386,7 @@ const PER_PHASE = O({
 
 const STATUS: Spec = O({
   battery_found: "boolean",
+  battery_read_only: N("string"),
   options: OPTIONS,
   state: "string",
   line: "string",
@@ -501,6 +505,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
  * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.enable_facts`, `status.battery_found` (`true`),
+ * `status.battery_read_only` (`null`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
  * `entity_id`, `status.grid_charge_cap.ha_down`, `status.options.battery_control_accept_ha_down` (`false`),
  * `status.options.battery_wear_minor_per_kwh` and `status.plan_costs.wear_default_minor_per_kwh` (`null`),
@@ -529,6 +534,7 @@ function withLaterBlocks(raw: unknown): unknown {
       preheat: block["preheat"] ?? null,
       enable_facts: block["enable_facts"] ?? null,
       battery_found: block["battery_found"] ?? true,
+      battery_read_only: block["battery_read_only"] ?? null,
       tester: block["tester"] ?? null,
     },
   };

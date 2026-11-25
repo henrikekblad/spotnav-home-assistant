@@ -41,6 +41,7 @@ from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..const import (
     BATTERY_OUTSIDE_CONTROL_ISSUE,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_BATTERY_POWER_INVERTED,
     CONF_CHARGER_ENTRY_IDS,
     CONF_GRID_POWER_SOURCE,
     DOMAIN,
@@ -53,6 +54,7 @@ from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
 from .adapters import Match, package_of
 from .facts import BatteryFacts, EntityFact, battery_facts, device_firmware, find_entity, with_outside_control
+from .mirrored import MIRROR_PLATFORM, MirrorMatch, match_adapter, mirrored_facts, remote_of
 from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
@@ -209,6 +211,57 @@ def _device_sw_version(devices: dr.DeviceRegistry, device: dr.DeviceEntry | None
     return None if parent is None else device_firmware(parent.sw_version)
 
 
+#: `hass.data` key: the last mirrored battery's adapter match, by battery entity id, with what it was made from.
+_MIRROR_MATCH_KEY: Final = f"{DOMAIN}_battery_mirror_match"
+#: Remote Home-Assistant's option that prefixes every mirrored object id.
+_MIRROR_PREFIX_OPTION: Final = "entity_prefix"
+
+
+def _mirror_prefix(hass: HomeAssistant, remote: str | None) -> str:
+    """The `entity_prefix` of the Remote Home-Assistant entry the mirrored entities come from (its unique id is the
+    remote's uuid, of which the entities carry the first 16 characters); `""` when none is set or found."""
+    entries = hass.config_entries.async_entries(MIRROR_PLATFORM)
+    for entry in entries:
+        if remote is not None and str(entry.unique_id or "")[:16].lower() == remote:
+            return str(entry.options.get(_MIRROR_PREFIX_OPTION) or "")
+    # Only one remote: its prefix, whatever the ids say.
+    if len(entries) == 1 and remote is None:
+        return str(entries[0].options.get(_MIRROR_PREFIX_OPTION) or "")
+    return ""
+
+
+def _read_mirrored_facts(
+    hass: HomeAssistant, config: dict[str, Any], battery_entry: er.RegistryEntry, power_kw: float | None
+) -> BatteryFacts:
+    """A battery mirrored by Remote Home-Assistant: read only, by the adapter its remote's entities match
+    (`mirrored.py`). The match is made again only when the set, a unit or a device class changes."""
+    registry = er.async_get(hass)
+    remote = remote_of(str(battery_entry.unique_id or ""))
+    entries = [
+        entry for entry in registry.entities.values()
+        if entry.platform == MIRROR_PLATFORM and (remote is None or remote_of(str(entry.unique_id or "")) == remote)
+    ]
+    prefix = _mirror_prefix(hass, remote)
+    battery = _entity_fact(battery_entry, hass)
+    entities = [_entity_fact(entry, hass) for entry in entries]
+    shape = (prefix, battery.unit, battery.device_class, tuple(sorted(
+        (entity.entity_id, entity.unit, entity.device_class) for entity in entities
+    )))
+    cache: dict[str, tuple[Any, MirrorMatch]] = hass.data.setdefault(_MIRROR_MATCH_KEY, {})
+    cached = cache.get(battery.entity_id)
+    if cached is not None and cached[0] == shape:
+        match = cached[1]
+    else:
+        match = match_adapter(battery, entities, prefix)
+        cache[battery.entity_id] = (shape, match)
+    inverted = config.get(CONF_BATTERY_POWER_INVERTED)
+    return mirrored_facts(
+        battery, entities, prefix=prefix, power_kw=power_kw,
+        power_inverted=inverted if isinstance(inverted, bool) else None,
+        external_planner=external_planner(hass), match=match,
+    )
+
+
 def read_battery_facts(
     hass: HomeAssistant, config: dict[str, Any], power_kw: float | None, found: Mapping[str, str] | None = None
 ) -> BatteryFacts:
@@ -219,6 +272,8 @@ def read_battery_facts(
     battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
     if battery_entry is None:
         return battery_facts(None, [], power_kw=power_kw)
+    if battery_entry.platform == MIRROR_PLATFORM:
+        return _read_mirrored_facts(hass, config, battery_entry, power_kw)
     package = package_of(battery_entry.platform, str(battery_entry.unique_id or ""))
     if package is not None and battery_entry.config_entry_id is None and battery_entry.device_id is None:
         # A YAML package (Sungrow's): its entities have no config entry and no device, so they are the registry's
@@ -326,7 +381,7 @@ def read_export_facts(
         anchor_fact, entities, manufacturer=None if device is None else device.manufacturer,
         external_planner=external_planner(hass),
     )
-    control = export_control_for(facts.brand)
+    control = export_control_for(facts.control_brand)
     return facts, ({} if control is None else role_reads(control, entities, anchor_fact)), control
 
 
@@ -517,7 +572,7 @@ class BatteryShadow:
         """The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
         (`commands.AutonomousImport`, trigger `below_reserve`): read where the plant shows it, else the facts' own
         reserve; `None` for every other recipe."""
-        control = control_for(facts.brand)
+        control = control_for(facts.control_brand)
         spec = None if control is None else control.autonomous_import
         if spec is None or spec.trigger != "below_reserve":
             return None
@@ -630,7 +685,7 @@ class BatteryShadow:
             volts_between_phases=stored_voltage_between_phases_v(self.site.config),
             charger_ids=chargers,
             car_kw=car_kw,
-            reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
+            reads=read_role_reads(self.hass, self.site.config, control_for(facts.control_brand)),
             takeover=self._takeover(),
             variant=self._hold_variant(),
         )

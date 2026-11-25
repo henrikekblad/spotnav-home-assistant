@@ -4,6 +4,7 @@
   "error": null,
   "status": {
     "battery_found": true,
+    "battery_read_only": null,
     "options": {
       "battery_control_enabled": false,
       "battery_control_shadow_only": false,
