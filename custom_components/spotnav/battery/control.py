@@ -50,7 +50,9 @@ The order on every path:
 * **The export limit** (`export_curtail.py`): a second executor on the brand's export control
   (`commands.EXPORT_CONTROLS`): `curtail_export` while the sell price now is below zero (`sell_source`, by default
   the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the battery or the grid meter
-  (`runtime.read_export_facts`), so a site without a battery has it too. Its state is stored beside the battery's
+  (`runtime.read_export_facts`), so a site without a battery has it too. It has its own switch ("No export at
+  negative prices", `gate.CONF_EXPORT_CURTAIL`) and gates (`export_shell.ExportShell`): the battery's opt-in and
+  shadow only do not arm it. Its state is stored beside the battery's
   (`export`), restored after the battery's after a restart and handed back after it on stop; the two share the day's write cap. While the
   battery's executor runs the same plant (its Remote EMS on, also while it hands back) the export instance is told so
   (`sibling_active`) and still takes and keeps the limit; Remote EMS on otherwise is another controller's and hands
@@ -129,6 +131,7 @@ from .executor import (
     taken_over,
 )
 from .export_curtail import curtails
+from .export_shell import ExportShell
 from .facts import BatteryFacts
 from .mirrored import NEED_MIRRORED_READ_ONLY, READ_ONLY_MIRRORED
 from .ledger import Ledger
@@ -478,6 +481,8 @@ class BatteryControl:
         self.executor: Executor | None = None
         #: The export limit's executor (`commands.EXPORT_CONTROLS`), `None` when the site has none.
         self.export_executor: Executor | None = None
+        #: The export limit's own switch, gates and status (`export_shell.py`).
+        self.export = ExportShell(self)
         self._export_failed: tuple[str, ...] = ()
         self._export_timed_out: tuple[str, ...] = ()
         self.facts = BatteryFacts()
@@ -770,6 +775,7 @@ class BatteryControl:
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
         stored = self._stored.get("export") if isinstance(self._stored.get("export"), dict) else {}
+        self.export.load(stored.get("gate"))
         state = ExecState.from_dict(stored.get("state"))
         control = export_control_for(state.brand) or read_export_facts(self.hass, self.site.config)[2]
         if control is None:
@@ -1244,13 +1250,11 @@ class BatteryControl:
                 await self._async_release(now, "shadow_only" if state == "shadow_only" else f"control_{state}")
             if options.writes and trial is None:
                 await self._async_maybe_verify(now, options)
-        # The export limit.
+        # The export limit: its own switch and gates (`export_shell.py`), whatever the battery's options say.
         if trial is not None and trial.export:
             await self._async_export_step(now, ACTION_CURTAIL_EXPORT, allowed=True)
-        elif options.writes:
-            await self._async_export_step(now, None, allowed=True)
         else:
-            await self._async_export_release(now, "shadow_only" if options.enabled else "control_off")
+            await self.export.async_look(now, options)
         if options.enabled and options.shadow_only:
             self._shadow_look(now, options)
         self._note_stopped(now)
@@ -1589,7 +1593,10 @@ class BatteryControl:
         options = self.options()
         self._require(self.state(options) == "on", "Battery control")
         now = now or dt_util.now()
-        await self.async_export_tick(now, stopping=stopping)
+        if stopping is None:
+            await self.export.async_look(now, options)
+        else:
+            await self._async_export_step(now, None, stopping=stopping, allowed=True)
         executor = self._control_executor()
         if executor is None:
             return None
@@ -1599,10 +1606,14 @@ class BatteryControl:
         )
 
     async def async_export_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
-        """One look of the export limit: `curtail_export` while the sell price is below zero, else hand back.
-        Refused unless the options allow writing."""
-        self._require(self.options().writes, "The export limit")
-        return await self._async_export_step(now or dt_util.now(), None, stopping=stopping, allowed=True)
+        """One look of the export limit as its own switch and gates run it (`ExportShell.async_look`; a `stopping`
+        hands it back). Refused unless they allow writing."""
+        self._require(self.export.state() == "on", "The export limit")
+        now = now or dt_util.now()
+        if stopping is not None:
+            return await self._async_export_step(now, None, stopping=stopping, allowed=True)
+        await self.export.async_look(now, self.options())
+        return None
 
     async def _async_export_step(
         self, now: datetime, action: str | None, *, stopping: str | None = None, allowed: bool
@@ -1619,7 +1630,7 @@ class BatteryControl:
             inputs = self._export_hand_back_inputs(now, executor, stopping)
         else:
             inputs = self.export_inputs(now, executor.control, stopping=stopping, action=action)
-        inputs, allowed = self._gated(inputs, allowed)
+        inputs, allowed = self._gated(inputs, allowed, export=True)
         result = executor.step(inputs)
         self._log(result.events)
         if result.persist_first:
@@ -2095,6 +2106,12 @@ class BatteryControl:
                 except Exception:  # noqa: BLE001
                     self._look_failed("options_stop")
                 try:
+                    if before.export_writes and not after.export_writes:
+                        # "No export at negative prices" turned off: the limit is handed back before the answer.
+                        await self.export.async_switched_off()
+                except Exception:  # noqa: BLE001
+                    self._look_failed("export_off")
+                try:
                     await self._async_look(dt_util.now())
                 except Exception:  # noqa: BLE001
                     self._look_failed("look")
@@ -2119,7 +2136,7 @@ class BatteryControl:
         if action == "stop":
             async with self._lock:
                 trial, self.trial = self.trial, None
-                if trial is not None and trial.export and not options.writes and self.export_executor is not None:
+                if trial is not None and trial.export and self.export.state(options) != "on" and self.export_executor is not None:
                     await self._async_export_until_handed_back("trial_stopped")
                 elif trial is not None and not trial.export and self.state(options) != "on" and self.executor is not None:
                     await self._async_until_handed_back("trial_stopped")
@@ -3219,9 +3236,10 @@ class BatteryControl:
             timed_out=self._export_timed_out,
             other_writes_today=0 if battery is None or battery.state.day != now.date().isoformat()
             else battery.state.writes_today,
-            grid_import_kw=self._grid_import_kw(),
+            grid_import_kw=self.export.grid_kw(),
             sibling_active=sibling_active,
             takeover=self.options().ai_takeover_ack,
+            excused_import_kw=self.export.excused_kw(),
         )
 
     def _grid_import_kw(self) -> float | None:
@@ -3415,23 +3433,28 @@ class BatteryControl:
 
     # ---- writes
 
-    def _writes_allowed_now(self) -> bool:
+    def _writes_allowed_now(self, *, export: bool = False) -> bool:
         """Whether the options as stored now still allow a write that is not a hand-back (read again before every
-        step: the entry can change while a look waits on a write)."""
+        step: the entry can change while a look waits on a write). `export`: for the export limit, whose own switch
+        and gates decide (`ExportShell.state`), or a test action of its own."""
         options = self.options()
         trial = self.trial
+        if export:
+            return self.export.state(options) == "on" or (
+                trial is not None and trial.export and self._trial_allowed(trial, options)
+            )
         return (
             options.writes or (trial is not None and self._trial_allowed(trial, options))
             or (self._hw_run and options.enabled)
         )
 
-    def _gated(self, inputs: ExecInputs, allowed: bool) -> tuple[ExecInputs, bool]:
+    def _gated(self, inputs: ExecInputs, allowed: bool, *, export: bool = False) -> tuple[ExecInputs, bool]:
         """A step the options no longer allow, or one during the start-up wait, becomes a hand-back."""
         if allowed and self._start_wait():
             return replace(
                 inputs, stopping=inputs.stopping or "start_wait", action=None, rate_kw=0.0, slot_end=None
             ), False
-        if not allowed or self._writes_allowed_now():
+        if not allowed or self._writes_allowed_now(export=export):
             return inputs, allowed
         return replace(
             inputs, stopping=inputs.stopping or "options_changed", action=None, rate_kw=0.0, slot_end=None
@@ -3571,6 +3594,9 @@ class BatteryControl:
             }
         elif not self._started and "export" in self._stored:
             data["export"] = self._stored["export"]
+        if self._started:
+            # The export limit's own gate (the migration, the day's stretches, the checks), executor or not.
+            data["export"] = {**(data.get("export") or {}), "gate": self.export.gate.as_dict()}
         return data
 
     def _needs(self) -> list[str]:
@@ -3818,6 +3844,7 @@ class BatteryControl:
             "brand": None if executor is None else executor.control.brand,
             "executor": None if executor is None else executor.as_dict(),
             "export": None if self.export_executor is None else self.export_executor.as_dict(),
+            "export_gate": self.export.snapshot(),
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),

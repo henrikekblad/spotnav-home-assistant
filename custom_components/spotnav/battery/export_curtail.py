@@ -11,16 +11,23 @@ curtails only the rest.
   still does not fit is `curtailed_kwh`, never sold at the negative price). A site without a battery has no plan;
   the rule still holds.
 * **Control** is the executor's action `curtail_export` (`commands.ACTION_CURTAIL_EXPORT`) on the brand's export
-  control (`commands.EXPORT_CONTROLS`, Sigenergy only), the one write route: written only by SpotNav, restored to
-  what was there, given up when someone else changes it, an `unknown` read-back never a success, `unknown` never
-  written back, the site's day write cap shared with the battery's control. A battery that runs its own optimiser
-  (Sigenergy AI mode) or that another system drives is only watched, as for the battery. No setting of its own: it
-  belongs to the battery control opt-in when that comes.
-* **Shadow first** (`CurtailShadow`): in this release nothing writes. Each look says whether the slot now is a
-  curtail slot; on entering one the shell logs what the executor would write (`executor.preview`) or why it would
-  not, on leaving it what the hand-back would write; and it counts, per local day, the kWh the site exported in
-  curtail slots and what they cost (kWh × -sell price): what the rule would have saved. Days the control could not
-  have run (watch-only, entity missing) are counted apart (`blocked_kwh`), so the saving is never claimed for them.
+  control (`commands.EXPORT_CONTROLS`: Sigenergy, Victron, Sungrow, Solis, GoodWe, SolaX), the one write route:
+  written only by SpotNav, restored to what was there (a switch found off is switched off again; a limit never set
+  is not taken, and the plant's maximum is never written), given up when someone else changes it, an `unknown`
+  read-back never a success, `unknown` never written back, the site's day write cap shared with the battery's
+  control. A battery that runs its own optimiser (Sigenergy AI mode) or that another system drives is only watched,
+  as for the battery.
+* **Its own switch**: "No export at negative prices" (`gate.CONF_EXPORT_CURTAIL`, the card's Solar section, off by
+  default), for a site with or without a battery; the battery control's opt-in does not arm it. The shell's gates
+  are in `export_shell.py` (an untested recipe on a beta tester's site only, a check on the plant first where no
+  source states that 0 means no export) and `export_gate.py` (positive gaps of at most half an hour bridged, at most
+  six curtail stretches a day).
+* **The shadow always counts** (`CurtailShadow`), whether the switch is on or off. Each look says whether the slot
+  now is a curtail slot; on entering one the shell logs what the executor would write (`executor.preview`) or why it
+  would not, on leaving it what the hand-back would write; and it counts, per local day, the kWh the site exported
+  in curtail slots and what they cost (kWh × -sell price): what the rule would have saved, shown on the switch's row
+  while it is off (`totals`, 30 days). Days the control could not have run (watch-only, entity missing) are counted
+  apart (`blocked_kwh`), so the saving is never claimed for them.
 
 What the shadow cannot tell: whether the inverter would have obeyed, and how fast.
 """

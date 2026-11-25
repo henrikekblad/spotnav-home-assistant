@@ -2152,6 +2152,8 @@ VICTRON_CONTROL: Final = BrandControl(
 # (`no_restore_value:export_limit`).
 _SIG_EXPORT = Role(
     "export_limit", "number", _key("plant_grid_point_maximum_export_limitation", "number"), step=0.001,
+    # Without `unset_as_rating` this writes nothing: it only says what an `unknown` here means (the card's line).
+    unknown_is_unset=True,
 )
 
 SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
@@ -3154,6 +3156,12 @@ GATED_AFTER_RUNNING: Final = frozenset(
 def export_control_for(brand: str | None) -> BrandControl | None:
     """The brand's export-limit control, `None` for a brand SpotNav has none for."""
     return next((control for control in EXPORT_CONTROLS if control.brand == brand), None)
+
+
+#: The brands whose export limit the battery opt-in armed before the site's own switch came (2026-11-25): a site of
+#: one whose battery control writes then gets the switch turned on once (`export_shell.ExportShell.migrate`), so
+#: nothing stops by an update. A brand whose export control is newer than the switch is never armed that way.
+EXPORT_ARMED_BY_BATTERY: Final = frozenset({"sigenergy"})
 
 
 def export_field_tested(brand: str | None) -> bool:
