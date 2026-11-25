@@ -10370,10 +10370,12 @@
   "wanted": {
    "discharge_house@1.0": {
     "block_discharge": "<snapshot>",
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    },
    "discharge_house@3.0": {
     "block_discharge": "<snapshot>",
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    },
    "grid_charge@1.0": {
@@ -10388,18 +10390,22 @@
    },
    "hold@1.0": {
     "block_discharge": true,
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    },
    "hold@3.0": {
     "block_discharge": true,
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    },
    "self_consume@1.0": {
     "block_discharge": "<snapshot>",
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    },
    "self_consume@3.0": {
     "block_discharge": "<snapshot>",
+    "charge_rate": "<snapshot>",
     "charge_start": "<snapshot>"
    }
   },

@@ -134,11 +134,13 @@ def test_the_recipe_is_block_discharge_to_hold_and_the_rate_then_charge_start_to
     control = KOSTAL_CONTROL
     assert control_for("kostal") is control and control in CONTROLS and control.adapter is KOSTAL
     assert adapter_for("kostal_modbus_control", None) is KOSTAL
-    assert control.wanted("hold", 0.0) == {"block_discharge": True, "charge_start": SNAPSHOT}
+    assert control.wanted("hold", 0.0) == {"block_discharge": True, "charge_start": SNAPSHOT, "charge_rate": SNAPSHOT}
     assert control.wanted("grid_charge", 2.345) == {
         "block_discharge": SNAPSHOT, "charge_rate": 2300.0, "charge_start": True,
     }, "W, rounded down to the rate's 100 W step"
-    assert control.wanted("discharge_house", 2.0) == {"block_discharge": SNAPSHOT, "charge_start": SNAPSHOT}
+    assert control.wanted("discharge_house", 2.0) == {
+        "block_discharge": SNAPSHOT, "charge_start": SNAPSHOT, "charge_rate": SNAPSHOT,
+    }
     assert not control.supports("export_discharge"), "no sale: Discharge Start is never written"
     assert not control.hold_idle(), "the sun is still stored under Block Discharge"
     rows = [row for row in table() if row["brand"] == "kostal"]
@@ -189,8 +191,9 @@ def test_the_dead_man_is_the_inverters_renewed_by_the_integration_and_never_lift
         "management_mode": "setting", "block_discharge": "setpoint", "charge_rate": "setpoint",
         "charge_start": "setpoint",
     }
-    # The rate is never written back (it acts only under Charge Start); 1080 is never written at all.
-    assert {role.name for role in control.roles if role.restored} == {"block_discharge", "charge_start"}
+    # The rate is written back last, as found (the person's own Charge Start runs at it); 1080 is never written.
+    assert {role.name for role in control.roles if role.restored} == {"block_discharge", "charge_start", "charge_rate"}
+    assert control.restore_order[-1] == "charge_rate"
     assert control.local_readback
     # Never run on a plant: nothing written until a hardware test passed on its firmware.
     assert control.hardware_test_first and not control.field_tested
@@ -219,14 +222,24 @@ def test_a_charge_writes_the_rate_then_charge_start_each_read_back_and_a_lower_r
     seen = preview(KOSTAL_CONTROL, inputs(Plenticore(KOSTAL_CONTROL, dict(STATES)), T0, "grid_charge", 1.0,
                                           takeover=True))
     assert [(op.role, op.value) for op in seen.writes] == written(results)
-    assert [(op.role, op.value) for op in seen.restores] == [("charge_start", "off")]
+    assert [(op.role, op.value) for op in seen.restores] == [("charge_start", "off"), ("charge_rate", 5200.0)]
     # A lower rate is the rate alone: the integration's loop sends it at its next tick.
     now, results = _run(executor, plant, now, 3, "grid_charge", 0.5)
     assert written(results) == [("charge_rate", 500.0)] and plant.power_kw() == 0.5
-    # The hand-back: Charge Start off; the rate stays as last written (the next charge writes its own first).
+    # The hand-back: Charge Start off, then the rate as found: it followed the maximum, so the maximum again.
     _now, results = _run(executor, plant, now, 6, "self_consume")
-    assert written(results) == [("charge_start", "off")]
-    assert plant.states == {**STATES, "charge_rate": "500"} and executor.state.phase == "idle"
+    assert written(results) == [("charge_start", "off"), ("charge_rate", FOLLOWS_MAX)]
+    assert plant.states == STATES and plant.attributes["charge_rate"]["follows_max"] is True
+    assert executor.state.phase == "idle"
+
+
+def test_a_fixed_rate_the_person_set_is_written_back_as_found() -> None:
+    executor, plant = _plant()
+    plant.states["charge_rate"], plant.attributes["charge_rate"] = "3000", {"follows_max": False, "max": 5200.0}
+    now, _results = _run(executor, plant, T0, 8, "grid_charge", 1.0)
+    _now, results = _run(executor, plant, now, 6, "self_consume")
+    assert written(results) == [("charge_start", "off"), ("charge_rate", 3000.0)]
+    assert plant.states["charge_rate"] == "3000" and executor.state.phase == "idle"
 
 
 def test_a_change_of_action_turns_the_old_switch_off_first_so_the_integration_never_turns_one_off() -> None:
@@ -234,7 +247,8 @@ def test_a_change_of_action_turns_the_old_switch_off_first_so_the_integration_ne
     executor, plant = _plant()
     now, _results = _run(executor, plant, T0, 8, "grid_charge", 1.0)
     now, results = _run(executor, plant, now, 8, "hold")
-    assert written(results) == [("charge_start", "off"), ("block_discharge", True)]
+    # The rate goes back as found too (it acts only under Charge Start).
+    assert written(results) == [("charge_start", "off"), ("block_discharge", True), ("charge_rate", FOLLOWS_MAX)]
     assert executor.state.action == "hold" and plant.power_kw() == 0.0
     # And back to a charge: Block Discharge off, the rate, Charge Start.
     _now, results = _run(executor, plant, now, 8, "grid_charge", 2.0)
@@ -330,7 +344,8 @@ def test_a_near_fuse_stops_the_charge_in_one_look_and_a_holds_peak_releases_bloc
     executor, plant = _plant()
     now, _results = _run(executor, plant, T0, 8, "grid_charge", 1.0)
     _now, results = _run(executor, plant, now, 1, "grid_charge", 1.0, headroom_a=0.5)
-    assert written(results) == [("charge_start", "off")]
+    # Charge Start off first; the rate as found after it.
+    assert written(results) == [("charge_start", "off"), ("charge_rate", FOLLOWS_MAX)]
     assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
     executor, plant = _plant()
     now, _results = _run(executor, plant, T0, 6, "hold")
@@ -398,3 +413,19 @@ def test_the_verification_runs_every_mode_and_leaves_the_inverter_as_found(monke
         assert verification.report()["brand"] == "kostal"
         assert plant.states["charge_start"] == "off" and plant.states["block_discharge"] == "off"
         assert executor.state.phase == "idle"
+
+
+def test_the_shell_writes_a_rate_found_following_its_maximum_as_the_maximum_now() -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from custom_components.spotnav.battery.control import resolve_follows_max  # noqa: PLC0415
+    from custom_components.spotnav.battery.executor import Op  # noqa: PLC0415
+
+    states = {"number.kostal_set_charge_rate": SimpleNamespace(attributes={"max": 6100.0, "follows_max": False})}
+    hass = SimpleNamespace(states=SimpleNamespace(get=states.get))
+    op = Op("charge_rate", "number", "number.kostal_set_charge_rate", FOLLOWS_MAX, restore=True)
+    assert resolve_follows_max(hass, op).value == 6100.0
+    # Any other write as it is; no maximum shown: not written.
+    assert resolve_follows_max(hass, replace(op, value=3000.0)).value == 3000.0
+    states["number.kostal_set_charge_rate"] = SimpleNamespace(attributes={})
+    assert resolve_follows_max(hass, op) is None

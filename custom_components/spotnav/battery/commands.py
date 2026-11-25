@@ -745,7 +745,7 @@ class Role:
     #: The attribute that is true while the number follows its own maximum instead of the value it shows (Kostal's
     #: Set Charge Rate: a value at or above the maximum, which moves with the battery's voltage). The role then reads
     #: `FOLLOWS_MAX` (`answered`): a write that latched it is not taken (no number read back), and the restore of a
-    #: value found so writes the entity's maximum again (`resolve_follows_max`). `None`: no such attribute.
+    #: value found so writes the entity's maximum again (`control.resolve_follows_max`). `None`: no such attribute.
     follows_max: str | None = None
 
     def __post_init__(self) -> None:
@@ -2645,11 +2645,12 @@ KOSTAL_MGMT_MODBUS: Final = "External battery management via Modbus protocol"
 KOSTAL_TIMEOUT_S: Final = 60.0
 
 # Set Charge Rate: the integration's own value (W, step 100), which Charge Start's loop sends as the setpoint at every
-# tick; its state is that value, so the echo is what the inverter is sent. Never written back: it acts only while
-# Charge Start is on, and the next charge writes its own first (the integration keeps it over a restart). A value at
-# or above its maximum latches "follow the maximum" (`follows_max` true): such a write is not taken.
+# tick; its state is that value, so the echo is what the inverter is sent. A value at or above its maximum latches
+# "follow the maximum" (`follows_max` true): such a write is not taken. Written back last as found (the integration
+# keeps it over a restart, and the person's own Charge Start runs at it): a rate that followed the maximum by writing
+# the maximum again.
 _KO_RATE = Role(
-    "charge_rate", "number", _key("charge_rate", "number"), scale=1000.0, step=100.0, restored=False,
+    "charge_rate", "number", _key("charge_rate", "number"), scale=1000.0, step=100.0,
     write_class="setpoint", readback="echo", follows_max="follows_max",
 )
 # The two switches SpotNav turns on. Their state is the integration's flag (on at once, its loop after any settling
@@ -2679,7 +2680,7 @@ KOSTAL_CONTROL: Final = BrandControl(
     # A hold's switch off before the rate and Charge Start (the integration would turn it off itself, and SpotNav would
     # read its own switch changed); a charge's Charge Start off first on every change and hand-back (`peak_first`).
     enter_order=("block_discharge", "charge_rate", "charge_start"),
-    restore_order=("charge_start", "block_discharge"),
+    restore_order=("charge_start", "block_discharge", "charge_rate"),
     # SpotNav's own switches are not someone else's while they run (the adapter's mode rules read every switch).
     own_states={"Charge Start": frozenset({"on"}), "Block Discharge": frozenset({"on"})},
     requires=(("management_mode", frozenset({KOSTAL_MGMT_MODBUS}), "external_control_off"),),

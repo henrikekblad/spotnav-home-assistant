@@ -200,6 +200,7 @@ from typing import Any, Final, Literal
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    FOLLOWS_MAX,
     NORMAL,
     SNAPSHOT,
     TOLD_ACTION_REASONS,
@@ -1130,6 +1131,9 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
             rating = _rating(facts, role.unset_as_rating)
             return None if rating is None else round(rating * role.scale, 6)
         text = reading(role, state)
+        if role.follows_max is not None and text == FOLLOWS_MAX:
+            # Found following its own maximum: written back as the maximum then (`control.resolve_follows_max`).
+            return FOLLOWS_MAX
         try:
             value = None if text is None else float(text)
         except ValueError:
