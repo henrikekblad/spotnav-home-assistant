@@ -1061,9 +1061,11 @@ plant. It is tested together with users, one plant at a time, so an untried reci
 and every early plant is known and looked at. Sigenergy needs none of this.
 
 **Control that already runs stays on.** A plant of SolarEdge, Huawei, SolaX, Solinteg, Victron, GoodWe, Tesla
-Powerwall or Ferroamp whose control was switched on and had passed its check on the firmware it runs when this
-release came counts as tested and as having its code: nothing changes for it, and the card shows no Tester row. Every
-other plant of these brands goes through the steps below.
+Powerwall or Ferroamp where SpotNav's check had ever passed for the brand when this release came counts as tested and
+as having its code: nothing changes for it, and the card shows no Tester row. It does not matter whether control was
+switched on at the update, or whether the firmware or the integration was updated at the same time: the check then
+runs on the new version by itself, as before. Every other plant of these brands goes through the steps below. A
+plant's own hardware test stops its control only when a step fails, never when the test could not judge.
 
 1. **Become a tester.** In the card's Settings, the home battery section shows a **Tester** row for these brands
    (administrators only): *SpotNav can read this battery. Control is being tested together with users.* Tap it, give
