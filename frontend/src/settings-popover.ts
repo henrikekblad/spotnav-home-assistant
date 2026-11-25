@@ -544,7 +544,7 @@ export function perPhaseLine(language: Language, status: BatteryStatus): string 
 
 /** The outside-control reasons a person may clear ("it was me"): the battery's own settings or behaviour, never an
  * integration or a planner (`outside_control.TOLD_REASONS`). */
-const OUTSIDE_CLEARABLE = ["settings_changed", "grid_charge_behaviour", "export_discharge_behaviour"];
+const OUTSIDE_CLEARABLE = ["settings_changed", "grid_charge_behaviour", "export_discharge_behaviour", "foreign_command"];
 
 export function batteryOutsideClearable(need: string): boolean {
   return need.startsWith("outside_control:") && OUTSIDE_CLEARABLE.includes(need.slice("outside_control:".length));
@@ -553,7 +553,7 @@ export function batteryOutsideClearable(need: string): boolean {
 /** The tester stages the card has words for (`BatteryControl.tester_view`); another reads as `none`. */
 const TESTER_STAGES = ["none", "asked", "tested", "control_code"];
 const TESTER_EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const BRAND_NAMES: Record<string, string> = { foxess: "FoxESS", ecoflow: "EcoFlow", marstek: "Marstek" };
+const BRAND_NAMES: Record<string, string> = { foxess: "FoxESS", ecoflow: "EcoFlow", marstek: "Marstek", solis: "Solis" };
 
 /** A recipe's brand id as people write it (`foxess` → FoxESS); an unknown one capitalised. */
 export function brandName(brand: string): string {
