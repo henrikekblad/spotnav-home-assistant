@@ -62,8 +62,8 @@ MAX_BRAND_CHARS: Final = 32
 SIGNATURE_BYTES: Final = 64
 GROUP: Final = 5
 _HEADER: Final = 1 + 1 + INSTALL_CHARS // 2 + FIRMWARE_DIGEST_BYTES + 2 + 1
-_BRAND: Final = re.compile(r"^[a-z0-9_]{1,32}$")
-_HEX: Final = re.compile(r"^[0-9a-f]+$")
+_BRAND: Final = re.compile(r"[a-z0-9_]{1,32}")
+_HEX: Final = re.compile(r"[0-9a-f]+")
 #: Longer than any code: a paste of something else is refused before it is decoded.
 MAX_TEXT_CHARS: Final = 400
 
@@ -128,9 +128,9 @@ def _grouped(text: str) -> str:
 def payload(*, install: str, brand: str, firmware_key: str, issued: date, kind: str = KIND_CONTROL) -> bytes:
     """The signed part of a code (the module's format). `install` is the full install hash or its first characters."""
     install = install.lower()[:INSTALL_CHARS]
-    if len(install) != INSTALL_CHARS or _HEX.match(install) is None:
+    if len(install) != INSTALL_CHARS or _HEX.fullmatch(install) is None:
         raise ValueError("install must be the install hash (hex)")
-    if _BRAND.match(brand) is None:
+    if _BRAND.fullmatch(brand) is None:
         raise ValueError("brand must be a recipe's brand id")
     days = (issued - EPOCH).days
     if not 0 <= days < 1 << 16:
@@ -159,6 +159,9 @@ def read(text: str) -> tuple[bytes, bytes]:
         raw = base64.b32decode(letters + "=" * (-len(letters) % 8))
     except (binascii.Error, ValueError) as err:
         raise CodeError("invalid") from err
+    if base64.b32encode(raw).decode("ascii").rstrip("=") != letters:
+        # Trailing bits that are not zero: one code has one text (up to case, spaces and look-alikes).
+        raise CodeError("invalid")
     if len(raw) < _HEADER + 1 + SIGNATURE_BYTES:
         raise CodeError("invalid")
     body, signature = raw[:-SIGNATURE_BYTES], raw[-SIGNATURE_BYTES:]
@@ -176,7 +179,7 @@ def parse_body(body: bytes) -> Code:
         brand = body[_HEADER:].decode("ascii")
     except UnicodeDecodeError as err:
         raise CodeError("invalid") from err
-    if _BRAND.match(brand) is None:
+    if _BRAND.fullmatch(brand) is None:
         raise CodeError("invalid")
     return Code(
         kind=_KINDS[body[1]], install=body[2:install_end].hex(), firmware_digest=body[install_end:digest_end].hex(),

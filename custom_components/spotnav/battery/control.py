@@ -72,12 +72,13 @@ from typing import TYPE_CHECKING, Any, Final
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant, State, callback
+from homeassistant.helpers import instance_id
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.util import dt as dt_util
 
-from ..beta import learning_gate_open
+from ..beta import beta_on, learning_gate_open
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
@@ -604,6 +605,7 @@ class BatteryControl:
         reports = self._stored.get("reports")
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
+        await self._async_check_codes()
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
         # The battery first (a grid charge left standing adds import), then the export limit.
@@ -639,6 +641,44 @@ class BatteryControl:
         self.control_codes = {
             brand: dict(code) for brand, code in codes.items() if isinstance(brand, str) and isinstance(code, dict)
         } if isinstance(codes, dict) else {}
+
+    async def _async_check_codes(self) -> None:
+        """Each stored control code checked again (`battery/codes.py`): its text against the public key in this
+        release, its installation and its brand. One that no longer verifies (a key changed in a release, a store
+        edited by hand, one stored without its text) is dropped and logged: control then waits for a code again."""
+        if not self.control_codes:
+            return
+        from ..support_report import install_hash  # noqa: PLC0415 - the bundle imports every part
+        from . import codes  # noqa: PLC0415
+
+        install = install_hash(await instance_id.async_get(self.hass))
+        kept: dict[str, dict[str, Any]] = {}
+        for brand, stored in self.control_codes.items():
+            text = stored.get("code")
+            try:
+                code = codes.verify(text) if isinstance(text, str) else None
+            except codes.CodeError:
+                code = None
+            if code is None or code.brand != brand or not code.matches_install(install):
+                _LOGGER.warning(
+                    "SpotNav battery control: the stored control code for %s no longer verifies and was dropped; "
+                    "control waits for a code again", brand,
+                )
+                continue
+            kept[brand] = stored
+        self.control_codes = kept
+
+    def _void_blocked_passes(self) -> None:
+        """At each look: a recipe this release holds back on the plant (`commands.BLOCKED`) voids the plant's stored
+        pass with the brand (`hardware_brands`), so after the block a hardware test must pass again (and its result
+        is reviewed with the code already given). Logged once."""
+        control = self._gated_control()
+        if control is None or control.brand not in self.hardware_brands or not self.recipe_blocked():
+            return
+        self.hardware_brands = [brand for brand in self.hardware_brands if brand != control.brand]
+        self._log([{"at": dt_util.now().isoformat(), "kind": "hardware_pass_voided", "reason": self.firmware_key()}])
+        _LOGGER.warning("SpotNav battery control: this release blocks the %s recipe here; its stored pass is void",
+                        control.brand)
 
     async def _async_start_export(self) -> None:
         """The export limit's executor from the store; a stored snapshot is handed back first."""
@@ -830,23 +870,30 @@ class BatteryControl:
         control = self._gated_control()
         return None if control is None else control.brand
 
-    def tester_signup_needed(self) -> bool:
-        """Whether the plant's recipe was never passed here and the person has not signed up as a tester for its
-        brand: the hardware test then waits for the sign-up (owner decision 2026-11-25: the sign-up unlocks it)."""
+    def tester_active(self) -> bool:
+        """Whether the person is a tester for the plant's brand now: signed up for it, and beta mode on (a tester is
+        one while the reports may go: unticking Beta tester ends it, `battery/tester.async_end`)."""
         brand = self.gated_brand()
         return (
-            brand is not None and brand not in self.hardware_brands
-            and (self.tester is None or self.tester.get("brand") != brand)
+            brand is not None and self.tester is not None and self.tester.get("brand") == brand
+            and beta_on(self.hass)
         )
+
+    def tester_signup_needed(self) -> bool:
+        """Whether the plant's recipe was never passed here and the person is no tester for its brand now
+        (`tester_active`): the hardware test then waits for the sign-up (owner decision 2026-11-25: the sign-up
+        unlocks it)."""
+        brand = self.gated_brand()
+        return brand is not None and brand not in self.hardware_brands and not self.tester_active()
 
     def tester_view(self) -> dict[str, Any] | None:
         """The battery section's tester block (`spotnav/battery_control`'s `tester`), `None` for a plant whose recipe
-        takes no code: `stage` `none` (not signed up), `asked` (signed up, no test result sent), `tested` (a test's
+        takes no code: `stage` `none` (not signed up, or beta mode off: `tester_active`), `asked` (signed up, no test result sent), `tested` (a test's
         result was sent), `control_code` (the code was entered); the brand and the times (never the e-mail)."""
         brand = self.gated_brand()
         if brand is None:
             return None
-        tester = self.tester if self.tester is not None and self.tester.get("brand") == brand else None
+        tester = self.tester if self.tester_active() else None
         code = self.control_codes.get(brand)
         if code is not None:
             stage = "control_code"
@@ -1068,6 +1115,7 @@ class BatteryControl:
         # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
         self._ha_down_setup_look()
+        self._void_blocked_passes()
         options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)

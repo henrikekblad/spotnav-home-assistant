@@ -258,6 +258,11 @@ class Beta:
             # Unticked: a report not yet on its way is not sent.
             self._task.cancel()
         await self._store.async_save(state.as_stored())
+        if on is False:
+            # Unticked: a battery tester's sign-up ends with it (nothing more is sent, `battery/tester.py`).
+            from .battery.tester import async_end  # noqa: PLC0415 - the battery package imports this module
+
+            await async_end(self.hass)
         return state
 
     async def async_keep_on_until(self, until: datetime) -> BetaState:

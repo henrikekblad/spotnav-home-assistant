@@ -10,12 +10,16 @@ FoxESS, EcoFlow, Marstek today); every other brand needs neither.
    beta mode is on with that address (`beta.py`) and the plant's hardware test is unlocked for the brand
    (`BatteryControl.tester_signup_needed`). A failed send unlocks nothing: the card says so and the person sends
    again.
-2. **The test's result goes by itself** (`async_send_result`, from `hardware_test.py` at a test's end, or the card's
-   Send): a `battery_test_result` report with the test's record, the battery control's log over the test, the
+2. **The test's result goes by itself while beta mode is on** (`async_send_result`, from `hardware_test.py` at a
+   test's end, or the card's Send): a `battery_test_result` report with the test's record, the battery control's log over the test, the
    history of the plant's entities over it (the recorder's) and the recipe revision. The card then says the result
-   was sent and an answer comes by e-mail.
+   was sent and an answer comes by e-mail. A person is a tester only while beta mode is on
+   (`BatteryControl.tester_active`): unticking Beta tester stops every report at once and ends the sign-up
+   (`async_end`); a run that starts by itself sends nothing then. A control code already entered keeps working.
 3. **The control code** (`async_enter_code`, Support → Hardware test): the developer read the result and sent a code
-   for this installation and brand (`codes.py`). Entered, it is stored per brand (`BatteryControl.control_codes`) and,
+   for this installation and brand (`codes.py`). It is taken only once the plant's hardware test passed with the
+   brand (`spotnav_code_test_first` before): the code approves that result. Entered, it is stored per brand (with
+   its text, checked again at each start: `BatteryControl._async_check_codes`) (`BatteryControl.control_codes`) and,
    with the passed hardware test, lifts shadow only; beta's nightly reports run on until `BETA_AFTER_CODE` after it
    (`Beta.async_keep_on_until`). One code per plant and brand: a later firmware, integration or recipe change is
    checked by the automatic routine, never by a new code.
@@ -64,6 +68,7 @@ ERROR_CODE_OTHER_INSTALL: Final = "spotnav_code_other_install"
 ERROR_CODE_OTHER_BRAND: Final = "spotnav_code_other_brand"
 ERROR_CODE_BLOCKED: Final = "spotnav_code_blocked"
 ERROR_CODE_NOT_NEEDED: Final = "spotnav_code_not_needed"
+ERROR_CODE_TEST_FIRST: Final = "spotnav_code_test_first"
 
 
 def battery_block(hass: HomeAssistant, control: BatteryControl) -> dict[str, Any]:
@@ -106,6 +111,9 @@ async def async_signup(
     brand = control.gated_brand()
     if brand is None:
         return ERROR_NOT_GATED, None
+    if control.recipe_blocked():
+        # This release holds the recipe back: no test can run, so no address is sent for one.
+        return ERROR_CODE_BLOCKED, None
     valid, address = clean_email(email)
     if not valid or address is None:
         return ERROR_INVALID_EMAIL, None
@@ -132,13 +140,30 @@ async def async_signup(
 
 
 def sends_result(control: BatteryControl) -> bool:
-    """Whether a finished test goes as a tester's `battery_test_result`: a gated brand the person signed up for, until
-    its control code was entered (after it, beta's own reports carry the tests)."""
+    """Whether a finished test goes as a tester's `battery_test_result`: the person is a tester for the brand now
+    (signed up, beta mode on: `tester_active`), until its control code was entered (after it, beta's own reports
+    carry the tests)."""
     brand = control.gated_brand()
-    tester = control.tester
-    return (
-        brand is not None and tester is not None and tester.get("brand") == brand and brand not in control.control_codes
-    )
+    return brand is not None and control.tester_active() and brand not in control.control_codes
+
+
+async def async_end(hass: HomeAssistant) -> None:
+    """Beta tester was unticked: every site's sign-up ends (nothing more is sent, the first test waits for a new
+    sign-up). A control code already entered stays."""
+    from ..runtime import site_controller_for  # noqa: PLC0415 - runtime imports the site lazily too
+    from ..const import DOMAIN  # noqa: PLC0415
+
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        site = site_controller_for(hass, entry.entry_id)
+        control = None if site is None else getattr(site, "battery_control", None)
+        if control is None or getattr(control, "tester", None) is None:
+            continue
+        control.tester = None
+        try:
+            await control.async_store()
+        except Exception:  # noqa: BLE001 - one site's store must not keep the others' sign-ups
+            _LOGGER.warning("SpotNav battery tester: a site's sign-up could not be ended", exc_info=True)
+        _LOGGER.info("SpotNav battery tester: beta was turned off; the sign-up ended")
 
 
 def _parsed(value: Any) -> datetime | None:
@@ -189,7 +214,8 @@ def _read_history(hass: HomeAssistant, start: datetime, end: datetime, entity_id
     rows: dict[str, Any] = {}
     for entity_id, items in states.items():
         out = []
-        for item in items[:HISTORY_MAX_ROWS]:
+        # The last rows: the end of a run (its hand-back) is what a cut must keep.
+        for item in items[-HISTORY_MAX_ROWS:]:
             if isinstance(item, Mapping):
                 out.append([item.get("lu"), item.get("s")])
             else:
@@ -240,7 +266,9 @@ async def async_send_result(hass: HomeAssistant, runner: HardwareTest) -> Report
     end = _parsed(record.get("finished_at")) or dt_util.now()
     block = battery_block(hass, control) | {
         "test": {"result": record.get("result"), "started_at": record.get("started_at"),
-                 "finished_at": record.get("finished_at"), "stopped": record.get("stopped")},
+                 "finished_at": record.get("finished_at"), "stopped": record.get("stopped"),
+                 # What the gate recorded: the brand's pass on this plant (the result above is the whole test's).
+                 "gate_passed": control.gated_brand() in control.hardware_brands},
     }
     extra = {
         "record": record,
@@ -249,7 +277,8 @@ async def async_send_result(hass: HomeAssistant, runner: HardwareTest) -> Report
         "recipe_rev": block["recipe_rev"],
     }
     beta = beta_of(hass)
-    email = beta.state.email if beta is not None else None
+    # The address goes only while beta mode is on (a send from the card's button while it is off goes without it).
+    email = beta.state.email if beta is not None and beta.state.on else None
     result = await async_send_report(
         hass, "", email, None, kind=KIND_BATTERY_TEST_RESULT, battery=block, bundle_extra={"battery_test": extra}
     )
@@ -278,10 +307,13 @@ async def async_enter_code(hass: HomeAssistant, control: BatteryControl, text: A
         return ERROR_CODE_BLOCKED
     if control.gated_brand() != brand:
         return ERROR_CODE_NOT_NEEDED
+    if brand not in control.hardware_brands:
+        # The code approves a passed test's result: none passed on this plant yet.
+        return ERROR_CODE_TEST_FIRST
     now = dt_util.now()
     key = control.firmware_key()
     control.control_codes = dict(control.control_codes) | {brand: code.as_stored() | {
-        "entered_at": now.isoformat(), "firmware_key": key, "firmware_matches": code.matches_firmware(key),
+        "code": codes.normalise(text), "entered_at": now.isoformat(), "firmware_key": key, "firmware_matches": code.matches_firmware(key),
     }}
     await control.async_store()
     beta = beta_of(hass)

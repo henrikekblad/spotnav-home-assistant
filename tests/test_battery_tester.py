@@ -174,39 +174,78 @@ async def test_the_control_code_with_a_passed_test_lifts_shadow_only_and_keeps_b
     await control.async_stop()
 
 
-async def test_a_code_before_the_test_passed_waits_for_the_test(
+async def test_a_code_before_the_test_passed_is_refused(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
     _relay(monkeypatch)
     await tester.async_signup(hass, control, "tester@example.com", "")
-    assert await tester.async_enter_code(hass, control, await _code(hass)) is None
-    assert control.state() == "shadow_only" and control.hardware_test_due() == "hardware_test_first"
+    # The code approves a passed test's result: none passed here yet, so nothing is stored.
+    assert await tester.async_enter_code(hass, control, await _code(hass)) == "spotnav_code_test_first"
+    assert control.control_codes == {}
     control.reports.clear()
     _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
-    assert control.state() == "on"
+    assert control.state() == "shadow_only" and control.hardware_test_due() == "control_code"
     await control.async_stop()
 
 
-async def test_a_code_on_a_blocked_recipe_is_refused(
+async def test_a_stored_code_is_checked_again_at_the_start_and_one_that_no_longer_verifies_is_dropped(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
-    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    site, controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _relay(monkeypatch)
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert await tester.async_enter_code(hass, control, await _code(hass)) is None
+    stored = control._data()["gate"]["control_codes"]["sigenergy"]
+    assert codes.verify(stored["code"]).brand == "sigenergy"
+    # Loaded again: the code still verifies and is kept.
+    control.control_codes = {"sigenergy": dict(stored)}
+    await control._async_check_codes()
+    assert "sigenergy" in control.control_codes
+    # One without its text, or signed by a key this release no longer has: dropped, control waits for a code.
+    control.control_codes = {"sigenergy": {key: value for key, value in stored.items() if key != "code"}}
+    await control._async_check_codes()
+    assert control.control_codes == {} and control.hardware_test_due() == "control_code"
+    control.control_codes = {"sigenergy": dict(stored)}
+    other = Ed25519PrivateKey.from_private_bytes(bytes(reversed(range(32))))
+    monkeypatch.setattr(codes, "PUBLIC_KEY_HEX", other.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex())
+    await control._async_check_codes()
+    assert control.control_codes == {} and control.state() == "shadow_only"
+    await control.async_stop()
+
+
+async def test_a_blocked_recipe_refuses_the_code_and_the_sign_up_and_voids_the_stored_pass(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage)
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.state() == "on"
+    relay = _relay(monkeypatch)
     monkeypatch.setattr(control_module, "blocked", lambda control, key: True)
     assert await tester.async_enter_code(hass, control, await _code(hass)) == "spotnav_code_blocked"
+    assert await tester.async_signup(hass, control, "tester@example.com", "") == ("spotnav_code_blocked", None)
+    assert relay.sent == []
+    # The next look voids the plant's pass: after the block a test must pass again.
+    await control.async_look(dt_util.now())
+    assert control.hardware_brands == [] and any(row["kind"] == "hardware_pass_voided" for row in control.log)
+    monkeypatch.setattr(control_module, "blocked", lambda control, key: False)
+    assert control.hardware_test_due() == "hardware_test_first"
     await control.async_stop()
 
 
 # ---- the test's result
 
 
-async def test_a_testers_finished_test_goes_as_its_result_beta_or_not_until_the_code(
+async def test_a_testers_finished_test_goes_as_its_result_while_beta_is_on_until_the_code(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     _site, controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
     relay = _relay(monkeypatch)
     await tester.async_signup(hass, control, "tester@example.com", "")
-    await domain_data(hass).beta.async_set(on=False)
     now = dt_util.now()
     control.log.append({"at": now.isoformat(), "kind": "hardware_test_started", "reason": "x"})
     control.log.append({"at": (now - timedelta(hours=2)).isoformat(), "kind": "earlier", "reason": None})
@@ -223,10 +262,40 @@ async def test_a_testers_finished_test_goes_as_its_result_beta_or_not_until_the_
     extra = sent["bundle_extra"]["battery_test"]
     assert [event["kind"] for event in extra["log"]] == ["hardware_test_started"]
     assert extra["record"] == record and "history" in extra and extra["recipe_rev"] == 1
+    assert sent["email"] == "tester@example.com" and sent["battery"]["test"]["gate_passed"] is False
     assert control.tester_view()["stage"] == "tested" and control.tester_view()["result_sent_at"] is not None
     # Once the code was entered, beta's own reports carry the tests.
     control.control_codes = {"sigenergy": {"brand": "sigenergy", "entered_at": now.isoformat()}}
     assert not runner._tester_sends()
+    await control.async_stop()
+
+
+async def test_unticking_beta_stops_every_report_at_once_and_ends_the_sign_up(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site, controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    relay = _relay(monkeypatch)
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    controller.battery_control = control
+    now = dt_util.now()
+    record = {"started_at": now.isoformat(), "finished_at": now.isoformat(), "result": "passed", "stopped": None,
+              "steps": [{"part": "battery", "step": "hold", "status": "passed"}]}
+    runner = hardware_test.HardwareTest(hass, controller)
+    runner.record = record
+    await domain_data(hass).beta.async_set(on=False)
+    assert control.tester is None and control.tester_view()["stage"] == "none"
+    assert control.hardware_test_refusal() == "tester_signup"
+    # A run's own send at its end (a retry or a waited run included): nothing goes.
+    sent = len(relay.sent)
+    await runner._async_send_after()
+    assert len(relay.sent) == sent
+    # Only a person's deliberate Send goes, as a plain test report and without the address.
+    result = await hardware_test.async_send_test(hass, runner)
+    assert result.ref is not None and relay.sent[-1]["kind"] == "beta_test" and relay.sent[-1]["email"] is None
+    # A period that ran out by itself stops the sending too.
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    domain_data(hass).beta._state = BetaState(on=False, completed=True)
+    assert not tester.sends_result(control) and control.tester_view()["stage"] == "none"
     await control.async_stop()
 
 
@@ -252,13 +321,19 @@ async def test_the_actions_are_an_administrators_and_never_over_the_webhook(
     client = await admin(hass, hass_ws_client)
     frame = await ws_call(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
                                    "tester_signup": {"email": "tester@example.com", "extra": 1}})
-    assert frame["result"]["error"] == "spotnav_invalid_value"
+    assert frame["success"] is False and frame["error"]["code"] == "invalid_format"
+    answer = await async_battery_control_answer(
+        hass, site, None, admin=True, tester_signup={"email": "tester@example.com"}, enter_code={"code": "x"}
+    )
+    assert answer["error"] == "spotnav_invalid_value"
     frame = await ws_call(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
                                    "tester_signup": {"email": "tester@example.com", "note": "hi"}})
     assert frame["result"]["ok"] is True and frame["result"]["status"]["tester"]["stage"] == "asked"
     frame = await ws_call(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
                                    "enter_code": {"code": "nonsense"}})
     assert frame["result"]["error"] == "spotnav_code_invalid" and frame["result"]["status"]["tester"]["stage"] == "asked"
+    control.reports.clear()
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
     frame = await ws_call(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
                                    "enter_code": {"code": await _code(hass)}})
     assert frame["result"]["ok"] is True and frame["result"]["status"]["tester"]["stage"] == "control_code"

@@ -428,7 +428,9 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     assert "tester_signup" in status["needs"] and status["tester"]["stage"] == "none"
     assert control.hardware_test_refusal() == "tester_signup"
     # Signed up as a tester: the test is what it waits for, never refused for it. Sigenergy's has no dead-man step.
-    control.tester = {"brand": "sigenergy", "asked_at": "2026-11-25T10:00:00+01:00", "ref": "SN-TEST"}
+    from tests.test_battery_control import _sign_up  # noqa: PLC0415
+
+    await _sign_up(hass, control)
     assert NEED_HARDWARE_TEST_FIRST in control.status()["needs"]
     assert control.hardware_test_refusal() is None and not control.hardware_test_deadman()
 

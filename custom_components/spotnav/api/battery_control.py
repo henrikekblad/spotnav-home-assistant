@@ -56,7 +56,9 @@ webhook), each before `changes`:
 * `enter_code: {code}`: the developer's control code (`battery/codes.py`). Refusals: `spotnav_code_invalid` (no
   code, a typo, not signed by the developer), `spotnav_code_other_install`, `spotnav_code_other_brand`,
   `spotnav_code_blocked` (this release holds the recipe back on the plant), `spotnav_code_not_needed` (the plant's
-  recipe takes no code).
+  recipe takes no code), `spotnav_code_test_first` (no hardware test passed on the plant with the brand yet: the
+  code approves a passed test's result). A sign-up is refused with `spotnav_code_blocked` too while the recipe is
+  held back. Both in one request, or a wrong shape, is refused.
 """
 
 from __future__ import annotations
@@ -132,6 +134,9 @@ async def async_battery_control_answer(
         # A tester's sign-up or a control code: never over the webhook, never without an administrator.
         if over_webhook or not admin:
             return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        if tester_signup is not None and enter_code is not None:
+            # One at a time: neither is silently dropped.
+            return _answer(error=ERROR_INVALID_VALUE)
         from ..battery import tester  # noqa: PLC0415 - it imports the bundle, which imports every part
 
         if tester_signup is not None:
@@ -221,8 +226,8 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("enable_fact_entities"): bool,
         vol.Optional("clear_outside_control"): bool,
         vol.Optional("set_import_limit"): bool,
-        vol.Optional("tester_signup"): object,
-        vol.Optional("enter_code"): object,
+        vol.Optional("tester_signup"): {vol.Required("email"): str, vol.Optional("note"): str},
+        vol.Optional("enter_code"): {vol.Required("code"): str},
     }
 )
 @websocket_api.async_response

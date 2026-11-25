@@ -2790,9 +2790,17 @@ _CODE: Final = {"kind": "control", "install": "ab" * 10, "firmware_digest": "00"
                  "brand": "sigenergy", "entered_at": "2026-11-25T12:00:00+01:00"}
 
 
-def _approve(control: BatteryControl) -> None:
-    """The person signed up as a tester and entered the developer's control code (`battery/tester.py`)."""
+async def _sign_up(hass: HomeAssistant, control: BatteryControl) -> None:
+    """The person signed up as a tester (`battery/tester.py`): the sign-up stored and beta mode on."""
+    from custom_components.spotnav.runtime import domain_data  # noqa: PLC0415
+
     control.tester = {"brand": "sigenergy", "asked_at": "2026-11-25T10:00:00+01:00", "ref": "SN-TEST"}
+    await domain_data(hass).beta.async_set(on=True)
+
+
+async def _approve(hass: HomeAssistant, control: BatteryControl) -> None:
+    """The person signed up as a tester and entered the developer's control code (`battery/tester.py`)."""
+    await _sign_up(hass, control)
     control.control_codes = {"sigenergy": dict(_CODE)}
 
 
@@ -2809,7 +2817,7 @@ async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold, *, a
     monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
     control = await _started(hass, site, controller, plan_source=plan_source)
     if approved:
-        _approve(control)
+        await _approve(hass, control)
     return site, controller, plant, control, recipe
 
 
@@ -2823,7 +2831,7 @@ async def test_a_recipe_that_writes_only_after_a_hardware_test_stays_shadow_only
     assert control.hardware_test_refusal() == control_module.NEED_TESTER_SIGNUP
     assert control.tester_view() == {"stage": "none", "brand": "sigenergy", "sent_at": None, "result_sent_at": None,
                                      "test_passed": False, "code_entered_at": None}
-    control.tester = {"brand": "sigenergy", "asked_at": "2026-11-25T10:00:00+01:00", "ref": "SN-TEST"}
+    await _sign_up(hass, control)
     assert control._needs()[-1] == control_module.NEED_HARDWARE_TEST_FIRST
     assert control.tester_view()["stage"] == "asked"
     # The hardware test itself is what it waits for: never refused for it.

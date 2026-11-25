@@ -169,11 +169,19 @@ def test_control_issues_a_code_for_this_install_and_brand(tmp_path: Path) -> Non
     assert "{code}" not in welcome and "Hårdvarutest" in welcome and "08–21" in welcome
 
 
-def test_control_refuses_a_report_that_is_not_a_testers_or_a_brand_without_codes(tmp_path: Path) -> None:
+def test_control_refuses_a_report_that_is_not_a_passed_test_or_a_brand_without_codes(tmp_path: Path) -> None:
     tool = _tool()
-    meta, report = tool.read_local(_report(tmp_path, kind="support"))
-    with pytest.raises(SystemExit):
-        tool.issue(codes, _key(), tool.tester_facts(meta, report), date(2026, 11, 25))
+    for kind in ("support", "battery_tester"):
+        meta, report = tool.read_local(_report(tmp_path, kind=kind))
+        with pytest.raises(SystemExit):
+            tool.issue(codes, _key(), tool.tester_facts(meta, report), date(2026, 11, 25))
+    meta, report = tool.read_local(_report(tmp_path))
+    for change in ({"result": "failed"}, {"result": "partial"}, {"gate_passed": False}):
+        facts = tool.tester_facts(meta, report) | change
+        with pytest.raises(SystemExit):
+            tool.issue(codes, _key(), facts, date(2026, 11, 25))
+        # `--force`: the developer read the log and issues anyway.
+        assert codes.verify(tool.issue(codes, _key(), facts, date(2026, 11, 25), force=True), _public(_key()))
     meta, report = tool.read_local(_report(tmp_path, brand="sigenergy"))
     with pytest.raises(SystemExit):
         tool.issue(codes, _key(), tool.tester_facts(meta, report), date(2026, 11, 25))
@@ -199,3 +207,36 @@ def test_show_says_whether_the_signature_is_the_developers() -> None:
     shown = tool.show(codes, _code())
     assert "brand: foxess" in shown and "NOT VALID" in shown
     assert tool.show(codes, "nonsense") == "not a code"
+    # A body whose brand bytes are no brand: "not a code", not a traceback.
+    import base64  # noqa: PLC0415
+
+    body = codes.payload(install=INSTALL, brand="foxess", firmware_key=KEY, issued=date(2026, 11, 25))
+    bad = body[:-6] + b"FOX ES"
+    assert tool.show(codes, base64.b32encode(bad + _key().sign(codes.SIGNING_CONTEXT + bad)).decode()) == "not a code"
+
+
+def test_the_fingerprint_is_the_private_keys_public_half_and_never_the_key(tmp_path: Path) -> None:
+    tool = _tool()
+    path = tmp_path / "key"
+    public = tool.keygen(path)
+    assert tool.key_fingerprint(path) == codes.fingerprint(public)
+    assert path.read_text().split("\n")[1] not in tool.key_fingerprint(path)
+
+
+@pytest.mark.skipif(not (Path.home() / "tokens" / "spotnav-battery-code-key").exists(),
+                    reason="only on the developer's machine, where the private key is")
+def test_codes_public_key_is_the_half_of_the_developers_private_key() -> None:
+    assert _tool().key_fingerprint() == codes.fingerprint()
+
+
+def test_a_code_has_one_text_and_a_trailing_newline_is_no_brand() -> None:
+    letters = codes.normalise(_code())
+    # The last character carries unused bits: another letter with the same leading bits reads as invalid.
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+    last = alphabet.index(letters[-1])
+    for other in alphabet:
+        if other != letters[-1] and alphabet.index(other) >> 1 == last >> 1:
+            with pytest.raises(CodeError):
+                codes.verify(letters[:-1] + other, _public(_key()))
+    with pytest.raises(ValueError):
+        codes.payload(install=INSTALL, brand="foxess\n", firmware_key=KEY, issued=date(2026, 11, 25))
