@@ -105,13 +105,14 @@ def firmware_digest(firmware_key: str) -> str:
     return hashlib.sha256(firmware_key.encode()).digest()[:FIRMWARE_DIGEST_BYTES].hex()
 
 
-def public_key(raw_hex: str = PUBLIC_KEY_HEX) -> Ed25519PublicKey:
-    return Ed25519PublicKey.from_public_bytes(bytes.fromhex(raw_hex))
+def public_key(raw_hex: str | None = None) -> Ed25519PublicKey:
+    """The developer's public key (`PUBLIC_KEY_HEX`, read when called), or the one `raw_hex` names."""
+    return Ed25519PublicKey.from_public_bytes(bytes.fromhex(raw_hex or PUBLIC_KEY_HEX))
 
 
-def fingerprint(raw_hex: str = PUBLIC_KEY_HEX) -> str:
+def fingerprint(raw_hex: str | None = None) -> str:
     """A short name for a public key (the first 16 hex characters of its SHA-256), for support and the tool."""
-    return hashlib.sha256(bytes.fromhex(raw_hex)).hexdigest()[:16]
+    return hashlib.sha256(bytes.fromhex(raw_hex or PUBLIC_KEY_HEX)).hexdigest()[:16]
 
 
 def normalise(text: str) -> str:

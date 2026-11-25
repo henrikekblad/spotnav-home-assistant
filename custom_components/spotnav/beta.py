@@ -5,7 +5,10 @@
 tell the person about a problem seen in their reports or a fix for it) and, once a period has run its full
 `BETA_DAYS`, `completed`. Off by default.
 
-**The period**: `BETA_DAYS` from the tick. When it ends the box unticks itself (`on` false, `completed` true) and
+**The period**: `BETA_DAYS` from the tick, or longer for a battery tester: once the control code for their brand
+was entered (`battery/tester.py`) the period runs on until `extended_until`, 30 days after it (owner decision
+2026-11-25), and a period that had already ended by itself starts again for it; one the person unticked stays off.
+When it ends the box unticks itself (`on` false, `completed` true) and
 the card says one line that nothing is sent any more: no alert, no notification. Unticking ends the period at once
 (nothing is sent after it); ticking again starts a new one.
 
@@ -71,12 +74,15 @@ class BetaState:
     completed: bool = False
     last_daily_at: datetime | None = None
     last_daily_ref: str | None = None
+    #: A battery tester's period runs on at least until this (`Beta.async_keep_on_until`).
+    extended_until: datetime | None = None
 
     def ends_at(self) -> datetime | None:
         """When the running period ends by itself, `None` when none runs."""
         if not self.on or self.started_at is None:
             return None
-        return self.started_at + timedelta(days=BETA_DAYS)
+        end = self.started_at + timedelta(days=BETA_DAYS)
+        return end if self.extended_until is None else max(end, self.extended_until)
 
     def as_stored(self) -> dict[str, Any]:
         return {
@@ -87,6 +93,7 @@ class BetaState:
             "completed": self.completed,
             "last_daily_at": _iso(self.last_daily_at),
             "last_daily_ref": self.last_daily_ref,
+            "extended_until": _iso(self.extended_until),
         }
 
 
@@ -117,6 +124,7 @@ def parse_state(raw: Any) -> BetaState:
         completed=raw.get("completed") is True,
         last_daily_at=_time(raw.get("last_daily_at")),
         last_daily_ref=raw.get("last_daily_ref") if isinstance(raw.get("last_daily_ref"), str) else None,
+        extended_until=_time(raw.get("extended_until")),
     )
 
 
@@ -133,8 +141,19 @@ def switched(state: BetaState, on: bool, now: datetime) -> BetaState:
     if on == state.on:
         return state
     if on:
-        return replace(state, on=True, started_at=now, ended_at=None, completed=False)
+        return replace(state, on=True, started_at=now, ended_at=None, completed=False, extended_until=None)
     return replace(state, on=False, ended_at=now)
+
+
+def kept_on_until(state: BetaState, until: datetime, now: datetime) -> BetaState:
+    """A battery tester's control code entered: a running period runs on at least until `until`; one that ended by
+    itself starts again until then; one the person ended early (unticked) stays off."""
+    if state.on:
+        current = state.extended_until
+        return replace(state, extended_until=until if current is None else max(current, until))
+    if state.completed:
+        return replace(state, on=True, started_at=now, ended_at=None, completed=False, extended_until=until)
+    return state
 
 
 def night_time(install: str) -> tuple[int, int, int]:
@@ -171,6 +190,7 @@ def bundle_block(state: BetaState) -> dict[str, Any]:
         "email_given": state.email is not None,
         "last_daily_at": _iso(state.last_daily_at),
         "last_daily_ref": state.last_daily_ref,
+        "extended_until": _iso(state.extended_until),
     }
 
 
@@ -238,6 +258,15 @@ class Beta:
             # Unticked: a report not yet on its way is not sent.
             self._task.cancel()
         await self._store.async_save(state.as_stored())
+        return state
+
+    async def async_keep_on_until(self, until: datetime) -> BetaState:
+        """A battery tester's control code was entered: the nightly reports run on until `until` (`kept_on_until`)."""
+        state = kept_on_until(self.state, until, dt_util.now())
+        if state != self._state:
+            _LOGGER.info("SpotNav beta: the reports run on for the battery tester's control code")
+            self._state = state
+            await self._store.async_save(state.as_stored())
         return state
 
     @callback
