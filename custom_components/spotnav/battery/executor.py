@@ -218,6 +218,7 @@ from .commands import (
 from .facts import BatteryFacts, EntityFact, find_entity
 from .gate import MIN_RATE_KW, phase_split_kw
 from .ledger import READBACK_DEADLINE_S, Ledger, same
+from .learned import SOURCE_LEARNED
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     CONFIRM_READINGS,
@@ -1255,6 +1256,11 @@ class Executor:
     def _sense(self, inputs: ExecInputs) -> None:
         facts = inputs.facts
         self._soc_pct, self._rated_kw, self._capacity_kwh = facts.soc_pct, facts.max_charge_kw, facts.capacity_kwh
+        if self.control.rating_read:
+            # Shares of the rating as the plant reads it (Fronius's WChaMax), never of a learnt one or a lower plant
+            # maximum: a learnt rating below the real base would ask for more than the rate (`BrandControl.rating_read`).
+            learnt = facts.sources.get("rated_charge") == SOURCE_LEARNED
+            self._rated_kw = None if learnt else facts.rated_charge_kw
         optional = self.control.optional_names()
         self._absent = frozenset(
             name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
@@ -2671,6 +2677,10 @@ class Executor:
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
             target = self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind)
+            unresolved = self.control.unresolved(target)
+            if unresolved is not None:
+                # A value that depends on a reading gone missing (the rating, the SoC) is never written as it stands.
+                return events + self._begin_restore(now, unresolved)
             # The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
             # timeout) is written again with the new command: with an action change every quarter hour it would
             # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
@@ -2714,9 +2724,12 @@ class Executor:
                 return events + self._begin_restore(now, "headroom_too_small")
             if down or up:
                 house, _behind = self._grid_terms(inputs, action, None)
+                target = self._wanted(action, rate, state.restore_values, house_kw=house)
+                unresolved = self.control.unresolved(target)
+                if unresolved is not None:
+                    return events + self._begin_restore(now, unresolved)
                 self.state = replace(
-                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, house_kw=house),
-                    sent=(), rate_changed_at=now, house_kw=house,
+                    state, rate_kw=rate, target=target, sent=(), rate_changed_at=now, house_kw=house,
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))

@@ -1071,6 +1071,10 @@ class BrandControl:
     #: The hardware test's dead-man step must have passed (timed), not merely been tried, for the test to pass: a recipe
     #: whose every action is a command that stands until it expires (`gate.hardware_test_passed`).
     deadman_must_pass: bool = False
+    #: The recipe's shares of the rated power (`pct_of_rated`) are of the rating as the plant reads it (Fronius's
+    #: WChaMax, the base its limits are a percentage of): a rating learnt where the plant reads none
+    #: (`learned.with_learned`) is no base for them, so they stay unresolved (`rated_unknown`). `False`: any rating.
+    rating_read: bool = False
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -1275,7 +1279,8 @@ def native(role: Role, kw: float) -> float:
 
 def pct_of_rated(kw: float) -> str:
     """A power in kW as a share of the battery's rated power, for a role in percent (GoodWe's eco power): resolved by
-    `BrandControl.wanted` with the rating."""
+    `BrandControl.wanted` with the rating. A negative power is the same share, negative (Fronius's discharge limit
+    below 0 forces a charge)."""
     return f"{_PCT_PREFIX}{kw!r}>"
 
 
@@ -1311,7 +1316,9 @@ def _resolve(
         if rated_kw is None or not math.isfinite(rated_kw) or rated_kw <= 0:
             return value
         kw = float(value[len(_PCT_PREFIX):-1])
-        return float(min(max(math.floor(kw / rated_kw * 100.0 + 1e-9), 1), 100))
+        share = float(min(max(math.floor(abs(kw) / rated_kw * 100.0 + 1e-9), 1), 100))
+        # A negative power is a negative share (Fronius's forcing limits), its size rounded down as a positive one.
+        return -share if kw < 0 else share
     return value
 
 
