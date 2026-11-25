@@ -160,6 +160,14 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "solis_modbus_inverter_rc_timeout"),
         ("switch", "43110_5"),
     ),
+    # `kostal_modbus_control` enables its switches and rates by default; the battery management mode (register 1080,
+    # which must read Modbus before anything is written) ships disabled.
+    "kostal": (
+        ("sensor", "battery_mgmt_mode"),
+        ("switch", "block_discharge"),
+        ("number", "charge_rate"),
+        ("switch", "charge_start"),
+    ),
 }
 
 #: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.

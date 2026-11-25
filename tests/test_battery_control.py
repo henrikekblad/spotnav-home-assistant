@@ -1183,7 +1183,7 @@ def test_no_other_recipe_is_bounded_by_its_entitys_range(brand: str, monkeypatch
     # Every entity of the plant answers with that range.
     monkeypatch.setattr(control_module, "plant_entity_id", lambda _hass, _config, _match: "number.any")
     assert bare._within_charge_power(5.0) == 5.0 and bare._within_charge_power(None) is None
-    assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek"]
+    assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek", "kostal"]
 
 
 async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(

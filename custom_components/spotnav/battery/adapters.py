@@ -162,8 +162,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   is on (`commands.ECOFLOW_CONTROL`).
 
 * Kostal Plenticore (plus, G1 to G3, with a BYD battery), read 2026-11-23 (`plans/research_integrations/kostal_control_2026-11-23.md`),
-  one adapter for two integrations, read only (the control is Modbus with an installer's setting and a timeout the
-  integrations renew; none of it is written here). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
+  one adapter for two integrations (the control, on `kostal_modbus_control` only, is `commands.KOSTAL_CONTROL`). Core `kostal_plenticore` (home-assistant/core `42f4a32`, pykoplenti
   REST): sensors `<entry id>_<module id>_<data id>` (`sensor.py` line 867), the level `devices:local:battery_SoC`
   (line 237) and the battery power `devices:local:battery_P` (line 229); the module part is why the match is on
   `battery_soc` after `_` or `:`, and why `P` alone is never matched. The inverter's own floor is the number
@@ -177,8 +176,10 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   `battery_work_capacity` (1068, Wh, `sensor.py` line 844, disabled by default; its own Predbat sensor says the
   inverter's figure may be the gross size, so the size is the integration's own and not more), `software_version`
   (the inverter's UI/SW, `sensor.py` line 1044, disabled by default) and `battery_mgmt_mode` (register 1080, "No external
-  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free only in the
-  first. Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
+  battery management", "..via digital I/O" or "..via Modbus protocol", line 982, disabled by default), free in the
+  first and the last (Modbus is the door SpotNav's own control needs, `commands.KOSTAL_CONTROL`; who uses it is read
+  from the integration's switches, `charge_start`, `discharge_start`, `block_charge`, `block_discharge` and
+  `inverter_control`, free while off, and its `predbat_mode` sensor, free unless "Enabled"). Its `battery_max_charge_power_limit` and `battery_max_discharge_power_limit` are registers 1038 and 1040, the
   limits the integration itself writes (0 to block, `const.py` lines 37-38), not the battery's 1076/1078 rating: not read.
   The battery's power is discharge-positive on both, negated by the site (core: Predbat's template uses
   `scb_battery_power` as the discharge-positive power without inverting it, `templates/kostal.yaml` line 127; Modbus:
@@ -1235,7 +1236,8 @@ ECOFLOW: Final = Adapter(
     reserves=(ReserveSource(_key("battery_reserve_effective")),),
 )
 
-#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module): read only.
+#: Kostal Plenticore through core `kostal_plenticore` or HACS `kostal_modbus_control` (see the module; the control is
+#: `commands.KOSTAL_CONTROL`, on the HACS integration only).
 KOSTAL: Final = Adapter(
     brand="kostal",
     label="Kostal Plenticore",
@@ -1247,12 +1249,29 @@ KOSTAL: Final = Adapter(
     },
     modes=(
         # Core's select reads "None" when the inverter's own smart or timed control is off, which is no reading to
-        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default).
+        # SpotNav: core alone is "unknown". The Modbus integration's mode sensor says it (disabled by default). External
+        # control over Modbus is a door, not a controller: who writes through it is what the switches below, Predbat
+        # and the battery's behaviour say (`outside_control.py`); SpotNav's own control needs it
+        # (`commands.KOSTAL_CONTROL`).
+        # Digital I/O is a box of someone else's (a ripple-control receiver, an EMS) driving the battery.
         ModeRule(
             Match(("sensor", "select"), re.compile(r"(?:^|_)(?:battery_mgmt_mode|devices:local)$")),
-            frozenset({"No external battery management"}),
+            frozenset({"No external battery management", "External battery management via Modbus protocol"}),
             "battery management",
         ),
+        # `kostal_modbus_control`'s own commands (`switch.py`, mutually exclusive): any of them on is someone's command
+        # (an automation, a person, the integration's Predbat control) unless it is SpotNav's (`own_states`).
+        *(
+            ModeRule(_key(key, "switch"), frozenset({"off"}), label, required=False)
+            for key, label in (
+                ("charge_start", "Charge Start"), ("discharge_start", "Discharge Start"),
+                ("block_charge", "Block Charge"), ("block_discharge", "Block Discharge"),
+                ("inverter_control", "Inverter Control"),
+            )
+        ),
+        # Predbat in an active control mode: the integration's Charge Start then runs Predbat's logic, and its reserve
+        # hold writes the minimum SoC while Charge Start is off (`sensor.py` `KostalPredbatModeSensor`).
+        ModeRule(_key("predbat_mode"), frozenset({"Not installed", "Disabled"}), "Predbat", required=False),
     ),
     reserves=(ReserveSource(Match(("number",), re.compile(r"_devices:local_battery:minsoc$"))),),
 )
