@@ -709,9 +709,9 @@ export function testBox(input: BetaBoxInput): HTMLElement {
 export const CODE_MAX_CHARS = 400;
 
 /** Whether the hardware test box offers the control code field: a brand still being tested whose code is not in yet,
- * once the person signed up (or the test passed). */
+ * once its hardware test passed on the plant (the code approves that result; before it the backend refuses one). */
 export function codeWanted(tester: BatteryTester | null): boolean {
-  return tester !== null && tester.stage !== "control_code" && (tester.stage !== "none" || tester.test_passed);
+  return tester !== null && tester.stage !== "control_code" && tester.test_passed;
 }
 
 const CODE_ERRORS: Record<string, TranslationKey> = {
@@ -720,6 +720,7 @@ const CODE_ERRORS: Record<string, TranslationKey> = {
   spotnav_code_other_brand: "test.code.error.otherBrand",
   spotnav_code_blocked: "test.code.error.blocked",
   spotnav_code_not_needed: "test.code.error.notNeeded",
+  spotnav_code_test_first: "test.code.error.testFirst",
 };
 
 /** A refused control code in one sentence (`null`: the answer could not be read). */

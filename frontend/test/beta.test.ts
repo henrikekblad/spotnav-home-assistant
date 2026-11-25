@@ -303,7 +303,10 @@ describe("testBox", () => {
       .toBe(false);
     expect(codeWanted({ stage: "none", brand: "foxess", sent_at: null, result_sent_at: null, test_passed: true, code_entered_at: null }))
       .toBe(true);
+    expect(codeWanted({ stage: "asked", brand: "foxess", sent_at: null, result_sent_at: null, test_passed: false, code_entered_at: null }))
+      .toBe(false);
     expect(codeErrorText("en", null)).toBe(translate("en", "test.code.error.failed"));
+    expect(codeErrorText("sv", "spotnav_code_test_first")).toBe(translate("sv", "test.code.error.testFirst"));
   });
 
   it("says a step that could not be judged runs again by itself", async () => {
