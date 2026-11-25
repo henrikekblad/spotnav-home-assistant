@@ -6,6 +6,7 @@
   "status": {
     "allowed_actions": [],
     "battery_found": false,
+    "battery_read_only": null,
     "device_id": null,
     "enable_entities": null,
     "enable_facts": null,

@@ -128,6 +128,7 @@ from .executor import (
 )
 from .export_curtail import curtails
 from .facts import BatteryFacts
+from .mirrored import NEED_MIRRORED_READ_ONLY, READ_ONLY_MIRRORED
 from .ledger import Ledger
 from .monitor import Capability, Monitor
 from .outside_control import RESERVE_MARGIN_PCT
@@ -3414,7 +3415,10 @@ class BatteryControl:
         facts = self.facts
         control = control_for(facts.control_brand)
         if control is None:
-            return ["no_battery_control"] if facts.battery_entity_id is not None else []
+            if facts.battery_entity_id is None:
+                return []
+            # Mirrored from another Home Assistant (`mirrored.py`): read only, whatever the brand's recipe.
+            return [NEED_MIRRORED_READ_ONLY] if facts.read_only == READ_ONLY_MIRRORED else ["no_battery_control"]
         reads = read_role_reads(self.hass, self.site.config, control)
         if not self.firmware_known():
             needs.append("firmware_unknown")
@@ -3560,6 +3564,9 @@ class BatteryControl:
         return {
             # Whether the site's battery facts name a battery: without one a client hides its battery card (additive).
             "battery_found": bool(self.facts.battery_entity_id),
+            # Set when SpotNav may only read it (`facts.BatteryFacts.read_only`, `remote_homeassistant` for one mirrored
+            # from another Home Assistant), `null` otherwise (additive).
+            "battery_read_only": self.facts.read_only,
             # As stored: a recipe still waiting for its hardware test runs as shadow only whatever the switch says,
             # and the checklist says why (`hardware_test_first`).
             "options": self._stored_options().as_dict(),
