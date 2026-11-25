@@ -59,9 +59,9 @@ control on in the home battery section ("Battery control").
 What control does on your Deye / Sunsynk: it only sets the two current limits (Battery Max Charging Current and
 Battery Max Discharging Current), and only while Time of Use is off. It never charges from the grid, never sells and
 never changes your time-of-use programmes. It writes only when the plan changes what the battery should do, at most
-48 writes a day (putting a limit back counts too), since nobody states how often the inverter may be written. If Home Assistant stops, a limit SpotNav
-set stays until Home Assistant is back; the battery then covers less of the house, it never takes more from the grid
-because of it.
+48 writes a day (putting a limit back counts too), since nobody states how often the inverter may be written. If
+Home Assistant stops, a limit SpotNav set stays until Home Assistant is back; the battery then covers less of the
+house, it never takes more from the grid because of it.
 
 After a firmware or integration update SpotNav checks the battery again by itself; no new code is needed. If that
 check fails, the card asks for the hardware test again.
