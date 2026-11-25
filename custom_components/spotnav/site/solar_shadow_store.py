@@ -4,7 +4,11 @@ year, the candidates' forecasts as issued and their nightly review.
 Pure: the clock is passed in. Storage is untrusted: a malformed value is dropped, never raised on.
 
 * **Inputs** (`SolarHistory`), per UTC hour, `KEEP_DAYS` days:
-  * `pv`: the measured production (hundredths of a kWh), from the Energy dashboard's statistics.
+  * `pv`: the measured production (hundredths of a kWh), from the Energy dashboard's statistics. **An implausible
+    hour never stays** (a statistic's reset or spike once made one hour 5170 kWh on a 14 kWp plant): an hour above
+    `PV_ABSOLUTE_MAX_KWH`, or, with at least `PV_BOUND_MIN_HOURS` producing hours kept, above `PV_BOUND_MARGIN` times
+    the 95th percentile of the producing hours (a real peak hour is about 1.2-1.5 times it), is rejected when it
+    arrives and dropped on load, counted in the diagnostics (`pv_rejected_hours`) and not asked for again.
   * Per weather run (`RUNS`: 1 and 2, as Open-Meteo's `_previous_day1` / `_previous_day2`): the GHI and beam (W/m2),
     cloud cover (%) and temperature (°C) as forecast. A live fetch fills an hour's run 1 from the first fetch made at
     most `SNAPSHOT_MAX_LEAD_H[1]` hours before it, run 2 from the first made within `SNAPSHOT_MAX_LEAD_H[2]`
@@ -20,7 +24,12 @@ Pure: the clock is passed in. Storage is untrusted: a malformed value is dropped
   same day never replaces it); with what each issue was made from (`IssueLog.issues`). `KEEP_LOG_DAYS` days.
 * **Review** (`IssueLog.review`): each issued day once it has ended and its statistics are in (the day's last hour
   measured, or two days later): its hourly MAE and its daily kWh error (forecast less measured) over the hours both
-  have. `KEEP_LOG_DAYS` days; `summary` combines the last `SUMMARY_DAYS`.
+  have. `KEEP_LOG_DAYS` days; `summary` combines the last `SUMMARY_DAYS`. **A dead day is not reviewed**
+  (`dead_days`): at least `DEAD_MIN_HOURS` daylight hours measured, together at most `DEAD_MAX_KWH`, while the
+  forecast radiation of those hours adds up to at least `DEAD_MIN_GHI_WH` Wh/m2 (1 kWh/m2: more than a grey
+  winter day gives, so a dark day measured at zero is still reviewed). Snow on the panels or a broken statistic
+  would otherwise make every candidate look bad. It is logged in `IssueLog.skipped_days` (day -> reason), counted
+  in the diagnostics, and its hours do not train the factors either.
 """
 
 from __future__ import annotations
@@ -82,6 +91,16 @@ def decode(raw: Any, first: int, low: int, high: int) -> dict[int, int]:
 #: Per stored weather field: (lowest, highest) accepted.
 _BOUNDS: Final = {"g": (0, 1500), "b": (0, 1500), "c": (0, 100), "t": (-80, 70)}
 _KWH_MAX: Final = 1_000_000  # hundredths: 10 MWh in an hour
+#: A measured hour above this (kWh) is never real for a home, whatever the history says.
+PV_ABSOLUTE_MAX_KWH: Final = 100.0
+PV_BOUND_MIN_HOURS: Final = 48
+PV_BOUND_MARGIN: Final = 2.5
+#: Never tighter than this (kWh), so a small plant's clear hour is not cut by a cloudy history.
+PV_BOUND_FLOOR_KWH: Final = 2.0
+DEAD_MIN_HOURS: Final = 3
+DEAD_MAX_KWH: Final = 0.05
+DEAD_MIN_GHI_WH: Final = 1000
+REASON_ZERO_PRODUCTION: Final = "zero_production"
 
 
 @dataclass(slots=True)
@@ -94,21 +113,46 @@ class SolarHistory:
         default_factory=lambda: {run: {name: {} for name in _WEATHER_FIELDS} for run in RUNS}
     )
     provider: dict[int, dict[int, int]] = field(default_factory=lambda: {run: {} for run in RUNS})
+    #: Hours whose measured value was implausible (see the module): not asked for again, counted. Not stored.
+    rejected_pv: set[int] = field(default_factory=set)
 
     # ---- recording
 
     def merge_pv(self, kwh_by_hour: Mapping[datetime, float]) -> bool:
         """The measured production per completed hour (kWh); whether anything changed."""
-        changed = False
+        touched: dict[int, int | None] = {}
+        bound = self.pv_bound()
         for start, kwh in kwh_by_hour.items():
             value = _int(kwh * 100 if isinstance(kwh, (int, float)) else None, 0, _KWH_MAX)
-            if value is None:
-                continue
             key = hour_key(start)
+            if value is None or key in self.rejected_pv:
+                continue
+            if value > bound:  # never replaces a good value with a spike
+                self.rejected_pv.add(key)
+                continue
             if self.pv.get(key) != value:
+                touched.setdefault(key, self.pv.get(key))
                 self.pv[key] = value
-                changed = True
-        return changed
+        self.drop_implausible_pv()
+        return any(self.pv.get(key) != before for key, before in touched.items())
+
+    def pv_bound(self) -> int:
+        """The highest hour (hundredths of a kWh) accepted now (see the module)."""
+        bound = round(PV_ABSOLUTE_MAX_KWH * 100)
+        producing = sorted(value for value in self.pv.values() if value > 0)
+        if len(producing) >= PV_BOUND_MIN_HOURS:
+            p95 = producing[int(len(producing) * 0.95)]
+            bound = min(bound, max(round(PV_BOUND_FLOOR_KWH * 100), round(p95 * PV_BOUND_MARGIN)))
+        return bound
+
+    def drop_implausible_pv(self) -> bool:
+        """Drop the kept hours above the bound; they are remembered as rejected."""
+        bound = self.pv_bound()
+        bad = [key for key, value in self.pv.items() if value > bound]
+        for key in bad:
+            del self.pv[key]
+            self.rejected_pv.add(key)
+        return bool(bad)
 
     @staticmethod
     def run_for_lead(lead_h: float) -> int | None:
@@ -192,6 +236,7 @@ class SolarHistory:
             pv=dict(self.pv),
             weather={run: {name: dict(values) for name, values in fields.items()} for run, fields in self.weather.items()},
             provider={run: dict(values) for run, values in self.provider.items()},
+            rejected_pv=set(self.rejected_pv),
         )
 
     # ---- bounds and storage
@@ -202,6 +247,7 @@ class SolarHistory:
         series_list: list[dict[int, int]] = [self.pv, *self.provider.values()]
         for fields in self.weather.values():
             series_list.extend(fields.values())
+        self.rejected_pv = {key for key in self.rejected_pv if key >= oldest}
         for series in series_list:
             stale = [key for key in series if key < oldest]
             for key in stale:
@@ -234,6 +280,7 @@ class SolarHistory:
             return
         first = hour_key(start)
         self.pv = decode(raw.get("pv"), first, 0, _KWH_MAX)
+        self.drop_implausible_pv()
         for run in RUNS:
             for name in _WEATHER_FIELDS:
                 self.weather[run][name] = decode(raw.get(f"{name}{run}"), first, *_BOUNDS[name])
@@ -249,12 +296,34 @@ class SolarHistory:
 
         return {
             "pv": span(self.pv),
+            "pv_rejected_hours": len(self.rejected_pv),
             **{f"weather_run{run}": span(self.weather[run]["g"]) for run in RUNS},
             **{f"provider_run{run}": span(self.provider[run]) for run in RUNS},
         }
 
 
 # ------------------------------------------------------------------------------------------------ the review
+
+
+def dead_days(history: SolarHistory, zone: Any) -> set[date]:
+    """The local days measured at about zero under a forecast of real sun (see the module)."""
+    measured: dict[date, list[float]] = {}  # day -> [hours, kWh, forecast Wh/m2]
+    for run in RUNS:  # run 1's radiation where it has one, else run 2's
+        for key, ghi in history.weather[run]["g"].items():
+            if run != RUNS[0] and key in history.weather[RUNS[0]]["g"]:
+                continue
+            pv = history.pv_kwh(key)
+            if pv is None:
+                continue
+            sums = measured.setdefault(key_start(key).astimezone(zone).date(), [0.0, 0.0, 0.0])
+            sums[0] += 1
+            sums[1] += pv
+            sums[2] += ghi
+    return {
+        day
+        for day, (hours, kwh, ghi) in measured.items()
+        if hours >= DEAD_MIN_HOURS and kwh <= DEAD_MAX_KWH and ghi >= DEAD_MIN_GHI_WH
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,6 +382,8 @@ class IssueLog:
     #: (issue, day) -> what the issue was made from, per group of candidates (`own`, `provider`).
     issues: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     reviews: dict[LogKey, DayScore] = field(default_factory=dict)
+    #: Local day ISO -> why it is not reviewed (see the module).
+    skipped_days: dict[str, str] = field(default_factory=dict)
 
     def issued(self, issue: str, day: date, group: str) -> bool:
         return group in self.issues.get((issue, day.isoformat()), {})
@@ -348,6 +419,7 @@ class IssueLog:
         zone = time_zones.require_zone(self.tz)
         today = now.astimezone(zone).date()
         made: list[tuple[LogKey, DayScore]] = []
+        dead = dead_days(history, zone)
         for key, (first, values) in sorted(self.forecasts.items()):
             if key in self.reviews:
                 continue
@@ -356,6 +428,9 @@ class IssueLog:
                 continue
             last_key = hour_key(datetime.combine(day + timedelta(days=1), datetime.min.time(), zone)) - 1
             if last_key not in history.pv and (today - day).days < REVIEW_WAIT_DAYS:
+                continue
+            if day in dead:
+                self.skipped_days[key[2]] = REASON_ZERO_PRODUCTION
                 continue
             pairs = [
                 (value / 100, measured)
@@ -375,6 +450,12 @@ class IssueLog:
         self.forecasts = {key: value for key, value in self.forecasts.items() if key[2] >= first_day}
         self.reviews = {key: value for key, value in self.reviews.items() if key[2] >= first_day}
         self.issues = {key: value for key, value in self.issues.items() if key[1] >= first_day}
+        self.skipped_days = {day: why for day, why in self.skipped_days.items() if day >= first_day}
+
+    def skipped_summary(self, now: datetime, days: int = 7) -> dict[str, Any]:
+        """The days left out of the review: how many are kept, and the latest `days` of them with the reason."""
+        latest = sorted(self.skipped_days)[-days:]
+        return {"count": len(self.skipped_days), "days": {day: self.skipped_days[day] for day in latest}}
 
     def summary(self, now: datetime, days: int = SUMMARY_DAYS) -> dict[str, dict[str, Any]]:
         """Per candidate and issue, the last `days` reviewed days combined: days, hours, hourly MAE (hour-weighted),
@@ -420,6 +501,7 @@ class IssueLog:
             ],
             "issues": [[i, d, meta] for (i, d), meta in sorted(self.issues.items())],
             "reviews": [[c, i, d, *score.as_row()] for (c, i, d), score in sorted(self.reviews.items())],
+            "skipped": sorted(self.skipped_days.items()),
         }
 
     def restore(self, raw: Any) -> None:
@@ -443,6 +525,9 @@ class IssueLog:
             if isinstance(row, list) and len(row) == 3 and isinstance(row[0], str) and _iso_day(row[1]):
                 if isinstance(row[2], dict):
                     self.issues[(row[0], row[1])] = row[2]
+        for row in raw.get("skipped") or []:
+            if isinstance(row, list) and len(row) == 2 and _iso_day(row[0]) and isinstance(row[1], str):
+                self.skipped_days[row[0]] = row[1]
         for row in raw.get("reviews") or []:
             if not isinstance(row, list) or len(row) != 7 or not all(isinstance(v, str) for v in row[:3]):
                 continue

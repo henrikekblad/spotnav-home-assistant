@@ -472,3 +472,89 @@ def test_the_summary_combines_thirty_days_and_old_days_go() -> None:
     assert again.forecasts == log.forecasts and again.reviews == log.reviews and again.issues == log.issues
     log.prune(datetime(2026, 8, 1, tzinfo=UTC))
     assert min(day for _c, _i, day in log.forecasts) >= "2026-06-02"
+
+
+# ---------------------------------------------------------------------------------------------- bad measurements
+
+
+def test_an_implausible_hour_never_enters_the_history_or_the_factors() -> None:
+    history = _history(days=30)
+    spike = datetime(2026, 5, 20, 11, tzinfo=UTC)
+    assert not history.merge_pv({spike: 5170.65})
+    assert history.pv[hour_key(spike)] < 5000  # rejected at once; a good value already held stays
+    assert history.diagnostics()["pv_rejected_hours"] == 1
+    # The same statistic read again is not counted again.
+    history.merge_pv({spike: 5170.65})
+    assert history.diagnostics()["pv_rejected_hours"] == 1
+    assert max(history.pv.values()) / 100 < 50
+    assert so.learn(history, PLANES, POS, TZ, UPTO).cap_kwh < 50
+
+
+def test_a_young_history_is_checked_against_the_absolute_bound_and_a_real_peak_is_kept() -> None:
+    history = SolarHistory()
+    history.merge_pv({datetime(2026, 5, 20, h, tzinfo=UTC): 4.0 for h in range(8, 14)})
+    assert not history.merge_pv({datetime(2026, 5, 20, 14, tzinfo=UTC): 5000.0})
+    assert len(history.pv) == 6
+    # A clear-sky peak well above the typical good hour is real.
+    assert history.merge_pv({datetime(2026, 5, 20, 15, tzinfo=UTC): 9.0})
+
+
+def test_a_stored_spike_is_dropped_on_load() -> None:
+    clean = _history(days=30)
+    stored = clean.as_dict()
+    spiked = SolarHistory()
+    spiked.restore(json.loads(json.dumps(stored)))
+    spiked.pv[hour_key(datetime(2026, 5, 20, 11, tzinfo=UTC))] = 517065
+    again = SolarHistory()
+    again.restore(json.loads(json.dumps(spiked.as_dict())))
+    assert again.pv == {key: value for key, value in clean.pv.items() if key != hour_key(datetime(2026, 5, 20, 11, tzinfo=UTC))}
+    assert again.diagnostics()["pv_rejected_hours"] == 1
+
+
+def _snowed_in(history: SolarHistory, day: date) -> None:
+    """Forecast sun all day and a measured 0.0 for it."""
+    for h in range(6, 17):
+        start = datetime(day.year, day.month, day.day, h, tzinfo=UTC)
+        for run in (1, 2):
+            history._put_weather(run, hour_key(start), Weather(500.0, 300.0, 20.0, -5.0))
+        history.merge_pv({start: 0.0})
+
+
+def test_a_day_measured_at_zero_under_a_sunny_forecast_is_skipped_and_counted_not_scored() -> None:
+    history, log = SolarHistory(), IssueLog(tz=TZ)
+    day = date(2026, 3, 1)
+    _snowed_in(history, day)
+    log.record(ISSUE_DAY_AHEAD, day, "own", {"own": {datetime(2026, 3, 1, 10, tzinfo=UTC): 3.0}}, {})
+    assert log.review(history, datetime(2026, 3, 4, 1, tzinfo=UTC)) == []
+    assert log.reviews == {}
+    assert log.skipped_days == {"2026-03-01": "zero_production"}
+    assert log.skipped_summary(datetime(2026, 3, 4, 1, tzinfo=UTC)) == {"count": 1, "days": {"2026-03-01": "zero_production"}}
+    again = IssueLog(tz=TZ)
+    again.restore(json.loads(json.dumps(log.as_dict())))
+    assert again.skipped_days == log.skipped_days
+
+
+def test_a_dark_day_with_a_dark_forecast_is_still_reviewed() -> None:
+    history, log = SolarHistory(), IssueLog(tz=TZ)
+    day = date(2026, 3, 1)
+    for h in range(6, 17):
+        start = datetime(2026, 3, 1, h, tzinfo=UTC)
+        history._put_weather(1, hour_key(start), Weather(20.0, 0.0, 100.0, -5.0))
+    _logged_day(log, history, day, 0.1, 0.0)
+    assert len(log.review(history, datetime(2026, 3, 4, 1, tzinfo=UTC))) == 1
+    assert not log.skipped_days
+
+
+def test_the_zero_hours_of_a_skipped_day_do_not_train_the_factors() -> None:
+    base = _history()
+    with_snow = _history()
+    for offset in range(10):
+        _snowed_in(with_snow, date(2026, 4, 1) + timedelta(days=offset))
+    # The snowed-in days overwrite weather only where there was none; make the whole day's production zero.
+    for offset in range(10):
+        for h in range(24):
+            with_snow.pv[hour_key(datetime(2026, 4, 1 + offset, h, tzinfo=UTC))] = 0
+    a = so.learn(base, PLANES, POS, TZ, UPTO)
+    b = so.learn(with_snow, PLANES, POS, TZ, UPTO)
+    assert b.ratio.overall == pytest.approx(a.ratio.overall, rel=0.02)
+    assert b.pos_own.overall == pytest.approx(a.pos_own.overall, rel=0.02)

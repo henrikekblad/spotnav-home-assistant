@@ -640,6 +640,7 @@ class SiteSolarShadow:
             ],
             "review_30d": self.log.summary(now),
             "review_recent": self.log.recent(CANDIDATES),
+            "review_skipped": self.log.skipped_summary(now),
         }
 
 
