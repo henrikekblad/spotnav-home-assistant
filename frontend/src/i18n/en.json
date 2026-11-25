@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "There is no house figure for this period.",
   "house.loads.otherHolds": "Other metered: {list}.",
   "house.loads.over": "The meters add up to {kwh} more than the house, so Unknown is shown as 0.",
+  "house.loads.clamped": "Estimated parts limited to what was measured: {kwh} of their estimate stays in the house.",
+  "house.loads.estimated": "(estimated)",
   "house.loads.none": "No meters on single devices yet. Add them in Home Assistant's Energy dashboard under Individual devices to see them here.",
   "house.loads.carHeat": "The car and the heat are shown on their own in the flow and are not part of this.",
   "house.loads.car": "The car is shown on its own in the flow and is not part of this.",

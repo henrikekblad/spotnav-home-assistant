@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "Talolle ei ole lukua tältä jaksolta.",
   "house.loads.otherHolds": "Muut mitatut: {list}.",
   "house.loads.over": "Mittarit ovat yhteensä {kwh} enemmän kuin talo, joten Tuntematon näytetään nollana.",
+  "house.loads.clamped": "Arvioidut osat rajattu mitattuun: {kwh} arviosta jää taloon.",
+  "house.loads.estimated": "(arvio)",
   "house.loads.none": "Yksittäisten laitteiden mittareita ei vielä ole. Lisää ne Home Assistantin Energia-näkymään kohtaan Yksittäiset laitteet, niin ne näkyvät tässä.",
   "house.loads.carHeat": "Auto ja lämpö näkyvät virrassa omina lohkoinaan eivätkä kuulu tähän.",
   "house.loads.car": "Auto näkyy virrassa omana lohkonaan eikä kuulu tähän.",

@@ -1,6 +1,7 @@
 {
   "api_version": 1,
   "belongs": {},
+  "clamped_kwh": 0.0,
   "date": "2026-11-17",
   "end": "2026-11-18",
   "house_kwh": 14.62,
@@ -10,6 +11,8 @@
   "loads": [
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 2.31,
       "name": "Torktumlare",
       "source": "meter",
@@ -17,6 +20,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 1.42,
       "name": "Diskmaskin",
       "source": "meter",
@@ -24,6 +29,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 0.96,
       "name": "Tvättmaskin",
       "source": "meter",
@@ -31,6 +38,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 0.21,
       "name": "Frys",
       "source": "meter",
@@ -38,6 +47,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 0.12,
       "name": "Router",
       "source": "meter",

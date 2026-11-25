@@ -4,6 +4,7 @@
     "sensor.shelly_golv_energy": "heat",
     "sensor.ups_energy": "none"
   },
+  "clamped_kwh": 0.0,
   "date": "2026-10-01",
   "end": "2026-11-01",
   "house_kwh": 1030.0,
@@ -20,6 +21,8 @@
   "loads": [
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 44.2,
       "name": "Torktumlare",
       "source": "meter",
@@ -27,6 +30,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 31.0,
       "name": "Diskmaskin",
       "source": "meter",
@@ -34,6 +39,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 8.6,
       "name": "NAS",
       "source": "meter",

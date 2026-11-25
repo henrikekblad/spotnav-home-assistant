@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "Für diesen Zeitraum gibt es keinen Wert für das Haus.",
   "house.loads.otherHolds": "Sonstiges gemessen: {list}.",
   "house.loads.over": "Die Zähler ergeben zusammen {kwh} mehr als das Haus, daher wird Unbekannt als 0 gezeigt.",
+  "house.loads.clamped": "Geschätzte Teile auf das Gemessene begrenzt: {kwh} der Schätzung bleiben beim Haus.",
+  "house.loads.estimated": "(geschätzt)",
   "house.loads.none": "Noch keine Zähler an einzelnen Geräten. Füge sie im Energie-Dashboard von Home Assistant unter Einzelne Geräte hinzu, dann erscheinen sie hier.",
   "house.loads.carHeat": "Das Auto und die Wärme stehen im Fluss für sich und sind hier nicht enthalten.",
   "house.loads.car": "Das Auto steht im Fluss für sich und ist hier nicht enthalten.",

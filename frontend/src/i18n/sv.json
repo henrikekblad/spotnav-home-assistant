@@ -1435,6 +1435,8 @@
   "house.loads.noFlow": "Det finns ingen siffra för huset den här perioden.",
   "house.loads.otherHolds": "Övrigt uppmätt: {list}.",
   "house.loads.over": "Mätarna summerar till {kwh} mer än huset, så Okänt visas som 0.",
+  "house.loads.clamped": "Uppskattade delar begränsade till det som mättes: {kwh} av uppskattningen ligger kvar i huset.",
+  "house.loads.estimated": "(uppskattat)",
   "house.loads.none": "Inga mätare på enskilda apparater än. Lägg till dem i Home Assistants Energipanel under Enskilda enheter så syns de här.",
   "house.loads.carHeat": "Bilen och värmen visas för sig i flödet och ingår inte här.",
   "house.loads.car": "Bilen visas för sig i flödet och ingår inte här.",

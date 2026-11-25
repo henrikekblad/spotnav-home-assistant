@@ -1032,28 +1032,36 @@
   },
   "parts": [
     {
+      "clamped_kwh": 0.0,
       "cost": 5333.43,
+      "estimated": false,
       "key": "pump",
       "kind": "pump",
       "kwh": 36.0,
       "name": null
     },
     {
+      "clamped_kwh": 0.0,
       "cost": 320.17,
+      "estimated": false,
       "key": "hot_water",
       "kind": "hot_water",
       "kwh": 2.4,
       "name": null
     },
     {
+      "clamped_kwh": 0.0,
       "cost": 511.0,
+      "estimated": false,
       "key": "zone:climate.ovanvaning",
       "kind": "zone",
       "kwh": 3.15,
       "name": "Ovanvåning"
     },
     {
+      "clamped_kwh": 0.0,
       "cost": 176.0,
+      "estimated": false,
       "key": "other",
       "kind": "other",
       "kwh": 1.2,

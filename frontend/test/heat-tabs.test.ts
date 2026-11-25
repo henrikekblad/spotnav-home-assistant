@@ -25,7 +25,7 @@ import {
 import { hasMoney, partSeries, useHeadline, useNotes, usePanel, useTotal } from "../src/heat-use";
 import { aheadLine, heatBody, planChoice, type HeatHandlers, type HeatUi } from "../src/heat-view";
 import { periodPicker } from "../src/house-tabs";
-import { LANGUAGES, registerTranslation } from "../src/i18n";
+import { LANGUAGES, registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard } from "../src/index";
 
@@ -432,10 +432,28 @@ describe("Use", () => {
     expect(useNotes("sv", month(), "kwh")).toEqual(["Varmvatten är utbrutet för 7 av 16 dygn: de dygn Home Assistants historik ännu har i 5-minutersdetalj."]);
     expect(useNotes("sv", history("zones_day.json"), "kwh")).toEqual([]);
     expect(panel(month(), { boxed: true }).querySelector("[data-line='use-notes']")).toBeNull();
-    const zones = [0, 1, 2, 3, 4].map((index) => ({ key: `zone:${index}`, kind: "zone" as const, name: `Zon ${index}`, kwh: 1, cost: null }));
+    const zones = [0, 1, 2, 3, 4].map((index) => ({ key: `zone:${index}`, kind: "zone" as const, name: `Zon ${index}`, kwh: 1, cost: null, estimated: false, clamped_kwh: 0 }));
     expect(zones.map((zone) => partSeries(zones, zone))).toEqual(["use-zone-0", "use-zone-1", "use-zone-2", "use-zone-3", "use-zone-0"]);
     expect(panel({ ...month(), meter: null }).querySelector("[data-line='no-meter']")).not.toBeNull();
     expect(panel({ ...month(), parts: [] }).querySelector("[data-line='no-energy']")).not.toBeNull();
+  });
+
+  it("names an estimated part (uppskattat) and says once that estimates were limited to what was measured", () => {
+    // The owner's spa of 2026-11-25: counted only where the house had room, the rest left in the house.
+    const spa = { key: "spa", kind: "spa" as const, name: null, kwh: 7.135, cost: null, estimated: true, clamped_kwh: 23.965 };
+    const withSpa: HeatHistory = { ...month(), parts: [...month().parts, spa] };
+    const shown = panel(withSpa);
+    expect(shown.querySelector("button[data-legend='use-spa']")!.textContent).toBe(`Spa ${translate("sv", "house.loads.estimated")} 7,1 kWh`);
+    expect(shown.querySelector("button[data-legend='use-pump']")!.textContent).not.toContain(translate("sv", "house.loads.estimated"));
+    const notes = useNotes("sv", withSpa, "kwh");
+    expect(notes.filter((line) => line.startsWith("Uppskattade delar begränsade till det som mättes"))).toEqual([
+      translate("sv", "house.loads.clamped", { kwh: "24,0 kWh" }),
+    ]);
+    // An estimate that fit: still named, no line.
+    const fit: HeatHistory = { ...month(), parts: [...month().parts, { ...spa, clamped_kwh: 0 }] };
+    expect(useNotes("sv", fit, "kwh").some((line) => line.startsWith("Uppskattade"))).toBe(false);
+    // A backend before them decodes as measured, nothing left out.
+    expect(month().parts.every((part) => !part.estimated && part.clamped_kwh === 0)).toBe(true);
   });
 
   it("sits under the shared picker in the card", () => {

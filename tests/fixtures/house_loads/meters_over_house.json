@@ -1,6 +1,7 @@
 {
   "api_version": 1,
   "belongs": {},
+  "clamped_kwh": 0.0,
   "date": "2026-11-01",
   "end": "2026-12-01",
   "house_kwh": 40.0,
@@ -10,6 +11,8 @@
   "loads": [
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 25.0,
       "name": "Diskmaskin",
       "source": "meter",
@@ -17,6 +20,8 @@
     },
     {
       "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
       "kwh": 18.5,
       "name": "Torktumlare",
       "source": "meter",

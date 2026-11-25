@@ -523,6 +523,51 @@ def test_the_pool_spa_and_sauna_are_parts_of_their_own_added_to_the_use() -> Non
             assert sum(part["kwh"] for part in bucket["parts"]) == pytest.approx(bucket["kwh"], abs=0.01)
 
 
+def test_the_use_tab_shows_an_estimated_part_as_the_energy_flow_counts_it() -> None:
+    """The owner's case of 2026-11-25 (`tests/test_energy_flow.py::_owner_day`) on a day here: the site used 40.03
+    kWh, the heat pump's meter and the zones 25.76 of it, and a spa without a meter was counted at 31.1 kWh over half
+    the day. The Use tab shows the spa as the flow's heat holds it (only what the house had left), marked
+    estimated with what was left out, the same figure as the heat pie's."""
+    from custom_components.spotnav.heat.history import flow_load_uses
+    from custom_components.spotnav.site.energy_flow import EnergyHour, HeatPartEnergy, parts_kwh, with_heat_parts
+
+    day = period_of(PERIOD_DAY, date(2026, 11, 15))
+    start, end = utc_bounds(day, TZ)
+    starts = [start + timedelta(minutes=15 * q) for q in range(96)]
+    quarters = [EnergyHour(start=moment, grid_in=40.03 / 96, grid_out=0.0, heat=25.76 / 96, minutes=15) for moment in starts]
+    spa = {moment: 31.1 / 48 for moment in starts[:48]}
+    periods = with_heat_parts(quarters, [HeatPartEnergy("spa", spa, spa)])
+    pie = parts_kwh(periods, start, end)["spa"]
+    loads = flow_load_uses(periods)
+    assert [load.kind for load in loads] == ["spa"]
+    answer = heat_history(month_inputs(period=day, loads=tuple(loads)))
+    parts = {part["key"]: part for part in answer["parts"]}
+    assert parts["spa"]["kwh"] == pytest.approx(pie.kwh, abs=0.001) and parts["spa"]["kwh"] <= 40.03 - 25.76
+    assert parts["spa"]["kwh"] == pytest.approx(7.135, abs=0.001)
+    assert (parts["spa"]["estimated"], parts["spa"]["clamped_kwh"]) == (True, pytest.approx(23.965, abs=0.001))
+    # The meter's parts are measurements.
+    assert all(not part["estimated"] and part["clamped_kwh"] == 0.0 for key, part in parts.items() if key != "spa")
+    # A load counted in full (nothing an estimate, nothing left out) is as before.
+    plain = {part["key"]: part for part in heat_history(month_inputs(period=day, loads=(LoadUse("spa", {start: 2.25}),)))["parts"]}
+    assert (plain["spa"]["kwh"], plain["spa"]["estimated"], plain["spa"]["clamped_kwh"]) == (2.25, False, 0.0)
+
+
+def test_without_the_flow_the_use_tab_shows_the_shadow_s_figures_as_estimates() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api.heat_history import shadow_load_uses
+
+    t0 = datetime(2026, 11, 15, 10, tzinfo=timezone.utc)
+    hours = {"spa": {t0: 3.0}}
+    shadow = SimpleNamespace(
+        has_energy=lambda kind: kind in hours,
+        energy_hours=lambda kind: hours[kind],
+        estimated_quarters=lambda part: {t0 + timedelta(minutes=15): 1.0} if part == "spa" else {},
+    )
+    (spa,) = shadow_load_uses(shadow)
+    assert (spa.kind, dict(spa.hours), dict(spa.estimated), dict(spa.clamped)) == ("spa", {t0: 3.0}, {t0: 1.0}, {})
+
+
 def test_what_spotnav_saved_on_heat_and_how_well_the_heat_is_forecast() -> None:
     month = heat_history(month_inputs(**fixture_extras()))
     # October's day is not this month's.

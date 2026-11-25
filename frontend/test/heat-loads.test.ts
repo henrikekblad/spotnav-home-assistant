@@ -326,7 +326,7 @@ describe("the Plan tab", () => {
 
 describe("the Use tab", () => {
   it("names and colours the pool, the spa and the sauna as parts of their own", () => {
-    const parts: HeatPart[] = (["pump", "pool", "spa", "sauna"] as const).map((kind) => ({ key: kind, kind, name: null, kwh: 1, cost: null }));
+    const parts: HeatPart[] = (["pump", "pool", "spa", "sauna"] as const).map((kind) => ({ key: kind, kind, name: null, kwh: 1, cost: null, estimated: false, clamped_kwh: 0 }));
     expect(parts.map((part) => partWord("sv", part))).toEqual(["Värmepump", "Pool", "Spa", "Bastu"]);
     expect(parts.map((part) => partSeries(parts, part))).toEqual(["use-pump", "use-pool", "use-spa", "use-sauna"]);
   });

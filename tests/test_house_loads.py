@@ -269,6 +269,35 @@ def test_meters_over_the_house_clamp_ovrigt_at_zero() -> None:
     assert (near["other_kwh"], near["over_kwh"]) == (0.0, 0.0)
 
 
+#: The owner's heat pie of 2026-11-25 after the clamp (`tests/test_energy_flow.py::_owner_day`): the heat pump's meter
+#: 25.66 and the zones 0.1 measured, the spa's estimate of 31.1 kWh counted only where the house had room (7.135).
+OWNER_HEAT = dict(
+    site_id="site_villa", period="day", first="2026-11-25", end="2026-11-26",
+    through=datetime(2026, 11, 25, 23, tzinfo=UTC), house_kwh=32.895, kind=KIND_HEAT,
+    loads=[
+        (DashboardMeter("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", source=SOURCE_HEAT_PUMP), 25.66),
+        (DashboardMeter("sensor.golvvarme_tvattstuga_energy", "Golvvärme tvättstuga", source=SOURCE_ZONE), 0.1),
+        (DashboardMeter("climate.spa", "Spa", source="spa"), 7.135),
+    ],
+    estimates={"climate.spa": (7.135, 23.965)},
+)
+
+
+def test_an_estimated_part_is_said_and_what_it_could_not_take_is_summed() -> None:
+    answer = house_loads(**OWNER_HEAT)
+    assert tuple(answer) == LOADS_KEYS and all(tuple(row) == LOAD_KEYS for row in answer["loads"])
+    rows = {row["statistic_id"]: row for row in answer["loads"]}
+    assert (rows["climate.spa"]["estimated"], rows["climate.spa"]["clamped_kwh"]) == (True, 23.965)
+    # The meters are measurements: never estimated, nothing left out.
+    assert [(rows[k]["estimated"], rows[k]["clamped_kwh"]) for k in ("sensor.varme_effekt", "sensor.golvvarme_tvattstuga_energy")] == [(False, 0.0)] * 2
+    assert answer["clamped_kwh"] == 23.965
+    # The spa no longer swallows the house: the heat pie adds up, nothing over.
+    assert (answer["meters_kwh"], answer["other_kwh"], answer["over_kwh"]) == (32.895, 0.0, 0.0)
+    # An estimate that fit is still said, with nothing left out.
+    fit = house_loads(**{**OWNER_HEAT, "estimates": {"climate.spa": (7.135, 0.0)}})
+    assert (fit["loads"][1]["estimated"], fit["clamped_kwh"]) == (True, 0.0)
+
+
 def test_no_devices_and_no_flow() -> None:
     alone = house_loads(
         site_id="site", period="year", first="2026-01-01", end="2027-01-01",
@@ -600,6 +629,7 @@ def test_contract_fixtures() -> None:
             implausible=[(nas, MeterRead(8.6, 744, 12))],
         ),
     )
+    _fixture("heat_estimated_day.json", house_loads(**OWNER_HEAT))
     _fixture(
         "no_devices.json",
         house_loads(
@@ -645,8 +675,19 @@ async def test_the_pools_the_spas_and_the_saunas_parts_are_in_the_heat_pie_once(
     meter = SimpleNamespace(found=False, entity_id=None)
     parts = heat_parts(hass, controller, meter, ZoneSources())
     assert [(part.part, part.entity_id, part.name) for part in parts] == [("spa", spa, spa), ("sauna", sauna, "Bastu")]
-    reads = part_reads(parts, t0, t0 + timedelta(minutes=40))
+    reads, estimates = part_reads(parts, t0, t0 + timedelta(minutes=40))
     assert [(row.source, read.kwh) for row, read in reads] == [("spa", 0.75), ("sauna", 4.5)]
+    # A shadow that cannot tell what was measured: all of it is an estimate, none left out without the flow's periods.
+    assert estimates == {spa: (0.75, 0.0), sauna: (4.5, 0.0)}
+    # From the flow's periods: an hour whose house had only 2 kWh for them counts only that, said per part.
+    from custom_components.spotnav.api.house import _with_parts
+    from custom_components.spotnav.site.energy_flow import EnergyHour
+
+    periods, count = _with_parts(hass, controller, [EnergyHour(start=t0, grid_in=2.0, grid_out=0.0)], meter, ZoneSources())
+    assert count == 2 and periods[0].heat == pytest.approx(2.0)
+    reads, estimates = part_reads(parts, t0, t0 + timedelta(hours=1), periods)
+    assert [(row.source, round(read.kwh, 3)) for row, read in reads] == [("spa", 0.286), ("sauna", 1.714)]
+    assert estimates[spa] == pytest.approx((2.0 * 0.75 / 5.25, 0.75 - 2.0 * 0.75 / 5.25))
     # A zone whose thermostat is on the spa's device already counts it: the spa is left out, the sauna stays.
     controller.house_forecast.heat.zone_climates = lambda: [spa]
     assert [part.part for part in heat_parts(hass, controller, meter, ZoneSources())] == ["sauna"]

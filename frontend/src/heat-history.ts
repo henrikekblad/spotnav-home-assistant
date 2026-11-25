@@ -56,6 +56,11 @@ export interface HeatPart {
   name: string | null;
   kwh: number;
   cost: number | null;
+  /** Some of its energy is an estimate (the pool, the spa or the sauna without its own trusted power sensor): named
+   * "(estimated)". `false` from a backend before it. */
+  estimated: boolean;
+  /** The estimate the house had no room for (left in the house, as the energy flow counts it); 0 when it fit. */
+  clamped_kwh: number;
 }
 
 const PART_KINDS: readonly string[] = ["pump", "hot_water", "zone", "other", "pool", "spa", "sauna"];
@@ -209,6 +214,8 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
             name: textOrNull(part.name),
             kwh: number(part.kwh),
             cost: numberOrNull(part.cost),
+            estimated: part.estimated === undefined ? false : part.estimated === true ? true : part.estimated === false ? false : bad(),
+            clamped_kwh: part.clamped_kwh === undefined ? 0 : Math.max(0, number(part.clamped_kwh)),
           };
         }),
         saving: nullable(source.saving ?? null, (item) => ({ value: number(item.value), days: count(item.days) })),

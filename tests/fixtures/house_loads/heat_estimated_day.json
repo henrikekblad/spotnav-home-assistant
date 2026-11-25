@@ -1,0 +1,48 @@
+{
+  "api_version": 1,
+  "belongs": {},
+  "clamped_kwh": 23.965,
+  "date": "2026-11-25",
+  "end": "2026-11-26",
+  "house_kwh": 32.895,
+  "implausible": [],
+  "inverter_kwh": null,
+  "kind": "heat",
+  "loads": [
+    {
+      "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
+      "kwh": 25.66,
+      "name": "Elmätare värme (Nibe + panna) Effekt",
+      "source": "heat_pump",
+      "statistic_id": "sensor.varme_effekt"
+    },
+    {
+      "changed": false,
+      "clamped_kwh": 23.965,
+      "estimated": true,
+      "kwh": 7.135,
+      "name": "Spa",
+      "source": "spa",
+      "statistic_id": "climate.spa"
+    },
+    {
+      "changed": false,
+      "clamped_kwh": 0.0,
+      "estimated": false,
+      "kwh": 0.1,
+      "name": "Golvvärme tvättstuga",
+      "source": "zone",
+      "statistic_id": "sensor.golvvarme_tvattstuga_energy"
+    }
+  ],
+  "meters_kwh": 32.895,
+  "moved": [],
+  "other_kwh": 0.0,
+  "over_kwh": 0.0,
+  "period": "day",
+  "site_id": "site_villa",
+  "through": "2026-11-25T23:00:00+00:00",
+  "unknown_kwh": 0.0
+}

@@ -156,6 +156,46 @@ async def test_the_shadow_counts_each_loads_energy_per_hour(hass: HomeAssistant)
     quarters = again.energy_quarters("pool_heat")
     assert quarters == pytest.approx({first + timedelta(minutes=45): 1.6 / 60, first + timedelta(hours=1): 1.6 / 60}, abs=1e-3)
     assert again.energy_hours("pool_circulation") == pytest.approx({first: 0.4 / 60, first + timedelta(hours=1): 0.4 / 60}, abs=1e-3)
+    # Without a trusted power sensor every quarter is an estimate (on time at the entered power), kept over a restart.
+    assert again.estimated_quarters("pool_heat") == pytest.approx(quarters, abs=1e-3)
+    # What a trusted sensor measured is not: only the rest of a quarter is.
+    key = (first + timedelta(minutes=45)).isoformat()
+    again.energy_qm["pool_heat"] = {key: 1.0 / 60}
+    assert again.estimated_quarters("pool_heat")[first + timedelta(minutes=45)] == pytest.approx(0.6 / 60, abs=1e-3)
+
+
+async def test_the_heat_cards_use_tab_takes_the_pools_energy_from_the_energy_flow(hass: HomeAssistant, monkeypatch) -> None:  # noqa: ANN001
+    """The Use tab's loads are the energy flow's heat parts (an estimate only where the house had room); without the
+    flow's periods, the shadow's own figures, all estimated."""
+    from custom_components.spotnav.api import heat_history as api
+    from custom_components.spotnav.site.energy_flow import EnergyHour, HeatPartEnergy, with_heat_parts
+    from custom_components.spotnav.site.history_period import PERIOD_DAY, period_of
+
+    _charger, site_entry, controller = await _site(hass)
+    shadow = controller.pool_spa
+    start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    shadow.tick(start)
+    hass.states.async_set("switch.pool_cirkulation", "on")
+    hass.states.async_set("climate.poolpump", "heat", {"hvac_action": "heating", "current_temperature": 24.0})
+    shadow.tick(start + timedelta(minutes=2))
+    period = period_of(PERIOD_DAY, dt_util.now().date())
+    quarters = {start: 1.6}
+    periods = with_heat_parts([EnergyHour(start=start, grid_in=1.0, grid_out=0.0, minutes=15)], [HeatPartEnergy("pool_heat", quarters, quarters)])
+
+    async def flow(*_args: Any) -> tuple[dict, list | None]:
+        return {}, periods
+
+    monkeypatch.setattr(api, "history_with_periods", flow)
+    (pool,) = await api._load_uses(hass, site_entry, controller, period)  # noqa: SLF001
+    assert (pool.kind, dict(pool.hours), dict(pool.clamped)) == ("pool", {start: pytest.approx(1.0)}, {start: pytest.approx(0.6)})
+
+    async def no_flow(*_args: Any) -> tuple[dict, None]:
+        return {}, None
+
+    monkeypatch.setattr(api, "history_with_periods", no_flow)
+    (pool,) = await api._load_uses(hass, site_entry, controller, period)  # noqa: SLF001
+    assert sum(pool.hours.values()) == pytest.approx(2.0 * 2 / 60, abs=1e-3)
+    assert sum(pool.estimated.values()) == pytest.approx(2.0 * 2 / 60, abs=1e-3) and not pool.clamped
 
 
 SPA = {"entity_id": "climate.spa", "family": "balboa", "baths": [{"weekdays": [1, 2, 3, 4, 5, 6, 7], "time": "19:00"}]}

@@ -34,7 +34,7 @@ from homeassistant.helpers import entity_registry as er
 from ..const import CONF_CHARGE_CONTROL, CONF_CHARGER_ENTRY_IDS, CONF_METER_BELONGS, CONF_POWER_ENTITY
 from ..energy_register import _charger_device_id
 from ..runtime import controller_for, site_controller_for
-from ..site.energy_flow import ROLE_CAR, ROLE_HEAT, ROLE_HOUSE, allocate_hour
+from ..site.energy_flow import ROLE_CAR, ROLE_HEAT, ROLE_HOUSE, EnergyHour, allocate_hour, parts_kwh
 from ..site.energy_statistics import async_energy_prefs, async_statistics
 from ..site.history_period import PERIOD_DAY, period_of, utc_bounds
 from ..site.heat_meter import async_heat_hours
@@ -214,14 +214,29 @@ async def _read_heat(
     return await _work(hass, heavy, judge)
 
 
-def part_reads(parts: Sequence[HeatPart], start: datetime, through: datetime) -> list[tuple[DashboardMeter, MeterRead]]:
-    """The pool's, the spa's and the sauna's parts in the heat pie: each part's counted energy in `[start, through)`
-    (the quarters the energy flow's heat holds, `api/house.py`), its `source` the part's name."""
+def part_reads(
+    parts: Sequence[HeatPart], start: datetime, through: datetime, periods: Sequence[EnergyHour] | None = None
+) -> tuple[list[tuple[DashboardMeter, MeterRead]], dict[str, tuple[float, float]]]:
+    """The pool's, the spa's and the sauna's parts in the heat pie: each part's energy in `[start, through)` as the
+    energy flow's heat holds it (`periods`' `parts`: an estimate only where the house had room,
+    `site/energy_flow.with_heat_parts`), its `source` the part's name; and each part's `(estimated kWh counted, kWh
+    clamped)` by its entity (`site/house_loads.house_loads`'s `estimates`). Without the periods, the quarters as
+    counted (an estimate in full)."""
+    held = None if periods is None else parts_kwh(periods, start, through)
     out: list[tuple[DashboardMeter, MeterRead]] = []
+    estimates: dict[str, tuple[float, float]] = {}
     for part in parts:
-        kwh = sum(value for moment, value in part.quarters.items() if start <= moment < through)
-        out.append((DashboardMeter(part.entity_id, part.name, source=part.part), MeterRead(kwh)))
-    return out
+        row = DashboardMeter(part.entity_id, part.name, source=part.part)
+        if held is not None:
+            share = held.get(part.part)
+            kwh = 0.0 if share is None else share.kwh
+            estimates[part.entity_id] = (0.0, 0.0) if share is None else (share.estimated, share.clamped)
+        else:
+            kwh = sum(value for moment, value in part.quarters.items() if start <= moment < through)
+            guess = sum(value for moment, value in part.estimated.items() if start <= moment < through)
+            estimates[part.entity_id] = (min(kwh, guess), 0.0)
+        out.append((row, MeterRead(kwh)))
+    return out, estimates
 
 
 def _zone_devices(hass: HomeAssistant, climates: Any) -> set[str]:
@@ -292,6 +307,7 @@ async def loads_answer(
         return held[1]
     start = utc_bounds(period, tz)[0]
     reads: list[tuple[DashboardMeter, MeterRead]] = []
+    estimates: dict[str, tuple[float, float]] = {}
     if through is not None and through > start and (meters or kind == KIND_HEAT):
         # Without the flow's hours (they could not be read) only the fuse bounds a meter's hour.
         heavy = period.kind != PERIOD_DAY
@@ -299,7 +315,8 @@ async def loads_answer(
         cap = fuse_kw(controller)  # kW over an hour: kWh
         if kind == KIND_HEAT:
             reads = await _read_heat(hass, meter, zones, start, through, five, limits, cap, heavy)
-            reads += part_reads(parts, start, through)
+            counted, estimates = part_reads(parts, start, through, periods)
+            reads += counted
         else:
             reads = await _read(hass, meters, start, through, five, limits, cap, heavy)
     elif kind == KIND_HEAT:
@@ -319,6 +336,7 @@ async def loads_answer(
         belongs=belongs,
         implausible=reads,
         inverter_kwh=inverter,
+        estimates=estimates,
     )
     cache.pop(key, None)
     cache[key] = (mark, answer)
