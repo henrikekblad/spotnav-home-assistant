@@ -8,9 +8,9 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
     {api_version: 1, site_id, kind: "house" | "heat", period: "day" | "month" | "year", date (the period's first
      day), end (the first day after it), through (the end of the energy flow's last period) | null,
      house_kwh (the block's figure: the house, or the heat) | null, meters_kwh, other_kwh | null, over_kwh,
-     inverter_kwh | null, unknown_kwh | null,
+     inverter_kwh | null, unknown_kwh | null, clamped_kwh,
      loads: [{statistic_id, name, kwh, source: "meter" | "heat_pump" | "zone" | "pool_heat" | "pool_circulation" | "spa"
-              | "sauna", changed}],
+              | "sauna", changed, estimated, clamped_kwh}],
      moved: [{statistic_id, name, belongs}], belongs: {statistic_id: "heat" | "car" | "none"},
      implausible: [{statistic_id, name, hours, left_out}]}
 
@@ -36,6 +36,14 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
   or a zone already reads left out; a dashboard meter on such a part's device is sorted out of the house pie as a
   heat zone's is; `house_kwh` is the flow's heat block and `other_kwh` what
   the flow's heat holds beyond them (none, but for rounding and hours the meter missed).
+* **Estimated parts** (`estimated`, `clamped_kwh`, added 2026-11-25 within API version 1): a pool, spa or sauna part
+  without its own trusted power sensor is counted by its on time at its power, an estimate, which the energy flow lets
+  take only what the house had left after every measured use, period by period (`site/energy_flow.with_heat_parts`):
+  its `kwh` is what the flow's heat holds of it. `estimated` is true on a row any of whose energy in the period is an
+  estimate (or was left out), and the card always names such a row "(estimated)": it is not a measurement.
+  `clamped_kwh` is the estimate the house had no room for (left in the house), 0 when it fit; the answer's
+  `clamped_kwh` is their sum, and the card says once that estimated parts were limited to what was measured. A meter
+  (`meter`, `heat_pump`, `zone`) is never estimated: one that exceeds the heat is still `over_kwh`.
 * **The figures** (`meter_kwh`): each meter's energy over the same span as the flow's house block (the period's
   start up to `through`): the recorder's hourly statistics where the hour is whole, else its 5-minute ones (today's
   running hour). `loads` is sorted by energy, largest first.
@@ -92,6 +100,7 @@ LOADS_KEYS: Final = (
     "over_kwh",
     "inverter_kwh",
     "unknown_kwh",
+    "clamped_kwh",
     "loads",
     "moved",
     "belongs",
@@ -103,7 +112,9 @@ IMPLAUSIBLE_KEYS: Final = ("statistic_id", "name", "hours", "left_out")
 #: measures the car or the heat, stays counted).
 PLAUSIBLE_FACTOR: Final = 2.0
 PLAUSIBLE_MARGIN_KWH: Final = 1.0
-LOAD_KEYS: Final = ("statistic_id", "name", "kwh", "source", "changed")
+LOAD_KEYS: Final = ("statistic_id", "name", "kwh", "source", "changed", "estimated", "clamped_kwh")
+#: Less estimated energy (kWh) in a row is rounding: the row is a measurement.
+ESTIMATE_TOLERANCE_KWH: Final = 0.005
 MOVED_KEYS: Final = ("statistic_id", "name", "belongs")
 KIND_HOUSE: Final = "house"
 KIND_HEAT: Final = "heat"
@@ -255,10 +266,13 @@ def house_loads(
     belongs: Mapping[str, str] | None = None,
     implausible: Iterable[tuple[DashboardMeter, MeterRead]] = (),
     inverter_kwh: float | None = None,
+    estimates: Mapping[str, tuple[float, float]] | None = None,
 ) -> dict[str, Any]:
     """The whole answer (`LOADS_KEYS`). A meter of `implausible` with no plausible hour is left out of `loads`;
-    [inverter_kwh] is the inverter's use (see the module), only in a house pie."""
+    [inverter_kwh] is the inverter's use (see the module), only in a house pie; [estimates] is each estimated row's
+    `(estimated kWh counted, kWh clamped)` by its statistic id (see the module)."""
     belongs = dict(belongs or {})
+    estimates = dict(estimates or {})
     flagged = [(meter, read) for meter, read in implausible if read.dropped > 0]
     gone = {meter.statistic_id for meter, read in flagged if read.left_out}
     loads = [(meter, kwh) for meter, kwh in loads if meter.statistic_id not in gone]
@@ -270,6 +284,8 @@ def house_loads(
                 "kwh": round(max(0.0, kwh), 3),
                 "source": meter.source,
                 "changed": meter.source == SOURCE_METER and meter.statistic_id in belongs,
+                "estimated": _estimated(estimates.get(meter.statistic_id)),
+                "clamped_kwh": round(max(0.0, estimates.get(meter.statistic_id, (0.0, 0.0))[1]), 3),
             }
             for meter, kwh in loads
         ),
@@ -296,6 +312,7 @@ def house_loads(
         "over_kwh": round(over, 3) if over > OVER_TOLERANCE_KWH else 0.0,
         "inverter_kwh": inverter,
         "unknown_kwh": unknown,
+        "clamped_kwh": round(sum((row["clamped_kwh"] for row in rows), 0.0), 3),
         "loads": rows,
         "moved": sorted(
             (
@@ -310,6 +327,10 @@ def house_loads(
             for meter, read in sorted(flagged, key=lambda item: item[0].name.casefold())
         ],
     }
+
+
+def _estimated(figures: tuple[float, float] | None) -> bool:
+    return figures is not None and (figures[0] > ESTIMATE_TOLERANCE_KWH or figures[1] > ESTIMATE_TOLERANCE_KWH)
 
 
 @dataclass(frozen=True, slots=True)

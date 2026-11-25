@@ -1,6 +1,7 @@
 {
   "api_version": 1,
   "belongs": {},
+  "clamped_kwh": 0.0,
   "date": "2026-01-01",
   "end": "2027-01-01",
   "house_kwh": 6120.4,
