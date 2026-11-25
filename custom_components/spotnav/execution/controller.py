@@ -202,6 +202,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+#: The charger record's key for the last `safety_stop: rate_limited` (`ChargingController.rate_limited_stop_at`).
+RATE_LIMITED_STOP_STORE_KEY = "rate_limited_stop_at"
+
 #: How often a charge is looked at for the phases it uses.
 PHASE_SAMPLE_INTERVAL = timedelta(seconds=30)
 #: How often the plan's charge is looked at for the car ending it by itself (`PlanChargeWatch`).
@@ -1133,6 +1136,10 @@ class ChargingController:
         # (`charger_handback.py`). Cleared by any start, a person's Stop or pause, and a charge or an "on" control seen
         # with no stop of ours on its way. Saved (`OWN_STOP_STORE_KEY`).
         self._own_stop = False
+        # When load balancing last stopped this charger's charge because the charger would not take the lower current
+        # yet (`safety_stop: rate_limited`): for that week each write keeps room free below the fuse
+        # (`site/regulator.py` `rate_limit_margin_a`). Saved (`RATE_LIMITED_STOP_STORE_KEY`), only once there was one.
+        self._rate_limited_stop_at: datetime | None = None
         # `_handback_facts` as last saved.
         self._saved_handback: tuple[Any, ...] | None = None
         self._timer_cancels: list[Callable[[], None]] = []
@@ -1368,6 +1375,9 @@ class ChargingController:
             )
             self.adapter.restore_memory(saved.get("adapter_memory"))
             self._own_stop = own_stop_from_record(saved)
+            raw_stop = saved.get(RATE_LIMITED_STOP_STORE_KEY)
+            parsed_stop = dt_util.parse_datetime(raw_stop) if isinstance(raw_stop, str) else None
+            self._rate_limited_stop_at = parsed_stop if parsed_stop is not None and parsed_stop.tzinfo is not None else None
             # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
@@ -3296,6 +3306,11 @@ class ChargingController:
         async with self._automatic(AUTOMATIC_STOP):
             await self._recheck(core_events.RECHECK_STRAY, lambda: self._automatic_stop_locked("the stray charge's stop"))
 
+    @property
+    def rate_limited_stop_at(self) -> datetime | None:
+        """When load balancing last stopped the charge because this charger would not take a lower current yet."""
+        return self._rate_limited_stop_at
+
     async def _async_save_quietly(self) -> None:
         """`_async_save`, logging a failure instead of raising it: the record is a safeguard, never a reason to fail."""
         try:
@@ -4856,6 +4871,10 @@ class ChargingController:
             note = getattr(self.adapter.current, "note_interval_stop", None)
             if callable(note):
                 note()
+        if outcome == ASSIGN_RATE_LIMITED:
+            # Load balancing keeps room free with this charger's writes for a week (`rate_limited_stop_at`).
+            self._rate_limited_stop_at = dt_util.utcnow()
+            self._async_spawn(self._async_save_quietly(), "saving the charger's rate-limited stop")
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     def _log_regulated_stop(self, code: str, cause: str | None) -> None:
@@ -6082,6 +6101,7 @@ class ChargingController:
             self._phases.to_store(),
             self._switched.signature(),
             self._own_stop,
+            self._rate_limited_stop_at,
             None if (pre := self.adapter.pre_current) is None else (pre.recorded, pre.amps),
             # Last: `_persist_session` compares it alone.
             self._car_ended_signature(),
@@ -6162,6 +6182,9 @@ class ChargingController:
             record[SWITCHED_CURRENT_STORE_KEY] = switched
         # For the charger's hand-back when its entry is deleted (`charger_handback.py`).
         record[OWN_STOP_STORE_KEY] = self._own_stop
+        if self._rate_limited_stop_at is not None:
+            # Only once there was one: a charger never so stopped keeps exactly its old record.
+            record[RATE_LIMITED_STOP_STORE_KEY] = self._rate_limited_stop_at.isoformat()
         if self.adapter.pre_current is not None:
             record[PRE_SPOTNAV_CURRENT_STORE_KEY] = self.adapter.pre_current.to_store()
         return record
