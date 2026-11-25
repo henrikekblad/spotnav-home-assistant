@@ -340,6 +340,17 @@ def test_a_later_hand_back_waits_for_its_own_first_reading_again() -> None:
     assert again.state.phase == "restoring" and written(results) == []
 
 
+def test_a_stored_hand_back_naming_a_role_this_version_no_longer_has_still_hands_the_rest_back() -> None:
+    """A hand-back stored by a version whose recipe had one more role: the role unknown now is passed over while the
+    others wait for their first reading, never a failure that would hold the whole hand-back at every look."""
+    again, plant, now = _restarted(found_after="unavailable")
+    state = again.state
+    again.state = replace(state, target={**state.target, "gone_since": 1.0}, written=(*state.written, "gone_since"))
+    looks = int(RESTORE_READ_WAIT_S // TICK.total_seconds())
+    _now, results = run(again, plant, now, looks + 3, None, stopping="restart")
+    assert ("discharge_current", 120.0) in written(results)
+
+
 def test_without_the_flag_a_restart_writes_back_at_once_as_every_other_recipe() -> None:
     plain = replace(DEYE_CONTROL, restore_own_only=False)
     again, plant, now = _restarted(plain, found_after="unavailable")

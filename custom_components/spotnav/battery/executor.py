@@ -3172,8 +3172,12 @@ class Executor:
         for other in state.target:
             if not self._restores_own_only(state, other):
                 continue
+            try:
+                role = self.control.role(other)
+            except KeyError:
+                continue  # a stored target's role this version no longer has: nothing to wait for
             read = inputs.reads.get(other)
-            if reading(self.control.role(other), None if read is None else read.state) is None:
+            if reading(role, None if read is None else read.state) is None:
                 waits[other] = self.restore_wait_since.get(other, inputs.now)
         self.restore_wait_since = waits
         since = waits.get(name)
