@@ -79,9 +79,9 @@ notification, "Hardware test of the battery is running now (about 10 min)", with
 taken off when the test ends. Later checks after an update run by themselves, at any suitable hour, and tell no one.
 
 From the start of the battery part until its grid charge step is over and handed back, SpotNav holds every charger
-on the site stopped: no plan, sun or Start starts one, and a charge a charger begins by itself is stopped. An OCPP charger is set unavailable meanwhile (the `ocpp` integration's
-**Availability** switch) and set back to available afterwards, also at the next start should Home Assistant stop in
-the middle. A charge that starts in those minutes is paused. A test with a battery part waits while a car charges.
+on the site stopped: no plan, sun or Start starts one, and a charge a charger begins by itself is stopped. An OCPP
+charger is set unavailable meanwhile (the `ocpp` integration's **Availability** switch) and set back to available
+afterwards, also at the next start should Home Assistant stop in the middle. A charge that starts in those minutes is paused. A test with a battery part waits while a car charges.
 The chargers are let go as soon as that step is handed back (the steps after it take nothing from the grid), and a
 plan whose window is open starts again. A test stopped or ended early lets them go only once the battery reads handed
 back, at most a minute after the test's own time limit.
