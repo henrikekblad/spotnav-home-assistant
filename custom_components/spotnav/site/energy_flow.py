@@ -20,7 +20,12 @@ spa and the sauna** are parts of heat too (`with_heat_parts`): the energy the po
 hour (`pool/runtime.energy_quarters`: the part's own power sensor where it is trusted, else its on time at its power
 as it counts), added to each period's heat, so the house drops by the same energy and the heat card's Use tab shows the
 same figures; a part whose device the heat pump's meter or a zone already reads is left out (`api/house.py`), and a
-period without a part's quarters leaves it in the house. `heat_sources` is how many sources it holds (the meter, each
+period without a part's quarters leaves it in the house. **An estimate is not a measurement** (2026-11-25): a part's
+energy read by its own trusted power sensor counts first, as the heat pump's meter and the zones do; what is an
+estimate (on time at the part's power, `pool/runtime.estimated_quarters`) may take at most what the period's house has
+left after every measured use (`max(0, house)`, period by period), so a spa set up at too high a power never swallows
+the house. What an estimate could not take stays in the house and is kept per part (`PartShare.clamped`), so the heat
+pie says it (`site/house_loads.py`: `estimated`, `clamped_kwh`). `heat_sources` is how many sources it holds (the meter, each
 zone and each such part counted), so the card offers their split (`spotnav/get_house_loads` `kind: "heat"`) only
 when there is more than one.
 
@@ -67,7 +72,7 @@ battery's rule (export first, then the house); `ALLOCATION` holds the order and 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -117,6 +122,31 @@ SETTLE: Final = timedelta(minutes=1)
 
 
 @dataclass(frozen=True, slots=True)
+class PartShare:
+    """A heat part's energy in one period (kWh): what is counted in its heat (`kwh`, of it `estimated` an estimate)
+    and the estimate left out because the house had no room for it (`clamped`, see the module)."""
+
+    key: str
+    kwh: float
+    estimated: float = 0.0
+    clamped: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class HeatPartEnergy:
+    """A heat part's energy per UTC quarter-hour start (kWh, `quarters`) and what of it is an estimate (`estimated`,
+    at most the quarter's energy; absent: none)."""
+
+    key: str
+    quarters: Mapping[datetime, float]
+    estimated: Mapping[datetime, float] = field(default_factory=dict)
+
+
+#: Smaller estimates over the house's room (kWh) are rounding, not a clamp.
+CLAMP_TOLERANCE_KWH: Final = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
 class EnergyHour:
     """One period (kWh): a completed local hour, a quarter hour, or the running quarter's finished 5-minute rows
     (`minutes`). `solar` / `battery_*` are `None` on a site without that statistic; `car` is `None` when the cars'
@@ -134,39 +164,80 @@ class EnergyHour:
     heat: float | None = None
     minutes: int = 60
     inverter: float | None = None
+    #: The pool's, the spa's and the sauna's parts counted in `heat` (`with_heat_parts`), each once.
+    parts: tuple[PartShare, ...] = ()
 
     @property
     def end(self) -> datetime:
         return self.start + timedelta(minutes=self.minutes)
 
 
-def with_heat_parts(periods: Sequence[EnergyHour], parts: Sequence[Mapping[datetime, float]]) -> list[EnergyHour]:
+def house_room(period: EnergyHour) -> float:
+    """What the period's house is before the heat parts: the sources less every use (`allocate_hour`'s balance), may
+    be below 0 where the meters disagree."""
+    sources = max(0.0, period.solar or 0.0) + max(0.0, period.battery_out or 0.0) + max(0.0, period.grid_in)
+    uses = (
+        max(0.0, period.battery_in or 0.0)
+        + max(0.0, period.car or 0.0)
+        + max(0.0, period.heat or 0.0)
+        + max(0.0, period.grid_out)
+    )
+    return sources - uses
+
+
+def with_heat_parts(
+    periods: Sequence[EnergyHour], parts: Sequence[Mapping[datetime, float] | HeatPartEnergy]
+) -> list[EnergyHour]:
     """The periods with each part's energy (kWh per UTC quarter-hour start) added to their heat: an hour takes its
-    four quarters, a quarter hour its own (the running one what is counted so far). A period with nothing of them
-    keeps its heat as it was (`None` stays `None`)."""
+    four quarters, a quarter hour its own (the running one what is counted so far). A plain mapping is measured
+    energy (its key its index); a `HeatPartEnergy` says what of it is an estimate. Measured energy is added as it is;
+    the estimates together take at most what the house has left after it (`house_room`, never below 0), each part
+    in proportion, and what they could not take is the part's `clamped` (see the module). Each part with energy in a
+    period is in its `parts`. A period with nothing of them keeps its heat as it was (`None` stays `None`)."""
     if not parts:
         return list(periods)
+    known = [
+        part if isinstance(part, HeatPartEnergy) else HeatPartEnergy(str(index), part) for index, part in enumerate(parts)
+    ]
     out: list[EnergyHour] = []
     for period in periods:
         count = 4 if period.minutes >= 60 else -(-period.minutes // 15)
-        added = sum(part.get(period.start + QUARTER * index, 0.0) for part in parts for index in range(count))
-        if added <= 0:
+        slots = [period.start + QUARTER * index for index in range(count)]
+        figures: list[tuple[str, float, float]] = []
+        for part in known:
+            total = sum(max(0.0, part.quarters.get(slot, 0.0)) for slot in slots)
+            guess = min(total, sum(max(0.0, part.estimated.get(slot, 0.0)) for slot in slots))
+            if total > 0:
+                figures.append((part.key, total - guess, guess))
+        if not figures:
             out.append(period)
             continue
-        out.append(
-            EnergyHour(
-                start=period.start,
-                grid_in=period.grid_in,
-                grid_out=period.grid_out,
-                solar=period.solar,
-                battery_in=period.battery_in,
-                battery_out=period.battery_out,
-                car=period.car,
-                heat=(period.heat or 0.0) + added,
-                minutes=period.minutes,
-                inverter=period.inverter,
-            )
+        measured = sum(sure for _key, sure, _guess in figures)
+        guessed = sum(guess for _key, _sure, guess in figures)
+        room = max(0.0, house_room(period) - measured)
+        share = 1.0 if guessed <= room + CLAMP_TOLERANCE_KWH else room / guessed
+        shares = tuple(
+            PartShare(key, sure + guess * share, guess * share, guess * (1.0 - share)) for key, sure, guess in figures
         )
+        added = measured + guessed * share
+        heat = period.heat if added <= 0 else (period.heat or 0.0) + added
+        out.append(replace(period, heat=heat, parts=shares))
+    return out
+
+
+def parts_kwh(periods: Sequence[EnergyHour], start: datetime, through: datetime) -> dict[str, PartShare]:
+    """Each heat part's energy summed over the periods in `[start, through)` (`EnergyHour.parts`), by its key."""
+    out: dict[str, PartShare] = {}
+    for period in periods:
+        if not start <= period.start < through:
+            continue
+        for item in period.parts:
+            held = out.get(item.key)
+            out[item.key] = (
+                item
+                if held is None
+                else PartShare(item.key, held.kwh + item.kwh, held.estimated + item.estimated, held.clamped + item.clamped)
+            )
     return out
 
 

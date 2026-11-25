@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Final
 
@@ -41,6 +41,7 @@ from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from ..core.electric import site_fuse_kw
 from ..planning.demand_charge import hour_start
 from ..site.energy_flow import (
+    HeatPartEnergy,
     with_heat_parts,
     SETTLE,
     EnergyHour,
@@ -490,12 +491,14 @@ async def _hourly_periods(
 @dataclass(frozen=True, slots=True)
 class HeatPart:
     """A pool, spa or sauna part counted in heat (`site/energy_flow.with_heat_parts`): its part name
-    (`pool/runtime.ENERGY_PARTS`), the entity it is set up by, its name and its energy per UTC quarter hour."""
+    (`pool/runtime.ENERGY_PARTS`), the entity it is set up by, its name, its energy per UTC quarter hour and what of
+    it is an estimate (on time at its power, `pool/runtime.estimated_quarters`)."""
 
     part: str
     entity_id: str
     name: str
     quarters: Mapping[datetime, float]
+    estimated: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSources) -> list[HeatPart]:
@@ -544,7 +547,10 @@ def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSour
         if not quarters:
             continue
         state = hass.states.get(entity_id)
-        out.append(HeatPart(part, entity_id, entity_id if state is None else state.name, quarters))
+        estimated = getattr(shadow, "estimated_quarters", None)
+        # A shadow that cannot tell: every quarter an estimate (it may take only the house's room).
+        guessed = quarters if estimated is None else estimated(part)
+        out.append(HeatPart(part, entity_id, entity_id if state is None else state.name, quarters, guessed))
     return out
 
 
@@ -611,13 +617,15 @@ def with_inverter(hass: HomeAssistant, controller: Any, ids: FlowIds, periods: S
 
 
 def _with_parts(hass: HomeAssistant, controller: Any, periods: Sequence[EnergyHour], meter: Any, zones: ZoneSources) -> tuple[list[EnergyHour], int]:
-    """The periods with the pool's, the spa's and the sauna's energy in their heat, and how many parts that is."""
+    """The periods with the pool's, the spa's and the sauna's energy in their heat (an estimate only where the house
+    has room, `site/energy_flow.with_heat_parts`), and how many parts that is."""
     try:
         parts = heat_parts(hass, controller, meter, zones)
     except Exception:  # noqa: BLE001 - without them they stay in the house
         _LOGGER.debug("SpotNav house view: the pool's and the spa's energy could not be read", exc_info=True)
         return list(periods), 0
-    return with_heat_parts(periods, [part.quarters for part in parts]), len(parts)
+    energies = [HeatPartEnergy(part.part, part.quarters, part.estimated) for part in parts]
+    return with_heat_parts(periods, energies), len(parts)
 
 
 async def async_day_flow(

@@ -328,6 +328,66 @@ def test_the_pool_the_spa_and_the_sauna_move_from_the_house_into_heat_counted_on
     assert [period.heat for period in with_heat_parts(quarters, [sauna])] == [None, 2.25, 2.25, 2.25]
 
 
+def _owner_day() -> tuple[list, list]:
+    """The owner's day of 2026-11-25 by the quarter hour: the site used 40.03 kWh (house and heat), the heat pump's
+    meter 25.66 and the zones 0.1 of it (measured, evenly), and a spa without a meter was counted at 31.1 kWh over
+    the first half of the day (on time at its power: an estimate)."""
+    from custom_components.spotnav.site.energy_flow import HeatPartEnergy
+
+    t0 = datetime(2026, 11, 24, 23, tzinfo=timezone.utc)
+    starts = [t0 + timedelta(minutes=15 * q) for q in range(96)]
+    quarters = [EnergyHour(start=moment, grid_in=40.03 / 96, grid_out=0.0, heat=25.76 / 96, minutes=15) for moment in starts]
+    spa = {moment: 31.1 / 48 for moment in starts[:48]}
+    return quarters, [HeatPartEnergy("spa", spa, spa)]
+
+
+def test_an_estimated_part_takes_only_what_the_house_has_left_after_the_measured_ones() -> None:
+    from custom_components.spotnav.site.energy_flow import parts_kwh, with_heat_parts
+
+    quarters, parts = _owner_day()
+    counted = with_heat_parts(quarters, parts)
+    flow = energy_flow(counted, day=date(2026, 11, 25), has_solar=False, has_battery=False, has_heat=True, step_min=15)
+    nodes = {node["role"]: node["kwh"] for node in flow["nodes"]}
+    spa = parts_kwh(counted, quarters[0].start, counted[-1].end)["spa"]
+    # The measured heat counts in full; the spa takes at most the 14.27 kWh left, and only where it ran.
+    assert spa.kwh <= 40.03 - 25.76 + 1e-6
+    assert spa.kwh == pytest.approx(48 * (40.03 - 25.76) / 96)
+    assert spa.estimated == pytest.approx(spa.kwh) and spa.clamped == pytest.approx(31.1 - spa.kwh)
+    # The house stays: the half of the day the spa was off keeps its unexplained use.
+    assert nodes["house"] == pytest.approx(48 * (40.03 - 25.76) / 96, abs=0.01) and nodes["house"] > 0
+    assert nodes["heat"] == pytest.approx(25.76 + spa.kwh, abs=0.01)
+    assert nodes["house"] + nodes["heat"] == pytest.approx(40.03, abs=0.01)
+    # By the hour (a month's read) the same rule: never more than the house had left in the hour.
+    hours = [
+        EnergyHour(start=quarters[4 * h].start, grid_in=40.03 / 24, grid_out=0.0, heat=25.76 / 24) for h in range(24)
+    ]
+    by_hour = parts_kwh(with_heat_parts(hours, parts), hours[0].start, hours[-1].end)["spa"]
+    assert by_hour.kwh == pytest.approx(spa.kwh) and by_hour.clamped == pytest.approx(spa.clamped)
+
+
+def test_a_measured_part_over_the_house_still_counts_and_an_estimate_that_fits_is_unchanged() -> None:
+    from custom_components.spotnav.site.energy_flow import HeatPartEnergy, parts_kwh, with_heat_parts
+
+    t0 = datetime(2026, 11, 24, 16, tzinfo=timezone.utc)
+    period = EnergyHour(start=t0, grid_in=3.0, grid_out=0.0, heat=1.0)
+    # A measured part (its own trusted sensor) is added as read, past the house: the flow's shortfall rule as before.
+    over = with_heat_parts([period], [{t0: 5.0}])[0]
+    assert over.heat == 6.0 and over.parts[0].clamped == 0.0
+    assert ("grid", "house") not in allocate_hour(over)
+    # A measured part counts first; an estimate gets only what is left after it.
+    mixed = with_heat_parts([period], [{t0: 1.5}, HeatPartEnergy("spa", {t0: 2.0}, {t0: 2.0})])[0]
+    assert mixed.heat == pytest.approx(1.0 + 1.5 + 0.5)
+    assert parts_kwh([mixed], t0, t0 + timedelta(hours=1))["spa"].clamped == pytest.approx(1.5)
+    # An estimate that fits is counted whole, as before.
+    fits = with_heat_parts([period], [HeatPartEnergy("spa", {t0: 1.2}, {t0: 1.2})])[0]
+    assert fits.heat == pytest.approx(2.2)
+    assert fits.parts[0].kwh == pytest.approx(1.2) and fits.parts[0].clamped == 0.0
+    assert allocate_hour(fits)[("grid", "house")] == pytest.approx(0.8)
+    # A part partly measured: its measured share is never clamped.
+    half = with_heat_parts([period], [HeatPartEnergy("pool_heat", {t0: 3.0}, {t0: 1.0})])[0]
+    assert half.heat == pytest.approx(3.0) and half.parts[0].clamped == pytest.approx(1.0)
+
+
 def _house(flow: dict) -> float:
     return next(node["kwh"] for node in flow["nodes"] if node["role"] == "house")
 
