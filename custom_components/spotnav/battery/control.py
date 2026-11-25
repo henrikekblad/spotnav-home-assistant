@@ -478,6 +478,9 @@ class BatteryControl:
         #: The keys (`firmware_key`) a later hardware test failed on, after the first pass: shadow only there until
         #: one passes again.
         self.hardware_failed: list[str] = []
+        #: The brands gated after running (`commands.GATED_AFTER_RUNNING`) this plant was looked at for
+        #: grandfathering (`_grandfather_running`), granted or not: each is decided once and never again.
+        self.grandfather_checked: list[str] = []
         #: The person's sign-up as a tester for the plant's brand (`battery/tester.py`: `brand`, `asked_at`, `ref`, and
         #: once a test's result went `result_ref`, `result_at`), `None` before one; never the e-mail address.
         self.tester: dict[str, Any] | None = None
@@ -646,6 +649,10 @@ class BatteryControl:
         self.hardware_failed = (
             [key for key in failed if isinstance(key, str)][-MAX_REPORTS:] if isinstance(failed, list) else []
         )
+        checked = data.get("grandfather_checked")
+        self.grandfather_checked = (
+            [brand for brand in checked if isinstance(brand, str)] if isinstance(checked, list) else []
+        )
         tester, codes = data.get("tester"), data.get("control_codes")
         self.tester = dict(tester) if isinstance(tester, dict) and isinstance(tester.get("brand"), str) else None
         self.control_codes = {
@@ -684,24 +691,34 @@ class BatteryControl:
 
     def _grandfather_running(self) -> None:
         """A plant of a brand gated after its control could already run (`commands.GATED_AFTER_RUNNING`) whose control
-        ran: switched on, and the routine's check passed on the firmware key now (`reports`). It counts as the brand's
-        first pass here (`hardware_brands`) and as having its control code (a `grandfathered` record with the date):
-        control never stops by an update (owner rule), and no tester sign-up or code is asked of it. Never for a plant
-        a person's hardware test passed on (`hardware_brands`: the code approves that pass), and once only: a plant
-        that holds a record for the brand (a code, or this) is never looked at again, so a pass voided later by a
-        block stays void."""
+        ran: the routine's check passed here for the brand on any firmware key and recipe revision (`reports`; a key
+        with an unread firmware is no evidence). It counts as the brand's first pass here (`hardware_brands`) and as
+        having its control code (a `grandfathered` record with the date): control never stops by an update (owner
+        rule), and no tester sign-up or code is asked of it. Whether control is switched on now and the key now do not
+        matter: an integration updated in the same restart, a firmware the routine has not re-passed yet or control
+        switched off at the update keep it, and the routine checks the key now as it always did. Never for a plant a
+        person's hardware test passed on (`hardware_brands`: the code approves that pass) or that a tester signed up
+        for. Decided once per plant and brand (`grandfather_checked`), granted or not: a plant with no passed report
+        when its brand is first seen is never looked at again, and a pass voided later by a block stays void."""
         control = self._gated_control()
-        if control is None or control.brand not in GATED_AFTER_RUNNING:
+        if control is None or control.brand not in GATED_AFTER_RUNNING or control.brand in self.grandfather_checked:
             return
-        if control.brand in self.control_codes or control.brand in self.hardware_brands:
-            # A record already, or a person's hardware test passed here (its pass is the routine's report too):
-            # the developer's code approves that one.
+        self.grandfather_checked = [*self.grandfather_checked, control.brand]
+        if (
+            control.brand in self.control_codes or control.brand in self.hardware_brands
+            or (self.tester is not None and self.tester.get("brand") == control.brand)
+        ):
+            # A record already, a person's hardware test passed here (its pass is the routine's report too) or a
+            # tester's sign-up: the developer's code approves that one.
             return
-        key = self.firmware_key()
-        if not gate.firmware_known(key) or gate.report_status(self.reports.get(key)) != "passed":
+        passed = [
+            key for key, report in self.reports.items()
+            if isinstance(report, dict) and report.get("brand") == control.brand and gate.firmware_known(key)
+            and gate.report_status(report) == "passed"
+        ]
+        if not passed:
             return
-        if not self._stored_options().enabled:
-            return
+        key = passed[-1]
         now = dt_util.now()
         self.hardware_brands.append(control.brand)
         self.control_codes = dict(self.control_codes) | {control.brand: {
@@ -3499,6 +3516,7 @@ class BatteryControl:
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
                      "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
                      "hardware_failed": list(self.hardware_failed),
+                     "grandfather_checked": list(self.grandfather_checked),
                      "tester": None if self.tester is None else dict(self.tester),
                      "control_codes": {brand: dict(code) for brand, code in self.control_codes.items()}},
         }

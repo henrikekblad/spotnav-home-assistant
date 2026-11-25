@@ -348,11 +348,27 @@ def _gated_after_running(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(control_module, "GATED_AFTER_RUNNING", frozenset({"sigenergy"}))
 
 
+def _not_yet_looked_at(control: control_module.BatteryControl) -> None:
+    """The plant as the first start after the update finds it: `_waiting_site` passes the routine only after its
+    start, which already decided the brand (`grandfather_checked`); a real plant has its reports in the store."""
+    control.grandfather_checked = []
+
+
+def _moved_to_an_older_key(control: control_module.BatteryControl) -> str:
+    """The passed report under the key now moved to an older key (the integration updated in the same restart): the
+    key now has no report yet. Returns the older key."""
+    key = control.firmware_key()
+    older = key.replace(" | ", " | old-", 1)
+    control.reports = {older: {**control.reports.pop(key), "key": older}}
+    return older
+
+
 async def test_a_plant_whose_control_already_ran_keeps_it_with_no_sign_up_or_code_asked(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     _gated_after_running(monkeypatch)
     site, controller, plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _not_yet_looked_at(control)
     # Switched on, with the routine's check passed on the firmware key now (`_started`): the first look counts it as
     # passed and as having its code, so control goes on as before the update.
     now = dt_util.now()
@@ -373,9 +389,45 @@ async def test_a_plant_whose_control_already_ran_keeps_it_with_no_sign_up_or_cod
     await control.async_stop()
     again = control_module.BatteryControl(hass, controller, plan_source=control._plan_source)
     await again.async_start()
-    assert again.control_codes["sigenergy"]["grandfathered"] is True
+    assert again.control_codes["sigenergy"]["grandfathered"] is True and again.grandfather_checked == ["sigenergy"]
     assert again.hardware_test_due() is None and again.tester_view() is None
     await again.async_stop()
+
+
+async def test_a_plant_updated_in_the_same_restart_keeps_control_and_the_routine_checks_the_new_key(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _not_yet_looked_at(control)
+    # The integration was updated with SpotNav: the pass is on the key before, the key now has no report yet.
+    older = _moved_to_an_older_key(control)
+    assert control.reports.get(control.firmware_key()) is None
+    await control.async_look(dt_util.now())
+    assert control.control_codes["sigenergy"]["grandfathered"] is True
+    assert control.control_codes["sigenergy"]["firmware_key"] == older
+    # Nothing forces shadow only: the routine runs on the key now, as it did before the brand was gated.
+    assert control.hardware_test_due() is None
+    assert control.options().shadow_only is False and control.state() != "shadow_only"
+    await control.async_stop()
+
+
+async def test_a_plant_whose_control_was_off_at_the_update_keeps_it_when_switched_on(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _not_yet_looked_at(control)
+    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_enabled": False})
+    await control.async_look(dt_util.now())
+    # The passed report proves it ran: grandfathered while off.
+    assert control.control_codes["sigenergy"]["grandfathered"] is True
+    # Switched on later: no sign-up, no test, no code.
+    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_enabled": True})
+    await control.async_look(dt_util.now() + timedelta(seconds=10))
+    assert control.hardware_test_due() is None and control.tester_view() is None
+    assert control.options().shadow_only is False
+    await control.async_stop()
 
 
 async def test_a_plant_that_never_passed_still_signs_up_tests_and_enters_a_code(
@@ -384,7 +436,8 @@ async def test_a_plant_that_never_passed_still_signs_up_tests_and_enters_a_code(
     _gated_after_running(monkeypatch)
     site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
     _relay(monkeypatch)
-    # No passed report on the key now: nothing is recorded, the sign-up comes first.
+    _not_yet_looked_at(control)
+    # No passed report at all: nothing is granted, the sign-up comes first.
     control.reports.clear()
     await control.async_look(dt_util.now())
     assert control.control_codes == {} and control.hardware_brands == []
@@ -401,7 +454,7 @@ async def test_a_plant_that_never_passed_still_signs_up_tests_and_enters_a_code(
     await control.async_stop()
 
 
-async def test_control_switched_off_or_another_brand_is_never_grandfathered(
+async def test_another_brand_or_a_second_look_is_never_grandfathered(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
@@ -412,11 +465,32 @@ async def test_control_switched_off_or_another_brand_is_never_grandfathered(
     control.control_codes = {"sigenergy": {"grandfathered": True, "entered_at": "2026-11-25T12:00:00+01:00"}}
     await control._async_check_codes()
     assert control.control_codes == {}
-    # One gated after running, but with control switched off: nothing recorded.
+    # One gated after running whose brand was already looked at (here at the start, before the routine passed):
+    # a pass found later is never counted.
     _gated_after_running(monkeypatch)
-    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_enabled": False})
+    control.grandfather_checked = ["sigenergy"]
     await control.async_look(dt_util.now() + timedelta(seconds=10))
     assert control.control_codes == {} and control.hardware_brands == []
+    await control.async_stop()
+
+
+async def test_a_testers_pass_voided_by_a_block_never_becomes_grandfathered(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _relay(monkeypatch)
+    _not_yet_looked_at(control)
+    control.reports.clear()
+    await control.async_look(dt_util.now())
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
+    assert control.hardware_brands == ["sigenergy"] and "sigenergy" not in control.control_codes
+    # A block voids the pass; its report is still a passed one, but the brand was decided: no record.
+    control.hardware_brands = []
+    await control.async_look(dt_util.now() + timedelta(seconds=10))
+    assert "sigenergy" not in control.control_codes
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_FIRST
     await control.async_stop()
 
 
@@ -425,6 +499,7 @@ async def test_a_grandfathered_pass_voided_by_a_block_is_not_given_back(
 ) -> None:
     _gated_after_running(monkeypatch)
     _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _not_yet_looked_at(control)
     await control.async_look(dt_util.now())
     assert control.hardware_brands == ["sigenergy"]
     # A block voids the pass (`_void_blocked_passes`); after it, the record stays and the pass is not given back.
