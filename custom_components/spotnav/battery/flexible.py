@@ -102,5 +102,5 @@ def site_battery_load(site: Any) -> FlexibleLoad | None:
         battery.options(),
         main_fuse_a=_fuse_a(site.config),
         phased=bool(executor is not None and executor.control.phased),
-        control=control_for(facts.brand),
+        control=control_for(facts.control_brand),
     )

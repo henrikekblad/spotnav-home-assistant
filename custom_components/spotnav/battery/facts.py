@@ -199,6 +199,16 @@ class BatteryFacts:
     #: What was worked out and not read: `capacity_from_ah` (Ah x the live voltage), `rated_from_current` (the BMS'
     #: present current limits x the live voltage). The plan carries them on as its estimates.
     estimates: tuple[str, ...] = ()
+    #: Set where SpotNav may only read the battery, never control it: `remote_homeassistant` for one mirrored from
+    #: another Home Assistant (`mirrored.py`). The controls are then `None` and `control_brand` is `None`.
+    read_only: str | None = None
+    #: How a mirrored battery's adapter was found (`mirrored.MirrorMatch.as_dict`), for the diagnostics.
+    mirror: Mapping[str, Any] | None = None
+
+    @property
+    def control_brand(self) -> str | None:
+        """The brand a control recipe is looked up by (`commands.control_for`): `None` for a read-only battery."""
+        return None if self.read_only is not None else self.brand
 
     @property
     def max_charge_kw(self) -> float | None:
@@ -248,6 +258,8 @@ class BatteryFacts:
             },
             "sources": dict(self.sources),
             "estimates": list(self.estimates),
+            "read_only": self.read_only,
+            "mirror": None if self.mirror is None else dict(self.mirror),
         }
 
 
@@ -614,16 +626,19 @@ def battery_facts(
     external_planner: str | None = None,
     found_states: Mapping[str, str] | None = None,
     sw_version: str | None = None,
+    adapter: Adapter | None = None,
 ) -> BatteryFacts:
     """What SpotNav knows of the site's battery. `entities` are the battery integration's entities (its config
     entry's); `manufacturer` is the battery device's; `external_planner` names a battery planner found running
     (Predbat, EMHASS), which runs the battery whatever its own mode says. `found_states`: the states SpotNav's control found
     before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found.
     `sw_version`: the battery device's software version in the device registry, the firmware where the adapter
-    names no firmware entity or it reads nothing (`device_firmware`)."""
+    names no firmware entity or it reads nothing (`device_firmware`). `adapter`: the adapter to read with, in place
+    of the one of the battery's platform (a mirrored battery's, `mirrored.match_adapter`)."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
-    adapter = adapter_for(battery.platform, manufacturer, battery.unique_id)
+    if adapter is None:
+        adapter = adapter_for(battery.platform, manufacturer, battery.unique_id)
     management = _management(adapter, entities, battery, external_planner)
     if adapter is None:
         soc = _unknown_brand_soc(entities, battery)

@@ -326,7 +326,7 @@ def read_export_facts(
         anchor_fact, entities, manufacturer=None if device is None else device.manufacturer,
         external_planner=external_planner(hass),
     )
-    control = export_control_for(facts.brand)
+    control = export_control_for(facts.control_brand)
     return facts, ({} if control is None else role_reads(control, entities, anchor_fact)), control
 
 
@@ -507,7 +507,7 @@ class BatteryShadow:
         """The reserve (%) the plant tops itself up to from the grid, where its recipe declares such a top-up
         (`commands.AutonomousImport`, trigger `below_reserve`): read where the plant shows it, else the facts' own
         reserve; `None` for every other recipe."""
-        control = control_for(facts.brand)
+        control = control_for(facts.control_brand)
         spec = None if control is None else control.autonomous_import
         if spec is None or spec.trigger != "below_reserve":
             return None
@@ -619,7 +619,7 @@ class BatteryShadow:
             volts_between_phases=stored_voltage_between_phases_v(self.site.config),
             charger_ids=chargers,
             car_kw=car_kw,
-            reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
+            reads=read_role_reads(self.hass, self.site.config, control_for(facts.control_brand)),
             takeover=self._takeover(),
             variant=self._hold_variant(),
         )

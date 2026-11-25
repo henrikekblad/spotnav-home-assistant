@@ -610,7 +610,7 @@ class BatteryControl:
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
         # The battery first (a grid charge left standing adds import), then the export limit.
-        control = control_for(state.brand) or control_for(self.facts.brand)
+        control = control_for(state.brand) or control_for(self.facts.control_brand)
         if control is not None:
             self.executor = Executor(
                 control, Ledger.from_dict(self._stored.get("ledger")), Monitor.from_dict(self._stored.get("monitor")),
@@ -852,7 +852,7 @@ class BatteryControl:
 
     def recipe(self) -> BrandControl | None:
         """The plant's recipe (`commands.control_for` its brand), `None` for a brand SpotNav has none for."""
-        return control_for(self.facts.brand)
+        return control_for(self.facts.control_brand)
 
     async def async_store(self) -> None:
         """Store the state now (a tester's sign-up, a control code: `battery/tester.py`)."""
@@ -861,7 +861,7 @@ class BatteryControl:
     def _gated_control(self) -> BrandControl | None:
         """The plant's recipe when it writes only after a person's hardware test and the developer's control code
         (`BrandControl.hardware_test_first`, not yet `field_tested`), `None` for every other plant."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or not control.hardware_test_first or control.field_tested:
             return None
         return control
@@ -916,7 +916,7 @@ class BatteryControl:
     def recipe_blocked(self) -> bool:
         """Whether this SpotNav release holds the recipe back on the plant's firmware key or the recipe's revision
         (`commands.blocked`): shadow only, whatever was passed."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return control is not None and blocked(control, self.firmware_key())
 
     def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
@@ -989,7 +989,7 @@ class BatteryControl:
     def _with_revision(self, key: str) -> str:
         """A report key with the recipe's revision: a recipe changed since its first revision is checked again, as
         a firmware update is (`BrandControl.recipe_rev`, ` r<rev>` from 2)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return key if control is None or control.recipe_rev <= 1 else f"{key} r{control.recipe_rev}"
 
     def firmware_known(self) -> bool:
@@ -1004,7 +1004,7 @@ class BatteryControl:
         report = self.reports.get(key)
         if not isinstance(report, dict):
             return None
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         current = report if control is None else gate.without_removed_hold(report, control.variant_names())
         if current is not report:
             # A hold passed in a variant the recipe no longer has: pending again, so the routine checks it.
@@ -1044,17 +1044,17 @@ class BatteryControl:
     def _supported(self, actions: frozenset[str]) -> frozenset[str]:
         """The actions the plant's recipe has (a limits-only recipe has no grid charge or sale): a report never allows
         what the executor would refuse."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return frozenset() if control is None else frozenset(action for action in actions if control.supports(action))
 
     def _supported_modes(self) -> frozenset[str] | None:
         """The battery modes the plant's recipe has an action for (`verify.supported_modes`), `None` without one."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return None if control is None else supported_modes(control)
 
     def _export_needs_charge(self) -> bool:
         """Whether this brand's discharge to the grid needs the charge step passed (`gate.allowed_actions`)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return control is not None and control.export_signed_by_charge()
 
     def _require(self, ok: bool, what: str) -> None:
@@ -1227,7 +1227,7 @@ class BatteryControl:
         elif not options.enabled and self._enabled_seen:
             self._log([{"at": now.isoformat(), "kind": "disabled", "reason": "opt_out"}])
         self._enabled_seen = options.enabled
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         executor = self.executor
         handed_back = executor is None or (executor.state.phase in ("idle", "blocked") and not executor.state.holds_snapshot)
         if control is not None and handed_back and taken_over(self.facts, control):
@@ -1264,7 +1264,7 @@ class BatteryControl:
     def hold_variant(self) -> str | None:
         """The hold variant control runs on this firmware (`gate.hold_variant_to_run`); `None` for a brand with one
         hold. The shadow and its previews show the same."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         names = () if control is None else control.variant_names()
         return (gate.hold_variant_to_run(self.report(), names) or names[0]) if names else None
 
@@ -1306,7 +1306,7 @@ class BatteryControl:
 
     def _phase_missing_now(self) -> str | None:
         """`_phase_missing`, read afresh (it walks the registry: once a look, `_look_id`)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         spec = None if control is None else control.phase_control
         if control is None or spec is None:
             return "not_supported"
@@ -1341,7 +1341,7 @@ class BatteryControl:
         cached = self._grid_read
         if cached is not None and cached[0] == self._look_id:
             return cached[1]
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         spec = None if control is None else control.phase_control
         found: tuple[Phases, Phases] | None = None
         if control is not None and spec is not None and spec.behind is not None and spec.point is not None:
@@ -1389,7 +1389,7 @@ class BatteryControl:
         runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`). `accept`: whether the
         person accepted the HA-down risk (`battery_control_accept_ha_down`), by default as stored now. `no_cars`:
         the chargers and SpotNav's own heat counted as drawing nothing, for the status's offer only."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=0.0 if no_cars else self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
@@ -1418,7 +1418,7 @@ class BatteryControl:
             return cap, None
         caps = self._phase_caps_kw(now, accept=options.accept_ha_down, no_cars=no_cars)
         total = sum(caps)
-        if options.accept_ha_down and _accept_applies(control_for(self.facts.brand)):
+        if options.accept_ha_down and _accept_applies(control_for(self.facts.control_brand)):
             # Accepted: the phases' caps and the balanced one are both the empty house's fuse, so there is no gain to
             # weigh; the charge per phase keeps running where it is verified (and where `charge` was shown only per
             # phase, it is the one grid charge there is).
@@ -1432,7 +1432,7 @@ class BatteryControl:
         `_phase_missing`), `used` (a grid charge now would run per phase), `caps_kw` (each phase's HA-down cap) and
         `charging_kw` (what a running charge per phase is commanded at). `None` for a brand without targets per
         phase."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or control.phase_control is None:
             return None
 
@@ -1631,7 +1631,7 @@ class BatteryControl:
     def _within_charge_power(self, cap: float | None) -> float | None:
         """A grid charge cap (`None`: none) lowered to what the plant's own charge power entity takes
         (`_charge_entity_max_kw`), for a live charge, a test action and the plan alike; never raised."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         entity_kw = None if control is None else self._charge_entity_max_kw(control)
         if entity_kw is None:
             return cap
@@ -1667,7 +1667,7 @@ class BatteryControl:
         control in shadow only on that key (`hardware_failed`) until one passes again. A stopped test without a
         failure changes nothing."""
         key = self.firmware_key()
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or not control.hardware_test_first or not gate.firmware_known(key):
             return
         report = self.hardware_report or {}
@@ -1809,7 +1809,7 @@ class BatteryControl:
         running on the plant."""
         if not self._started or self._closed or self._start_wait():
             return "starting"
-        if control_for(self.facts.brand) is None:
+        if control_for(self.facts.control_brand) is None:
             return "no_battery_control"
         if not self.options().enabled:
             return "not_enabled"
@@ -1864,7 +1864,7 @@ class BatteryControl:
     def hardware_test_deadman(self) -> bool:
         """Whether the battery part of a hardware test here also times the plant's own dead-man (a few minutes
         more: `hardware_test.DEADMAN_EXTRA`)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return control is not None and self._hardware_test_deadman(control) is not None
 
     async def async_hardware_test_stop(self, reason: str) -> None:
@@ -2061,7 +2061,7 @@ class BatteryControl:
 
     def _shadow_look(self, now: datetime, options: gate.Options) -> None:
         """While shadow only: what control would do now (`executor.preview`), logged when it changes."""
-        control = control_for(self.facts.brand, self.hold_variant())
+        control = control_for(self.facts.control_brand, self.hold_variant())
         if control is None:
             return
         # As control would run it: the brand's targets per phase where they are there and verified.
@@ -2093,20 +2093,20 @@ class BatteryControl:
 
     def _merged_slot(self, now: datetime) -> tuple[str, float, datetime | None] | None:
         """The plan's running slot with the hold for the car (`gate.merged_action`)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         # A slow control (a cloud) runs planned actions only: no hold for a car, which comes and goes in minutes.
         hold_requested = self.site.battery_shadow.hold_requested() and not (control is not None and control.slow)
         return gate.merged_action(self._plan_now(now), hold_requested)
 
     def _fixed_charge_kw(self) -> float | None:
         """The rate a plant charges at when the recipe cannot set it (`commands.fixed_rate_kw`), `None` otherwise."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         return None if control is None else fixed_rate_kw(control, self.facts)
 
     def _hold_charges(self) -> bool:
         """Whether a hold on this plant may itself charge from the grid at its fixed rate: a role whose absence lets it
         (`BrandControl.hold_charges_without`) is not found."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or not control.hold_charges_without:
             return False
         reads = read_role_reads(self.hass, self.site.config, control)
@@ -2150,7 +2150,7 @@ class BatteryControl:
         person's acceptance of the HA-down risk is the options' (`accept_ha_down`)."""
         if peaks is True:
             peaks = self._phase_peaks(now)
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         guards = options.import_limit_acts and self._import_limit_refusal() is None
         # Held per phase: every reading the recipe's fact needs, read again now (each start and each look).
         per_phase = self._import_limit_phase_refusal() is None
@@ -2234,7 +2234,7 @@ class BatteryControl:
         hold's writes (phase `None`), else the phase spec's where a charge per phase can run here, on the first
         phase (0-2) not yet proven or decided (one a run; `report`, by default the report now). `None` for every
         other plant (Sigenergy: no expiry)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None:
             return None
         report = self.report() if report is None else report
@@ -2277,7 +2277,7 @@ class BatteryControl:
         dies (`ha_down_energy_kwh`, `gate.expiry_energy_kwh`; `None`: unbounded). `None` for a brand SpotNav does not
         write to."""
         try:
-            control = control_for(self.facts.brand)
+            control = control_for(self.facts.control_brand)
             if control is None:
                 return None
             rated = self.facts.max_charge_kw
@@ -2379,7 +2379,7 @@ class BatteryControl:
         lowers the total the plant sees while one phase carries more), sources not read yet (`sources_unknown`), and
         a charger run by power through the plant (`dc_charger`: Sigenergy's DC charger, which can also put out, V2G;
         `dc_charger` false leaves that one out, for that charger's own fuse cap)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or control.import_limit is None:
             return "not_supported"
         distrust = self._import_limit_distrust(control, action)
@@ -2432,7 +2432,7 @@ class BatteryControl:
         plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing), and last
         `not_said_to_act` (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's
         test, so each site still says that its plant's limit acts; `assume_acts` leaves it out)."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         spec = None if control is None else control.import_limit_phases
         if control is None or spec is None or control.import_limit is None:
             return "not_supported"
@@ -2483,7 +2483,7 @@ class BatteryControl:
         `None` when it already guards (only saying it acts is left), reads nothing (never written over), no value guards
         or the per-phase hold is no way here (`_phase_path_open`). The card shows this
         figure, so what it says is what is written."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or control.import_limit is None or not self._phase_path_open():
             return None
         if self._import_limit_phase_refusal(assume_acts=True) in FIRMWARE_STEPS:
@@ -2515,7 +2515,7 @@ class BatteryControl:
         within `IMPORT_LIMIT_READ_BACK_S`). Every write is logged."""
         if not self.options().enabled:
             return "not_enabled"  # nothing is written to the plant while battery control is off
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         refusal = self._import_limit_phase_refusal(assume_acts=True)
         if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS or refusal in FIRMWARE_STEPS:
             return refusal or "not_supported"
@@ -2582,7 +2582,7 @@ class BatteryControl:
                 dc_charger=False, action=ACTION_SELF_CONSUME
             ) is not None:
                 return False
-            value = self._import_limit_kw(control_for(self.facts.brand))
+            value = self._import_limit_kw(control_for(self.facts.control_brand))
             peaks = getattr(self.site, "phase_peaks", None)
             if value is None or peaks is None:
                 return False
@@ -2609,7 +2609,7 @@ class BatteryControl:
         (`_import_limit_phase_refusal`) and `entity_id` (the plant's entity a refusal names: the Output Type, the
         phase switch or the grid sensor status, disabled or not; `None` for any other); `holds` above is then true when either rule is in force. `None` for a brand
         without such a limit."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None or control.import_limit is None:
             return None
         value = self._import_limit_kw(control)
@@ -2717,7 +2717,7 @@ class BatteryControl:
             return "error"
         if cap is None:
             return "import_limit"
-        if options.accept_ha_down and _accept_applies(control_for(self.facts.brand)):
+        if options.accept_ha_down and _accept_applies(control_for(self.facts.control_brand)):
             return "accepted"
         usable = learned is not None and learned.phase_peaks() is not None
         return "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
@@ -2728,7 +2728,7 @@ class BatteryControl:
         command can never disagree. `cap_kw` `None` with the rule `import_limit` is no cap of this kind (the plant's
         own import limit guards the fuse); a cap that cannot be worked out is 0 with the rule `error`, never no cap."""
         try:
-            control = control_for(self.facts.brand)
+            control = control_for(self.facts.control_brand)
             if control is not None and not control.supports(ACTION_GRID_CHARGE):
                 return 0.0, RULE_NO_GRID_CHARGE  # a limits-only recipe: control never charges from the grid
             options = self.options()
@@ -2764,7 +2764,7 @@ class BatteryControl:
         the line stays while it changes something; never raises (`offered` false)."""
         block: dict[str, Any] = {"offered": False, "held_kw": None, "empty_house_kw": None}
         try:
-            control = control_for(self.facts.brand)
+            control = control_for(self.facts.control_brand)
             if control is None or not control.supports(ACTION_GRID_CHARGE) or not _accept_applies(control):
                 return block
             # A command's own measured expiry stands in for the cap: nothing to accept.
@@ -2836,7 +2836,7 @@ class BatteryControl:
         """The fuse rule on the export side (`gate.export_discharge_cap_kw`) on the site's phases now."""
         volts = stored_voltage_between_phases_v(self.site.config)
         exports = self._phase_export_a(volts)
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         phases = self._plant_phases(control)
         executor = self.executor
         share_a = 0.0
@@ -2971,7 +2971,7 @@ class BatteryControl:
     def _executor(self) -> Executor | None:
         if self.executor is None:
             self.facts = self._read_facts()
-            control = control_for(self.facts.brand)
+            control = control_for(self.facts.control_brand)
             if control is None:
                 return None
             self.executor = Executor(control, watchdog_s=self._watchdog_s)
@@ -3172,7 +3172,7 @@ class BatteryControl:
             timed_out=self._timed_out,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
-            own_import_a=self._own_import_a(control_for(self.facts.brand), live=True),
+            own_import_a=self._own_import_a(control_for(self.facts.control_brand), live=True),
         )
 
     def _shedding(self, now: datetime, config: dict[str, Any]) -> tuple[bool, bool]:
@@ -3412,7 +3412,7 @@ class BatteryControl:
         """What the person can do before control can run, one code each (the card's checklist)."""
         needs: list[str] = []
         facts = self.facts
-        control = control_for(facts.brand)
+        control = control_for(facts.control_brand)
         if control is None:
             return ["no_battery_control"] if facts.battery_entity_id is not None else []
         reads = read_role_reads(self.hass, self.site.config, control)
@@ -3485,7 +3485,7 @@ class BatteryControl:
     def _settings_device(self) -> str | None:
         """The device that holds the first control the person must enable (`control_disabled`), so the card can open
         its page; `None` when none is disabled."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.control_brand)
         if control is None:
             return None
         reads = read_role_reads(self.hass, self.site.config, control)
@@ -3498,7 +3498,7 @@ class BatteryControl:
     def enable_entities(self) -> dict[str, Any] | None:
         """The brand's control entities that are disabled in Home Assistant, for the card's opt-in dialog (`optin`);
         `None` when none is."""
-        return optin.describe(self.hass, self.site.config, self.facts.brand)
+        return optin.describe(self.hass, self.site.config, self.facts.control_brand)
 
     def enable_facts(self) -> dict[str, Any] | None:
         """The disabled entities that hold a fact the battery plan needs and lacks (its size, its floor), for the
@@ -3518,7 +3518,7 @@ class BatteryControl:
     async def async_enable_entities(self) -> list[str]:
         """Enable the control entities `enable_entities` lists and reload their integration once; only ever called
         on the person's confirm (an administrator, never over the webhook). Answers the entity ids enabled."""
-        return await optin.async_enable(self.hass, self.site.config, self.facts.brand)
+        return await optin.async_enable(self.hass, self.site.config, self.facts.control_brand)
 
     async def async_enable_facts(self) -> list[str]:
         """Enable the fact entities `enable_facts` lists (never a control) and reload their integration once; only
