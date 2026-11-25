@@ -430,6 +430,23 @@ async def test_a_plant_whose_control_was_off_at_the_update_keeps_it_when_switche
     await control.async_stop()
 
 
+async def test_a_grandfathered_plants_own_hardware_test_stops_control_only_on_a_failure(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _gated_after_running(monkeypatch)
+    _site, _controller, _plant, control, _recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    _not_yet_looked_at(control)
+    await control.async_look(dt_util.now())
+    assert control.grandfathered()
+    # A test that could not judge (the sun): control goes on.
+    _hardware_test_ends(control, hold="not_judgeable", normal="not_judgeable")
+    assert control.hardware_failed == [] and control.hardware_test_due() is None
+    # One that failed: shadow only on the key until one passes again.
+    _hardware_test_ends(control, hold="ignored", normal="restored")
+    assert control.hardware_test_due() == control_module.NEED_HARDWARE_TEST_AGAIN
+    await control.async_stop()
+
+
 async def test_a_plant_that_never_passed_still_signs_up_tests_and_enters_a_code(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

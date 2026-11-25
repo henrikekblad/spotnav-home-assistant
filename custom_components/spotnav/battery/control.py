@@ -1759,7 +1759,11 @@ class BatteryControl:
                 self.hardware_brands.append(control.brand)
             self.hardware_failed = [known for known in self.hardware_failed if known != key]
             self._keep_report(key, gate.merge_report(None, report, key=key, attempts=1, now=now))
-        elif (done or gate.failed_mode(report) is not None) and control.brand in self.hardware_brands:
+        elif control.brand in self.hardware_brands and (
+            gate.failed_mode(report) is not None or (done and not self.grandfathered())
+        ):
+            # A grandfathered plant's control already ran: only a mode that failed stops it, never a test that could
+            # not judge (the sun, no room under the fuse).
             self.hardware_failed = [*(known for known in self.hardware_failed if known != key), key][-MAX_REPORTS:]
 
     async def _async_verify(self, now: datetime) -> StepResult | None:
