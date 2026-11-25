@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Inscrito",
   "battery.tester.value.tested": "Resultado enviado",
   "battery.tester.value.control_code": "Código introducido",
-  "battery.tester.help.none": "SpotNav puede leer esta batería. El control de {brand} se está probando junto con usuarios: hazte probador y recibirás instrucciones por correo electrónico.",
+  "battery.tester.help.none": "El control de {brand} aún no está activado. SpotNav solo activa el control de una marca de batería cuando se ha probado de forma controlada en al menos una instalación real. Puedes ser quien lo haga posible: como probador ejecutas una breve prueba de hardware que funciona sola, y así ayudas a todos los demás con {brand} a tener control. Hasta entonces, SpotNav lee la batería y solo planifica lo que habría hecho, en modo sombra.",
   "battery.tester.help.asked": "Ejecuta la prueba de hardware en Soporte → Prueba de hardware. Pulsa Iniciar una vez: se ejecuta sola durante el día, y su resultado se envía solo.",
   "battery.tester.help.tested": "El resultado se ha enviado. Recibirás una respuesta por correo electrónico.",
   "battery.tester.help.control_code": "El código de control está introducido: SpotNav puede controlar esta batería.",

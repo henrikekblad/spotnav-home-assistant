@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Tilmeldt",
   "battery.tester.value.tested": "Resultat sendt",
   "battery.tester.value.control_code": "Kode indtastet",
-  "battery.tester.help.none": "SpotNav kan læse dette batteri. Styringen af {brand} testes sammen med brugere: bliv tester, så får du instruktioner på e-mail.",
+  "battery.tester.help.none": "Styringen af {brand} er ikke slået til endnu. SpotNav slår kun styring af et batterimærke til, når den er afprøvet under ordnede forhold på mindst ét rigtigt anlæg. Du kan være den, der gør det muligt: som tester kører du en kort hardwaretest, der klarer sig selv, og hjælper dermed alle andre med {brand} med at få styring. Indtil da læser SpotNav batteriet og planlægger kun, hvad det ville have gjort, i skyggetilstand.",
   "battery.tester.help.asked": "Kør hardwaretesten under Support → Hardwaretest. Tryk på Start én gang: den kører af sig selv i dagtimerne, og resultatet sendes af sig selv.",
   "battery.tester.help.tested": "Resultatet er sendt. Du får svar på e-mail.",
   "battery.tester.help.control_code": "Kontrolkoden er indtastet: SpotNav må styre dette batteri.",

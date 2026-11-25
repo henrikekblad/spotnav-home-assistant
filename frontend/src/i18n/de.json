@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Angemeldet",
   "battery.tester.value.tested": "Ergebnis gesendet",
   "battery.tester.value.control_code": "Code eingegeben",
-  "battery.tester.help.none": "SpotNav kann diesen Speicher lesen. Die Steuerung von {brand} wird gemeinsam mit Nutzern getestet: Werde Tester, dann bekommst du eine Anleitung per E-Mail.",
+  "battery.tester.help.none": "Die Steuerung von {brand} ist noch nicht eingeschaltet. SpotNav schaltet die Steuerung einer Speichermarke erst frei, wenn sie unter kontrollierten Bedingungen an mindestens einer echten Anlage erprobt wurde. Du kannst das möglich machen: Als Tester startest du einen kurzen Hardwaretest, der von selbst läuft, und hilfst damit allen anderen mit {brand}, die Steuerung zu bekommen. Bis dahin liest SpotNav den Speicher und plant nur, was es getan hätte, im Schattenmodus.",
   "battery.tester.help.asked": "Führe den Hardwaretest unter Support → Hardwaretest aus. Drücke einmal auf Start: Er läuft tagsüber von selbst, und sein Ergebnis wird von selbst gesendet.",
   "battery.tester.help.tested": "Das Ergebnis wurde gesendet. Du bekommst eine Antwort per E-Mail.",
   "battery.tester.help.control_code": "Der Steuercode ist eingegeben: SpotNav darf diesen Speicher steuern.",

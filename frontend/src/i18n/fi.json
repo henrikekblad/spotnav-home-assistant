@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Ilmoittauduttu",
   "battery.tester.value.tested": "Tulos lähetetty",
   "battery.tester.value.control_code": "Koodi syötetty",
-  "battery.tester.help.none": "SpotNav pystyy lukemaan tätä akkua. Merkin {brand} ohjausta testataan yhdessä käyttäjien kanssa: ryhdy testaajaksi, niin saat ohjeet sähköpostilla.",
+  "battery.tester.help.none": "Merkin {brand} ohjaus ei ole vielä päällä. SpotNav ottaa akkumerkin ohjauksen käyttöön vasta, kun sitä on kokeiltu hallitusti vähintään yhdessä oikeassa järjestelmässä. Voit olla se, joka tekee sen mahdolliseksi: testaajana ajat lyhyen laitetestin, joka hoituu itsestään, ja autat näin kaikkia muita merkin {brand} käyttäjiä saamaan ohjauksen. Siihen asti SpotNav lukee akkua ja suunnittelee vain, mitä se olisi tehnyt, varjotilassa.",
   "battery.tester.help.asked": "Aja laitteistotesti kohdasta Tuki → Laitteistotesti. Paina Aloita kerran: testi ajetaan itsestään päiväsaikaan, ja sen tulos lähetetään itsestään.",
   "battery.tester.help.tested": "Tulos on lähetetty. Saat vastauksen sähköpostilla.",
   "battery.tester.help.control_code": "Ohjauskoodi on syötetty: SpotNav saa ohjata tätä akkua.",

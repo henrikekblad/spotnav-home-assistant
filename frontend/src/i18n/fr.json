@@ -1883,7 +1883,7 @@
   "battery.tester.value.asked": "Inscrit",
   "battery.tester.value.tested": "Résultat envoyé",
   "battery.tester.value.control_code": "Code saisi",
-  "battery.tester.help.none": "SpotNav peut lire cette batterie. Le pilotage de {brand} est testé avec des utilisateurs : devenez testeur et vous recevrez des instructions par e-mail.",
+  "battery.tester.help.none": "Le pilotage de {brand} n'est pas encore activé. SpotNav n'active le pilotage d'une marque de batterie qu'après un essai dans des conditions maîtrisées sur au moins une installation réelle. Vous pouvez le rendre possible : en tant que testeur, vous lancez un court test matériel qui se déroule tout seul, et vous aidez ainsi tous les autres utilisateurs de {brand} à obtenir le pilotage. D'ici là, SpotNav lit la batterie et planifie seulement ce qu'il aurait fait, en mode fantôme.",
   "battery.tester.help.asked": "Lancez le test matériel dans Assistance → Test matériel. Appuyez une fois sur Démarrer : il se lance tout seul en journée, et son résultat est envoyé tout seul.",
   "battery.tester.help.tested": "Le résultat a été envoyé. Vous recevrez une réponse par e-mail.",
   "battery.tester.help.control_code": "Le code de pilotage est saisi : SpotNav peut piloter cette batterie.",
