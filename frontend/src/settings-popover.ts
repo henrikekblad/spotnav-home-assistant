@@ -23,6 +23,7 @@ import {
   getBlueprints,
   getDebugBundle,
   getHeat,
+  batteryTesterCommand,
   betaCommand,
   getSiteEntityConfig,
   getSiteMarketOptions,
@@ -40,7 +41,7 @@ import {
 } from "./api";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
-import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
+import { MAX_EMAIL_CHARS, MAX_MESSAGE_CHARS, PRIVACY_URL, sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
 import { NotificationPhones } from "./notification-phones";
 import { disconnectPhonesEditor, runDisconnectPhones } from "./phones";
 import { BetaRows, type BetaCall } from "./beta";
@@ -94,6 +95,7 @@ import {
   reportOutcomes,
   type BatteryPreheat,
   type BatteryStatus,
+  type BatteryTester,
   type SitePriority,
   type ImportLimit,
   type PlanCosts,
@@ -548,6 +550,16 @@ export function batteryOutsideClearable(need: string): boolean {
   return need.startsWith("outside_control:") && OUTSIDE_CLEARABLE.includes(need.slice("outside_control:".length));
 }
 
+/** The tester stages the card has words for (`BatteryControl.tester_view`); another reads as `none`. */
+const TESTER_STAGES = ["none", "asked", "tested", "control_code"];
+const TESTER_EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const BRAND_NAMES: Record<string, string> = { foxess: "FoxESS", ecoflow: "EcoFlow", marstek: "Marstek" };
+
+/** A recipe's brand id as people write it (`foxess` → FoxESS); an unknown one capitalised. */
+export function brandName(brand: string): string {
+  return BRAND_NAMES[brand] ?? (brand.charAt(0).toUpperCase() + brand.slice(1));
+}
+
 export function batteryNeed(language: Language, need: string): string {
   const [kind, param] = need.split(":");
   switch (kind) {
@@ -574,6 +586,10 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.hardwareTestAgain");
     case "recipe_blocked":
       return translate(language, "battery.need.recipeBlocked");
+    case "tester_signup":
+      return translate(language, "battery.need.testerSignup");
+    case "control_code":
+      return translate(language, "battery.need.controlCode");
     case "restore_by_hand": {
       // `<entity_id>=<value>|...` after the first colon (a value may hold one).
       const rows = need.slice(kind.length + 1).split("|").filter((row) => row.includes("="));
@@ -762,6 +778,128 @@ export class SiteSections {
       editor.submit(async () => await this.writeBattery(alsoOn ? { battery_control_enabled: true } : {}, true));
       return editor.form;
     });
+  }
+
+  /**
+   * The tester row of a battery brand whose control is still being tested (administrators only): where the person
+   * stands, and before the sign-up (or to send it again) the form behind "Become a tester".
+   */
+  private testerRow(tester: BatteryTester): HTMLElement[] {
+    const { doc } = this.input;
+    const language = this.language;
+    const label = translate(language, "battery.tester.label");
+    const stage = TESTER_STAGES.includes(tester.stage) ? tester.stage : "none";
+    const value = translate(language, `battery.tester.value.${stage}` as TranslationKey);
+    const help = translate(language, `battery.tester.help.${stage}` as TranslationKey, { brand: brandName(tester.brand) });
+    const signup = stage === "none" || stage === "asked";
+    return settingRow(doc, {
+      key: "battery_tester",
+      label,
+      value,
+      help,
+      ...(signup
+        ? {
+            onTap: () => this.openTesterSignup(tester),
+            changeableText: translate(language, "settings.row.changeable", { label, value }),
+          }
+        : {}),
+    });
+  }
+
+  /** "Become a tester": the e-mail address (required), an optional note and the consent line; Send posts the
+   * sign-up (`tester_signup`), which turns beta on with the address and unlocks the hardware test. */
+  openTesterSignup(tester: BatteryTester): void {
+    const { doc, idPrefix } = this.input;
+    const language = this.language;
+    const say = (key: TranslationKey, values?: Record<string, string>): string => translate(language, key, values);
+    this.input.openEditor(say("battery.tester.title"), (handlers) => {
+      const editor = shell(doc, language, "battery-tester", handlers, say("battery.tester.send"));
+      editor.form.dataset["batteryTester"] = idPrefix;
+      for (const key of ["battery.tester.intro", "battery.tester.what", "battery.tester.stop"] as const) {
+        editor.body.append(element(doc, "p", C.settingRowHelp, say(key, { brand: brandName(tester.brand) })));
+      }
+      const email = doc.createElement("input");
+      email.type = "email";
+      email.id = `${idPrefix}-tester-email`;
+      email.className = C.settingsInput;
+      email.maxLength = MAX_EMAIL_CHARS;
+      email.autocomplete = "email";
+      email.required = true;
+      email.dataset["field"] = "tester_email";
+      const emailLabel = element(doc, "label", C.settingsLabel, say("battery.tester.email"));
+      emailLabel.setAttribute("for", email.id);
+      const emailField = element(doc, "div", C.settingsField);
+      emailField.append(emailLabel, email);
+      const note = doc.createElement("textarea");
+      note.id = `${idPrefix}-tester-note`;
+      note.className = `${C.settingsInput} ${C.settingsTextarea}`;
+      note.rows = 3;
+      note.maxLength = MAX_MESSAGE_CHARS;
+      note.dataset["field"] = "tester_note";
+      const noteLabel = element(doc, "label", C.settingsLabel, say("battery.tester.note"));
+      noteLabel.setAttribute("for", note.id);
+      const noteField = element(doc, "div", C.settingsField);
+      noteField.append(noteLabel, note);
+      const consent = doc.createElement("input");
+      consent.type = "checkbox";
+      consent.id = `${idPrefix}-tester-consent`;
+      consent.dataset["field"] = "tester_consent";
+      const consentLabel = element(doc, "label", C.settingsLabel, say("battery.tester.consent"));
+      consentLabel.setAttribute("for", consent.id);
+      const consentRow = element(doc, "div", C.settingsCheckRow);
+      consentRow.append(consent, consentLabel);
+      const privacy = doc.createElement("a");
+      privacy.href = PRIVACY_URL;
+      privacy.target = "_blank";
+      privacy.rel = "noopener noreferrer";
+      privacy.textContent = say("sendDebug.privacy");
+      editor.body.append(emailField, noteField, consentRow, privacy);
+      editor.submit(async () => {
+        const address = email.value.trim();
+        if (address === "" || address.length > MAX_EMAIL_CHARS || !TESTER_EMAIL.test(address)) {
+          return say("sendDebug.error.email");
+        }
+        if (!consent.checked) {
+          return say("sendDebug.error.consent");
+        }
+        return await this.testerSignup(address, note.value.trim());
+      });
+      return editor.form;
+    });
+  }
+
+  private async testerSignup(email: string, note: string): Promise<string | null> {
+    const hass = this.input.hass();
+    const target = this.input.target();
+    const language = this.language;
+    if (hass === null || target === null) {
+      return translate(language, "battery.error.generic");
+    }
+    try {
+      const decoded = decodeBatteryControl(
+        await batteryControl(hass, target, null, false, false, false, false, { tester_signup: { email, note } }),
+      );
+      if (!decoded.ok) {
+        return translate(language, "battery.error.generic");
+      }
+      if (decoded.value.status !== null) {
+        this.battery = decoded.value.status;
+        this.input.onChanged?.("battery");
+      }
+      const error = decoded.value.error;
+      if (error === null) {
+        return null;
+      }
+      if (error === "spotnav_not_admin") {
+        return translate(language, "battery.error.notAdmin");
+      }
+      if (error === "spotnav_report_invalid_email" || error === "spotnav_report_invalid_message") {
+        return sendFailureText(language, error);
+      }
+      return translate(language, "battery.tester.error.failed");
+    } catch {
+      return translate(language, "battery.error.generic");
+    }
   }
 
   /** The AI-mode explanation; its button writes `battery_control_ai_takeover_ack`. */
@@ -1210,6 +1348,9 @@ export class SiteSections {
           : {}),
       }),
     );
+    if (admin && status.tester !== null) {
+      section.append(...this.testerRow(status.tester));
+    }
     const facts = this.factsNotice(status, admin);
     if (facts !== null) {
       section.append(facts);
@@ -2442,6 +2583,9 @@ export class SettingsPopover {
       const hass = this.input.hass();
       if (hass === null || !this.isAdmin()) {
         throw new Error("not available");
+      }
+      if (request.action === "tester") {
+        return await batteryTesterCommand(hass, { site_id: siteId }, request.tester);
       }
       return await betaCommand(hass, { site_id: siteId }, request);
     };

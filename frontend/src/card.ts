@@ -62,6 +62,7 @@ import {
   suggestImportTarget,
   setEntsoeKey,
   updateVehicle,
+  batteryTesterCommand,
   betaCommand,
 } from "./api";
 import { brandMark } from "./card-header";
@@ -1667,6 +1668,9 @@ export class SpotnavCard extends HTMLElement {
     const charger = this.config?.charger;
     if (!this.connected || hass === null || !this.isAdmin || charger === undefined || charger === "") {
       throw new Error("not available");
+    }
+    if (request.action === "tester") {
+      return await batteryTesterCommand(hass, { charger_id: charger }, request.tester);
     }
     return await betaCommand(hass, { charger_id: charger }, request);
   }

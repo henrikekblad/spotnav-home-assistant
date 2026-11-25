@@ -209,6 +209,11 @@ describe("the popover from the house card", () => {
             if (message["enable_control_entities"] === true) {
               battery = { ...battery, status: { ...(battery["status"] as object), enable_entities: null } };
             }
+            if (message["tester_signup"] !== undefined) {
+              const status = battery["status"] as Record<string, unknown>;
+              const tester = { ...(status["tester"] as object), stage: "asked", sent_at: "2026-11-25T10:00:00+01:00" };
+              battery = { ...battery, status: { ...status, tester } };
+            }
             if (changes !== undefined) {
               const status = battery["status"] as Record<string, unknown>;
               battery = { ...battery, status: { ...status, options: { ...(status["options"] as object), ...changes } } };
@@ -578,6 +583,51 @@ describe("the popover from the house card", () => {
     const tested = await mount({ battery: "checking.json", status: withPhase({ why: "not_field_tested" }) });
     popover = await open(tested.root);
     expect(popover.querySelector("[data-note='import_limit_phase']")).toBeNull();
+  });
+
+  it("offers a battery brand still being tested a tester row for an administrator, and sends the sign-up", async () => {
+    const tester = { stage: "none", brand: "foxess", sent_at: null, result_sent_at: null, test_passed: false, code_entered_at: null };
+    const status = { tester, needs: ["tester_signup"] };
+    // Not for a brand that takes no code.
+    const plain = await mount({ battery: "checking.json" });
+    expect((await open(plain.root)).querySelector("[data-row='battery_tester']")).toBeNull();
+    plain.element.remove();
+    const { root, messages, element } = await mount({ battery: "checking.json", status });
+    const popover = await open(root);
+    const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
+    expect(battery.querySelector("[data-row='battery_tester']")!.textContent).toBe("TestareBli testare");
+    expect(battery.querySelector("[data-help='battery_tester']")!.textContent).toBe(
+      "SpotNav kan läsa det här batteriet. Styrningen av FoxESS testas tillsammans med användare: bli testare så får du instruktioner via e-post.",
+    );
+    expect(battery.textContent).toContain(translate("sv", "battery.need.testerSignup"));
+    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_tester']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-battery-tester]")!;
+    expect(form.textContent).toContain("Styrningen av FoxESS-batterier testas tillsammans med användare");
+    const email = form.querySelector<HTMLInputElement>("input[data-field='tester_email']")!;
+    const note = form.querySelector<HTMLTextAreaElement>("textarea[data-field='tester_note']")!;
+    const consent = form.querySelector<HTMLInputElement>("input[data-field='tester_consent']")!;
+    // The address is required, and the consent.
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    // The dialog's footer holds the error line and the buttons: read the whole card.
+    expect(root.textContent).toContain(translate("sv", "sendDebug.error.email"));
+    email.value = "tester@example.com";
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.textContent).toContain(translate("sv", "sendDebug.error.consent"));
+    expect(messages.filter((message) => message["tester_signup"] !== undefined)).toHaveLength(0);
+    note.value = " H3-10, tre faser ";
+    consent.click();
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["tester_signup"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa",
+        tester_signup: { email: "tester@example.com", note: "H3-10, tre faser" } },
+    ]);
+    const after = root.querySelector<HTMLElement>("[data-popover='site'] [data-section='battery']")!;
+    expect(after.querySelector("[data-row='battery_tester']")!.textContent).toBe("TestareAnmäld");
+    expect(after.querySelector("[data-help='battery_tester']")!.textContent).toContain("Kör hårdvarutestet under Support → Hårdvarutest");
+    element.remove();
   });
 
   it("offers the Home Assistant down acceptance to an administrator only where it would change something, and writes it", async () => {

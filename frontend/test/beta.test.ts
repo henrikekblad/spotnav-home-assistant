@@ -6,13 +6,20 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { betaBox, blockedText, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest } from "../src/beta";
+import {
+  betaBox, blockedText, codeErrorText, codeWanted, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest,
+} from "../src/beta";
 import { translate } from "../src/i18n";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "beta");
 
 function fixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(FIXTURES, name), "utf-8")) as Record<string, unknown>;
+}
+
+/** A battery control answer (`tests/fixtures/battery_control/`), for the hardware test box's tester parts. */
+function battery(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(FIXTURES, "..", "battery_control", name), "utf-8")) as Record<string, unknown>;
 }
 
 async function settle(): Promise<void> {
@@ -81,23 +88,35 @@ describe("the words", () => {
   });
 });
 
-function box(answers: unknown[], build: typeof betaBox = betaBox): { root: HTMLElement; calls: BetaRequest[] } {
+/** A box against canned answers: `spotnav/beta`'s in `answers`, a battery tester's (`action: "tester"`, kept apart in
+ * `testerCalls`) in `testers` (none: the read fails, as from a site without the block). */
+function box(
+  answers: unknown[], build: typeof betaBox = betaBox, testers: unknown[] = [],
+): { root: HTMLElement; calls: BetaRequest[]; testerCalls: BetaRequest[] } {
   const calls: BetaRequest[] = [];
+  const testerCalls: BetaRequest[] = [];
   const root = build({
     doc: document,
     language: "sv",
     idPrefix: "t",
     call: async (request) => {
+      if (request.action === "tester") {
+        testerCalls.push(request);
+        if (testers.length === 0) {
+          throw new Error("no battery");
+        }
+        return testers.length > 1 ? testers.shift() : testers[0];
+      }
       calls.push(request);
       return answers.length > 1 ? answers.shift() : answers[0];
     },
   });
   document.body.append(root);
-  return { root, calls };
+  return { root, calls, testerCalls };
 }
 
 const q = (root: HTMLElement, selector: string): HTMLElement => root.querySelector(selector) as HTMLElement;
-const test = (answers: unknown[]): { root: HTMLElement; calls: BetaRequest[] } => box(answers, testBox);
+const test = (answers: unknown[], testers: unknown[] = []): ReturnType<typeof box> => box(answers, testBox, testers);
 
 describe("betaBox", () => {
   it("reads the state, ticks the box and shows the period", async () => {
@@ -237,6 +256,54 @@ describe("testBox", () => {
     await vi.advanceTimersByTimeAsync(60000);
     await settle();
     expect(calls[1]).toEqual({ action: "get" });
+  });
+
+  it("takes the control code for a battery tester and says where the tester stands", async () => {
+    const status = (stage: string, error: string | null = null) => ({
+      api_version: 1, ok: error === null, error,
+      status: { ...(battery("checking.json")["status"] as object), tester: {
+        stage, brand: "foxess", sent_at: "2026-11-25T10:00:00+01:00", result_sent_at: stage === "tested" ? "2026-11-25T12:00:00+01:00" : null,
+        test_passed: stage !== "asked", code_entered_at: stage === "control_code" ? "2026-11-26T09:00:00+01:00" : null,
+      } },
+    });
+    const { root, testerCalls } = test(
+      [fixture("on_done_failed.json")], [status("tested"), status("tested", "spotnav_code_other_install"), status("control_code")],
+    );
+    await settle();
+    expect(testerCalls[0]).toEqual({ action: "tester", tester: null });
+    expect(q(root, "[data-beta=tester]").textContent).toBe(translate("sv", "test.tester.sent"));
+    expect(q(root, "[data-beta=codeField]").hidden).toBe(false);
+    const code = q(root, "[data-beta-field=code]") as HTMLInputElement;
+    // Nothing pasted: said at once, nothing sent.
+    q(root, "[data-beta=enterCode]").click();
+    await settle();
+    expect(testerCalls).toHaveLength(1);
+    expect(q(root, "[data-beta=codeError]").textContent).toBe(translate("sv", "test.code.error.invalid"));
+    code.value = "  aebcd-efgh ";
+    q(root, "[data-beta=enterCode]").click();
+    await settle();
+    expect(testerCalls[1]).toEqual({ action: "tester", tester: { enter_code: { code: "aebcd-efgh" } } });
+    expect(q(root, "[data-beta=codeError]").textContent).toBe(translate("sv", "test.code.error.otherInstall"));
+    q(root, "[data-beta=enterCode]").click();
+    await settle();
+    expect(q(root, "[data-beta=codeError]").hidden).toBe(true);
+    expect(q(root, "[data-beta=codeField]").hidden).toBe(true);
+    expect(q(root, "[data-beta=tester]").textContent).toBe(translate("sv", "test.tester.code"));
+  });
+
+  it("shows no tester parts where the battery takes no code, and says the test waits for the sign-up", async () => {
+    const plain = { ...(battery("checking.json")) };
+    const { root } = test([fixture("off_idle.json")], [plain]);
+    await settle();
+    expect(q(root, "[data-beta=codeField]").hidden).toBe(true);
+    expect(q(root, "[data-beta=tester]").hidden).toBe(true);
+    const idle = decodeBetaAnswer(fixture("off_idle.json"))!.test!;
+    expect(blockedText("sv", { ...idle, blocked: "tester_signup" })).toBe(translate("sv", "test.blocked.testerSignup"));
+    expect(codeWanted({ stage: "none", brand: "foxess", sent_at: null, result_sent_at: null, test_passed: false, code_entered_at: null }))
+      .toBe(false);
+    expect(codeWanted({ stage: "none", brand: "foxess", sent_at: null, result_sent_at: null, test_passed: true, code_entered_at: null }))
+      .toBe(true);
+    expect(codeErrorText("en", null)).toBe(translate("en", "test.code.error.failed"));
   });
 
   it("says a step that could not be judged runs again by itself", async () => {
