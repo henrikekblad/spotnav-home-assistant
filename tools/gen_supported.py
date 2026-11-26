@@ -1751,7 +1751,7 @@ def prices_section() -> list[str]:
                     "Your own free ENTSO-E key (the ENTSO-E Transparency Platform)",
                 ),
                 ("Spain – PVPC (regulated)", "Home Assistant's built-in PVPC integration (Red Eléctrica)"),
-                ("Great Britain – Octopus Agile, 14 regions", "The Octopus Energy integration (HACS), your Agile meter"),
+                ("Great Britain – Octopus Energy, 14 regions", "The Octopus Energy integration (HACS), your own meter"),
                 ("Netherlands – Zonneplan", "The Zonneplan integration (HACS), Zonneplan's dynamic tariff"),
             ],
         ),
@@ -1759,12 +1759,15 @@ def prices_section() -> list[str]:
         "The card's area picker lists every area and names, in the price settings, where its prices come from "
         "or what to add. The SpotNav relay no longer delivers prices (since SpotNav 2.0).",
         "",
-        "### Great Britain (Octopus Agile)",
+        "### Great Britain (Octopus Energy)",
         "",
-        "- **For Agile customers.** The prices are Octopus Energy's Agile import unit rates, one per region "
-        "(`GB-A` to `GB-P`, the GSP groups), in half-hours that SpotNav plans on quarter-hours. On any other "
-        "tariff they are not your prices.",
-        "- **All-in.** The Agile unit rate already contains VAT, levies and network charges, so VAT, energy "
+        "- **For Octopus customers.** The prices are your own meter's import unit rates, whatever the tariff: "
+        "Agile, Flux's three bands, Go, Cosy, a fixed or variable tariff. One area per region (`GB-A` to `GB-P`, "
+        "the GSP groups), in half-hours that SpotNav plans on quarter-hours.",
+        "- **What a sold kWh earns.** With an export meter in the integration (Agile Outgoing, Flux export, "
+        "Outgoing fixed), its rate for each half-hour is the sell price of that half-hour, in place of the "
+        "price plus *Extra for sold power*. Without one a sold kWh earns the import rate plus that figure.",
+        "- **All-in.** The unit rate already contains VAT, levies and network charges, so VAT, energy "
         "tax and grid transfer are locked as *Included in the price* and nothing is added. The daily "
         "standing charge is not part of a plan or a session's cost.",
         "- **Your region.** The picker groups the regions under Great Britain (\"GB C – London\"). *Find my "
@@ -1773,17 +1776,17 @@ def prices_section() -> list[str]:
         "with no area until you choose one.",
         "- **Your rates.** They are read from your own meter through the [Octopus Energy]"
         "(https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration, installed through HACS. "
-        "Without an Agile meter there are no prices.",
+        "Without an electricity import meter there are no prices.",
         "- **When.** Agile is published around 16:00 UK time for 23:00 to 23:00, so tomorrow's last hour "
-        "(23:00 to midnight) arrives with the next day's publication. Amounts are in pounds and pence and "
-        "distances in miles.",
+        "(23:00 to midnight) arrives with the next day's publication. A tariff known in advance (Flux, Go, "
+        "fixed) has tomorrow from early morning. Amounts are in pounds and pence and distances in miles.",
         "- **Not with Intelligent Octopus Go.** Octopus does not allow a third party to control the charging "
         "of a car on Intelligent Octopus Go: its customers must opt out of other apps' smart charging. Do not "
         "use SpotNav to control charging on that tariff. Source: [Octopus Energy]"
         "(https://octopus.energy/help-and-faqs/articles/"
         "why-can-t-i-have-both-intelligent-octopus-go-and-a-third-party-controlling-my-charging-/).",
         "",
-        "Prices: Octopus Energy (Agile). SpotNav is not affiliated with Octopus Energy.",
+        "Prices: Octopus Energy. SpotNav is not affiliated with Octopus Energy.",
         "",
         "### Netherlands (Zonneplan)",
         "",
