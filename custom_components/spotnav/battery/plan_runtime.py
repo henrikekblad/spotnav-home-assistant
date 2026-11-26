@@ -96,7 +96,7 @@ from ..site.import_target import stored_import_target_kw
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
 from .demand_plan import ceilings_minor, demand_basis, demand_house, needed, peak_so_far, shave_rows
-from .executor import SILENCE_GRACE_S
+from .executor import HEADROOM_MARGIN_A, SILENCE_GRACE_S
 from .adapters import ADAPTERS
 from .facts import BatteryFacts
 from .preheat import derate_shadow, request_key, shadow_request
@@ -356,6 +356,25 @@ def plan_windows(plan: Any, volts: float | None) -> list[tuple[datetime, datetim
         return []
 
 
+def site_export_cap_kw(site: SiteCapacityController) -> float | None:
+    """The most a single-phase site may export in the plan (kW): its one phase at the main fuse less the larger of
+    the site's safety margin and the margin control keeps on the export side (`gate.export_discharge_cap_kw`), so a
+    sale is never planned above what one phase carries. `None` (no bound, as before) on a three-phase site, where
+    the battery's own rating is what bounds a sale, and where no fuse is set."""
+    config = site.config
+    site_phases = getattr(site, "site_phases", None)
+    phases = len(site_phases) if isinstance(site_phases, tuple) and site_phases else site_phase_count(config)
+    if phases != 1:
+        return None
+    return import_cap_kw(
+        config.get(CONF_MAIN_FUSE_A),
+        max(stored_safety_margin_a(config), HEADROOM_MARGIN_A),
+        stored_voltage_between_phases_v(config),
+        None,
+        phases=1,
+    )
+
+
 def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> float | None:
     """The most the site may import (kW, `plan_shadow.import_cap_kw`): the main fuse less its margin on the site's
     phases (one on a single-phase site, `SiteCapacityController.site_phases`), and the import target's held level
@@ -481,6 +500,7 @@ def _solve_demand(
     peak_now: float | None = None,
     grid_charge_cap_kw: float | None = None,
     before: Sequence[PriceSlot] = (),
+    export_cap_kw: float | None = None,
 ) -> Solved:
     """[solved] with the demand variant (see the module) where it would plan anything the plan in force does not and
     the CPU budget allows; skipped and named otherwise."""
@@ -491,7 +511,7 @@ def _solve_demand(
     planned_house = demand_house(house, solved.house_band, ceilings or {}, tz)
     slots, _more = build_slots(
         now, prices, planned_house, solar_wh, car_windows, cap_kw, tz, hour_caps=hour_caps, ceilings=ceilings,
-        grid_charge_cap_kw=grid_charge_cap_kw,
+        grid_charge_cap_kw=grid_charge_cap_kw, export_cap_kw=export_cap_kw,
     )
     if not slots:
         return solved
@@ -533,20 +553,23 @@ def _solve(
     peak_now: float | None = None,
     grid_charge_cap_kw: float | None = None,
     before: Sequence[PriceSlot] = (),
+    export_cap_kw: float | None = None,
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
     [misses] (house, sun, holidays), the error bands and the defensive variant; then the demand variant from
     [hour_caps] and [ceilings] (`_solve_demand`). What is left when the solve took longer than `MODES_BUDGET_S` is
     skipped and named. [before] is the prices of the days before [prices], for the end value's refill
-    (`plan.default_end_value`)."""
+    (`plan.default_end_value`). [export_cap_kw] is the most the site may export in every variant
+    (`site_export_cap_kw`)."""
     started = budget_clock()
     solved = _solve_modes(
         now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear, keeps, misses,
-        sell_margin, started, grid_charge_cap_kw, before,
+        sell_margin, started, grid_charge_cap_kw, before, export_cap_kw,
     )
     solved = _solve_demand(
         solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
         keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now, grid_charge_cap_kw, before,
+        export_cap_kw,
     )
     # Last, so the what-if never takes the demand variant's share of the CPU budget.
     held = _grid_held(
@@ -613,12 +636,14 @@ def _solve_modes(
     started: float,
     grid_charge_cap_kw: float | None = None,
     before: Sequence[PriceSlot] = (),
+    export_cap_kw: float | None = None,
 ) -> Solved:
     """The modes and the defensive variant (see `_solve`)."""
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
     slots, estimates = build_slots(
-        now, prices, house, solar_wh, car_windows, cap_kw, tz, grid_charge_cap_kw=grid_charge_cap_kw
+        now, prices, house, solar_wh, car_windows, cap_kw, tz, grid_charge_cap_kw=grid_charge_cap_kw,
+        export_cap_kw=export_cap_kw,
     )
     if not slots:
         raise _NoPlan(NO_HOUSE_FORECAST if prices else NO_PRICES)
@@ -650,7 +675,7 @@ def _solve_modes(
         return Solved(plans, (*skipped, VARIANT_DEFENSIVE), slots, estimates, house_band, sun_band, inputs)
     guarded, _more = build_slots(
         now, prices, inputs.house_by_hour, inputs.solar_wh_by_hour, car_windows, cap_kw, tz,
-        grid_charge_cap_kw=grid_charge_cap_kw,
+        grid_charge_cap_kw=grid_charge_cap_kw, export_cap_kw=export_cap_kw,
     )
     if not guarded:
         return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band, inputs)
@@ -1693,6 +1718,7 @@ class BatteryPlanShadow:
                 _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
                 sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings, peak_now=peak_now,
                 grid_charge_cap_kw=grid_cap, before=self._prices_before(now),
+                export_cap_kw=site_export_cap_kw(self.site),
             )
         )
         if self._closed:

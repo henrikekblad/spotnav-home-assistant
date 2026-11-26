@@ -21,7 +21,7 @@ from ..commands import plant_phases, BrandControl, control_for
 from ..executor import HEADROOM_MARGIN_A
 from ..outside_control import RESERVE_MARGIN_PCT
 from ..plan_model import ACTION_EXPORT_DISCHARGE, ACTION_GRID_CHARGE
-from ..runtime import read_plant_entity
+from ..runtime import read_plant_entity, site_signed_w
 from .const import HA_DOWN_OFFER_GAIN_KW, HEAT_RAISE_KW, RULE_CHARGE_POWER_ENTITY, RULE_NO_GRID_CHARGE
 from .helpers import _accept_applies, _float
 
@@ -290,8 +290,9 @@ class Caps:
         )
 
     def _phase_export_a(self, volts_between_phases: float) -> list[float] | None:
-        """Each phase's export now (A, 0 where it imports), `None` when a phase is not known."""
-        signed = list(self.site.result.phase_signed_active_power_w.values())
+        """The export now on each phase the site has (A, 0 where it imports; L1 alone on a single-phase site,
+        `runtime.site_signed_w`), `None` when a phase is not known."""
+        signed = site_signed_w(self.site)
         if not signed or not all(value is not None and math.isfinite(value) for value in signed):
             return None
         volts = phase_volts(volts_between_phases)

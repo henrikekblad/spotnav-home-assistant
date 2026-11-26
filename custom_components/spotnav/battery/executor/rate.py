@@ -174,7 +174,8 @@ class Rate:
         one phase): the sun in the plant's power per phase, and a plant not known to spread its sale over three
         phases, are then judged by the step and not by the whole sale.
 
-        Each phase is judged by the site meter's sign. One that exports at least what is taken back only exports
+        Each phase is judged by the site meter's sign (on a single-phase site L1 alone, by the site's grid power and
+        the least headroom, which are L1's). One that exports at least what is taken back only exports
         less. Any other must keep `HEADROOM_MARGIN_A`: its headroom, plus what it exports now (the fuse is at least
         the two together), less what is taken back. With the meter's signs or a phase's headroom not known, the
         least headroom of any phase less what is taken back. Judged only for a step that may take at least
@@ -189,6 +190,10 @@ class Rate:
         if taken_a < HEADROOM_MARGIN_A:
             return False
         signed, rooms = inputs.grid_phase_kw, inputs.phase_headroom_a
+        grid, room_a = inputs.grid_import_kw, inputs.headroom_a
+        if inputs.site_phases == 1 and inputs.measurement_ok and room_a is not None and grid is not None and math.isfinite(grid):
+            # A single-phase site: L1 is the one phase, its sign the site's grid power and its headroom the least.
+            signed, rooms = (grid, grid, grid), (room_a, room_a, room_a)
         if not _finite3(signed) or not _finite3(rooms):
             return inputs.headroom_a is None or inputs.headroom_a - taken_a < HEADROOM_MARGIN_A
         assert signed is not None and rooms is not None

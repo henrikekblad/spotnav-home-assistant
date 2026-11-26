@@ -103,6 +103,23 @@ def _without_count_time(memory: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in memory.items() if key != "counted_at"}
 
 
+def site_phase_total(site: Any) -> int:
+    """How many phases the site has: 1 on a single-phase site (`SiteCapacityController.site_phases`: its meter
+    measures L1 alone, or L2 and L3 have no supply), else 3; 3 as well for a site that does not say."""
+    phases = getattr(site, "site_phases", None)
+    return 1 if isinstance(phases, tuple) and len(phases) == 1 else 3
+
+
+def site_signed_w(site: Any) -> list[float | None]:
+    """The site meter's signed power on each phase the site has (W, + import, `None` where one is not known): all the
+    result holds on a three-phase site, L1's alone on a single-phase one (`site_phase_total`), whose L2 and L3 read
+    nothing and are no part of the grid's power, its export or its fuse."""
+    signed = site.result.phase_signed_active_power_w
+    if site_phase_total(site) == 1:
+        return [signed.get(phase) for phase in site.site_phases]
+    return list(signed.values())
+
+
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_shadow.{entry_id}"
 
@@ -635,7 +652,7 @@ class BatteryShadow:
 
     def _grid_kw(self) -> float | None:
         """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
-        signed = list(self.site.result.phase_signed_active_power_w.values())
+        signed = site_signed_w(self.site)
         if not signed or not all(value is not None and math.isfinite(value) for value in signed):
             return None
         return sum(signed) / 1000.0  # type: ignore[arg-type]
