@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Strompreise",
-        "description": "SpotNav liest deine Agile-Preise für {area} aus der Integration Octopus Energy, die über HACS installiert wird: [Octopus Energy]({link}). Der Tarif deines Zählers muss Agile sein. Das geht auch später; die Einstellungen der SpotNav-Karte erinnern unter Strompreis daran."
+        "description": "SpotNav liest deine Octopus-Preise für {area} aus der Integration Octopus Energy, die über HACS installiert wird: [Octopus Energy]({link}). Jeder Octopus-Tarif geht (Agile, Flux, Go, fest); mit einem Einspeisezähler sind dessen Preise das, was eine verkaufte kWh bringt. Das geht auch später; die Einstellungen der SpotNav-Karte erinnern unter Strompreis daran."
       }
     },
     "abort": {

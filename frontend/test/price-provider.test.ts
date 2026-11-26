@@ -152,7 +152,7 @@ describe("the source line", () => {
     ["nordpool", "Prices from Nord Pool (via Home Assistant)"],
     ["entsoe", "Prices from ENTSO-E (your key)"],
     ["pvpc", "Prices from PVPC (Home Assistant)"],
-    ["octopus", "Prices from Octopus Energy (your Agile tariff)"],
+    ["octopus", "Prices from Octopus Energy (your own tariff)"],
     ["zonneplan", "Prices from Zonneplan (your tariff, tax and VAT included)"],
   ])("names %s", async (key, text) => {
     const { element } = await open(dashboard(provider({ key, name: "x", url: "https://example.org/" }, null)));
