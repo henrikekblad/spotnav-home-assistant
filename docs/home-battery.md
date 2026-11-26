@@ -447,6 +447,18 @@ carried to another battery brand, and a recipe a release holds back stays off wh
 measured again before it counts: where the battery's own timeout lifts the grid charge limit that applies while
 Home Assistant is down, that limit is back until the timeout has been measured on the new version.
 
+**What the plan itself shows on the new version counts.** The check does not have to show every step itself. When
+the plan holds the battery, charges it from the grid or lets it cover the house on the new version, and the battery
+is seen to do it (three readings in a row, as for any command), that step has passed on the new version. A hand-back
+that leaves every setting as it was found counts as the hand-back. Only a clear case counts: a hold must stop a
+battery that was discharging while the house draws from the grid, a charge or a discharge must be at least 1 kW, and
+a charge must start on a battery that was not already charging. A command the battery did not follow is counted as
+before but never fails the check: only the check itself does that, and its answer replaces the plan's. The check
+then runs only the steps still open. What is still not shown seven days after the update is checked ahead of the
+plan: at the next moment that suits the check (the same conditions as above) the plan steps aside for it. Control
+never stops because the seven days have passed. The battery's own timeout, a charge per phase and the export limit
+are never shown by the plan, only by the check.
+
 The firmware is the integration's firmware entity, or, where the brand has none or it reads nothing, the software version
 of the battery's device (SolaX Modbus keeps its firmware registers internal and has only that), so control never waits
 on a firmware it cannot read.
