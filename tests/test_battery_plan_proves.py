@@ -456,8 +456,34 @@ async def test_a_moment_that_passes_ends_the_stand_aside_and_it_is_not_tried_aga
     assert control.state() == "on" and control.executor.state.action == "hold"
     now = await _looks(control, now, 200)
     assert len(_kinds(control, "plan_aside")) == 1, "not again within the gap"
-    now = await _looks(control, now + timedelta(seconds=gate.RETRY_GAP_S), 3)
+    # Nor every hour for good where the routine keeps not starting: each is a hand-back and a new start.
+    now = await _looks(control, now + timedelta(seconds=gate.RETRY_GAP_S), 30)
+    assert len(_kinds(control, "plan_aside")) == 1 and control.executor.state.action == "hold"
+    now = await _looks(control, now + timedelta(seconds=control_module.ASIDE_GAP_S), 3)
     assert len(_kinds(control, "plan_aside")) == 2
+    await control.async_shutdown()
+
+
+async def test_a_car_that_begins_to_charge_ends_the_stand_aside_at_once(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    control, plan, now = await _busy_site(hass, monkeypatch, hass_storage, age=timedelta(days=8))
+    # The moment suits while the plan holds the battery; handed back, the routine finds a car charging.
+    monkeypatch.setattr(gate, "suitable", lambda moment: (
+        ("car_charging" if _kinds(control, "plan_aside") else None) if moment.executor_idle else "executor_busy"
+    ))
+    now = await _looks(control, now, 1)
+    assert len(_kinds(control, "plan_aside")) == 1
+    now = await _looks(control, now, 8)
+    ended = _kinds(control, "plan_aside_ended")
+    assert len(ended) == 1 and ended[0]["reason"] == "car_charging", "well inside the five minutes"
+    assert _kinds(control, "verify_started") == []
+    for _ in range(30):
+        now = await _looks(control, now, 1)
+        if control.executor.state.action == "hold":
+            break
+    assert control.state() == "on" and control.executor.state.action == "hold", "the plan has the battery again"
+    assert len(_kinds(control, "plan_aside")) == 1
     await control.async_shutdown()
 
 

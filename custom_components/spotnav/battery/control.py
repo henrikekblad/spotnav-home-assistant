@@ -50,8 +50,9 @@ The order on every path:
   on, a grid charge not where it is allowed only per phase. What the routine still has to check a week
   (`gate.PLAN_PROOF_DEADLINE_S`) after the key was first read is checked ahead of the plan (`_plan_aside`): at a moment that
   suits the routine by every rule but the idle executor (`gate.suitable_ahead`) the plan stands aside for at most
-  `ASIDE_S`, the battery is handed back, and the routine starts as it does when the plan is idle. A moment that
-  does not come leaves the plan running; control never stops for the deadline.
+  `ASIDE_S`, the battery is handed back, and the routine starts as it does when the plan is idle; at most once per
+  `ASIDE_GAP_S`, and ended at once when a car begins to charge or the fuse or the charge level no longer suits.
+  A moment that does not come leaves the plan running; control never stops for the deadline.
 * **Sigenergy's AI mode** (owner 2026-11-16): taken over only with `battery_control_ai_takeover_ack`; whenever
   control stops running after such a takeover (turned off, back to shadow only, a failed check, a firmware change,
   the acknowledgement withdrawn) a note asks the person to set AI mode again in the app (the hand-back leaves the
@@ -246,6 +247,14 @@ _PLAN_KINDS: Final = {"hold": "hold", "charge": "charge", "discharge_house": "di
 #: How long the plan stands aside for a check past its deadline to start (s, `_plan_aside`): the hand-back and the
 #: battery taking up the house again take well under a minute; the routine then runs its own length.
 ASIDE_S: Final = 300.0
+#: The least time between two such stand-asides (s): each is a hand-back and a new start of the plan's command
+#: (writes to the plant, against the day's cap), so a plant where the routine keeps not starting after one (the
+#: battery does not take up the house when left alone) is not handed back every hour for good.
+ASIDE_GAP_S: Final = 86400.0
+#: What the routine waits for (`waiting_for`) that ends a stand-aside at once: the moment it began at is gone, and
+#: the plan's own rules (the hold for a car) are wanted back. Anything else may pass within `ASIDE_S` (the hand-back
+#: still running, the battery not yet covering the house, the plant's own state read a poll late).
+_ASIDE_ENDS: Final = frozenset({"car_charging", "headroom_too_small", "soc_out_of_range"})
 
 #: `(action, battery kW magnitude, slot end)` of the running slot, or `None`.
 PlanSource = Callable[[datetime], tuple[str, float, datetime | None] | None]
@@ -1580,15 +1589,16 @@ class BatteryControl:
 
     def _plan_aside(self, now: datetime, options: gate.Options) -> bool:
         """Whether the plan stands aside at this look for a check past its deadline (see the module). It begins to
-        only at a moment `gate.suitable_ahead` takes, at most once per `gate.RETRY_GAP_S` and that long after the
-        routine's last run, and ends after `ASIDE_S` (the routine, once started, runs in the plan's place by
-        itself). While it stands aside the plan's slot is none, so the executor hands the battery back."""
+        only at a moment `gate.suitable_ahead` takes, at most once per `ASIDE_GAP_S` and `gate.RETRY_GAP_S` after
+        the routine's last run, and ends after `ASIDE_S` (the routine, once started, runs in the plan's place by
+        itself) or as soon as the routine waits for something that moment did not have (`_ASIDE_ENDS`: a car began
+        to charge). While it stands aside the plan's slot is none, so the executor hands the battery back."""
         executor = self.executor
         if executor is None or not options.writes or self.trial is not None or not self._deadline_due(now):
             self._aside_until = None
             return False
         if self._aside_until is not None:
-            if now < self._aside_until:
+            if now < self._aside_until and self.waiting_for not in _ASIDE_ENDS:
                 return True
             self._aside_until = None
             self._log([{"at": now.isoformat(), "kind": "plan_aside_ended", "reason": self.waiting_for or "moment"}])
@@ -1598,8 +1608,8 @@ class BatteryControl:
             # nothing of the plan's to step aside.
             return False
         last = gate.parse_time((self.report() or {}).get("last_run_at"))
-        for at in (last, self._aside_at):
-            if at is not None and (now - at).total_seconds() < gate.RETRY_GAP_S:
+        for at, gap in ((last, gate.RETRY_GAP_S), (self._aside_at, ASIDE_GAP_S)):
+            if at is not None and (now - at).total_seconds() < gap:
                 return False
         # The plant reads as taken because the plan holds it (`preview` sees SpotNav's own Remote EMS): no blocker
         # here. Once handed back, the routine's own start reads it afresh (`gate.suitable`).

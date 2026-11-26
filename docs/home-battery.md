@@ -457,8 +457,9 @@ the site draws from the grid (so that sun is not taken for it). A command writte
 or before a restart, does not count. A command the battery did not follow is counted as
 before but never fails the check: only the check itself does that, and its answer replaces the plan's. The check
 then runs only the steps still open. What is still not shown seven days after the update is checked ahead of the
-plan: at the next moment that suits the check (the same conditions as above) the plan steps aside for it. Control
-never stops because the seven days have passed. The battery's own timeout, a charge per phase and the export limit
+plan: at the next moment that suits the check (the same conditions as above) the plan steps aside for it, for at
+most five minutes and at most once a day; a car that begins to charge ends it at once. Control never stops because
+the seven days have passed. The battery's own timeout, a charge per phase and the export limit
 are never shown by the plan, only by the check.
 
 The firmware is the integration's firmware entity, or, where the brand has none or it reads nothing, the software version
