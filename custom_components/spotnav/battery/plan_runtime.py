@@ -172,6 +172,9 @@ CHECK_S: Final = 60.0
 SHOWN_QUARTERS: Final = 96
 #: Days of prices read: today and the next (the horizon ends with the last published one).
 PRICE_DAYS: Final = 2
+#: Days of prices before today read for the end value's refill (`plan.REFILL_DAYS` days back from the horizon's end,
+#: which is tonight at the earliest).
+EARLIER_PRICE_DAYS: Final = 2
 #: A day whose perfect plan could not be worked out is tried again after this long (s).
 FACIT_RETRY_S: Final = 3600.0
 #: The battery's own way beating its perfect plan by more than this (minor units, 2 kr) is logged (`_async_facit`).
@@ -426,6 +429,14 @@ def learn_bands(
     )
 
 
+def earlier_prices(
+    prices: Sequence[PriceSlot], before: Sequence[PriceSlot], first: datetime
+) -> tuple[tuple[datetime, datetime, float], ...]:
+    """The buy prices before the plan's first slot ([first]) as `PlanRequest.earlier_prices` wants them: the days
+    [before] the prices read, then the passed part of [prices] (the running price cut at [first])."""
+    return tuple((p.start, min(p.end, first), p.buy) for p in (*before, *prices) if p.start < first)
+
+
 class Solved(NamedTuple):
     """The executor's answer: each mode's plan, the modes skipped, the slots, what was assumed, the bands and the
     defensive variant (its inputs, slots and plan; `None` when not planned)."""
@@ -465,6 +476,7 @@ def _solve_demand(
     started: float,
     peak_now: float | None = None,
     grid_charge_cap_kw: float | None = None,
+    before: Sequence[PriceSlot] = (),
 ) -> Solved:
     """[solved] with the demand variant (see the module) where it would plan anything the plan in force does not and
     the CPU budget allows; skipped and named otherwise."""
@@ -480,7 +492,8 @@ def _solve_demand(
     if not slots:
         return solved
     request = PlanRequest(
-        slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), peak_now_kw=peak_now
+        slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), peak_now_kw=peak_now,
+        earlier_prices=earlier_prices(prices, before, slots[0].start),
     )
     baseline = self_consumption(request)
     plan = plan_mode(
@@ -515,22 +528,27 @@ def _solve(
     ceilings: dict[datetime, tuple[float, float, date | None]] | None = None,
     peak_now: float | None = None,
     grid_charge_cap_kw: float | None = None,
+    before: Sequence[PriceSlot] = (),
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
     [misses] (house, sun, holidays), the error bands and the defensive variant; then the demand variant from
     [hour_caps] and [ceilings] (`_solve_demand`). What is left when the solve took longer than `MODES_BUDGET_S` is
-    skipped and named."""
+    skipped and named. [before] is the prices of the days before [prices], for the end value's refill
+    (`plan.default_end_value`)."""
     started = budget_clock()
     solved = _solve_modes(
         now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear, keeps, misses,
-        sell_margin, started, grid_charge_cap_kw,
+        sell_margin, started, grid_charge_cap_kw, before,
     )
     solved = _solve_demand(
         solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
-        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now, grid_charge_cap_kw,
+        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now, grid_charge_cap_kw, before,
     )
     # Last, so the what-if never takes the demand variant's share of the CPU budget.
-    held = _grid_held(solved, params, soc_pct, mode, wear, keeps.get(mode), sell_margin, grid_charge_cap_kw, started)
+    held = _grid_held(
+        solved, params, soc_pct, mode, wear, keeps.get(mode), sell_margin, grid_charge_cap_kw, started,
+        earlier_prices(prices, before, solved.slots[0].start),
+    )
     return solved if held is None else solved._replace(grid_held=held)
 
 
@@ -544,6 +562,7 @@ def _grid_charge_kwh(decisions: Sequence[Any]) -> float:
 def _grid_held(
     solved: Solved, params: BatteryParams, soc_pct: float, mode: str, wear: float, keep: tuple[str, float] | None,
     sell_margin: float, grid_charge_cap_kw: float | None, started: float,
+    earlier: tuple[tuple[datetime, datetime, float], ...] = (),
 ) -> tuple[float, datetime] | None:
     """What the grid charge cap held back from the plan in force: the plan again on the same slots without the cap
     (only where a cap is below the battery's rated charge, and the CPU budget allows), and the grid charge it has that
@@ -555,7 +574,9 @@ def _grid_held(
     ):
         return None
     free = tuple(replace(slot, grid_charge_cap_kw=None) for slot in solved.slots)
-    request = PlanRequest(slots=free, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    request = PlanRequest(
+        slots=free, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), earlier_prices=earlier
+    )
     baseline = self_consumption(request)
     without = plan_mode(
         request, MODE_DEFS[mode], wear, sell_margin=sell_margin, keep=keep,
@@ -587,6 +608,7 @@ def _solve_modes(
     sell_margin: float,
     started: float,
     grid_charge_cap_kw: float | None = None,
+    before: Sequence[PriceSlot] = (),
 ) -> Solved:
     """The modes and the defensive variant (see `_solve`)."""
     if not house:
@@ -596,7 +618,10 @@ def _solve_modes(
     )
     if not slots:
         raise _NoPlan(NO_HOUSE_FORECAST if prices else NO_PRICES)
-    request = PlanRequest(slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    earlier = earlier_prices(prices, before, slots[0].start)
+    request = PlanRequest(
+        slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), earlier_prices=earlier
+    )
     hours = sum(slot.hours for slot in slots)
     baseline = self_consumption(request)
     threshold = keep_min_gain(baseline.cost, hours)
@@ -625,7 +650,9 @@ def _solve_modes(
     )
     if not guarded:
         return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band, inputs)
-    request = PlanRequest(slots=guarded, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    request = PlanRequest(
+        slots=guarded, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), earlier_prices=earlier
+    )
     baseline = self_consumption(request)
     defensive = plan_mode(
         request,
@@ -666,7 +693,7 @@ def work_facit(
 ) -> Facit | None:
     """The executor's part of a day's perfect plan (`hindsight.py`): the energy left at midnight valued at the next
     day's mean buy price where held, else at the review's own end value; then the plans and the shares."""
-    value = end_value_next_day(prices, end, next_end, battery)
+    value = end_value_next_day(prices, end, next_end, battery, wear)
     return facit_day(
         usable,
         battery,
@@ -973,12 +1000,14 @@ class BatteryPlanShadow:
             controlled=self._controlled(),
         )
         if params is not None:
-            self._review_again(now, params)
+            wear, _unknown = self._wear()
+            self._review_again(now, params, wear)
             reviewed = [review.day for review in self.reviews]
             planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE, VARIANT_DEMAND]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
                 review = review_day(
-                    day, self.actuals.buckets.values(), params, tz, now, planning, self.mode, self._demand_basis(day)
+                    day, self.actuals.buckets.values(), params, tz, now, planning, self.mode, self._demand_basis(day),
+                    wear,
                 )
                 if review is not None:
                     self.reviews.append(review)
@@ -990,10 +1019,10 @@ class BatteryPlanShadow:
         self.actuals.prune(now)
         self._save()
 
-    def _review_again(self, now: datetime, params: BatteryParams) -> None:
+    def _review_again(self, now: datetime, params: BatteryParams, wear: float = 0.0) -> None:
         """On a battery read at the battery (DC): the quarter hours from before the AC side turned with the loss known
         now, and the reviews from before it reviewed again while all their quarter hours are kept (`plan_shadow`, the
-        battery on the AC side); an older review keeps its figures."""
+        battery on the AC side); an older review keeps its figures. [wear] is the site's, for the day's end value."""
         if not self._facts.power_dc:
             return
         loss = self.learned.conversion.loss(True)
@@ -1019,6 +1048,7 @@ class BatteryPlanShadow:
                 [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE, VARIANT_DEMAND],
                 review.mode,
                 self._demand_basis(review.day),
+                wear,
             )
             if made is None:
                 again.append(review)
@@ -1125,7 +1155,7 @@ class BatteryPlanShadow:
             wear, _unknown = self._wear()
             made: DayReview | None = await self.hass.async_add_executor_job(
                 partial(
-                    rebuilt_review, review, quarters, actual, loss_cost, params, self._prices_after(day), end, next_end,
+                    rebuilt_review, review, quarters, actual, loss_cost, params, self._prices_around(day), end, next_end,
                     day_quarters(day, self._tz), wear, now, self._sell_margin(),
                 )
             )
@@ -1265,6 +1295,37 @@ class BatteryPlanShadow:
             ((p.start, p.end, p.spot) for p in points), source.fiscal, export=self._export_rates(source)
         )
 
+    def _prices_around(self, day: date) -> list[PriceSlot]:
+        """The buy prices the value of the energy left at [day]'s end reads (`hindsight.end_value_next_day`): the day
+        after it, and before those the day itself and the one before, where held."""
+        after = self._prices_after(day)
+        if not after:
+            return []
+        return [*self._prices_after(day - timedelta(days=2)), *self._prices_after(day - timedelta(days=1)), *after]
+
+    def _prices_before(self, now: datetime) -> list[PriceSlot]:
+        """The buy prices with the fees of the `EARLIER_PRICE_DAYS` days before today, as held (nothing is fetched): the
+        days the end value's refill looks back on (`plan.default_end_value`). A day not held is left out."""
+        from ..pricing.price_points import price_points  # noqa: PLC0415 - it imports the planner
+        from ..runtime import domain_data  # noqa: PLC0415
+
+        source = self._price_source()
+        repository = domain_data(self.hass).price_repository
+        if source is None or source.area is None or source.fiscal is None or repository is None:
+            return []
+        today = now.astimezone(time_zones.require_zone(source.area.tz)).date()
+        slots: list[PriceSlot] = []
+        for offset in range(EARLIER_PRICE_DAYS, 0, -1):
+            try:
+                document = repository.day_snapshot(source.area_id, today - timedelta(days=offset)).document
+                if document is None:
+                    continue
+                points = price_points([document], currency=source.area.currency, fiscal=source.fiscal)
+                slots.extend(price_slots(((p.start, p.end, p.spot) for p in points), source.fiscal))
+            except Exception:  # noqa: BLE001 - prices that cannot be read are no prices
+                _LOGGER.debug("prices_before: ignored failure (prices that cannot be read are no prices)", exc_info=True)
+        return slots
+
     def _export_rates(self, source: Any) -> Any:
         """The supplier's own export rates for the source's area (`pricing/export_rates.py`), `None` without."""
         from ..pricing.export_rates import area_export_rates  # noqa: PLC0415
@@ -1298,7 +1359,7 @@ class BatteryPlanShadow:
                 return
             _start, end = self._day_bounds(day)
             _end, next_end = self._day_bounds(day + timedelta(days=1))
-            prices = self._prices_after(day)
+            prices = self._prices_around(day)
             wear, _unknown = self._wear()
             try:
                 temperature = await self._async_cell_temperature(day)
@@ -1608,7 +1669,7 @@ class BatteryPlanShadow:
             partial(
                 _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
                 sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings, peak_now=peak_now,
-                grid_charge_cap_kw=grid_cap,
+                grid_charge_cap_kw=grid_cap, before=self._prices_before(now),
             )
         )
         if self._closed:

@@ -105,6 +105,65 @@ def test_the_energy_left_is_worth_the_next_days_mean_buy_price_less_the_round_tr
     assert end_value_next_day(quarters, end, end + timedelta(hours=23), BATTERY) == pytest.approx(200 * BATTERY.round_trip_efficiency)
 
 
+def _tariff(hour: int) -> float:
+    """The same cheap window every night: 02-05 cheap, 16-19 dear, a flat day rate."""
+    hour %= 24
+    return 17.3 if 2 <= hour < 5 else 34.4 if 16 <= hour < 19 else 25.78
+
+
+def test_the_energy_left_is_worth_no_more_than_putting_it_back_as_the_plan_counts_it() -> None:
+    from custom_components.spotnav.battery.plan import default_end_value
+    from custom_components.spotnav.battery.plan_model import PlanSlot
+
+    end = MIDNIGHT + timedelta(days=1)
+    refill = 17.3 / BATTERY.charge_efficiency
+    assert refill < 25.78 * BATTERY.round_trip_efficiency
+    # With the reviewed day (and the one before it): the window's price, with the wear of the charge where given.
+    ahead = _ahead([_tariff(hour) for hour in range(24)], end)
+    two = _ahead([_tariff(hour) for hour in range(48)], end - timedelta(days=1))
+    three = _ahead([_tariff(hour) for hour in range(72)], end - timedelta(days=2))
+    assert end_value_next_day(two, end, end + timedelta(days=1), BATTERY) == pytest.approx(refill)
+    assert end_value_next_day(three, end, end + timedelta(days=1), BATTERY) == pytest.approx(refill)
+    worn = (17.3 + 1.2) / BATTERY.charge_efficiency
+    assert end_value_next_day(three, end, end + timedelta(days=1), BATTERY, 1.2) == pytest.approx(worn)
+    # The live plan's value on the same days of prices: the same figure.
+    slots = tuple(PlanSlot(start=p.start, end=p.end, buy=p.buy, sell=p.sell, house_kw=1.0, solar_kw=0.0, car_kw=0.0) for p in ahead)
+    earlier = tuple((p.start, p.end, p.buy) for p in three[:48])
+    assert default_end_value(slots, BATTERY, 1.2, earlier) == pytest.approx(worn)
+    # The next day alone is no refill to count on, nor is one where the reviewed day had no cheap hours (cheap hours
+    # that come and go: the dearest of the days is counted on): the next day's mean less the round trip stands.
+    mean = sum(_tariff(hour) for hour in range(24)) / 24
+    assert end_value_next_day(ahead, end, end + timedelta(days=1), BATTERY) == pytest.approx(mean * BATTERY.round_trip_efficiency)
+    mixed = [*_ahead([25.78] * 24, end - timedelta(days=1)), *ahead]
+    assert end_value_next_day(mixed, end, end + timedelta(days=1), BATTERY) == pytest.approx(mean * BATTERY.round_trip_efficiency)
+
+
+def test_the_days_own_end_value_and_its_perfect_plan_follow_the_same_rule() -> None:
+    # Two days on the tariff, an idle battery at 50 %: the review's own end value is the window's refill too.
+    buckets = _day(battery=[0.0] * 24, soc=[50.0] * 25, house=0.4)
+    for index, bucket in enumerate(buckets):
+        bucket.buy, bucket.sell = _tariff(index // 4), 5.0
+    before = [Bucket(bucket.start - timedelta(days=1), buy=bucket.buy, sell=bucket.sell) for bucket in buckets]
+    at = MIDNIGHT + timedelta(days=1, hours=1)
+    review = review_day(DAY, [*before, *buckets], BATTERY, TZ, at, (), MODE_BALANCED)
+    assert review is not None
+    assert review.end_value == pytest.approx(17.3 / BATTERY.charge_efficiency)
+    worn = review_day(DAY, [*before, *buckets], BATTERY, TZ, at, (), MODE_BALANCED, wear=1.2)
+    assert worn is not None and worn.end_value == pytest.approx((17.3 + 1.2) / BATTERY.charge_efficiency)
+    # The day alone: its median less the round trip, as before.
+    alone = review_day(DAY, buckets, BATTERY, TZ, at, (), MODE_BALANCED)
+    assert alone is not None and alone.end_value == pytest.approx(25.78 * BATTERY.round_trip_efficiency)
+    # Its perfect plan carries the house through the day rate and meets the next window nearly empty, where the
+    # day rate times the round trip had it end the day full, bought at the day rate.
+    from custom_components.spotnav.battery.hindsight import measured_slot, perfect_plans
+
+    slots = [measured_slot(bucket) for bucket in buckets]
+    made = perfect_plans(slots, BATTERY, 50.0, 1.2, review.end_value, (MODE_BALANCED,), 10.0)[MODE_BALANCED]
+    full = perfect_plans(slots, BATTERY, 50.0, 1.2, 25.78 * BATTERY.round_trip_efficiency, (MODE_BALANCED,), 10.0)[MODE_BALANCED]
+    assert made.end_soc_pct < 30
+    assert full.end_soc_pct > 80
+
+
 def test_without_the_next_days_prices_there_is_no_value_yet() -> None:
     end = MIDNIGHT + timedelta(days=1)
     assert end_value_next_day(_ahead([100.0] * 12, end), end, end + timedelta(days=1), BATTERY) is None

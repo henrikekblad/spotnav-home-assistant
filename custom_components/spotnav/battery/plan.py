@@ -34,8 +34,16 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
   horizon's cheapest `CHEAP_SHARE`), so only the surplus beyond it is sold.
 * **Modes** (`plan_model.MODE_DEFS`, `plan_mode`): a mode sets the wear, and whether and how the battery may sell;
   Self-consumption does not plan at all (its plan is the baseline).
-* **The horizon's end.** A kWh still stored at the end is worth `end_value` (default: the horizon's median buy price
-  times the round trip), so the plan neither empties the battery nor fills it for nothing at the horizon.
+* **The horizon's end.** A kWh still stored at the end is worth `end_value`, so the plan neither empties the battery
+  nor fills it for nothing at the horizon. By default (`default_end_value`) the lesser of two: what it gives back
+  later (the horizon's median buy price times the round trip), and what putting it back would cost. The refill is
+  priced on the last `REFILL_DAYS` days of prices before the horizon's end, the part of them that has passed
+  included (`PlanRequest.earlier_prices`): each day's cheapest hours that fill the battery, the dearest of the
+  days (at least `REFILL_MIN_DAYS` of them, else no refill is counted on), plus the wear of the charge, over the
+  charge's efficiency. A tariff with the same cheap window every night
+  gives that window's price, so the plan does not sit on a full battery through hours dearer than the window. Spot
+  prices, whose cheap hours differ from day to day, seldom give less than the first. No sale price enters: a refill
+  that comes before the sale bounds the value just the same.
 * **Baseline.** The same slots with self-consumption only; `BatteryPlan.savings` is the difference with the end
   values counted.
 """
@@ -44,7 +52,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from datetime import datetime
 from typing import NamedTuple
@@ -74,6 +82,12 @@ _SAME_KW = 1e-6
 _TIE = 1e-6
 #: The next cheap hours for house first: a slot whose buy price is among this share of the horizon's cheapest.
 CHEAP_SHARE = 0.25
+#: The days of prices before the horizon's end whose refill price is looked at (`default_end_value`).
+REFILL_DAYS = 3
+#: A day of prices says what a refill costs only when it covers this many hours (a 23-hour day does).
+REFILL_MIN_H = 22.5
+#: A refill is counted on only when at least this many days show what it costs.
+REFILL_MIN_DAYS = 2
 
 
 class _Outcome(NamedTuple):
@@ -99,9 +113,60 @@ def sell_prices(spot_major_per_kwh: Sequence[float], credit_minor_per_kwh: float
     return [spot * 100 + credit_minor_per_kwh for spot in spot_major_per_kwh]
 
 
-def default_end_value(slots: Sequence[PlanSlot], battery: BatteryParams) -> float:
-    """A kWh left at the horizon: the horizon's median buy price, less the round trip's loss to use it later."""
-    return statistics.median(slot.buy for slot in slots) * battery.round_trip_efficiency
+def refill_price(priced: Sequence[tuple[float, float]], battery: BatteryParams) -> float | None:
+    """What a refill costs per kWh bought over [priced] (`(buy, hours)` pairs): the mean buy price of its cheapest
+    hours, as many as fill the battery from its floor at the rated charge power. `None` when [priced] covers less
+    than `REFILL_MIN_H` (a part of a day does not show the day's cheap hours)."""
+    if sum(hours for _buy, hours in priced) < REFILL_MIN_H:
+        return None
+    need = (battery.max_kwh - battery.min_kwh) / (battery.max_charge_kw * battery.charge_efficiency)
+    cost = seen = 0.0
+    for buy, hours in sorted(priced):
+        take = min(hours, need - seen)
+        if take <= 0:
+            break
+        cost += buy * take
+        seen += take
+    return cost / seen if seen > 0 else None
+
+
+def end_worth(
+    typical_buy: float,
+    days: Iterable[Sequence[tuple[float, float]]],
+    battery: BatteryParams,
+    cycle_cost: float = 0.0,
+) -> float:
+    """What a kWh still stored when the prices end is worth (minor per kWh stored), see the module.
+
+    The lesser of what it gives back ([typical_buy] times the round trip) and what putting it back would cost: the
+    refill price of each of [days] (`refill_price`, each a day of `(buy, hours)` pairs), the dearest of them (the
+    refill the site can count on), never below nothing, with [cycle_cost] for the charge, over the charge's
+    efficiency. A day too short to say is left out; with fewer than `REFILL_MIN_DAYS` left (one day's cheap hours
+    are no refill to count on), only the first counts."""
+    use = typical_buy * battery.round_trip_efficiency
+    refills = [price for price in (refill_price(day, battery) for day in days) if price is not None]
+    if len(refills) < REFILL_MIN_DAYS:
+        return use
+    return min(use, (max(0.0, max(refills)) + cycle_cost) / battery.charge_efficiency)
+
+
+def default_end_value(
+    slots: Sequence[PlanSlot],
+    battery: BatteryParams,
+    cycle_cost: float = 0.0,
+    earlier: Sequence[tuple[datetime, datetime, float]] = (),
+) -> float:
+    """A kWh left at the horizon (`end_worth`): the horizon's median buy price less the round trip's loss, at
+    most what a refill costs on each of the `REFILL_DAYS` days of prices before the horizon's end. [earlier] is the
+    prices before the horizon as `(start, end, buy)`, for the part of those days that has passed."""
+    last = slots[-1].end
+    days: list[list[tuple[float, float]]] = [[] for _ in range(REFILL_DAYS)]
+    spans = [(slot.start, slot.end, slot.buy) for slot in slots]
+    for start, end, buy in (*earlier, *spans):
+        index = int((last - end).total_seconds() // 86400)
+        if 0 <= index < REFILL_DAYS and end > start and math.isfinite(buy):
+            days[index].append((buy, (end - start).total_seconds() / 3600.0))
+    return end_worth(statistics.median(slot.buy for slot in slots), days, battery, cycle_cost)
 
 
 def _limits(slot: PlanSlot, battery: BatteryParams, soc_kwh: float) -> tuple[float, float]:
@@ -368,6 +433,13 @@ def self_consumption(request: PlanRequest) -> PlanRun:
     return _run(decisions, outcomes, battery, soc)
 
 
+def _end_value(request: PlanRequest) -> float:
+    """The request's own end value, else `default_end_value` on its slots, wear and earlier prices."""
+    if request.end_value is not None:
+        return request.end_value
+    return default_end_value(request.slots, request.battery, request.cycle_cost, request.earlier_prices)
+
+
 def objective(run: PlanRun, battery: BatteryParams, end_value: float) -> float:
     """What the search minimises over a run: its money, wear, gate margin and demand charge above the soft ceilings,
     less the stored energy it leaves at `end_value`."""
@@ -392,7 +464,7 @@ def plan_battery(
     """
     request.validate()
     battery = request.battery
-    end_value = request.end_value if request.end_value is not None else default_end_value(request.slots, battery)
+    end_value = _end_value(request)
     grid = _Grid(battery, request.soc_steps)
     reserves = _reserves(request)
     if _priced(request):
@@ -484,10 +556,7 @@ def plan_mode(
     request.validate()
     base = self_consumption(request) if baseline is None else baseline
     if not mode.plans:
-        end_value = (
-            request.end_value if request.end_value is not None else default_end_value(request.slots, request.battery)
-        )
-        return BatteryPlan(plan=base, baseline=base, end_value=end_value, battery=request.battery)
+        return BatteryPlan(plan=base, baseline=base, end_value=_end_value(request), battery=request.battery)
     return plan_battery(mode_request(request, mode, wear, sell_margin), keep=keep, keep_min_gain=keep_min_gain, baseline=base)
 
 

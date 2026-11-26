@@ -24,10 +24,14 @@ that day had everything been known, and each way's share of it.
 * **The day boundary** (fairness): every way (what really happened, which is the battery's own optimiser on a battery
   that runs its own way; each SpotNav mode; the perfect plan) starts the day at the same measured SoC, and the energy
   each leaves at midnight is valued the same way (`end_value_next_day`): at the next day's mean buy price with its
-  fees, less the round trip's loss. That is a price a real controller could know at the time (the next day's prices
-  are published at about 13:00), not hindsight about the dear hours ahead. Until the next day's prices are held the
-  review's own end value (the day's median buy price times the round trip) stands in, and the figure says so
-  (`basis`); it is worked out again once they are. The perfect plan values its own end the same way, so it plans for
+  fees, less the round trip's loss, and at most what putting it back costs (`plan.end_worth`, the plan's own rule a
+  day on, at the true wear): the cheapest hours that fill the battery on the next day, on the reviewed day and on
+  the day before, the dearest of the three (of two at least: the next day alone gives no refill to count on), with
+  the wear of the charge, over the charge's efficiency. That is a price a real controller could know at the time
+  (the next day's prices are published at about 13:00), not hindsight about the dear hours ahead. Until the next
+  day's prices are held the review's own end value (the same on the day's own prices and the days before it) stands
+  in, and the figure says so (`basis`); it is worked
+  out again once they are. The perfect plan values its own end the same way, so it plans for
   the night after.
 * **Whole days only** (`Facit.whole`): a day counts when at least `WHOLE_DAY_SHARE` of its quarter hours were
   measured. A partial day has no share (the card says "incomplete day") and no sum counts it.
@@ -64,7 +68,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final, Protocol
 
 from .export_curtail import curtail_slots
-from .plan import action_power, plan_mode, run_slot
+from .plan import REFILL_DAYS, action_power, end_worth, plan_mode, run_slot
 from .plan_model import (
     ACTION_SELF_CONSUME,
     DEFAULT_SELL_MARGIN,
@@ -166,20 +170,32 @@ def measured_slot(bucket: MeasuredQuarter) -> PlanSlot:
 # ------------------------------------------------------------------------------------------------ the end value
 
 
-def end_value_next_day(prices: Sequence[PricedSlot], day_end: datetime, next_end: datetime, battery: BatteryParams) -> float | None:
+def end_value_next_day(
+    prices: Sequence[PricedSlot], day_end: datetime, next_end: datetime, battery: BatteryParams, wear: float = 0.0
+) -> float | None:
     """What a kWh left in the battery at [day_end] is worth (minor units, see the module): the mean buy price of the
-    next day ([day_end] to [next_end]) over its time, times the round trip; `None` while the prices do not cover it."""
+    next day ([day_end] to [next_end]) over its time, times the round trip, at most what a refill costs
+    (`plan.end_worth`, with [wear] for the charge) on that day and on the days before it that [prices] hold (the
+    reviewed day and the one before: `plan.REFILL_DAYS` in all, and no refill from the next day alone); `None`
+    while the prices do not cover the next day."""
     worth = seen = 0.0
+    days: list[list[tuple[float, float]]] = [[] for _ in range(REFILL_DAYS)]
     for slot in prices:
-        start, end = max(slot.start, day_end), min(slot.end, next_end)
-        if end <= start or not _finite(slot.buy):
+        if not _finite(slot.buy):
             continue
-        seconds = (end - start).total_seconds()
-        worth += float(slot.buy) * seconds
-        seen += seconds
+        start, end = max(slot.start, day_end), min(slot.end, next_end)
+        if end > start:
+            seconds = (end - start).total_seconds()
+            worth += float(slot.buy) * seconds
+            seen += seconds
+            days[0].append((float(slot.buy), seconds / 3600.0))
+        elif slot.end <= day_end and slot.end > slot.start:
+            back = 1 + int((day_end - slot.end).total_seconds() // 86400)
+            if back < REFILL_DAYS:
+                days[back].append((float(slot.buy), (slot.end - slot.start).total_seconds() / 3600.0))
     if seen <= 0 or seen < (next_end - day_end).total_seconds() - 60:
         return None
-    return worth / seen * battery.round_trip_efficiency
+    return end_worth(worth / seen, days, battery, wear)
 
 
 # ------------------------------------------------------------------------------------------------ the runs

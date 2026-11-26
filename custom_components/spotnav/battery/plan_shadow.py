@@ -35,7 +35,9 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
 * **Review** (`review_day`), the night after, side by side over the same measured load and sun from the same
   measured SoC: what really happened, each mode's actions run against it (`plan.run_slot`, with that mode's floor),
   and plain self-consumption; `review_totals` sums the days kept (30). Each run is charged the change of its stored
-  energy at the day's end value, so one that empties the battery does not look cheap. `saving` (the site's mode
+  energy at the day's end value (the plan's own rule on the day's prices, `plan.end_worth`: its median buy price
+  times the round trip, at most what a refill costs on the day and the days before it that are kept, at the true
+  wear), so one that empties the battery does not look cheap. `saving` (the site's mode
   against self-consumption) is the one figure to show, `mode_savings` the same per mode (and for the defensive
   variant, `VARIANT_DEFENSIVE`: the site's mode planned on the learnt error band's pessimistic side); `actual_saving` says
   what the battery's own way earned against the same baseline: the figure a battery in its own AI mode is judged
@@ -73,7 +75,7 @@ from .export_curtail import curtail_slots, curtails, would_save
 from .conversion_loss import ac_kw
 from .facts import BatteryFacts
 from .hindsight import IDLE_KW, CellTemperature, Facit, measured_slot
-from .plan import action_power, buy_prices, run_slot, sell_prices
+from .plan import REFILL_DAYS, action_power, buy_prices, end_worth, run_slot, sell_prices
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -1280,12 +1282,15 @@ def review_day(
     modes: Iterable[str] = (),
     mode: str | None = None,
     demand: DemandBasis | None = None,
+    wear: float = 0.0,
 ) -> DayReview | None:
     """The day's runs over its measured quarter hours (see the module); `None` when no quarter hour was measured
     with its prices or no SoC was read. [battery] is the battery at its own floor, which every run keeps; [modes] the
     planning modes to review beside the plan, and [mode] the site's. A mode is reviewed when it ran in every planned
-    quarter hour. [demand] (`demand_plan.demand_basis`) adds each run's demand cost where a part is priced."""
+    quarter hour. [demand] (`demand_plan.demand_basis`) adds each run's demand cost where a part is priced. [wear]
+    (minor per kWh, the site's true wear) is the charge's part of what a refill costs in the day's end value."""
     zone = time_zones.require_zone(tz)
+    buckets = list(buckets)
     rows = sorted(
         (bucket for bucket in buckets if bucket.start.astimezone(zone).date() == day), key=lambda bucket: bucket.start
     )
@@ -1295,7 +1300,15 @@ def review_day(
         return None
     start_soc = float(socs[0].soc_start)  # type: ignore[arg-type]
     end_soc = float(next(b.soc_end for b in reversed(rows) if b.soc_end is not None))  # type: ignore[arg-type]
-    end_value = statistics.median(float(b.buy) for b in usable) * battery.round_trip_efficiency  # type: ignore[arg-type]
+    # The day stands in for the next (`plan.end_worth`): its median less the round trip, at most the refill of the day
+    # and of the days before it that the quarter hours kept still price (`plan.REFILL_DAYS` in all).
+    day_end = datetime.combine(day + timedelta(days=1), datetime.min.time(), zone)
+    priced: list[list[tuple[float, float]]] = [[] for _ in range(REFILL_DAYS)]
+    for bucket in buckets:
+        back = int((day_end - bucket.end).total_seconds() // 86400)
+        if bucket.buy is not None and _finite(bucket.buy) and 0 <= back < REFILL_DAYS:
+            priced[back].append((float(bucket.buy), (bucket.end - bucket.start).total_seconds() / 3600.0))
+    end_value = end_worth(statistics.median(float(b.buy) for b in usable), priced, battery, wear)  # type: ignore[arg-type]
     start_kwh = min(battery.max_kwh, max(battery.min_kwh, battery.usable_kwh * start_soc / 100))
     planned = [b for b in usable if b.ran_action is not None]
     reviewed = [name for name in modes if planned and all(name in b.ran_modes for b in planned)]

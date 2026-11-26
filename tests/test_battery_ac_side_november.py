@@ -89,6 +89,12 @@ def _day(data: dict, day: date, loss: tuple[float, float]) -> tuple[list[Bucket]
     return buckets, socs
 
 
+def _around(data: dict, day: date) -> list[PriceSlot]:
+    """The prices the value of the energy left at [day]'s end reads: the day after, and before it the day and the one
+    before (`plan_runtime._prices_around`)."""
+    return [slot for offset in (-1, 0, 1) for slot in _prices(data, day + timedelta(days=offset))]
+
+
 def _prices(data: dict, day: date) -> list[PriceSlot]:
     start, end = _bounds(day)
     first = int((start - data["t0"]) / Q)
@@ -119,7 +125,7 @@ def _month(
         buckets, socs = _day(data, day, loss)
         _start, end = _bounds(day)
         _end, next_end = _bounds(day + timedelta(days=1))
-        value = end_value_next_day(_prices(data, day + timedelta(days=1)), end, next_end, battery)
+        value = end_value_next_day(_around(data, day), end, next_end, battery)
         assert value is not None
         facit = facit_day(
             buckets,
@@ -189,7 +195,7 @@ def test_a_stored_review_from_before_the_ac_side_is_rebuilt_from_the_statistics(
     _end, next_end = _bounds(day + timedelta(days=1))
     old = review_day(day, stored_buckets, battery_dc, "Europe/Stockholm", end, (), "max_profit")
     assert old is not None
-    value = end_value_next_day(_prices(data, day + timedelta(days=1)), end, next_end, battery_dc)
+    value = end_value_next_day(_around(data, day), end, next_end, battery_dc)
     old_facit = facit_day(
         stored_buckets, battery_dc, start_soc_pct=old.start_soc_pct, actual_cost=old.actual.cost,
         actual_end_soc_pct=old.actual.end_soc_pct, mode="max_profit", wear=15.0, end_value=value,  # type: ignore[arg-type]
