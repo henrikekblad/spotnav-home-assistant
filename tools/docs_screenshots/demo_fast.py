@@ -68,7 +68,7 @@ def _fx_rates(module) -> None:
 PATCHES = {
     PACKAGE + "pricing.fx_rates": _fx_rates,
     PACKAGE + "battery.verify": _verify,
-    PACKAGE + "battery.executor": _executor,
+    PACKAGE + "battery.executor.const": _executor,
     PACKAGE + "battery.hold": _hold,
     PACKAGE + "pricing.price_history": _price_history,
 }
