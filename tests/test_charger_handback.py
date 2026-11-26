@@ -452,3 +452,35 @@ async def test_a_reload_hands_nothing_back_and_keeps_the_stop(hass: HomeAssistan
     await hass.async_block_till_done()
     assert charger.turn_on == [] and charger.values == []
     assert charger.controller._own_stop is True  # noqa: SLF001
+
+
+async def test_a_disabled_charger_removed_later_is_not_handed_back_twice(
+    hass: HomeAssistant, hass_storage: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The disable handed it back; a current the person set since is theirs, and the removal leaves it."""
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await _plan_window_ends(charger)
+    await charger.disable()
+    assert charger.values == [10]
+    assert hass_storage[f"{DOMAIN}.{ENTRY}"]["data"]["handed_back"] is True
+    charger.number("8")  # the person's own choice while SpotNav is disabled
+    hass.states.async_set(SWITCH, "off")
+    with caplog.at_level(logging.INFO, logger=charger_handback.__name__):
+        await charger.remove()
+    assert charger.turn_on == [] and charger.values == []
+    assert "already handed back when it was disabled" in caplog.text
+
+
+async def test_a_charger_disabled_before_the_hand_back_existed_is_handed_back_at_its_removal(
+    hass: HomeAssistant, hass_storage: Any
+) -> None:
+    """A record with no note of a hand-back (disabled on an earlier version): the removal still gives it back."""
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await _plan_window_ends(charger)
+    await charger.disable()
+    hass_storage[f"{DOMAIN}.{ENTRY}"]["data"].pop("handed_back")
+    charger.number("8")
+    await charger.remove()
+    assert charger.values == [10]

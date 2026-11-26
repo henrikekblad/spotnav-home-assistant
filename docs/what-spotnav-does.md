@@ -118,5 +118,6 @@ What SpotNav hands back, and when:
   reached. A stop by you, the charger's app or anything else stays. The current the charger had before SpotNav first
   set one is written back, where SpotNav knows it. Nothing else is changed. While a charger is disabled, load
   balancing leaves it out; enabled again, SpotNav takes it on afresh, with your settings, as a new charger.
+  A charger removed while it is still disabled is not written to again: it was handed back when it was disabled.
 - **Reloading a charger, and restarting Home Assistant.** The charger is left as it is, and SpotNav takes it up
   again where it left off when it comes back.
