@@ -880,6 +880,7 @@
   "test.waiting.at": "Se ejecuta sola, probablemente a partir de las {time}. No hace falta nada de tu parte.",
   "test.waiting.soon": "Se ejecuta sola en cuanto el momento sea adecuado. No hace falta nada de tu parte.",
   "test.waiting.retry": "Algunos pasos no se pudieron valorar: la prueba los repite sola.",
+  "test.waiting.chargeNoRoom": "Esperando a que la casa consuma menos, para que la pequeña carga desde la red quepa bajo el fusible.",
   "test.error": "No se pudo iniciar la prueba.",
   "test.blocked.onceADay": "La próxima prueba podrá ejecutarse {time}.",
   "test.blocked.later": "La prueba no puede ejecutarse ahora.",

@@ -43,6 +43,8 @@ export type TestState = {
   steps: TestStep[];
   /** For `incomplete`: what the battery's recipe still waits for before control may start; else empty. */
   missing: MissingStep[];
+  /** While `waiting`: what the wait is for, where the test says it in words (`charge_no_room`); else `null`. */
+  waitingFor: string | null;
   sentRef: string | null;
 };
 export type BetaAnswer = {
@@ -66,8 +68,9 @@ const ANSWER_KEYS = ["api_version", "ok", "error", "beta", "test", "ref", "retry
 const BETA_KEYS = ["on", "started_at", "ends_at", "ended", "email"];
 const TEST_KEYS = ["state", "blocked", "next_at", "started_at", "finished_at", "result", "steps", "sent_ref"];
 const STEP_KEYS = ["part", "step", "status", "reason"];
-// `missing` came with the result `incomplete`: an answer without it has none.
-const TEST_OPTIONAL_KEYS = ["missing"];
+// `missing` came with the result `incomplete`: an answer without it has none. `waiting_for` is there only while a
+// pressed test waits.
+const TEST_OPTIONAL_KEYS = ["missing", "waiting_for"];
 const MISSING_KEYS = ["step", "reason"];
 const TEST_STATES = ["idle", "waiting", "running", "done"];
 const RESULTS = ["passed", "partial", "skipped", "failed", "incomplete"];
@@ -135,6 +138,10 @@ function decodeTest(value: unknown): TestState | null | undefined {
   if (steps.some((step) => step === null)) {
     return undefined;
   }
+  const waitingFor = raw.waiting_for ?? null;
+  if (!textOrNull(waitingFor)) {
+    return undefined;
+  }
   const missingRaw = raw.missing ?? [];
   if (!Array.isArray(missingRaw)) {
     return undefined;
@@ -152,6 +159,7 @@ function decodeTest(value: unknown): TestState | null | undefined {
     result: raw.result as TestState["result"],
     steps: steps as TestStep[],
     missing: missing as MissingStep[],
+    waitingFor,
     sentRef: raw.sent_ref,
   };
 }
@@ -310,6 +318,11 @@ export function betaSummary(language: Language, answer: BetaAnswer | null): stri
   }
   return beta.ended ? translate(language, "beta.ended") : translate(language, "settings.value.off");
 }
+
+/** What a waiting test waits for (`waiting_for`), where the box says it in words. */
+const WAITING_FOR: Record<string, TranslationKey> = {
+  charge_no_room: "test.waiting.chargeNoRoom",
+};
 
 const RESULT_VALUES: Record<NonNullable<TestState["result"]>, TranslationKey> = {
   passed: "test.value.passed",
@@ -737,9 +750,15 @@ export function testBox(input: BetaBoxInput): HTMLElement {
       if (test.result === "partial" || test.result === "incomplete") {
         lines.push(say("test.waiting.retry"));
       }
-      lines.push(test.nextAt === null
-        ? say("test.waiting.soon")
-        : say("test.waiting.at", { time: dateText(language, test.nextAt, true) }));
+      const waitsFor = WAITING_FOR[test.waitingFor ?? ""];
+      if (waitsFor !== undefined) {
+        // What it waits for is the house's own load, at no hour in particular: said plainly, with no time.
+        lines.push(say(waitsFor), say("test.waiting.soon"));
+      } else {
+        lines.push(test.nextAt === null
+          ? say("test.waiting.soon")
+          : say("test.waiting.at", { time: dateText(language, test.nextAt, true) }));
+      }
     } else if (test.result !== null) {
       lines.push(resultText(language, test));
       if (batteryRunElsewhere(test)) {

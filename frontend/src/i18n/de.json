@@ -880,6 +880,7 @@
   "test.waiting.at": "Läuft von selbst, voraussichtlich ab etwa {time}. Von Ihnen ist nichts nötig.",
   "test.waiting.soon": "Läuft von selbst, sobald der Moment passt. Von Ihnen ist nichts nötig.",
   "test.waiting.retry": "Einige Schritte ließen sich nicht beurteilen: Der Test führt sie von selbst erneut aus.",
+  "test.waiting.chargeNoRoom": "Wartet, bis das Haus weniger Strom braucht, damit die kleine Ladung aus dem Netz unter der Sicherung Platz hat.",
   "test.error": "Der Test konnte nicht starten.",
   "test.blocked.onceADay": "Der nächste Test kann {time} laufen.",
   "test.blocked.later": "Der Test kann gerade nicht laufen.",

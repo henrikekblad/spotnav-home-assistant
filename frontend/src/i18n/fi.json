@@ -880,6 +880,7 @@
   "test.waiting.at": "Ajetaan itsestään, todennäköisesti noin {time} alkaen. Sinulta ei tarvita mitään.",
   "test.waiting.soon": "Ajetaan itsestään heti, kun hetki sopii. Sinulta ei tarvita mitään.",
   "test.waiting.retry": "Joitakin vaiheita ei voitu arvioida: testi ajaa ne itsestään uudelleen.",
+  "test.waiting.chargeNoRoom": "Odottaa, että talo kuluttaa vähemmän, jotta pieni lataus verkosta mahtuu sulakkeen alle.",
   "test.error": "Testiä ei voitu käynnistää.",
   "test.blocked.onceADay": "Seuraava testi voidaan ajaa {time}.",
   "test.blocked.later": "Testiä ei voi ajaa juuri nyt.",

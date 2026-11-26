@@ -880,6 +880,7 @@
   "test.waiting.at": "Runs by itself, likely from about {time}. Nothing needed from you.",
   "test.waiting.soon": "Runs by itself as soon as the moment suits. Nothing needed from you.",
   "test.waiting.retry": "Some steps could not be judged: the test runs them again by itself.",
+  "test.waiting.chargeNoRoom": "Waiting for the house to use less power, so the small grid charge fits under the fuse.",
   "test.error": "The test could not start.",
   "test.blocked.onceADay": "The next test can run {time}.",
   "test.blocked.later": "The test cannot run right now.",

@@ -880,6 +880,7 @@
   "test.waiting.at": "Kjører av seg selv, trolig fra omkring {time}. Ingenting trengs fra deg.",
   "test.waiting.soon": "Kjører av seg selv så snart tidspunktet passer. Ingenting trengs fra deg.",
   "test.waiting.retry": "Noen steg kunne ikke vurderes: testen kjører dem igjen av seg selv.",
+  "test.waiting.chargeNoRoom": "Venter på at huset bruker mindre strøm, slik at den lille ladingen fra nettet får plass under sikringen.",
   "test.error": "Testen kunne ikke starte.",
   "test.blocked.onceADay": "Neste test kan kjøres {time}.",
   "test.blocked.later": "Testen kan ikke kjøres akkurat nå.",

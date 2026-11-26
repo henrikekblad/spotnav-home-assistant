@@ -724,6 +724,44 @@ async def test_a_wait_that_finds_no_moment_gives_up_without_asking_anything(
     assert runner.view()["blocked"] is None
 
 
+async def test_a_wait_for_room_for_the_grid_charge_is_said_and_ends_as_not_run_with_that_reason(
+    hass: HomeAssistant, freezer: Any,
+) -> None:
+    from custom_components.spotnav.battery.control import NO_ROOM_FOR_CHARGE  # noqa: PLC0415
+
+    assert hardware_test.SAID_WAITS == {NO_ROOM_FOR_CHARGE}
+    freezer.move_to("2026-11-19T11:00:00+01:00")
+    battery = _FakeBattery()
+    battery.moment = "soc_out_of_range"
+    runner = await _runner(hass, battery, _FakeHeat())
+    assert await runner.async_start() is None
+    assert runner.view()["waiting_for"] is None, "a moment that comes by itself is not explained"
+    # The house uses too much for the test's grid charge: the card is told, while it waits.
+    battery.moment = NO_ROOM_FOR_CHARGE
+    runner.look_waiting(dt_util.now())
+    view = runner.view()
+    assert view["state"] == "waiting" and view["waiting_for"] == "charge_no_room" and battery.started == 0
+    # The moment comes: it runs, and nothing of the wait is left in the view.
+    battery.moment = None
+    runner.look_waiting(dt_util.now())
+    assert runner.running
+    await _finished(runner)
+    assert battery.started == 1 and "waiting_for" not in runner.view() and runner.record["result"] == "passed"
+    # It never comes before the wait's end: not run, with that reason, never a failure.
+    freezer.tick(timedelta(days=2))
+    late = _FakeBattery()
+    late.moment = NO_ROOM_FOR_CHARGE
+    waiting = await _runner(hass, late, _FakeHeat())
+    assert await waiting.async_start() is None
+    freezer.tick(hardware_test.WAIT_MAX + timedelta(minutes=1))
+    waiting.look_waiting(dt_util.now())
+    assert waiting.waiting is None and late.started == 0
+    record = waiting.record
+    assert record is not None and record["result"] == "skipped"
+    assert record["steps"] == [{"part": "battery", "step": "battery", "status": "skipped", "reason": "charge_no_room"}]
+    assert waiting.view()["blocked"] is None
+
+
 async def test_a_step_that_could_not_be_judged_runs_again_by_itself_at_the_next_suitable_moment(
     hass: HomeAssistant,
 ) -> None:

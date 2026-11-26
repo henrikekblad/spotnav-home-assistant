@@ -317,6 +317,41 @@ describe("testBox", () => {
     expect(calls[1]).toEqual({ action: "get" });
   });
 
+  it("says plainly that a pressed test waits for the house to use less power, in every language", async () => {
+    const idle = fixture("off_idle.json") as { test: Record<string, unknown> };
+    // A likely hour is given as ever: the house's own load comes at no hour, so none is said.
+    const waits = { ...idle, test: { ...idle.test, state: "waiting", blocked: "waiting", next_at: "2026-11-19T17:00:00+01:00",
+      result: null, steps: [], waiting_for: "charge_no_room" } };
+    expect(decodeBetaAnswer(waits)?.test?.waitingFor).toBe("charge_no_room");
+    const { root } = test([waits]);
+    await settle();
+    const line = q(root, "[data-beta=result]").textContent ?? "";
+    expect(line).toBe(
+      "Väntar på att huset ska dra mindre, så att den lilla laddningen från nätet får plats under säkringen. "
+      + "Körs av sig själv så snart läget passar. Inget behövs från dig.",
+    );
+    expect(q(root, "[data-beta=stopTest]").hidden).toBe(false);
+    const words = (language: string): string => (JSON.parse(
+      readFileSync(join(__dirname, "..", "src", "i18n", `${language}.json`), "utf-8"),
+    ) as Record<string, string>)["test.waiting.chargeNoRoom"] ?? "";
+    const said = ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"].map(words);
+    expect(said.every((text) => text.length > 20)).toBe(true);
+    expect(new Set(said).size).toBe(said.length);
+    // A reason the box has no words for, none, and an answer from before the key: the likely hour as before.
+    for (const waitingFor of ["soc_out_of_range", null, undefined]) {
+      const other = { ...waits, test: { ...waits.test, waiting_for: waitingFor } };
+      if (waitingFor === undefined) {
+        delete (other.test as Record<string, unknown>).waiting_for;
+      }
+      const answer = decodeBetaAnswer(other);
+      expect(answer?.test?.waitingFor).toBe(waitingFor ?? null);
+      const box = test([other]);
+      await settle();
+      expect(q(box.root, "[data-beta=result]").textContent).toContain("Körs av sig själv, troligen från ungefär");
+    }
+    expect(decodeBetaAnswer({ ...waits, test: { ...waits.test, waiting_for: 3 } })).toBe(null);
+  });
+
   it("takes the control code for a battery tester and says where the tester stands", async () => {
     const status = (stage: string, error: string | null = null) => ({
       api_version: 1, ok: error === null, error,
