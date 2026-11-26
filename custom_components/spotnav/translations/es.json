@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada.",
       "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu.",
       "dc_charger_three_phase": "Un cargador DC solo se controla en trifásico: SpotNav le escribe la potencia de tres fases, que en una sola fase consumiría tres veces la corriente calculada. Elija 3.",
+      "dc_charger_single_phase_site": "La instalación es monofásica (solo L1), y un cargador DC solo se controla en trifásico, así que no puede formar parte de esta instalación. Cierre este diálogo y guarde la instalación sin este cargador, o con los sensores del contador para L2 y L3.",
       "phases_incomplete": "Con un suministro monofásico deja L2 y L3 vacíos; si no, rellena las tres fases."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Indica la potencia nominal y el tiempo de funcionamiento de la carga.",
       "switch_load_floor_pair": "El sensor de temperatura y la temperatura mínima van juntos: indica los dos o ninguno.",
       "dc_charger_three_phase": "Un cargador DC solo se controla en trifásico: SpotNav le escribe la potencia de tres fases, que en una sola fase consumiría tres veces la corriente calculada. Elija 3.",
+      "dc_charger_single_phase_site": "La instalación es monofásica (solo L1), y un cargador DC solo se controla en trifásico, así que no puede formar parte de esta instalación. Cierre este diálogo y guarde la instalación sin este cargador, o con los sensores del contador para L2 y L3.",
       "phases_incomplete": "Con un suministro monofásico deja L2 y L3 vacíos; si no, rellena las tres fases."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "Un cargador OCPP sigue sin estar disponible tras la prueba de hardware",
       "description": "SpotNav puso **{switches}** como no disponible para la prueba de hardware y no pudo volver a ponerlo disponible. Activa tú ese interruptor Availability (Ajustes → Dispositivos y servicios → OCPP). Hasta entonces el cargador no carga. Este mensaje desaparece en cuanto esté activado."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} está configurado como monofásico, pero un cargador consume en varias fases",
+      "description": "**{site}** está configurado como monofásico (solo L1), pero se mide que **{charger}** consume en más de una fase. La casa tiene entonces fases que SpotNav no vigila, así que SpotNav ha dejado de regular esta instalación: sus cargadores se mantienen en su corriente más baja, y la batería doméstica y las demás cargas no reciben nada de la red. Si la casa tiene tres fases: abre los ajustes de la instalación en la tarjeta de SpotNav y añade los sensores del contador para L2 y L3. Si de verdad tiene una fase: la corriente medida del cargador es incorrecta en L2 y L3, corrígela en el cableado del cargador, en los ajustes de la instalación. Este mensaje desaparece por sí solo cuando esté hecho."
     }
   },
   "exceptions": {

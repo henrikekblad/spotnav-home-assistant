@@ -85,6 +85,7 @@ from .labels import PHASES
 from ..core.electric import site_phase_count
 from .site_form import (
     parse_site_details,
+    pending_single_phase,
     parse_site_flags,
     PendingSiteDetails,
     resolve_site_current_choice,
@@ -664,6 +665,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             charger_candidates=pending.charger_candidates,
             manual_sources=manual_sources,
             charger_inputs=pending.charger_inputs,
+            single_phase_site=pending_single_phase(pending, self._site_current_source_after_save()),
         )
         updated_data = self._updated_site_data(
             mode=pending.mode,
@@ -902,6 +904,20 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         if self._site_current_source_choice in ("candidate", MANUAL_ATTRIBUTES_CHOICE):
             return self._site_current_source
         return None
+
+    def _site_current_source_after_save(self) -> Any:
+        """The site's current source as a save of this run stores it (`_updated_site_data`): what the run
+        resolved, none after "skip", else the stored one."""
+        resolved = self._site_current_source_for_save()
+        if resolved is not None:
+            return resolved
+        if self._site_current_source_choice == SKIP_CHOICE:
+            return None
+        return self._entry.data.get(CONF_SITE_CURRENT_SOURCE)
+
+    def _pending_single_phase(self) -> bool:
+        pending = self._pending_site
+        return pending is not None and pending_single_phase(pending, self._site_current_source_after_save())
 
     def _skip_direct_fields(self, mode: str) -> bool:
         """Whether `site_details` should omit the guided per-phase pickers.

@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
       "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu.",
       "dc_charger_three_phase": "Ein DC-Lader wird nur dreiphasig gesteuert: SpotNav schreibt ihm die Leistung von drei Phasen, die auf einer Phase den dreifachen gerechneten Strom ziehen würde. Wähle 3.",
+      "dc_charger_single_phase_site": "Der Standort ist einphasig (nur L1), und ein DC-Lader wird nur dreiphasig gesteuert, daher kann er nicht zu diesem Standort gehören. Schließe diesen Dialog und speichere den Standort ohne diesen Lader oder mit den Sensoren des Zählers für L2 und L3.",
       "phases_incomplete": "Bei einem einphasigen Anschluss L2 und L3 leer lassen; sonst alle drei Phasen ausfüllen."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Gib die Nennleistung und die Laufzeit der Last an.",
       "switch_load_floor_pair": "Temperatursensor und Mindesttemperatur gehören zusammen: gib beide oder keines an.",
       "dc_charger_three_phase": "Ein DC-Lader wird nur dreiphasig gesteuert: SpotNav schreibt ihm die Leistung von drei Phasen, die auf einer Phase den dreifachen gerechneten Strom ziehen würde. Wähle 3.",
+      "dc_charger_single_phase_site": "Der Standort ist einphasig (nur L1), und ein DC-Lader wird nur dreiphasig gesteuert, daher kann er nicht zu diesem Standort gehören. Schließe diesen Dialog und speichere den Standort ohne diesen Lader oder mit den Sensoren des Zählers für L2 und L3.",
       "phases_incomplete": "Bei einem einphasigen Anschluss L2 und L3 leer lassen; sonst alle drei Phasen ausfüllen."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "Eine OCPP-Ladestation ist nach dem Hardwaretest weiterhin nicht verfügbar",
       "description": "SpotNav hat **{switches}** für den Hardwaretest auf nicht verfügbar gesetzt und konnte sie nicht wieder verfügbar machen. Schalten Sie diesen Availability-Schalter selbst ein (Einstellungen → Geräte & Dienste → OCPP). Bis dahin lädt die Ladestation nicht. Diese Meldung verschwindet, sobald er eingeschaltet ist."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} ist als einphasig eingerichtet, aber eine Ladestation zieht Strom auf mehreren Phasen",
+      "description": "**{site}** ist als einphasig eingerichtet (nur L1), aber bei **{charger}** wird Strom auf mehr als einer Phase gemessen. Das Haus hat dann Phasen, die SpotNav nicht überwacht, deshalb regelt SpotNav diesen Standort nicht mehr: Die Ladestationen werden auf ihrem niedrigsten Strom gehalten, und Hausbatterie und andere Verbraucher bekommen nichts aus dem Netz. Hat das Haus drei Phasen: Öffne die Einstellungen des Standorts in der SpotNav-Karte und füge die Sensoren des Zählers für L2 und L3 hinzu. Hat es wirklich nur eine Phase: Der gemessene Strom der Ladestation ist auf L2 und L3 falsch, korrigiere ihn im Anschluss der Ladestation in den Einstellungen des Standorts. Diese Meldung verschwindet von selbst, sobald das erledigt ist."
     }
   },
   "exceptions": {

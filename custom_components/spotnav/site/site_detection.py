@@ -49,6 +49,7 @@ from ..const import (
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..core.electric import site_phase_count
 from .measurement_source import (
     GridPowerSource,
     grid_power_source_to_dict,
@@ -1797,6 +1798,10 @@ DEAD_PHASE_IDLE_A: Final = 0.5
 DEAD_PHASE_HOLD_S: Final = 300.0
 #: A charger's current on a phase above this (A) is the car drawing there, not the sensor's noise.
 LIVE_PHASE_A: Final = 1.0
+#: How long (s) a charger of a site set up as single-phase must read a current on more than one phase without a break
+#: before the site stops regulating (`SiteCapacityController._single_phase_conflict`): longer than a sensor's
+#: glitch, short against a charge.
+PHASE_CONFLICT_HOLD_S: Final = 60.0
 _NO_READING: Final = frozenset({"unavailable", "unknown", ""})
 
 
@@ -1811,15 +1816,30 @@ def _reading(state: Any) -> float | None:
     return value if value == value and value not in (float("inf"), float("-inf")) else None
 
 
-def _phase_absent(hass: HomeAssistant, entities: Mapping[str, str], voltage: str | None, disabled: frozenset[str]) -> bool:
-    """Whether a meter's phase has no supply behind it: its voltage reads about 0 V, or its entities exist to be read
-    and have a state (none disabled, which has no state until it is enabled, none not loaded yet), one at least reads
-    nothing (unknown, unavailable) and none reads more than about nothing. A current or power of 0 alone is not enough: a three-phase house can idle
-    a phase."""
+#: The integrations whose entities for a phase that is not there read nothing (unknown, unavailable) for good:
+#: hass-victron on a single-phase GX. Anywhere else a phase that reads nothing is a sensor that is down, never a
+#: phase the supply lacks.
+UNREAD_IS_ABSENT_PLATFORMS: Final = frozenset({"victron"})
+
+
+def _phase_absent(
+    hass: HomeAssistant,
+    entities: Mapping[str, str],
+    voltage: str | None,
+    disabled: frozenset[str],
+    *,
+    unread_counts: bool = False,
+) -> bool:
+    """Whether a meter's phase has no supply behind it: its voltage reads about 0 V, or (`unread_counts`, only for
+    `UNREAD_IS_ABSENT_PLATFORMS`) its entities exist to be read and have a state (none disabled, which has no state
+    until it is enabled, none not loaded yet), one at least reads nothing (unknown, unavailable) and none reads more
+    than about nothing. A current or power of 0 alone is not enough: a three-phase house can idle a phase."""
     if voltage is not None:
         volts = _reading(hass.states.get(voltage))
         if volts is not None and abs(volts) < DEAD_PHASE_BELOW_V:
             return True
+    if not unread_counts:
+        return False
     ids = [entity_id for entity_id in entities.values() if entity_id]
     if not ids or any(entity_id in disabled for entity_id in ids):
         return False
@@ -1838,7 +1858,8 @@ def single_phase_candidate(hass: HomeAssistant, candidate: MeterCandidate) -> Me
     """`candidate` measured on L1 alone when its meter has no supply on L2 and L3 (`_phase_absent`) while L1 reads:
     a single-phase supply whose integration still makes entities for the other two phases (hass-victron on a
     single-phase GX). Otherwise `candidate` as it is, so a three-phase meter with one phase unread stays three-phase
-    and its site reports that phase missing."""
+    and its site reports that phase missing. L2 and L3 reading nothing (unknown, unavailable) is evidence only for
+    `UNREAD_IS_ABSENT_PLATFORMS`; a voltage of about 0 V is for every integration."""
     disabled = frozenset(candidate.disabled_entity_ids)
     if candidate.derived_entities is not None:
         by_phase: Mapping[PhaseName, Mapping[str, str]] = candidate.derived_entities
@@ -1859,8 +1880,10 @@ def single_phase_candidate(hass: HomeAssistant, candidate: MeterCandidate) -> Me
         volts = _reading(hass.states.get(l1_voltage))
         if volts is None or volts < DEAD_PHASE_BELOW_V:
             return candidate
+    unread_counts = candidate.integration in UNREAD_IS_ABSENT_PLATFORMS
     if not all(
-        _phase_absent(hass, by_phase[phase], by_phase[phase].get("voltage"), disabled) for phase in ("L2", "L3")
+        _phase_absent(hass, by_phase[phase], by_phase[phase].get("voltage"), disabled, unread_counts=unread_counts)
+        for phase in ("L2", "L3")
     ):
         return candidate
     kept = {entity_id for entity_id in by_phase["L1"].values()}
@@ -1878,10 +1901,23 @@ def detect_site_from_hass(hass: HomeAssistant, *, excluded_device_ids: Iterable[
     return replace(detection, meters=tuple(single_phase_candidate(hass, meter) for meter in detection.meters))
 
 
+def is_single_phase_candidate(candidate: MeterCandidate) -> bool:
+    """Whether applying `candidate` stores a site measured on L1 alone (`core.electric.site_phase_count`)."""
+    by_phase = candidate.derived_entities if candidate.derived_entities is not None else candidate.direct_entities
+    return by_phase is not None and set(by_phase) == {"L1"}
+
+
 def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
-    """Meter and battery candidates for this site, charger devices excluded."""
+    """Meter and battery candidates for this site, charger devices excluded.
+
+    A site stored with three phases is never offered a meter narrowed to L1 (`single_phase_candidate`): its
+    candidates keep all three phases, whatever L2 and L3 read now, so no detection turns a three-phase site
+    single-phase. Only a person does, by clearing L2 and L3 in the site's settings."""
     excluded = excluded_charger_devices(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
-    return detect_site_from_hass(hass, excluded_device_ids=excluded)
+    if site_phase_count(entry.data) == 1:
+        return detect_site_from_hass(hass, excluded_device_ids=excluded)
+    entities, devices = snapshot_registry(hass)
+    return detect_site(entities, devices, excluded_device_ids=excluded)
 
 
 # ---- Devices with their own load balancing -----------------------------------------------------
@@ -2013,7 +2049,11 @@ def freshness_warnings(
 
 def apply_meter_candidate(data: Mapping[str, Any], candidate: MeterCandidate) -> dict[str, Any]:
     """`data` with the candidate's meter choices written: measurement mode, entities, source, total grid
-    power and sign flags. Only those keys change; the inactive mode's stored entities are kept."""
+    power and sign flags. Only those keys change; the inactive mode's stored entities are kept. `data` unchanged
+    where it is a three-phase site's and the candidate measures L1 alone (see `site_detection`)."""
+    if site_phase_count(data) == 3 and is_single_phase_candidate(candidate):
+        # Never from a detection: a site stored with three phases stays so until a person clears L2 and L3.
+        return dict(data)
     updated = dict(data)
     updated[CONF_MEASUREMENT_MODE] = candidate.mode
     updated[CONF_SITE_CURRENT_SIGNED] = candidate.signed_current

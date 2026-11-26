@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
       "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu.",
       "dc_charger_three_phase": "DC-laturia ohjataan vain kolmella vaiheella: SpotNav kirjoittaa sille kolmen vaiheen tehon, joka yhdellä vaiheella ottaisi kolminkertaisen virran laskettuun nähden. Valitse 3.",
+      "dc_charger_single_phase_site": "Kohde on yksivaiheinen (vain L1), ja DC-laturia ohjataan vain kolmella vaiheella, joten se ei voi kuulua tähän kohteeseen. Sulje tämä ikkuna ja tallenna kohde ilman tätä laturia tai mittarin L2- ja L3-antureiden kanssa.",
       "phases_incomplete": "Yksivaiheisessa liittymässä jätä L2 ja L3 tyhjiksi; muuten täytä kaikki kolme vaihetta."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Anna kuorman nimellisteho ja käyntiaika.",
       "switch_load_floor_pair": "Lämpötila-anturi ja alin lämpötila kuuluvat yhteen: anna molemmat tai ei kumpaakaan.",
       "dc_charger_three_phase": "DC-laturia ohjataan vain kolmella vaiheella: SpotNav kirjoittaa sille kolmen vaiheen tehon, joka yhdellä vaiheella ottaisi kolminkertaisen virran laskettuun nähden. Valitse 3.",
+      "dc_charger_single_phase_site": "Kohde on yksivaiheinen (vain L1), ja DC-laturia ohjataan vain kolmella vaiheella, joten se ei voi kuulua tähän kohteeseen. Sulje tämä ikkuna ja tallenna kohde ilman tätä laturia tai mittarin L2- ja L3-antureiden kanssa.",
       "phases_incomplete": "Yksivaiheisessa liittymässä jätä L2 ja L3 tyhjiksi; muuten täytä kaikki kolme vaihetta."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "OCPP-laturi on yhä poissa käytöstä laitetestin jälkeen",
       "description": "SpotNav asetti **{switches}** pois käytöstä laitetestin ajaksi eikä saanut sitä takaisin käyttöön. Kytke tuo Availability-kytkin päälle itse (Asetukset → Laitteet ja palvelut → OCPP). Siihen asti laturi ei lataa. Viesti poistuu, kun kytkin on päällä."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} on määritetty yksivaiheiseksi, mutta laturi ottaa virtaa usealta vaiheelta",
+      "description": "**{site}** on määritetty yksivaiheiseksi (vain L1), mutta laitteen **{charger}** mitataan ottavan virtaa useammalta kuin yhdeltä vaiheelta. Talossa on silloin vaiheita, joita SpotNav ei valvo, joten SpotNav on lakannut säätämästä tätä kohdetta: sen laturit pidetään pienimmällä virrallaan, eivätkä kotiakku ja muut kuormat saa mitään verkosta. Jos talossa on kolme vaihetta: avaa kohteen asetukset SpotNav-kortista ja lisää mittarin anturit vaiheille L2 ja L3. Jos talossa on todella yksi vaihe: laturin mitattu virta on väärä vaiheilla L2 ja L3, korjaa se laturin kytkennässä kohteen asetuksissa. Tämä ilmoitus poistuu itsestään, kun se on tehty."
     }
   },
   "exceptions": {

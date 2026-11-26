@@ -325,6 +325,7 @@
       "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
       "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
       "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3.",
+      "dc_charger_single_phase_site": "This site is single-phase (L1 only), and a DC charger is driven only on three phases, so it cannot be on this site. Close this dialog and save the site without this charger, or with the meter's sensors for L2 and L3.",
       "phases_incomplete": "For a single-phase supply leave L2 and L3 empty; otherwise fill in all three phases."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Give the load's rated power and its runtime.",
       "switch_load_floor_pair": "The temperature sensor and the lowest temperature go together: give both or neither.",
       "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3.",
+      "dc_charger_single_phase_site": "This site is single-phase (L1 only), and a DC charger is driven only on three phases, so it cannot be on this site. Close this dialog and save the site without this charger, or with the meter's sensors for L2 and L3.",
       "phases_incomplete": "For a single-phase supply leave L2 and L3 empty; otherwise fill in all three phases."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "An OCPP charger is still unavailable after the hardware test",
       "description": "SpotNav set **{switches}** unavailable for the hardware test and could not set it available again. Turn that Availability switch on yourself (Settings → Devices & services → OCPP). Until then the charger does not charge. This message goes away once it is on."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} is set up as single-phase, but a charger draws on several phases",
+      "description": "**{site}** is set up as single-phase (L1 only), but **{charger}** is measured drawing on more than one phase. The house then has phases SpotNav does not watch, so SpotNav has stopped regulating this site: its chargers are held at their lowest current, and the home battery and other loads are given nothing from the grid. If the house has three phases: open the site's settings in the SpotNav card and add the meter's sensors for L2 and L3. If it really has one phase: the charger's measured current is wrong on L2 and L3, so correct it in the charger's wiring in the site's settings. This message goes away by itself once that is done."
     }
   },
   "exceptions": {

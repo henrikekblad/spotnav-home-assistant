@@ -86,7 +86,8 @@ from ..execution.charger_profiles import (
 from ..repairs import async_sync_resolution_repairs
 from ..runtime import domain_data
 from ..planning.first_run import charger_phases_from_entry
-from ..core.electric import stored_safety_margin_a
+from ..planning.phases import dc_charger
+from ..core.electric import site_phase_count, stored_safety_margin_a
 from ..planning.grid_voltage import default_voltage_between_phases_v, stored_voltage_between_phases_v
 from ..site.measurement_source import grid_power_source_to_dict, source_to_dict
 from ..site.site_join import queue_site_join
@@ -95,6 +96,7 @@ from ..site.site_detection import (
     BatteryCandidate,
     detect_site_from_hass,
     enable_disabled_entities,
+    is_single_phase_candidate,
     MeterCandidate,
 )
 from ..site.site_membership import site_membership_errors
@@ -141,6 +143,7 @@ from .site_form import (
     default_site_name,
     detected_defaults,
     parse_site_details,
+    pending_single_phase,
     parse_site_flags,
     PendingSiteDetails,
     resolve_site_current_choice,
@@ -1086,7 +1089,13 @@ class SpotNavChargingConfigFlow(
             voltage_between_phases_v=stored_voltage_between_phases_v(site.data),
         )
         wiring: dict[str, Any] | None = None
-        if len(candidates) == 1:
+        single_phase_site = site_phase_count(site.data) == 1
+        profile = profile_for(data.get(CONF_CHARGER_PLATFORM))
+        # A DC charger is driven only on three phases, which a single-phase site does not have: never added.
+        dc_on_single_phase = single_phase_site and profile is not None and profile.power_controlled
+        if len(candidates) == 1 and not dc_on_single_phase:
+            # Stored as three phases also on a single-phase site, where every charger is run on L1 whatever is
+            # stored (`site_form.parse_charger_wiring`).
             wiring = {
                 "phases": 3,
                 "phase": None,
@@ -1102,7 +1111,10 @@ class SpotNavChargingConfigFlow(
             description_placeholders={
                 "site": site.title,
                 "summary": site_join_summary(
-                    self.hass, candidates[0] if wiring is not None else None
+                    self.hass,
+                    candidates[0] if wiring is not None else None,
+                    single_phase_site=single_phase_site,
+                    dc_charger=dc_on_single_phase,
                 ),
             },
         )
@@ -1218,13 +1230,17 @@ class SpotNavChargingConfigFlow(
             return None
         chargers = []
         charger_inputs: dict[str, dict[str, Any]] = {}
+        single_phase_site = is_single_phase_candidate(chosen)
         for charger_entry_id in charger_entry_ids:
             found = charger_candidates.get(charger_entry_id) or []
             entry = self.hass.config_entries.async_get_entry(charger_entry_id)
             if len(found) != 1 or entry is None:
                 return None
+            if single_phase_site and dc_charger(self.hass, charger_entry_id):
+                # Nothing to confirm: the charger's wiring step says why it cannot be on this site.
+                return None
             wiring_defaults = charger_wiring_schema(
-                self.hass, charger_entry_id, candidates=found
+                self.hass, charger_entry_id, candidates=found, single_phase_site=single_phase_site
             )({})
             charger_inputs[charger_entry_id] = {
                 **wiring_defaults,
@@ -1387,6 +1403,10 @@ class SpotNavChargingConfigFlow(
             description_placeholders={"charger_hint": self._charger_hint()},
         )
 
+    def _pending_single_phase(self) -> bool:
+        pending = self._pending_site
+        return pending is not None and pending_single_phase(pending, self._site_current_source)
+
     async def _finish_pending_site(self) -> ConfigFlowResult:
         """Save the site whose `site_details` submission started this run of manual entries (the create
         flow's half). `async` so both flows' step bodies read identically.
@@ -1421,6 +1441,7 @@ class SpotNavChargingConfigFlow(
             charger_candidates=pending.charger_candidates,
             manual_sources=manual_sources,
             charger_inputs=pending.charger_inputs,
+            single_phase_site=pending_single_phase(pending, self._site_current_source),
         )
         data = {
             CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,

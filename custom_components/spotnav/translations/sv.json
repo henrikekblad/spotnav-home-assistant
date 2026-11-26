@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget.",
       "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu.",
       "dc_charger_three_phase": "En DC-laddare styrs bara på tre faser: SpotNav skriver effekten för tre faser, som på en fas skulle dra tre gånger den ström som räknas. Välj 3.",
+      "dc_charger_single_phase_site": "Anläggningen är enfas (endast L1), och en DC-laddare styrs bara på tre faser, så den kan inte ingå i den här anläggningen. Stäng dialogen och spara anläggningen utan den här laddaren, eller med mätarens sensorer för L2 och L3.",
       "phases_incomplete": "Vid enfasig anslutning lämnar du L2 och L3 tomma; annars fyller du i alla tre faserna."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Ange lastens märkeffekt och drifttid.",
       "switch_load_floor_pair": "Temperaturgivaren och den lägsta temperaturen hör ihop: ange båda eller ingen.",
       "dc_charger_three_phase": "En DC-laddare styrs bara på tre faser: SpotNav skriver effekten för tre faser, som på en fas skulle dra tre gånger den ström som räknas. Välj 3.",
+      "dc_charger_single_phase_site": "Anläggningen är enfas (endast L1), och en DC-laddare styrs bara på tre faser, så den kan inte ingå i den här anläggningen. Stäng dialogen och spara anläggningen utan den här laddaren, eller med mätarens sensorer för L2 och L3.",
       "phases_incomplete": "Vid enfasig anslutning lämnar du L2 och L3 tomma; annars fyller du i alla tre faserna."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "En OCPP-laddare är fortfarande otillgänglig efter hårdvarutestet",
       "description": "SpotNav satte **{switches}** som otillgänglig under hårdvarutestet och kunde inte göra den tillgänglig igen. Slå på den Availability-brytaren själv (Inställningar → Enheter och tjänster → OCPP). Tills dess laddar laddaren inte. Meddelandet försvinner när den är på."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} är inställd som enfas, men en laddare drar ström på flera faser",
+      "description": "**{site}** är inställd som enfas (endast L1), men **{charger}** mäts dra ström på mer än en fas. Huset har då faser som SpotNav inte övervakar, så SpotNav har slutat reglera den här anläggningen: laddarna hålls på sin lägsta ström, och husbatteriet och andra laster får inget från nätet. Om huset har tre faser: öppna anläggningens inställningar i SpotNav-kortet och lägg till mätarens sensorer för L2 och L3. Om huset verkligen har en fas: laddarens uppmätta ström är fel på L2 och L3, rätta den i laddarens inkoppling i anläggningens inställningar. Meddelandet försvinner av sig självt när det är gjort."
     }
   },
   "exceptions": {

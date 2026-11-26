@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.helpers import entity_registry as er
 
 from ..const import MEASUREMENT_MODE_DERIVED
-from ..site.site_detection import BatteryCandidate, MeterCandidate
+from ..site.site_detection import BatteryCandidate, MeterCandidate, is_single_phase_candidate
 from ..vehicles.choices import flow_language
 from ..texts import table
 from ..vehicles.discovery import DiscoveryCandidate
@@ -38,7 +38,9 @@ def candidate_label(hass, candidate: MeterCandidate) -> str:
         key = "label_power_current" if has_current else "label_power"
     else:
         key = "label_current"
-    return text[key].format(name=candidate.title)
+    label = text[key].format(name=candidate.title)
+    # A meter measured on L1 alone makes the site single-phase: the offer says so.
+    return text["label_single_phase"].format(label=label) if is_single_phase_candidate(candidate) else label
 
 
 def source_name(hass, mapping: Any) -> str:
@@ -63,20 +65,22 @@ def site_confirm_summary(
     text = table(flow_language(hass), "site_confirm")
     blocks: list[str] = []
     derived = candidate.derived_entities or {}
+    single_phase = is_single_phase_candidate(candidate)
+    shown_phases = ("L1",) if single_phase else PHASES
     if candidate.mode == MEASUREMENT_MODE_DERIVED:
         has_current = any("current" in (derived.get(phase) or {}) for phase in PHASES)
         heading = text["power_current" if has_current else "power_current_calculated"]
         rows = []
-        for phase in PHASES:
+        for phase in shown_phases:
             subs = derived.get(phase) or {}
             names = [
                 md_escape(entity_name(hass, subs[sub])) for sub in ("power", "current", "voltage") if subs.get(sub)
             ]
             rows.append(f"- **{phase}:** " + " · ".join(names))
         blocks.append(f"**{text['meter']}** – {heading}\n\n" + "\n".join(rows))
-        has_reactive = all("reactive_power" in (derived.get(phase) or {}) for phase in PHASES)
+        has_reactive = all("reactive_power" in (derived.get(phase) or {}) for phase in shown_phases)
         has_other = any(
-            sub in (derived.get(phase) or {}) for phase in PHASES for sub in ("current", "apparent_power")
+            sub in (derived.get(phase) or {}) for phase in shown_phases for sub in ("current", "apparent_power")
         )
         if has_reactive:
             blocks.append(text["reactive_found"])
@@ -85,12 +89,14 @@ def site_confirm_summary(
     elif candidate.direct_entities:
         rows = [
             f"- **{phase}:** {md_escape(entity_name(hass, (candidate.direct_entities or {}).get(phase, '')))}"
-            for phase in PHASES
+            for phase in shown_phases
         ]
         blocks.append(f"**{text['meter']}** – {text['current']}\n\n" + "\n".join(rows))
     else:
         name = source_name(hass, candidate.current_source) if candidate.current_source else ""
         blocks.append(f"**{text['meter']}** – {text['current_entity']}\n\n- {md_escape(name)}")
+    if single_phase:
+        blocks.insert(1, text["single_phase"])
     blocks.append(
         text["battery"].format(name=md_escape(entity_name(hass, battery.entity_id)))
         if battery
@@ -98,7 +104,7 @@ def site_confirm_summary(
     )
     for name, phases, measured in chargers:
         blocks.append(
-            text["charger"].format(
+            text["charger_single_phase" if single_phase else "charger"].format(
                 name=md_escape(name), phases=phases, source=md_escape(source_name(hass, measured.mapping))
             )
         )
@@ -123,9 +129,15 @@ def charger_found_summary(
     )
 
 
-def site_join_summary(hass, measured: DiscoveryCandidate | None) -> str:
-    """The wiring a charger would get when added to the site, or why it cannot be added automatically."""
+def site_join_summary(
+    hass, measured: DiscoveryCandidate | None, *, single_phase_site: bool = False, dc_charger: bool = False
+) -> str:
+    """The wiring a charger would get when added to the site, or why it cannot be added automatically: its wiring
+    cannot be told, or (`dc_charger`) it is a DC charger and the site is a single-phase one."""
     text = table(flow_language(hass), "site_confirm")
+    if dc_charger:
+        return text["join_dc_single_phase"]
     if measured is None:
         return text["join_unknown"]
-    return text["join_wiring"].format(source=md_escape(source_name(hass, measured.mapping)))
+    key = "join_wiring_single_phase" if single_phase_site else "join_wiring"
+    return text[key].format(source=md_escape(source_name(hass, measured.mapping)))
