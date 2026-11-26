@@ -404,8 +404,11 @@ Assistant and reaches this one through [Remote Home-Assistant](https://github.co
   own name it: names many integrations share (`battery_soc`, `battery_power`, `battery_voltage`) or that another
   brand finds too count for nothing. The brand with the most keys of its own wins; when two have as many, the battery
   stays unknown. When none has a key of its own, no brand is named: the battery shows as *Mirrored battery (Remote
-  Home-Assistant)*, with the level and power still read. The diagnostics say which (`detected` → battery → `mirror`:
-  `reason`, `scores`, `specific`).
+  Home-Assistant)*, with the level and power still read. Its size and ratings are then also read from common names
+  on the same device (`battery_install_capacity` in kWh or Wh, a size in Ah, `max_charge_current` and
+  `max_discharge_current` in A times the battery voltage, or `max_charge_power` in W); these never name a brand, and
+  a value that reads nothing, 0 or out of range is learnt instead. The diagnostics say which (`detected` → battery →
+  `mirror`: `reason`, `scores`, `specific`, `generic_roles`).
 * **What you see.** The level, the size and the counters the brand's integration names, read on the other instance.
   A size or a rating that is not mirrored (SolaX Modbus disables its size by default) is learnt from the plan's own
   quarter hours, as for any battery. The firmware is not mirrored.
