@@ -58,7 +58,9 @@ shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
   it), load balancing, the import target, solar and the battery's grid charge caps all reckon with L1
   alone, and every charger counts as single-phase on L1 whatever its wiring says: the charger's
   wiring step shows one phase on L1 and nothing else to choose, and a DC charger, which is driven
-  only on three phases, cannot be on such a site. A meter that makes
+  only on three phases, cannot be on such a site. The home battery may sell to the grid there too:
+  up to what L1 has left under the fuse on the export side (the fuse, less a 2 A margin, less what
+  L1 already exports), and the battery plan never plans a sale above one phase's fuse. A meter that makes
   L2 and L3 entities on a single-phase supply is suggested with L1 alone, marked **single-phase: L1
   only**, when those phases read 0 V (or, for hass-victron on a single-phase GX, read nothing at
   all); a site measured on L2 and L3 whose voltage both
