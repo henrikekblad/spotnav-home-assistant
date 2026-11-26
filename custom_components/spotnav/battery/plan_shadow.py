@@ -340,6 +340,7 @@ def build_slots(
     hour_caps: Mapping[datetime, float] | None = None,
     ceilings: Mapping[datetime, tuple[float, float] | tuple[float, float, date | None]] | None = None,
     grid_charge_cap_kw: float | None = None,
+    export_cap_kw: float | None = None,
 ) -> tuple[tuple[PlanSlot, ...], tuple[str, ...]]:
     """The plan's slots from now (see the module) and what was assumed. `house_by_hour` is keyed by the local hour's
     start (UTC), `solar_wh_by_hour` by the UTC hour's start; an hour the solar forecast does not hold has no sun.
@@ -351,7 +352,11 @@ def build_slots(
     ceiling does not say). Without either, the slots are exactly those of the scalar cap.
 
     `grid_charge_cap_kw`: the most a grid charge may be planned at, every slot (the HA-down cap control obeys, shared
-    through `BatteryControl.plan_grid_charge_cap`); `None` is no bound."""
+    through `BatteryControl.plan_grid_charge_cap`); `None` is no bound.
+
+    `export_cap_kw`: the most the site may export, every slot (a single-phase site's one phase at its fuse,
+    `plan_runtime.site_export_cap_kw`): a sale is planned within it and sun beyond it is not sold; `None` is no
+    bound. A slot whose sell price is below zero exports nothing either way (`export_curtail.curtail_slots`)."""
     estimates: list[str] = []
     if solar_wh_by_hour is None:
         estimates.append(EST_NO_SOLAR)
@@ -397,6 +402,7 @@ def build_slots(
                 solar_kw=max(0.0, float(wh) / 1000.0) if _finite(wh) else 0.0,
                 car_kw=car_kw_in(start, price.end, car_windows),
                 import_cap_kw=slot_cap,
+                export_cap_kw=export_cap_kw,
                 grid_charge_cap_kw=grid_charge_cap_kw,
                 soft_cap_kw=soft_kw,
                 peak_price=peak_price,
