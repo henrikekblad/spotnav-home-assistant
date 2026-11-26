@@ -24,7 +24,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY, CONF_BATTERY_DISCHARGE_POWER_ENTITY
 from ..planning.first_run import site_limit_a
-from ..core.electric import three_phase_kw
+from ..core.electric import power_kw, site_phase_count
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 
 #: Integration (platform) -> the end of the unique id of its grid import limit number.
@@ -96,7 +96,8 @@ def battery_import_limit(hass: HomeAssistant, site: ConfigEntry) -> BatteryImpor
             return BatteryImportLimit(
                 integration=battery.platform,
                 entity_id=candidate.entity_id,
-                battery_a=kilowatts / three_phase_kw(1.0, volts),
+                # On a single-phase site the whole limit is on the one phase.
+                battery_a=kilowatts / power_kw(1.0, site_phase_count(site.data), volts),
                 spotnav_a=float(spotnav_a),
             )
     return None
