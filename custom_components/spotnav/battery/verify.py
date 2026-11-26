@@ -492,10 +492,16 @@ class Verification:
         self.unraised_looks = 0
         # The hold variants still to try: those an earlier run (`tried`, from the report's hold row) did not fail.
         failed = {str(row.get("variant")) for row in tried if mode_verdict(row.get("outcome")) == "fail"}
-        self.variants: list[str] = [name for name in executor.control.variant_names() if name not in failed]
+        names = executor.control.variant_names()
+        self.variants: list[str] = [name for name in names if name not in failed]
         for result in self.results:
             if result.action == ACTION_HOLD and executor.control.hold_variants:
-                result.variants = [dict(row) for row in tried if str(row.get("variant")) in failed]
+                # Kept with those that failed: a pass in a variant the recipe no longer has. Until this key's hold
+                # is decided it says that no older key's hold stands in for it (`gate.control_report`).
+                result.variants = [
+                    dict(row) for row in tried if str(row.get("variant")) in failed
+                    or (mode_verdict(row.get("outcome")) == "pass" and row.get("variant") not in names)
+                ]
                 result.variant = self.variants[0] if self.variants else None
         #: After a hand-back, hold runs again with the next variant (not the next mode).
         self.retry_variant = False
