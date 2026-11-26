@@ -26,16 +26,16 @@ from custom_components.spotnav.battery import control
 #: Each patched name -> the shell modules whose code reads it as a global, by name under `battery`.
 READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "CALL_TIMEOUT_S": ("control.io",),
-    "GATED_AFTER_RUNNING": ("control.gate_record", "control.hardware_run",),
-    "HAND_BACK_DEADLINE_S": ("control.life", "control.stored", "control.write_path",),
-    "HAND_BACK_LOOK_S": ("control.stored", "control.write_path",),
+    "GATED_AFTER_RUNNING": ("control.gate_record", "control.hardware_run"),
+    "HAND_BACK_DEADLINE_S": ("control.life", "control.stored", "control.write_path"),
+    "HAND_BACK_LOOK_S": ("control.stored", "control.write_path"),
     "IMPORT_LIMIT_READ_BACK_S": ("control.import_limit",),
     "IMPORT_LIMIT_READ_BACK_STEP_S": ("control.import_limit",),
     "START_RETRY_S": ("control.life",),
     "STARTUP_LOOK_S": ("control.life",),
     "STARTUP_WAIT_S": ("control.life",),
-    "Store": ("control.core", "control.life",),
-    "blocked": ("control.gate_record", "control.report",),
+    "Store": ("control.core", "control.life"),
+    "blocked": ("control.gate_record", "control.report"),
     "control_for": (
         "control.caps",
         "control.exec_inputs",
@@ -51,11 +51,11 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
         "control.stored",
         "control.verify_driver",
     ),
-    "export_control_for": ("control.life", "control.stored",),
+    "export_control_for": ("control.life", "control.stored"),
     "learning_gate_open": ("control.report",),
-    "plant_entity_id": ("control.import_limit", "control.verify_driver",),
-    "read_export_facts": ("control.exec_inputs", "control.life", "control.stored",),
-    "read_plant_entity": ("control.caps", "control.import_limit",),
+    "plant_entity_id": ("control.import_limit", "control.verify_driver"),
+    "read_export_facts": ("control.exec_inputs", "control.life", "control.stored"),
+    "read_plant_entity": ("control.caps", "control.import_limit"),
     "recipe_field_tested": ("control.report",),
 }
 
