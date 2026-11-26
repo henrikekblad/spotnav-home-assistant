@@ -373,6 +373,7 @@ _NO_ENTITY_FIELDS |= {"firmware_device"}
 _ENTITY_FIELDS = {
     "facts", "modes", "grid_status", "hold", "grid_charge", "plant_max", "reserves", "plant_phase_power",
     "cell_temperature", "soc_packs", "preheat", "dc_power", "plant_load_power", "plant_pv_power",
+    "charge_limits", "discharge_limits",
 }
 
 
@@ -383,6 +384,7 @@ def _named_matches(adapter: Any) -> list[Any]:
     found += [] if adapter.grid_status is None else [adapter.grid_status[0]]
     found += [spec.match for spec in (adapter.hold, adapter.grid_charge) if spec is not None and spec.match is not None]
     found += [] if adapter.plant_max is None else [adapter.plant_max]
+    found += [*adapter.charge_limits, *adapter.discharge_limits]
     found += [source.match for source in adapter.reserves]
     found += list(adapter.plant_phase_power or ())
     found += list(adapter.cell_temperature)

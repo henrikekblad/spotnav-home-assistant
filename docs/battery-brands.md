@@ -514,6 +514,11 @@ its result was approved with a control code ([Becoming a tester](home-battery.md
 maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
 to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
 
+The battery's rating is not the BMS's current limit alone: a large bank may allow 16 kW behind a Multi whose charger
+carries 6 kW. SpotNav plans with the lowest of the BMS's limit, the Multi's *Nominal inverter power* and your own
+*ESS max charge power limit*, *ESS max charge current* (DVCC) and *ESS max inverter power limit*, and lowers it
+further if the battery is seen to stop under what was asked ([how a rating is learnt](battery-plan.md)).
+
 SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
 ways in:
 

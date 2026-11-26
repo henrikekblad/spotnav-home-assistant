@@ -159,6 +159,11 @@ class BatteryFacts:
     #: The whole plant's maximum output (kW) where the adapter reads one: the battery charges and discharges
     #: through it (`max_charge_kw`, `max_discharge_kw`).
     plant_max_kw: float | None = None
+    #: The inverter's or charger's own limit each way (kW), the lowest of those the adapter reads
+    #: (`adapters.Adapter.charge_limits`, `discharge_limits`); `None` where it reads none. The BMS' limit is the
+    #: cells' upper bound: the charger between the grid and the battery may carry far less.
+    inverter_charge_kw: float | None = None
+    inverter_discharge_kw: float | None = None
     #: The battery's own floor (%), the highest of the reserves its adapter can read; `None` when none can be read.
     reserve_soc_pct: float | None = None
     #: `True` on the grid, `False` off it (backup), `None` when the brand does not say.
@@ -216,13 +221,34 @@ class BatteryFacts:
 
     @property
     def max_charge_kw(self) -> float | None:
-        """The most the battery can charge with: its rating, or the plant's maximum when that is lower."""
-        return _lower(self.rated_charge_kw, self.plant_max_kw)
+        """The most the battery can charge with: the lowest of its rating, the inverter's or charger's own limit and
+        the plant's maximum. `None` while the rating is unknown: the other two are upper bounds, not ratings."""
+        return _lower(self.rated_charge_kw, self.inverter_charge_kw, self.plant_max_kw)
 
     @property
     def max_discharge_kw(self) -> float | None:
-        """The most the battery can discharge with: its rating, or the plant's maximum when that is lower."""
-        return _lower(self.rated_discharge_kw, self.plant_max_kw)
+        """The most the battery can discharge with: the lowest of its rating, the inverter's own limit and the plant's
+        maximum (see `max_charge_kw`)."""
+        return _lower(self.rated_discharge_kw, self.inverter_discharge_kw, self.plant_max_kw)
+
+    def limits(self) -> dict[str, dict[str, Any]]:
+        """Each way's rating for the diagnostics: every limit known, which one is the lowest (`set_by`: `battery`, its
+        rating read, worked out from the BMS' current limit or learnt; `inverter`; `plant`) and where that was read."""
+        out: dict[str, dict[str, Any]] = {}
+        for way, rated, inverter, most in (
+            ("charge", self.rated_charge_kw, self.inverter_charge_kw, self.max_charge_kw),
+            ("discharge", self.rated_discharge_kw, self.inverter_discharge_kw, self.max_discharge_kw),
+        ):
+            known = {"battery": rated, "inverter": inverter, "plant": self.plant_max_kw}
+            set_by = None if most is None else next(name for name, kw in known.items() if kw == most)
+            source = {"battery": f"rated_{way}", "inverter": f"inverter_{way}", "plant": "plant_max"}.get(set_by or "")
+            out[way] = {
+                "kw": most,
+                "set_by": set_by,
+                "source": None if source is None else self.sources.get(source),
+                **{f"{name}_kw": kw for name, kw in known.items()},
+            }
+        return out
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -236,8 +262,12 @@ class BatteryFacts:
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
             "plant_max_kw": self.plant_max_kw,
+            "inverter_charge_kw": self.inverter_charge_kw,
+            "inverter_discharge_kw": self.inverter_discharge_kw,
             "max_charge_kw": self.max_charge_kw,
             "max_discharge_kw": self.max_discharge_kw,
+            # Which limit set each rating (`limits`).
+            "limits": self.limits(),
             "reserve_soc_pct": self.reserve_soc_pct,
             "firmware": self.firmware,
             "on_grid": self.on_grid,
@@ -267,10 +297,10 @@ class BatteryFacts:
         }
 
 
-def _lower(rating: float | None, plant_max: float | None) -> float | None:
-    if rating is None or plant_max is None or plant_max <= 0:
-        return rating
-    return min(rating, plant_max)
+def _lower(rating: float | None, *limits: float | None) -> float | None:
+    if rating is None:
+        return None
+    return min([rating, *(limit for limit in limits if limit is not None and limit > 0)])
 
 
 def to_kw(state: str | None, unit: str | None) -> float | None:
@@ -335,6 +365,46 @@ def _bms_charge_kw(entity: EntityFact | None, volts: float) -> float | None:
     if amps is None or amps < 0:
         return None
     return amps * volts / 1000.0
+
+
+def _inverter_limit(
+    matches: Sequence[Match],
+    entities: Sequence[EntityFact],
+    battery: EntityFact,
+    volts_entity: EntityFact | None,
+    found: Mapping[str, str] | None,
+) -> tuple[float | None, str | None]:
+    """The lowest of the inverter's or charger's own limits read (kW) and where it was read
+    (`adapters.Adapter.charge_limits`): a power, or a current in A times the battery's voltage. A value at or below 0
+    holds no limit (Victron's -1; a 0 is a block, not a rating), one without a unit of power or current is none.
+    `found`: as for `_reserve`, the state found before SpotNav first wrote the entity (its own charge power for a
+    grid charge is no limit of the plant's)."""
+    volts = _volts(volts_entity)
+    best: tuple[float | None, str | None] = (None, None)
+    for match in matches:
+        entity = find_entity(match, entities, battery)
+        if entity is None:
+            continue
+        if found and entity.entity_id in found:
+            state: str | None = found[entity.entity_id]
+        elif entity.available:
+            state = entity.state
+        else:
+            continue
+        source = entity.entity_id
+        if entity.unit == "A":
+            amps = number_from_state(state)
+            if amps is None or volts is None or volts_entity is None:
+                continue
+            kw: float | None = amps * volts / 1000.0
+            source = f"{source} x {volts_entity.entity_id}"
+        else:
+            kw = None if entity.unit is None else to_kw(state, entity.unit)
+        if kw is None or kw <= 0:
+            continue
+        if best[0] is None or kw < best[0]:
+            best = (kw, source)
+    return best
 
 
 def find_entity(
@@ -732,6 +802,14 @@ def battery_facts(
                 sources["plant_max"] = plant.entity_id
             else:
                 plant_max_kw = None
+    inverter_charge_kw, source = _inverter_limit(adapter.charge_limits, entities, battery, volts_entity, found_states)
+    if source is not None:
+        sources["inverter_charge"] = source
+    inverter_discharge_kw, source = _inverter_limit(
+        adapter.discharge_limits, entities, battery, volts_entity, found_states
+    )
+    if source is not None:
+        sources["inverter_discharge"] = source
     plant_phases = _plant_phase_entities(adapter, entities, battery)
     if plant_phases is not None:
         sources["plant_phase_power"] = ", ".join(plant_phases)
@@ -766,6 +844,8 @@ def battery_facts(
         rated_discharge_kw=rated_discharge_kw,
         bms_charge_kw=bms_charge_kw,
         plant_max_kw=plant_max_kw,
+        inverter_charge_kw=inverter_charge_kw,
+        inverter_discharge_kw=inverter_discharge_kw,
         reserve_soc_pct=reserve_soc_pct,
         firmware=_firmware(firmware_entity, sw_version, sources),
         on_grid=on_grid,
