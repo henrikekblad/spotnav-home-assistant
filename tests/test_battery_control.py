@@ -27,6 +27,7 @@ from custom_components.spotnav.battery.verify import TEST_CHARGE_KW
 from custom_components.spotnav.const import CONF_MAIN_FUSE_A
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+from tests import battery_patch
 from tests.world import setup_charger_and_site
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -352,7 +353,7 @@ async def test_a_restart_waits_for_a_late_integration_before_it_restores(
         hass.services.async_register("switch", "turn_off", plant._handler("switch", "turn_off"))
         hass.states.async_set(SWITCH, "on", {})
 
-    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    battery_patch.patch(monkeypatch, "STARTUP_LOOK_S", 0.01)
     hass.loop.call_later(0.1, loaded)
     plant.calls.clear()
     again = BatteryControl(hass, controller, plan_source=_hold)
@@ -373,9 +374,9 @@ async def test_a_restart_waits_for_the_controls_only_so_long(
     for index in range(6):
         await control.async_tick(now + timedelta(seconds=10 * index))
     hass.states.async_set(SWITCH, "unavailable", {"restored": True})
-    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
-    monkeypatch.setattr(control_module, "STARTUP_WAIT_S", 0.05)
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    battery_patch.patch(monkeypatch, "STARTUP_LOOK_S", 0.01)
+    battery_patch.patch(monkeypatch, "STARTUP_WAIT_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.1)
     plant.calls.clear()
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
@@ -433,7 +434,7 @@ async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_lo
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
+    battery_patch.patch(monkeypatch, "CALL_TIMEOUT_S", 0.05)
     plant.hangs = True
     control = await _started(hass, site, controller, plan_source=_hold)
     now = dt_util.now()
@@ -454,7 +455,7 @@ async def test_a_plant_that_stops_answering_while_held_is_handed_back_once_it_an
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
+    battery_patch.patch(monkeypatch, "CALL_TIMEOUT_S", 0.05)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 3.0, None))
     now = await _looks(control, dt_util.now(), 6)
     assert control.executor.state.phase == "active" and hass.states.get(CHARGE).state == "3"
@@ -469,12 +470,12 @@ async def test_a_plant_that_stops_answering_while_held_is_handed_back_once_it_an
     assert len(plant.calls) > calls
     assert any(row["kind"] == "service_failed" for row in control.log)
     # A stop is not held by the hung writes; with the deadline short it leaves the rest stored.
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.1)
     async with asyncio.timeout(5):
         await control.async_update_options({gate.CONF_ENABLED: False})
     assert control.executor.state.holds_snapshot
     plant.hangs = False
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 30.0)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 30.0)
     await _looks(control, now, 6)
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(CHARGE).state == "20.6"
     assert not control.executor.state.holds_snapshot
@@ -547,7 +548,7 @@ async def test_a_write_that_raises_any_error_is_not_taken_and_the_state_is_still
     stored = hass_storage[store_key(site.entry_id)]["data"]["state"]
     assert stored["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
     assert stored["phase"] == control.executor.state.phase
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.1)
     await control.async_shutdown()  # never raises: the hand-back is stored for the next start
     assert hass_storage[store_key(site.entry_id)]["data"]["state"]["phase"] == "restoring"
 
@@ -1121,7 +1122,7 @@ async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_sho
 def _bounded_sigenergy(monkeypatch: pytest.MonkeyPatch) -> None:
     """The owner's Sigenergy as a recipe whose charge limit entity bounds a grid charge (as Marstek's does)."""
     bounded = replace(commands_module.SIGENERGY_CONTROL, charge_power_bound="charge_limit")
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: bounded.with_hold(variant))
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: bounded.with_hold(variant))
 
 
 async def test_a_live_grid_charge_and_the_plans_cap_never_pass_the_batterys_own_charge_power_entity(
@@ -1153,8 +1154,8 @@ def _bare_control(brand: str, entities: dict[str, tuple[str, dict[str, Any]]], m
     """A control with only what `_within_charge_power` reads: the brand and the plant's entities by key."""
     from types import SimpleNamespace  # noqa: PLC0415
 
-    monkeypatch.setattr(
-        control_module, "plant_entity_id",
+    battery_patch.patch(
+        monkeypatch, "plant_entity_id",
         lambda _hass, _config, match: next(
             (entity_id for key, (entity_id, _attrs) in entities.items() if match.matches("number", f"ab12_{key}")), None
         ),
@@ -1189,7 +1190,7 @@ def test_no_other_recipe_is_bounded_by_its_entitys_range(brand: str, monkeypatch
     assert control is not None and control.charge_power_bound is None
     bare = _bare_control(brand, {"any": ("number.any", {"min": 0, "max": 100})}, monkeypatch)
     # Every entity of the plant answers with that range.
-    monkeypatch.setattr(control_module, "plant_entity_id", lambda _hass, _config, _match: "number.any")
+    battery_patch.patch(monkeypatch, "plant_entity_id", lambda _hass, _config, _match: "number.any")
     assert bare._within_charge_power(5.0) == 5.0 and bare._within_charge_power(None) is None
     assert [c.brand for c in commands_module.CONTROLS if c.charge_power_bound is not None] == ["marstek", "kostal"]
 
@@ -1983,7 +1984,7 @@ async def test_the_plant_s_changes_count_as_spotnav_s_own_for_a_while_after_a_ha
     assert controller.battery_shadow.spotnav_acting()
     released = control.executor.state.released_at
     later = released + timedelta(seconds=control_module.ACTING_GRACE_S + 1)
-    monkeypatch.setattr(control_module.dt_util, "now", lambda: later)
+    monkeypatch.setattr(dt_util, "now", lambda: later)
     assert not controller.battery_shadow.spotnav_acting()
 
 
@@ -2035,7 +2036,7 @@ async def test_removing_the_site_hands_a_stored_snapshot_back_before_the_store_g
     key = store_key(site.entry_id)
     # The unload's hand-back did not finish (the plant did not answer): the snapshots are stored.
     plant.raises = True
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.05)
     await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
     assert key in hass_storage, "kept while the plant could not be handed back"
     assert hass_storage[key]["data"]["state"]["snapshot"]
@@ -2055,8 +2056,8 @@ async def test_removing_the_site_is_not_held_by_a_plant_that_never_answers(
     assert hass.states.get(CHARGE).state == "0"
     key = store_key(site.entry_id)
     plant.hangs = True
-    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.2)
+    battery_patch.patch(monkeypatch, "CALL_TIMEOUT_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.2)
     async with asyncio.timeout(5):
         await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
     assert hass_storage[key]["data"]["state"]["snapshot"], "kept while the plant could not be handed back"
@@ -2071,7 +2072,7 @@ async def test_after_a_restart_the_restore_runs_before_the_first_look(
     assert control.executor.state.phase == "active"
     # HA stopped without handing back; the plant's integration loads late after the restart.
     hass.states.async_set(SWITCH, "unavailable", {"restored": True})
-    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    battery_patch.patch(monkeypatch, "STARTUP_LOOK_S", 0.01)
     again = BatteryControl(hass, controller, plan_source=_hold)
     again.async_launch(site)
     await asyncio.sleep(0.05)
@@ -2093,7 +2094,7 @@ async def test_a_start_that_raises_is_tried_again_and_hands_the_plant_back(
     control = await _started(hass, site, controller, plan_source=_hold)
     await _looks(control, dt_util.now(), 6)
     assert control.executor.state.phase == "active" and hass.states.get(SWITCH).state == "on"
-    monkeypatch.setattr(control_module, "START_RETRY_S", 0.01)
+    battery_patch.patch(monkeypatch, "START_RETRY_S", 0.01)
     again = BatteryControl(hass, controller, plan_source=_hold)
     calls = {"n": 0}
     original = BatteryControl._read_facts
@@ -2124,7 +2125,7 @@ async def test_an_unload_before_the_start_finished_still_hands_back_what_it_hold
     assert control.executor.state.phase == "active"
     # The restore waits for a control that never loads; the site unloads meanwhile.
     hass.states.async_set(MODE, "PCS Remote Control", {"restored": True})
-    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    battery_patch.patch(monkeypatch, "STARTUP_LOOK_S", 0.01)
     again = BatteryControl(hass, controller, plan_source=_hold)
     again.async_launch(site)
     await asyncio.sleep(0.05)
@@ -2522,7 +2523,7 @@ async def test_a_hardware_test_goes_on_without_a_fixed_charge_that_does_not_fit_
     # at a safe size, so it is not applicable, nothing is charged, and the test still passes.
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     fixed = replace(commands_module.SIGENERGY_CONTROL, fixed_charge=True, fixed_charge_kw=50.0)
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: fixed.with_hold(variant))
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: fixed.with_hold(variant))
     control = BatteryControl(hass, controller, plan_source=_hold)
     await control.async_start()
     _options(hass, site, enabled=True, shadow_only=True)
@@ -2593,16 +2594,16 @@ async def test_a_field_tested_recipe_or_a_beta_tester_leaves_shadow_only_off_by_
     control.facts = control._read_facts()
     # Not yet for Sigenergy (its on-site tests are rerun first): shadow only stays on by default.
     assert control.options().shadow_only is True
-    monkeypatch.setattr(control_module, "recipe_field_tested", lambda brand: brand == "sigenergy")
+    battery_patch.patch(monkeypatch, "recipe_field_tested", lambda brand: brand == "sigenergy")
     assert control.options().shadow_only is False
     _options(hass, site, shadow_only=True)
     assert control.options().shadow_only is True, "a stored value is kept"
     hass.config_entries.async_update_entry(
         site, data={key: value for key, value in site.data.items() if key != gate.CONF_SHADOW_ONLY}
     )
-    monkeypatch.setattr(control_module, "recipe_field_tested", lambda _brand: False)
+    battery_patch.patch(monkeypatch, "recipe_field_tested", lambda _brand: False)
     assert control.options().shadow_only is True
-    monkeypatch.setattr(control_module, "learning_gate_open", lambda _hass, _site: True)
+    battery_patch.patch(monkeypatch, "learning_gate_open", lambda _hass, _site: True)
     assert control.options().shadow_only is False, "a beta tester's site"
 
 
@@ -2611,8 +2612,8 @@ async def _tap_site(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_s
     hass.config_entries.async_update_entry(site, data={**site.data, "safety_margin_a": margin_a})
     _field_tested(monkeypatch)
     _per_phase_plant(hass)
-    monkeypatch.setattr(control_module, "IMPORT_LIMIT_READ_BACK_S", 0.05)
-    monkeypatch.setattr(control_module, "IMPORT_LIMIT_READ_BACK_STEP_S", 0.01)
+    battery_patch.patch(monkeypatch, "IMPORT_LIMIT_READ_BACK_S", 0.05)
+    battery_patch.patch(monkeypatch, "IMPORT_LIMIT_READ_BACK_STEP_S", 0.01)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     await control._async_read_sources(dt_util.now())
     return site, control
@@ -2848,7 +2849,7 @@ async def _waiting_site(hass, monkeypatch, hass_storage, plan_source=_hold, *, a
         action: build for action, build in waiting.states.items() if action != commands_module.ACTION_GRID_CHARGE
     })
     recipe = {"control": waiting}
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: recipe["control"].with_hold(variant))
     control = await _started(hass, site, controller, plan_source=plan_source)
     if approved:
         await _approve(hass, control)
@@ -2974,7 +2975,7 @@ async def test_a_recipe_on_the_releases_block_list_is_shadow_only_whatever_was_p
     control.reports.clear()
     _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
     assert control.state() == "on"
-    monkeypatch.setattr(control_module, "blocked", lambda control, key: commands_module.blocked(
+    battery_patch.patch(monkeypatch, "blocked", lambda control, key: commands_module.blocked(
         control, key, (commands_module.Blocked("sigenergy", firmware="SPC117"),)
     ))
     assert control.recipe_blocked() and control.state() == "shadow_only"
@@ -3029,7 +3030,7 @@ async def test_a_bumped_recipe_revision_keys_every_report_read_with_it(
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     bumped = replace(commands_module.SIGENERGY_CONTROL, recipe_rev=2)
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: bumped.with_hold(variant))
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: bumped.with_hold(variant))
     control = await _started(hass, site, controller, plan_source=_hold)
     key = control.firmware_key()
     assert key.endswith(" r2") and gate.firmware_known(key)
@@ -3099,7 +3100,7 @@ async def _stored_hold(hass, monkeypatch, hass_storage):
     await _looks(control, dt_util.now(), 6)
     assert hass.states.get(CHARGE).state == "0"
     plant.raises = True
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.05)
     await control.async_shutdown()
     plant.raises = False
     assert hass_storage[store_key(site.entry_id)]["data"]["state"]["snapshot"]
@@ -3115,7 +3116,7 @@ async def test_a_stored_snapshot_whose_recipe_is_gone_is_kept_and_handed_back_on
     snapshot = dict(hass_storage[key]["data"]["state"]["snapshot"])
     # A release without the brand's recipe: nothing can be written back, and nothing is thrown away.
     with monkeypatch.context() as patch:
-        patch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+        battery_patch.patch(patch, "control_for", lambda brand, variant=None: None)
         control = BatteryControl(hass, controller, plan_source=_hold)
         await control.async_start()
         assert control.executor is None and hass.states.get(SWITCH).state == "on"
@@ -3150,7 +3151,7 @@ async def test_removing_the_site_keeps_a_stored_snapshot_whose_recipe_is_gone(
 ) -> None:
     site, controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
     key = store_key(site.entry_id)
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: None)
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: None)
     await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
     assert key in hass_storage and hass_storage[key]["data"]["state"]["snapshot"]
 
@@ -3164,14 +3165,14 @@ async def test_a_stored_export_limit_whose_recipe_is_gone_is_kept_and_handed_bac
     await _looks(control, dt_util.now(), 6)
     assert hass.states.get(EXPORT).state == "0"
     plant.raises = True
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.05)
     await control.async_shutdown()
     plant.raises = False
     key = store_key(site.entry_id)
     assert hass_storage[key]["data"]["export"]["state"]["snapshot"]
     with monkeypatch.context() as patch:
-        patch.setattr(control_module, "export_control_for", lambda brand: None)
-        patch.setattr(control_module, "read_export_facts", lambda hass, config: (None, {}, None))
+        battery_patch.patch(patch, "export_control_for", lambda brand: None)
+        battery_patch.patch(patch, "read_export_facts", lambda hass, config: (None, {}, None))
         control = BatteryControl(hass, controller, plan_source=None)
         await control.async_start()
         await control.async_save()

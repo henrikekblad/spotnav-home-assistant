@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.battery import commands as commands_module, control as control_module, gate
 from custom_components.spotnav.battery.control import BatteryControl
+from tests import battery_patch
 from tests.test_battery_control import (
     FIRMWARE, _LIMITS_ONLY_PASS, _hardware_test_ends, _hold, _looks, _options, _site, _started, _waiting_site,
 )
@@ -252,14 +253,14 @@ async def test_a_held_back_recipe_stops_control_also_while_an_old_report_would_c
     now = await _looks(control, _soon(), 6)
     assert control.executor.state.phase == "active"
     hass.states.async_set(FIRMWARE, NEW_FIRMWARE)
-    monkeypatch.setattr(control_module, "blocked", lambda control, key: commands_module.blocked(
+    battery_patch.patch(monkeypatch, "blocked", lambda control, key: commands_module.blocked(
         control, key, (commands_module.Blocked("sigenergy", firmware="SPC118"),)
     ))
     await _looks(control, now, 6)
     assert control.recipe_blocked() and control.state() == "shadow_only" and control.allowed() == frozenset()
     assert control.executor.state.phase == "idle" and not control.executor.state.holds_snapshot
     # Nor is a report passed on a key this release holds back a source for the next key.
-    monkeypatch.setattr(control_module, "blocked", lambda control, key: commands_module.blocked(
+    battery_patch.patch(monkeypatch, "blocked", lambda control, key: commands_module.blocked(
         control, key, (commands_module.Blocked("sigenergy", firmware="SPC117"),)
     ))
     monkeypatch.setattr(gate, "suitable", lambda moment: "car_charging")

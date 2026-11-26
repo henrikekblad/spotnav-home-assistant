@@ -24,6 +24,7 @@ from custom_components.spotnav.beta import BETA_DAYS, BetaState, kept_on_until, 
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.support_report import ReportResult
 
+from . import battery_patch
 from .test_battery_control import _LIMITS_ONLY_PASS, _hardware_test_ends, _waiting_site
 from .world import admin, non_admin, ws_call
 
@@ -246,14 +247,14 @@ async def test_a_blocked_recipe_refuses_the_code_and_the_sign_up_and_voids_the_s
     _hardware_test_ends(control, **_LIMITS_ONLY_PASS)
     assert control.state() == "on"
     relay = _relay(monkeypatch)
-    monkeypatch.setattr(control_module, "blocked", lambda control, key: True)
+    battery_patch.patch(monkeypatch, "blocked", lambda control, key: True)
     assert await tester.async_enter_code(hass, control, await _code(hass)) == "spotnav_code_blocked"
     assert await tester.async_signup(hass, control, "tester@example.com", "") == ("spotnav_code_blocked", None)
     assert relay.sent == []
     # The next look voids the plant's pass: after the block a test must pass again.
     await control.async_look(dt_util.now())
     assert control.hardware_brands == [] and any(row["kind"] == "hardware_pass_voided" for row in control.log)
-    monkeypatch.setattr(control_module, "blocked", lambda control, key: False)
+    battery_patch.patch(monkeypatch, "blocked", lambda control, key: False)
     assert control.hardware_test_due() == "hardware_test_first"
     await control.async_stop()
 
@@ -417,7 +418,7 @@ async def test_the_actions_are_an_administrators_and_never_over_the_webhook(
 
 def _gated_after_running(monkeypatch: pytest.MonkeyPatch) -> None:
     """The test plant's brand (Sigenergy's recipe, gated by `_waiting_site`) counted as one gated after running."""
-    monkeypatch.setattr(control_module, "GATED_AFTER_RUNNING", frozenset({"sigenergy"}))
+    battery_patch.patch(monkeypatch, "GATED_AFTER_RUNNING", frozenset({"sigenergy"}))
 
 
 def _not_yet_looked_at(control: control_module.BatteryControl) -> None:

@@ -21,8 +21,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.battery import control as control_module
 from custom_components.spotnav.battery.control import BatteryControl, store_key
+from tests import battery_patch
 from tests.test_battery_control import _hold, _looks, _options, _site, _started, _stored_hold
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -81,7 +81,7 @@ class _Recorder:
 
         # The shell's own name for the class: stores made from here on are recorded (never `Store` itself, which
         # the storage fixture patches).
-        monkeypatch.setattr(control_module, "Store", Recording)
+        battery_patch.patch(monkeypatch, "Store", Recording)
 
     def watch(self, plant: Any) -> None:
         plant.calls = _Calls(self.log)
@@ -151,7 +151,7 @@ async def test_calls_that_fail_are_retried_and_then_given_up_on(
     await recorder.looks(control, now, 6)
     recorder.mark("stop")
     # The restore waits for its next attempt: the stop gives up on it at once and leaves it stored.
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 0.05)
     await control.async_stop()
     _check("failing_calls", recorder.log)
 
@@ -177,8 +177,8 @@ async def test_a_removed_sites_stored_snapshot_is_handed_back_and_the_store_remo
     site, _controller, plant = await _stored_hold(hass, monkeypatch, hass_storage)
     recorder = _Recorder(monkeypatch, store_key(site.entry_id))
     recorder.watch(plant)
-    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 30.0)
-    monkeypatch.setattr(control_module, "HAND_BACK_LOOK_S", 0.01)
+    battery_patch.patch(monkeypatch, "HAND_BACK_DEADLINE_S", 30.0)
+    battery_patch.patch(monkeypatch, "HAND_BACK_LOOK_S", 0.01)
     await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
     assert any(row[0] == "call" for row in recorder.log)
     _check("removed_site", recorder.log)
