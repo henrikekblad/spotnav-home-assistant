@@ -2121,6 +2121,20 @@ class BatteryControl:
             # Nor does a report passed before this failure run control on a later key (`control_report`).
             self.carry_after = now.isoformat()
 
+    def hardware_test_missing(self, report: Mapping[str, Any] | None) -> list[dict[str, Any]] | None:
+        """What a hardware test's report leaves unshown of what this plant's recipe waits for before control may
+        start (`gate.hardware_test_missing`, as `_keep_hardware_verdict` judges it): `[{mode, outcome}]`, empty when
+        the test showed it all. `None` for a plant whose control does not wait for a person's test: a recipe without
+        `hardware_test_first` (or `field_tested`), and one whose control ran before its brand was gated
+        (`grandfathered`); their test's result is its steps' alone."""
+        control = self._gated_control()
+        if control is None or self.grandfathered():
+            return None
+        missing = gate.hardware_test_missing(
+            report, self._supported_modes(), deadman_required=control.deadman_must_pass,
+        )
+        return [{"mode": mode, "outcome": outcome} for mode, outcome in missing]
+
     async def _async_verify(self, now: datetime) -> StepResult | None:
         verification = self.verification
         executor = self.executor
@@ -2289,10 +2303,10 @@ class BatteryControl:
         return None
 
     async def async_hardware_test_start(self) -> str | None:
-        """Start the battery part of a person's hardware test (`verify.quick_for`, `stop_on_fail`): hold, a small
-        grid charge under the HA-down cap, a discharge for the house, the plant's own dead-man timed where SpotNav can
-        silence it (`_hardware_test_deadman`), and the hand-back, through the executor with every rule. Answers the
-        refusal code, `None` once it started."""
+        """Start the battery part of a person's hardware test (`verify.quick_for`, `stop_on_fail`): hold, the plant's
+        own dead-man timed on that hold where the test times one (`_hardware_test_deadman`), a small grid charge under
+        the HA-down cap, a discharge for the house, and the hand-back, through the executor with every rule. Answers
+        the refusal code, `None` once it started."""
         why = self.hardware_test_refusal()
         if why is not None:
             return why
@@ -2312,6 +2326,8 @@ class BatteryControl:
                 modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if deadman is not None else ())),
                 tried=gate.variants_tried(self.report()), timing=quick_for(executor.control), stop_on_fail=True,
                 charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
+                # The dead-man is timed on the hold right after it passed, before the first grid charge.
+                expiry_first=deadman is not None,
             )
             self._hw_run = True
             self._plan_wrote = None

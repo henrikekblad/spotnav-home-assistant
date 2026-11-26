@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  batteryRunElsewhere, betaBox, blockedText, codeErrorText, codeWanted, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest,
+  batteryRunElsewhere, betaBox, blockedText, codeErrorText, codeWanted, decodeBetaAnswer, resultText, stepText, testBox, testHidden, testSummary,
+  type BetaRequest,
 } from "../src/beta";
 import { translate } from "../src/i18n";
 
@@ -36,7 +37,9 @@ afterEach(() => {
 describe("decodeBetaAnswer", () => {
   it("reads every fixture the backend wrote", () => {
     const names = readdirSync(FIXTURES).filter((name) => name.endsWith(".json"));
-    expect(names.sort()).toEqual(["ended.json", "off_idle.json", "on_done_failed.json", "on_done_partial.json", "on_running.json"]);
+    expect(names.sort()).toEqual([
+      "ended.json", "off_idle.json", "on_done_failed.json", "on_done_incomplete.json", "on_done_partial.json", "on_running.json",
+    ]);
     for (const name of names) {
       expect(decodeBetaAnswer(fixture(name)), name).not.toBeNull();
     }
@@ -215,6 +218,50 @@ describe("testBox", () => {
     expect((q(root, "[data-beta=runTest]") as HTMLButtonElement).disabled).toBe(false);
     expect(decodeBetaAnswer(skipped)!.test?.result).toBe("skipped");
     expect(decodeBetaAnswer({ ...partial, test: { ...(partial.test as Record<string, unknown>), result: "half" } })).toBeNull();
+  });
+
+  it("says a test that did not show every step the battery needs is not complete, never passed", async () => {
+    const incomplete = fixture("on_done_incomplete.json");
+    const decoded = decodeBetaAnswer(incomplete)!;
+    expect(decoded.test).toMatchObject({
+      result: "incomplete", blocked: null,
+      missing: [{ step: "deadman", reason: "house_changed" }, { step: "charge", reason: "fuse_headroom" }],
+    });
+    const { root } = test([incomplete]);
+    await settle();
+    const line = q(root, "[data-beta=result]").textContent ?? "";
+    expect(line).toContain(
+      "Inte klart. Inget gick fel, men det här återstår att visa innan SpotNav styr batteriet: "
+      + "växelriktarens egen tidsgräns och den lilla laddningen från nätet.",
+    );
+    // The charge had no room under the fuse: what to do about it, and Run stays open the same day.
+    expect(line).toContain(translate("sv", "test.incomplete.houseLoad"));
+    expect(line).not.toContain(translate("sv", "test.result.passed"));
+    expect((q(root, "[data-beta=runTest]") as HTMLButtonElement).disabled).toBe(false);
+    expect(testSummary("en", decoded)).toMatch(/^Not complete · /);
+    const state = decoded.test!;
+    expect(resultText("en", state)).toBe(
+      "Not complete. Nothing failed, but this still has to be shown before SpotNav controls the battery: the inverter's own "
+      + "timeout and the small grid charge. There was no room under the fuse for it this time: run the test again when the "
+      + "house uses less power.",
+    );
+    // No step short of room: only to run it again; a step the card does not know is shown by its code.
+    const other = { ...state, missing: [{ step: "hold", reason: "stopped" }, { step: "later_step", reason: null }] };
+    expect(resultText("en", other)).toBe(
+      "Not complete. Nothing failed, but this still has to be shown before SpotNav controls the battery: the hold and "
+      + "later_step. Run the test again to show it.",
+    );
+    expect(resultText("en", { ...state, result: "passed" })).toBe(translate("en", "test.result.passed"));
+    // An answer from before `missing` has none; a malformed one is no answer.
+    const raw = incomplete.test as Record<string, unknown>;
+    const { missing: _missing, ...without } = raw;
+    expect(decodeBetaAnswer({ ...incomplete, test: { ...without, result: "passed" } })!.test?.missing).toEqual([]);
+    expect(decodeBetaAnswer({ ...incomplete, test: { ...raw, missing: [{ step: "charge" }] } })).toBeNull();
+    expect(decodeBetaAnswer({ ...incomplete, test: { ...raw, missing: "charge" } })).toBeNull();
+    // A run that goes again by itself says so, as for a step that could not be judged.
+    const again = test([{ ...incomplete, test: { ...raw, state: "waiting", blocked: "waiting", next_at: null } }]);
+    await settle();
+    expect(q(again.root, "[data-beta=result]").textContent).toContain(translate("sv", "test.waiting.retry"));
   });
 
   it("offers Send for a finished test when beta is off", async () => {

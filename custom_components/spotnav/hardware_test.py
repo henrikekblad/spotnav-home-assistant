@@ -16,7 +16,8 @@ It runs the parts the site has, each through the engine that already writes to i
 in at most `MAX_TEST` all told (a slow recipe's own `BrandControl.test_total_s`: Tesla's cloud, about an hour):
 
 * **The home battery** (`battery/control.py`, `async_hardware_test_start`): the verification routine's modes in
-  minutes (`verify.quick_for`; a slow recipe waits for its re-arm and cloud read-backs at each mode): hold, a small
+  minutes (`verify.quick_for`; a slow recipe waits for its re-arm and cloud read-backs at each mode): hold (and,
+  where the test times the plant's dead-man, that step next, before anything is charged), a small
   grid charge under the HA-down fuse cap (the learned per-phase house peak, or its conservative default; where that
   leaves the balanced charge no room and the plant takes targets per phase, a charge of at most 1 kW on the phase
   with the most room, its sign and phase mapping judged; a plant that charges at its own power, Tesla's, whose power
@@ -46,9 +47,12 @@ battery's HA-down cap may count a held charger that cannot draw without Home Ass
 The parts run side by side (separate devices; the battery's modes alone take about nine minutes, most of it the
 executor's own re-arm after each hand-back). Any step that does not pass (a mode ignored or partial, a write not
 taken or not read back) ends the test: that part hands back by its own engine and the other part is ended at once,
-handing back what it engaged. The deadline does the same. The result
+handing back what it engaged. The deadline does the same. A battery step that only had no room under the fuse at
+that moment (`gate.MOMENT_ABORTS`) ends nothing: the steps after it still run. The result
 (`passed` when every part ran, `partial` when a part was skipped, `skipped` when none ran, `failed` when a step
-failed; a partial or skipped test leaves the day's slot, `NOT_COUNTED`), the steps, each engine's own report) is kept per site, shown by the card step by step,
+failed, `incomplete` when nothing failed but the battery's part did not show everything its recipe waits for before
+control may start (`result_of`, `missing`: the result agrees with `gate.hardware_test_passed`, so it never says
+`passed` while control stays off); a partial, skipped or incomplete test leaves the day's slot, `NOT_COUNTED`), the steps, each engine's own report) is kept per site, shown by the card step by step,
 carried in the debug bundle as `hardware_test` (the relay flags `result` `failed`) and, while beta is on, sent by
 itself as a `beta_test` report; otherwise the card offers "Skicka" (`async_send_test`). For a battery tester (a brand
 whose control is still being tested, the person signed up and no control code yet: `battery/tester.py`) it goes by
@@ -94,7 +98,8 @@ POLL_S: Final = 2.0
 BATTERY_STEPS: Final = (("hold", "hold"), ("charge", "charge"), ("discharge", "discharge_house"),
                         ("hand_back", "normal"))
 #: The step that times the plant's own dead-man (the verification's mode `expiry`), shown only where the battery part
-#: runs it (`BatteryControl.hardware_test_deadman`: EcoFlow, Solis), before the hand-back; and the time it adds.
+#: runs it (`BatteryControl.hardware_test_deadman`: EcoFlow, Solis), right after the hold it rests on and before the
+#: charge (`verify.Verification.expiry_first`); and the time it adds.
 DEADMAN_STEP: Final = ("deadman", "expiry")
 DEADMAN_EXTRA: Final = timedelta(minutes=5)
 #: Refusals that mean the part is not there to test (no step shown), rather than not testable now.
@@ -139,9 +144,10 @@ RESTORE_AT_UNLOAD_S: Final = 35.0
 
 def _past_charge(progress: Mapping[str, Any]) -> bool:
     """Whether a running battery part is past its charge step and handed back from it: a later mode (the charge
-    passed, failed or was not applicable) with nothing held. The chargers' hold is for the charge step only."""
+    passed, failed or was not applicable) with nothing held. The chargers' hold is for the charge step only; the
+    hold and the dead-man's timing come before it."""
     mode = progress.get("mode")
-    return mode is not None and mode not in ("hold", "charge") and not progress.get("holding")
+    return mode is not None and mode not in ("hold", DEADMAN_STEP[1], "charge") and not progress.get("holding")
 
 
 def store_key(entry_id: str) -> str:
@@ -199,7 +205,7 @@ def _reason(outcome: Any) -> str | None:
 def battery_steps(report: Mapping[str, Any] | None, current: str | None, running: bool) -> list[dict[str, Any]]:
     modes = (report or {}).get("modes") or {}
     steps = []
-    order = BATTERY_STEPS if DEADMAN_STEP[1] not in modes else (*BATTERY_STEPS[:-1], DEADMAN_STEP, BATTERY_STEPS[-1])
+    order = BATTERY_STEPS if DEADMAN_STEP[1] not in modes else (BATTERY_STEPS[0], DEADMAN_STEP, *BATTERY_STEPS[1:])
     for step, mode in order:
         outcome = (modes.get(mode) or {}).get("outcome")
         steps.append({
@@ -241,12 +247,34 @@ def _part_skipped(step: Mapping[str, Any]) -> bool:
     return step.get("status") == "skipped" and step.get("step") is not None and step.get("step") == step.get("part")
 
 
-def result_of(steps: list[dict[str, Any]]) -> str:
-    """`failed` when any step failed (the relay flags these); else `skipped` when no part ran, `partial` when a part
-    was skipped or a step could not be judged (a check that could not be made is not a pass), `passed` when every
-    part ran and every step was judged."""
+def battery_missing(missing: Any, steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What the battery's gate still waits for (`BatteryControl.hardware_test_missing`: `[{mode, outcome}]`) as the
+    card's steps: `[{step, reason}]`, the reason the step's own row gives (why it was aborted, skipped or could not
+    be judged; a stop's or the deadline's for a step never reached). A dead-man per phase is the one step."""
+    names = {mode: step for step, mode in (*BATTERY_STEPS, DEADMAN_STEP)}
+    rows = {row.get("step"): row for row in steps if row.get("part") == "battery"}
+    found: list[dict[str, Any]] = []
+    for item in missing if isinstance(missing, list) else ():
+        mode = item.get("mode") if isinstance(item, Mapping) else None
+        step = names.get(str(mode).split(":", 1)[0])
+        if step is None or any(row["step"] == step for row in found):
+            continue
+        reason = (rows.get(step) or {}).get("reason")
+        found.append({"step": step, "reason": reason if isinstance(reason, str) else _reason(item.get("outcome"))})
+    return found
+
+
+def result_of(steps: list[dict[str, Any]], missing: Any = None) -> str:
+    """`failed` when any step failed (the relay flags these); else `incomplete` when the battery's part ran without
+    a failure but did not show what its recipe waits for before control may start (`missing`, `battery_missing`:
+    a step it needs was aborted for the room under the fuse, skipped, stopped or could not be judged, or the
+    dead-man was not timed), so the result never says `passed` where the gate (`gate.hardware_test_passed`) does not;
+    else `skipped` when no part ran, `partial` when a part was skipped or a step could not be judged (a check that
+    could not be made is not a pass), `passed` when every part ran and every step was judged."""
     if any(step.get("status") == "failed" for step in steps):
         return "failed"
+    if missing:
+        return "incomplete"
     if not steps or all(_part_skipped(step) for step in steps):
         return "skipped"
     if any(_part_skipped(step) or step.get("status") == "not_judgeable" for step in steps):
@@ -254,8 +282,9 @@ def result_of(steps: list[dict[str, Any]]) -> str:
     return "passed"
 
 
-#: Results that leave the day's slot (a part did not run: it may be run again once ready).
-NOT_COUNTED: Final = frozenset({"partial", "skipped"})
+#: Results that leave the day's slot (a part did not run, or the battery's steps were not all shown: it may be run
+#: again once ready).
+NOT_COUNTED: Final = frozenset({"partial", "skipped", "incomplete"})
 
 
 class HardwareTest:
@@ -301,8 +330,11 @@ class HardwareTest:
         self.last = raw.get("last") if isinstance(raw.get("last"), dict) else None
         self.record = raw.get("record") if isinstance(raw.get("record"), dict) else None
         if self.record is not None and isinstance(self.record.get("steps"), list):
-            # A test kept from before the partial/skipped results is judged again by its steps.
-            self.record["result"] = result_of([step for step in self.record["steps"] if isinstance(step, dict)])
+            # A test kept from before the partial/skipped results is judged again by its steps (and by what its
+            # battery part left unshown, once that is known: `_rejudge`).
+            self.record["result"] = result_of(
+                [step for step in self.record["steps"] if isinstance(step, dict)], self.record.get("missing")
+            )
         self.sent_ref = raw.get("sent_ref") if isinstance(raw.get("sent_ref"), str) else None
         waiting = raw.get("waiting")
         if isinstance(waiting, dict) and _time(waiting.get("until")) is not None:
@@ -843,13 +875,17 @@ class HardwareTest:
             for row in steps:
                 if row["status"] in ("pending", "running"):
                     row.update(status="aborted", reason=stopped)
+        missing = self._battery_missing(running.get("battery"), steps)
         self.record = {
             "site": self.site.entry_id,
             "started_at": running["started_at"],
             "finished_at": dt_util.now().isoformat(),
             "spotnav_version": running.get("version"),
             "firmware_key": (self.last or {}).get("firmware_key"),
-            "result": result_of(steps),
+            "result": result_of(steps, missing),
+            # What the battery's recipe still waits for before control may start (`battery_missing`); empty when
+            # the test showed it all, `None` where the plant's control waits for no test.
+            "missing": missing,
             "stopped": stopped,
             "error": running.get("error"),
             "steps": steps,
@@ -857,7 +893,37 @@ class HardwareTest:
             "heat": running.get("heat"),
         }
         self._save()
-        _LOGGER.info("SpotNav hardware test: %s", self.record["result"])
+        _LOGGER.info("SpotNav hardware test: %s%s", self.record["result"], "" if not missing else (
+            " (still to be shown: " + ", ".join(
+                f"{row['step']} ({row['reason']})" if row.get("reason") else str(row["step"]) for row in missing
+            ) + ")"
+        ))
+
+    def _battery_missing(self, report: Any, steps: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+        """What the battery part's report leaves unshown for its gate, as steps (`battery_missing`); `None` where the
+        battery part did not run or its control waits for no test (`BatteryControl.hardware_test_missing`)."""
+        if not isinstance(report, Mapping):
+            return None
+        try:
+            missing = self.site.battery_control.hardware_test_missing(report)
+        except Exception:  # noqa: BLE001 - no battery control: nothing waits for the test
+            _LOGGER.debug("battery_missing: ignored failure (no battery control)", exc_info=True)
+            return None
+        return None if missing is None else battery_missing(missing, steps)
+
+    def _rejudge(self) -> None:
+        """A test kept from before its result said what the battery's gate still waits for (no `missing`): judged
+        again once the battery control can say, so a kept `passed` that the gate never took reads `incomplete`."""
+        record = self.record
+        if record is None or "missing" in record or not isinstance(record.get("steps"), list):
+            return
+        steps = [step for step in record["steps"] if isinstance(step, dict)]
+        missing = self._battery_missing(record.get("battery"), steps)
+        if missing is None:
+            return
+        record["missing"] = missing
+        record["result"] = result_of(steps, missing)
+        self._save()
 
     def _finish_stopped(self, why: str) -> None:
         if self._running is not None:
@@ -918,7 +984,8 @@ class HardwareTest:
         if running is not None:
             return {"state": "running", "blocked": "running", "next_at": None, "started_at": running["started_at"],
                     "finished_at": None, "result": None, "steps": self._steps(running, live=True),
-                    "sent_ref": None}
+                    "missing": [], "sent_ref": None}
+        self._rejudge()
         blocked, next_at = self.blocked(now, _current_version(self.hass, version))
         record = self.record
         if self.waiting is not None:
@@ -928,7 +995,8 @@ class HardwareTest:
                 "state": "waiting", "blocked": BLOCKED_WAITING, "next_at": None if likely is None else likely.isoformat(),
                 "started_at": self.waiting.get("since"), "finished_at": None,
                 "result": None if record is None else record.get("result"),
-                "steps": [] if record is None else list(record.get("steps") or []), "sent_ref": None,
+                "steps": [] if record is None else list(record.get("steps") or []),
+                "missing": _missing_view(record), "sent_ref": None,
             }
         return {
             "state": "idle" if record is None else "done",
@@ -938,8 +1006,20 @@ class HardwareTest:
             "finished_at": None if record is None else record.get("finished_at"),
             "result": None if record is None else record.get("result"),
             "steps": [] if record is None else list(record.get("steps") or []),
+            # For the result `incomplete`: the battery steps still to be shown, each with why it was not.
+            "missing": _missing_view(record),
             "sent_ref": self.sent_ref,
         }
+
+
+def _missing_view(record: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """A record's `missing` for the card (`[{step, reason}]`; storage is untrusted: anything else is left out)."""
+    rows = (record or {}).get("missing")
+    return [
+        {"step": row["step"], "reason": row.get("reason") if isinstance(row.get("reason"), str) else None}
+        for row in (rows if isinstance(rows, list) else ())
+        if isinstance(row, Mapping) and isinstance(row.get("step"), str)
+    ]
 
 
 def likely_at(now: datetime, *, waking_only: bool = False) -> datetime | None:

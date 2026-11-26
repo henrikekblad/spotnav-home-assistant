@@ -291,6 +291,57 @@ async def test_a_testers_finished_test_goes_as_its_result_while_beta_is_on_until
     await control.async_stop()
 
 
+async def test_an_incomplete_tests_report_says_incomplete_and_names_the_missing_steps(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from dataclasses import replace  # noqa: PLC0415
+
+    _site, controller, _plant, control, recipe = await _waiting_site(hass, monkeypatch, hass_storage, approved=False)
+    relay = _relay(monkeypatch)
+    await tester.async_signup(hass, control, "tester@example.com", "")
+    # A recipe with a grid charge whose dead-man must be timed (Solis's), and the run as the first tester's ended.
+    recipe["control"] = replace(control_module.control_for("sigenergy"), deadman_must_pass=True)
+    monkeypatch.setattr(control, "_supported_modes", lambda: frozenset({"hold", "charge", "discharge_house", "normal"}))
+    outcomes = {"hold": "obeyed", "expiry": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed",
+                "normal": "restored"}
+    _hardware_test_ends(control, **outcomes)
+    assert control.hardware_brands == [] and control.hardware_test_due() == "hardware_test_first"
+    report = control.hardware_report
+    assert control.hardware_test_missing(report) == [{"mode": "charge", "outcome": "aborted:fuse_headroom"}]
+    steps = hardware_test.battery_steps(report, None, False)
+    missing = hardware_test.battery_missing(control.hardware_test_missing(report), steps)
+    now = dt_util.now()
+    record = {"started_at": now.isoformat(), "finished_at": (now + timedelta(minutes=14)).isoformat(),
+              "result": hardware_test.result_of(steps, missing), "stopped": None, "steps": steps, "missing": missing,
+              "battery": report}
+    runner = SimpleNamespace(site=controller, record=record, running=False, sent_ref=None, _save=lambda: None,
+                             _tester_sends=lambda: hardware_test.HardwareTest._tester_sends(runner))
+    controller.battery_control = control
+    await hardware_test.async_send_test(hass, runner)  # type: ignore[arg-type]
+    test = relay.sent[-1]["battery"]["test"]
+    assert test["result"] == "incomplete" and test["gate_passed"] is False
+    assert test["missing"] == [{"step": "charge", "reason": "fuse_headroom"}]
+    # The result and the gate agree both ways: with the charge shown the test passes and so does the gate.
+    _hardware_test_ends(control, **(outcomes | {"charge": "obeyed"}))
+    assert control.hardware_test_missing(control.hardware_report) == [] and control.hardware_brands == ["sigenergy"]
+    # The dead-man merely tried is not enough for this recipe; without `deadman_must_pass` it is.
+    tried = _Report(outcomes | {"charge": "obeyed", "expiry": "not_judgeable:house_changed"})
+    assert control.hardware_test_missing(tried) == [{"mode": "expiry", "outcome": "not_judgeable:house_changed"}]
+    recipe["control"] = replace(recipe["control"], deadman_must_pass=False)
+    assert control.hardware_test_missing(tried) == []
+    # A plant whose control waits for no test (no gate), or whose control ran before its brand was gated: no say.
+    recipe["control"] = replace(recipe["control"], hardware_test_first=False)
+    assert control.hardware_test_missing(report) is None
+    recipe["control"] = replace(recipe["control"], hardware_test_first=True)
+    control.control_codes = {"sigenergy": {"brand": "sigenergy", "grandfathered": True}}
+    assert control.grandfathered() and control.hardware_test_missing(report) is None
+    await control.async_stop()
+
+
+def _Report(outcomes: dict[str, str]) -> dict[str, Any]:  # noqa: N802 - reads as the report it builds
+    return {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in outcomes.items()}}
+
+
 async def test_unticking_beta_stops_every_report_at_once_and_ends_the_sign_up(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
