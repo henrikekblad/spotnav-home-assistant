@@ -13,18 +13,9 @@ from homeassistant.util import dt as dt_util
 
 from ...beta import learning_gate_open
 from .. import gate
-from ..commands import (
-    BrandControl,
-    control_for,
-    blocked,
-    field_tested as recipe_field_tested,
-)
-from ..verify import (
-    MAX_REPORTS,
-    supported_modes,
-)
+from ..commands import BrandControl, control_for, blocked, field_tested as recipe_field_tested
+from ..verify import MAX_REPORTS, supported_modes
 from .trial import ControlNotReachable
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

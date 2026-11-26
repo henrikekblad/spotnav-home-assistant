@@ -22,17 +22,9 @@ from ...core.electric import stored_safety_margin_a
 from ...planning.grid_voltage import stored_voltage_between_phases_v
 from ...site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from .. import gate
-from ..commands import (
-    BrandControl,
-    control_for,
-)
-from ..executor import (
-    HEADROOM_MARGIN_A,
-)
-from ..plan_model import (
-    ACTION_GRID_CHARGE,
-    ACTION_SELF_CONSUME,
-)
+from ..commands import BrandControl, control_for
+from ..executor import HEADROOM_MARGIN_A
+from ..plan_model import ACTION_GRID_CHARGE, ACTION_SELF_CONSUME
 from ..runtime import plant_entity_id, read_plant_entity
 from .const import (
     FIRMWARE_STEPS,
@@ -42,7 +34,6 @@ from .const import (
     SOURCES_REFRESH_S,
 )
 from .helpers import _card_refusal, _float
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

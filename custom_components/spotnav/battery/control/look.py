@@ -12,31 +12,12 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 
 from .. import gate
-from ..commands import (
-    ACTION_CURTAIL_EXPORT,
-    control_for,
-    fixed_rate_kw,
-)
-from ..executor import (
-    Executor,
-    StepResult,
-    preview,
-    taken_over,
-)
-from ..plan_model import (
-    ACTION_EXPORT_DISCHARGE,
-    ACTION_GRID_CHARGE,
-    ACTION_SELF_CONSUME,
-)
+from ..commands import ACTION_CURTAIL_EXPORT, control_for, fixed_rate_kw
+from ..executor import Executor, StepResult, preview, taken_over
+from ..plan_model import ACTION_EXPORT_DISCHARGE, ACTION_GRID_CHARGE, ACTION_SELF_CONSUME
 from ..plan_shadow import slot_at
 from ..runtime import read_role_reads
-from .const import (
-    FAILED_LOOKS_HAND_BACK,
-    NOTE_AI_MODE_BACK,
-    RULE_CHARGE_POWER_ENTITY,
-    _PLAN_ACTIONS,
-)
-
+from .const import FAILED_LOOKS_HAND_BACK, NOTE_AI_MODE_BACK, RULE_CHARGE_POWER_ENTITY, _PLAN_ACTIONS
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

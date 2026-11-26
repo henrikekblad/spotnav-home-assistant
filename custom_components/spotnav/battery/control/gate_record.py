@@ -14,21 +14,9 @@ from homeassistant.util import dt as dt_util
 
 from ...beta import beta_on
 from .. import codes, gate
-from ..commands import (
-    GATED_AFTER_RUNNING,
-    BrandControl,
-    control_for,
-    blocked,
-)
-from ..verify import (
-    MAX_REPORTS,
-)
-from .const import (
-    NEED_CONTROL_CODE,
-    NEED_HARDWARE_TEST_AGAIN,
-    NEED_HARDWARE_TEST_FIRST,
-)
-
+from ..commands import GATED_AFTER_RUNNING, BrandControl, control_for, blocked
+from ..verify import MAX_REPORTS
+from .const import NEED_CONTROL_CODE, NEED_HARDWARE_TEST_AGAIN, NEED_HARDWARE_TEST_FIRST
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

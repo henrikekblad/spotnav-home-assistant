@@ -4,7 +4,6 @@ beside it, each on this one state."""
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime
@@ -14,23 +13,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from ..preheat import PreheatWatch
-from ..commands import (
-    Phases,
-)
-from ..executor import (
-    Executor,
-)
+from ..commands import Phases
+from ..executor import Executor
 from ..export_shell import ExportShell
 from ..facts import BatteryFacts
-from ..verify import (
-    Verification,
-)
-from .const import (
-    LOG_MAX,
-    STORE_VERSION,
-    PlanSource,
-    SellSource,
-)
+from ..verify import Verification
+from .const import LOG_MAX, STORE_VERSION, PlanSource, SellSource
 from .stored import store_key
 from .trial import Trial
 from .life import Life
@@ -52,10 +40,11 @@ from .status import Status
 if TYPE_CHECKING:
     from ...site.site_capacity_controller import SiteCapacityController
 
-_LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 
-
-class BatteryControl(Life, GateRecord, Report, PlanProof, Look, PerPhase, WritePath, VerifyDriver, HardwareRun, TrialRun, ExpiryCheck, ImportLimit, Caps, Inputs, Status):
+class BatteryControl(
+    Life, GateRecord, Report, PlanProof, Look, PerPhase, WritePath, VerifyDriver,
+    HardwareRun, TrialRun, ExpiryCheck, ImportLimit, Caps, Inputs, Status,
+):
     """One site's battery and export-limit write path (see the module)."""
 
     def __init__(

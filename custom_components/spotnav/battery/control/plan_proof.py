@@ -12,24 +12,11 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 
 from .. import gate
-from ..executor import (
-    StepResult,
-)
+from ..executor import StepResult
 from ..monitor import Command
-from ..plan_model import (
-    ACTION_SELF_CONSUME,
-)
-from ..verify import (
-    MAX_REPORTS,
-)
-from .const import (
-    ASIDE_GAP_S,
-    ASIDE_S,
-    _ASIDE_ENDS,
-    _PLAN_KINDS,
-    _PLAN_PROVES,
-)
-
+from ..plan_model import ACTION_SELF_CONSUME
+from ..verify import MAX_REPORTS
+from .const import ASIDE_GAP_S, ASIDE_S, _ASIDE_ENDS, _PLAN_KINDS, _PLAN_PROVES
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

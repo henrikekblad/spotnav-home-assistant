@@ -8,28 +8,14 @@ import math
 from datetime import datetime
 from typing import Any
 
-
 from ...planning.grid_voltage import stored_voltage_between_phases_v
 from ...site.phase_peaks import plant_phase_w
 from .. import gate
-from ..commands import (
-    Phases,
-    control_for,
-    reading,
-)
-from ..executor import (
-    BATTERY_MAX_AGE_S,
-    HEADROOM_MARGIN_A,
-    Executor,
-    StepResult,
-)
-from ..plan_model import (
-    ACTION_GRID_CHARGE,
-)
+from ..commands import Phases, control_for, reading
+from ..executor import BATTERY_MAX_AGE_S, HEADROOM_MARGIN_A, Executor, StepResult
+from ..plan_model import ACTION_GRID_CHARGE
 from ..runtime import read_role_reads
-from .const import (
-    PER_PHASE_GAIN_KW,
-)
+from .const import PER_PHASE_GAIN_KW
 from .helpers import _accept_applies
 
 

@@ -8,14 +8,8 @@ from typing import Any
 
 from homeassistant.core import State
 
-from ..commands import (
-    BrandControl,
-    Expiry,
-    answered,
-)
-from ..plan_model import (
-    ACTION_GRID_CHARGE,
-)
+from ..commands import BrandControl, Expiry, answered
+from ..plan_model import ACTION_GRID_CHARGE
 
 
 def _least(first: float | None, second: float | None) -> float | None:

@@ -11,22 +11,10 @@ from datetime import datetime
 
 from homeassistant.util import dt as dt_util
 
-from ..commands import (
-    service_call,
-)
-from ..executor import (
-    ExecInputs,
-    Executor,
-    Op,
-    StepResult,
-    taken_over,
-)
-from .const import (
-    HAND_BACK_DEADLINE_S,
-    HAND_BACK_LOOK_S,
-)
+from ..commands import service_call
+from ..executor import ExecInputs, Executor, Op, StepResult, taken_over
+from .const import HAND_BACK_DEADLINE_S, HAND_BACK_LOOK_S
 from .io import _async_service, _error_text, _failure, resolve_follows_max
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

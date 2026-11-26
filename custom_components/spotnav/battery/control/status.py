@@ -10,31 +10,13 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 
 from .. import gate, optin
-from ..commands import (
-    FOLLOWS_MAX,
-    NORMAL,
-    control_for,
-)
-from ..executor import (
-    restore_order,
-    Executor,
-    taken_over,
-)
+from ..commands import FOLLOWS_MAX, NORMAL, control_for
+from ..executor import restore_order, Executor, taken_over
 from ..mirrored import NEED_MIRRORED_READ_ONLY, READ_ONLY_MIRRORED
-from ..plan_model import (
-    DEFAULT_CYCLE_COST,
-    sell_margin_minor_per_kwh,
-)
+from ..plan_model import DEFAULT_CYCLE_COST, sell_margin_minor_per_kwh
 from ..runtime import read_role_reads
-from .const import (
-    NEED_HARDWARE_TEST_FIRST,
-    NEED_RECIPE_BLOCKED,
-    NEED_RESTORE_BY_HAND,
-    NEED_TESTER_SIGNUP,
-    ORPHANED,
-)
+from .const import NEED_HARDWARE_TEST_FIRST, NEED_RECIPE_BLOCKED, NEED_RESTORE_BY_HAND, NEED_TESTER_SIGNUP, ORPHANED
 from .helpers import _float
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

@@ -7,12 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Final
 
-
-from ..plan_model import (
-    ACTION_DISCHARGE_HOUSE,
-    ACTION_GRID_CHARGE,
-    ACTION_HOLD,
-)
+from ..plan_model import ACTION_DISCHARGE_HOUSE, ACTION_GRID_CHARGE, ACTION_HOLD
 
 
 STORE_VERSION: Final = 1

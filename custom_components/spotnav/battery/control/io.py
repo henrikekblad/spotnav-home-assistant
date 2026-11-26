@@ -11,20 +11,10 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from ...util import error_text
-from ..commands import (
-    FOLLOWS_MAX,
-    service_call,
-)
-from ..executor import (
-    Executor,
-    Op,
-    RoleRead,
-)
-from .const import (
-    CALL_TIMEOUT_S,
-)
+from ..commands import FOLLOWS_MAX, service_call
+from ..executor import Executor, Op, RoleRead
+from .const import CALL_TIMEOUT_S
 from .helpers import _float, _state_of
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

@@ -6,22 +6,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-
 from .. import gate
-from ..commands import (
-    BrandControl,
-    Expiry,
-    control_for,
-)
-from ..executor import (
-    Executor,
-)
-from ..plan_model import (
-    ACTION_GRID_CHARGE,
-    ACTION_HOLD,
-)
+from ..commands import BrandControl, Expiry, control_for
+from ..executor import Executor
+from ..plan_model import ACTION_GRID_CHARGE, ACTION_HOLD
 from .helpers import _grid_charge_expiry
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

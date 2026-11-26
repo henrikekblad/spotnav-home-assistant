@@ -10,40 +10,20 @@ from typing import Any
 
 from homeassistant.util import dt as dt_util
 
-from ...const import (
-    CONF_CHARGER_ENTRY_IDS,
-    SOLAR_PRIORITY_CAR_FIRST,
-)
+from ...const import CONF_CHARGER_ENTRY_IDS, SOLAR_PRIORITY_CAR_FIRST
 from ...site.priority import solar_priority
 from ...planning.grid_voltage import stored_voltage_between_phases_v
 from ...site.measurement_problem import UNHEALTHY_STATES
 from .. import gate
-from ..commands import (
-    ACTION_CURTAIL_EXPORT,
-    BrandControl,
-    Phases,
-    control_for,
-)
-from ..executor import (
-    ExecInputs,
-    Executor,
-    RoleRead,
-)
+from ..commands import ACTION_CURTAIL_EXPORT, BrandControl, Phases, control_for
+from ..executor import ExecInputs, Executor, RoleRead
 from ..export_curtail import curtails
 from ..facts import BatteryFacts
-from ..plan_model import (
-    ACTION_GRID_CHARGE,
-    ACTION_HOLD,
-    ACTION_SELF_CONSUME,
-)
+from ..plan_model import ACTION_GRID_CHARGE, ACTION_HOLD, ACTION_SELF_CONSUME
 from ..runtime import read_battery_facts, read_export_facts, read_role_reads
-from .const import (
-    ACTING_GRACE_S,
-    _UNSET,
-)
+from .const import ACTING_GRACE_S, _UNSET
 from .helpers import _state_of
 from .io import stored_reads
-
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 

@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-
-from ..commands import (
-    ACTION_CURTAIL_EXPORT,
-)
+from ..commands import ACTION_CURTAIL_EXPORT
 
 
 class ControlNotReachable(RuntimeError):
