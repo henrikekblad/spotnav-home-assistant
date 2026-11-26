@@ -432,7 +432,9 @@ on again runs the check again. The result is kept per firmware and integration v
 
 **An update never stops control by itself.** After a firmware update, a new version of the battery's integration or
 a changed SpotNav recipe, SpotNav keeps running the battery with what last passed for that brand on your plant: the
-same steps stay allowed, nothing more. It checks the battery again at the first suitable moment, at any hour: the
+same steps stay allowed, nothing more. Each step keeps the latest answer it has from an earlier version, so a
+version that showed only some of the steps takes none of the others away, and a step a later version did not obey
+stays off. It checks the battery again at the first suitable moment, at any hour: the
 same conditions as the first check (30 to 80 %, discharging, no car charging, room under the fuse), at a time when
 the plan leaves the battery to itself. Meanwhile the card says *On: SpotNav keeps running the battery. The check
 after the update waits for a suitable moment*, with what it waits for. While the check itself runs (about 40
