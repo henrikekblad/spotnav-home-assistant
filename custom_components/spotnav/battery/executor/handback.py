@@ -85,6 +85,7 @@ class HandBack:
         self._release_unset()
         # A new hand-back waits for its own first readings (`_restore_unread`), never on an earlier one's wait.
         self.restore_wait_since = {}
+        self._surplus_raised_at = None
         return [_event(now, "hand_back", reason)]
 
     def _restore_target(self, state: ExecState) -> dict[str, Native]:
