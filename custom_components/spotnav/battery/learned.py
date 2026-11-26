@@ -13,6 +13,21 @@ the battery's energy and the SoC at the start and end of each) show it.
 * **Rated power.** The highest power two consecutive fully measured quarter hours both held, charging and
   discharging apart. It is a floor: the battery may well manage more than it was ever asked for, and the
   plant's own limit shows in it. It only ever rises.
+* **The rating a battery stops at** (`charge_cap_kw`, `discharge_cap_kw`). A floor that only rises cannot correct a
+  rating that is too high: a BMS' current limit times the voltage says what the cells allow (16 kW), not what the
+  charger in front of them carries (6 kW), and a plan that counts on the first fills half of what it meant to. So a
+  rating that is not read from the plant comes down when the battery shows it. A quarter hour is *saturated* when
+  SpotNav's control asked the same way all through it (`Bucket.asked_kw`: the lowest rate it had standing, which
+  already holds the fuse's, the site's and the BMS' present limits, at least `MIN_ASKED_KW`) and the battery, fully
+  measured, stayed at or under `SATURATED_SHARE` of that. It does not count near the end of the SoC's range (above
+  `TAPER_SOC` charging, below `EMPTY_SOC` discharging: the cells taper there), with the site's import at
+  `FUSE_SHARE` of its cap or more (a plant that guards the fuse itself holds the charge back), or with cold cells
+  (`COLD_C`, where the temperature is read: nothing is asked then). `SATURATED_QUARTERS` such quarter hours in a row,
+  all within `STEADY_SPREAD` of their median (a house load that eats the headroom moves; a charger's limit does
+  not), set the cap to their 90th percentile. The cap stands in for a rating learnt or worked out from the BMS'
+  limit, never for one the plant states (`with_learned`). It rises as the rating does: two quarter hours in a row
+  held above it, after it was set, lift it to that. A later saturated run moves it only when it differs by
+  `CAP_MOVE_SHARE` or more, so it does not creep with the noise.
 
 * **Round trip.** Learnt from the battery's own meters (`round_trip.py`), and used here in place of the assumed one
   once it is known. Where the battery's power is read at the battery (DC), the plan takes it on the AC side: times
@@ -74,6 +89,23 @@ MIN_SAMPLES: Final = 3
 MAX_SAMPLES: Final = 15
 #: Samples within this share of the median agree with it.
 AGREE_SHARE: Final = 0.25
+#: The least SpotNav must have asked (kW) for a quarter hour to say anything of the battery's limit, and the share of
+#: it the battery stays at or under when it is saturated: under what an inverter's loss alone takes from a power read
+#: at the battery.
+MIN_ASKED_KW: Final = 1.0
+SATURATED_SHARE: Final = 0.85
+#: How many saturated quarter hours in a row teach a cap, and how far from their median any of them may lie.
+SATURATED_QUARTERS: Final = 4
+STEADY_SPREAD: Final = 0.10
+#: The SoC (%) above which a charge, and below which a discharge, tapers and teaches nothing.
+TAPER_SOC: Final = 90.0
+EMPTY_SOC: Final = 20.0
+#: The share of the site's import cap at which the fuse, not the charger, may be what holds the charge back.
+FUSE_SHARE: Final = 0.85
+#: The cells' temperature (°C) under which nothing is asked of the battery for this (`plan_runtime`).
+COLD_C: Final = 10.0
+#: A later saturated run moves the cap only when it differs from it by this share or more.
+CAP_MOVE_SHARE: Final = 0.05
 
 
 @dataclass(slots=True)
@@ -84,6 +116,12 @@ class LearnedBattery:
     samples: list[tuple[datetime, float]] = field(default_factory=list)
     rated_charge_kw: float | None = None
     rated_discharge_kw: float | None = None
+    #: The power the battery was seen to stop at under a higher command (see the module), and the end of the quarter
+    #: hour that last set or lifted it: only later quarter hours move it, so learning is idempotent.
+    charge_cap_kw: float | None = None
+    charge_cap_at: datetime | None = None
+    discharge_cap_kw: float | None = None
+    discharge_cap_at: datetime | None = None
     round_trip: RoundTrip = field(default_factory=RoundTrip)
     #: The inverter's loss on the battery's way in and out (`conversion_loss.py`).
     conversion: ConversionLoss = field(default_factory=ConversionLoss)
@@ -117,7 +155,30 @@ class LearnedBattery:
         changed = False
         for run in _runs(ordered, now):
             changed |= self._take_run(run, round_trip)
+        changed |= self._take_saturated(ordered)
         changed |= self._take_rated(ordered)
+        return changed
+
+    def _take_saturated(self, ordered: list[Bucket]) -> bool:
+        """The cap from each run of saturated quarter hours that ended after the cap was last moved (see the module)."""
+        changed = False
+        for charging, run in _saturated_runs(ordered):
+            at = self.charge_cap_at if charging else self.discharge_cap_at
+            end = run[-1].end
+            if at is not None and end <= at:
+                continue
+            levels = _steady_levels([abs(_mean_kw(bucket) or 0.0) for bucket in run])
+            if levels is None:
+                continue
+            cap = round(_percentile(levels, 0.9), 1)
+            standing = self.charge_cap_kw if charging else self.discharge_cap_kw
+            if cap <= 0 or (standing is not None and abs(cap - standing) < CAP_MOVE_SHARE * standing):
+                continue
+            if charging:
+                self.charge_cap_kw, self.charge_cap_at = cap, end
+            else:
+                self.discharge_cap_kw, self.discharge_cap_at = cap, end
+            changed = True
         return changed
 
     def _take_run(self, run: list[Bucket], round_trip: float) -> bool:
@@ -158,7 +219,23 @@ class LearnedBattery:
                 self.rated_charge_kw, changed = held, True
             elif kw < 0 and held > (self.rated_discharge_kw or 0.0):
                 self.rated_discharge_kw, changed = held, True
+            # More held than the cap, after it was set: the battery manages it after all.
+            if kw > 0 and self.charge_cap_kw is not None and self.charge_cap_at is not None:
+                if held > self.charge_cap_kw and bucket.end > self.charge_cap_at:
+                    self.charge_cap_kw, self.charge_cap_at, changed = held, bucket.end, True
+            elif kw < 0 and self.discharge_cap_kw is not None and self.discharge_cap_at is not None:
+                if held > self.discharge_cap_kw and bucket.end > self.discharge_cap_at:
+                    self.discharge_cap_kw, self.discharge_cap_at, changed = held, bucket.end, True
         return changed
+
+    def rating(self, charging: bool) -> tuple[float | None, str | None]:
+        """The rating learnt one way and how: the cap the battery was seen to stop at (`saturated`), else the highest
+        power it held (`held`)."""
+        cap = self.charge_cap_kw if charging else self.discharge_cap_kw
+        if cap is not None:
+            return cap, "saturated"
+        seen = self.rated_charge_kw if charging else self.rated_discharge_kw
+        return seen, None if seen is None else "held"
 
     # ---- persistence and diagnostics
 
@@ -167,6 +244,8 @@ class LearnedBattery:
             "samples": [[end.isoformat(), round(kwh, 3)] for end, kwh in self.samples],
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
+            "charge_cap": _cap_row(self.charge_cap_kw, self.charge_cap_at),
+            "discharge_cap": _cap_row(self.discharge_cap_kw, self.discharge_cap_at),
             "round_trip": self.round_trip.as_dict(),
             "conversion": self.conversion.as_dict(),
         }
@@ -179,6 +258,9 @@ class LearnedBattery:
             "capacity_samples": [round(kwh, 2) for _end, kwh in self.samples],
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
+            # The power the battery stopped at under a higher command, and since when (see the module).
+            "charge_cap": _cap_row(self.charge_cap_kw, self.charge_cap_at),
+            "discharge_cap": _cap_row(self.discharge_cap_kw, self.discharge_cap_at),
             "round_trip": self.round_trip.view(),
             "conversion": self.conversion.view(power_dc),
         }
@@ -197,10 +279,15 @@ class LearnedBattery:
                 continue
             if end.tzinfo is not None and math.isfinite(kwh) and CAPACITY_RANGE[0] <= kwh <= CAPACITY_RANGE[1]:
                 samples.append((end, kwh))
+        charge_cap, discharge_cap = _cap_from(raw.get("charge_cap")), _cap_from(raw.get("discharge_cap"))
         return cls(
             samples=sorted(samples, key=lambda item: item[0])[-MAX_SAMPLES:],
             rated_charge_kw=_rating(raw.get("rated_charge_kw")),
             rated_discharge_kw=_rating(raw.get("rated_discharge_kw")),
+            charge_cap_kw=charge_cap[0],
+            charge_cap_at=charge_cap[1],
+            discharge_cap_kw=discharge_cap[0],
+            discharge_cap_at=discharge_cap[1],
             round_trip=RoundTrip.from_dict(raw.get("round_trip")),
             conversion=ConversionLoss.from_dict(raw.get("conversion")),
         )
@@ -210,6 +297,75 @@ def _rating(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return float(value) if 0 < value <= MAX_RATED_KW else None
+
+
+def _cap_row(kw: float | None, at: datetime | None) -> list[Any] | None:
+    return None if kw is None or at is None else [kw, at.isoformat()]
+
+
+def _cap_from(raw: Any) -> tuple[float | None, datetime | None]:
+    if not isinstance(raw, list) or len(raw) != 2:
+        return None, None
+    kw = _rating(raw[0])
+    try:
+        at = datetime.fromisoformat(str(raw[1]))
+    except ValueError:
+        return None, None
+    return (kw, at) if kw is not None and at.tzinfo is not None else (None, None)
+
+
+def _saturated(bucket: Bucket) -> bool | None:
+    """Whether the battery stopped clearly under what was asked of it in this quarter hour: `True` charging, `False`
+    discharging, `None` when it did not or the quarter hour cannot tell (see the module)."""
+    kw, asked = _mean_kw(bucket), bucket.asked_kw
+    if kw is None or asked is None or abs(asked) < MIN_ASKED_KW or bucket.soc_end is None:
+        return None
+    charging = asked > 0
+    level = kw if charging else -kw
+    if level < STEADY_KW or level > SATURATED_SHARE * abs(asked):
+        return None
+    if (bucket.soc_end > TAPER_SOC) if charging else (bucket.soc_end < EMPTY_SOC):
+        return None
+    hours = bucket.covered_s / 3600.0
+    if charging and bucket.cap_kw is not None and bucket.import_kwh / hours >= FUSE_SHARE * bucket.cap_kw:
+        return None
+    return charging
+
+
+def _saturated_runs(ordered: list[Bucket]) -> list[tuple[bool, list[Bucket]]]:
+    """The runs of `SATURATED_QUARTERS` or more saturated quarter hours in a row the same way, oldest first."""
+    runs: list[tuple[bool, list[Bucket]]] = []
+    run: list[Bucket] = []
+    way: bool | None = None
+    for bucket in ordered:
+        now = _saturated(bucket)
+        if now is None or now != way or (run and run[-1].end != bucket.start):
+            if way is not None and len(run) >= SATURATED_QUARTERS:
+                runs.append((way, run))
+            run, way = [], now
+        if now is not None:
+            run.append(bucket)
+    if way is not None and len(run) >= SATURATED_QUARTERS:
+        runs.append((way, run))
+    return runs
+
+
+def _steady_levels(levels: list[float]) -> list[float] | None:
+    """The run's levels when all lie within `STEADY_SPREAD` of their median, else its last `SATURATED_QUARTERS` when
+    those do (the level it settled at), else `None`: a level that moves is no limit of the battery's."""
+    for part in (levels, levels[-SATURATED_QUARTERS:]):
+        median = statistics.median(part)
+        if all(abs(level - median) <= STEADY_SPREAD * median for level in part):
+            return part
+    return None
+
+
+def _percentile(values: list[float], share: float) -> float:
+    ordered = sorted(values)
+    at = share * (len(ordered) - 1)
+    low = int(at)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (at - low)
 
 
 def _mean_kw(bucket: Bucket) -> float | None:
@@ -264,7 +420,8 @@ def _runs(ordered: list[Bucket], now: datetime) -> list[list[Bucket]]:
 
 def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
     """The facts with what was learnt filled in where the integration reads nothing (never over a read value, except a
-    rating worked out from the BMS's present current limit when more has been seen held); the estimates say which."""
+    rating worked out from the BMS's present current limit when more has been seen held, or when the battery was seen
+    to stop under it); the estimates say which, and `sources["rated_..._learned"]` how (`held`, `saturated`)."""
     updates: dict[str, Any] = {}
     estimates = list(facts.estimates)
     sources = dict(facts.sources)
@@ -273,19 +430,22 @@ def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
         estimates.append(EST_CAPACITY_LEARNED)
         sources["capacity"] = "learned"
     rated = False
-    for key, read, seen in (
-        ("rated_charge", facts.rated_charge_kw, learned.rated_charge_kw),
-        ("rated_discharge", facts.rated_discharge_kw, learned.rated_discharge_kw),
+    for key, read, (seen, how) in (
+        ("rated_charge", facts.rated_charge_kw, learned.rating(True)),
+        ("rated_discharge", facts.rated_discharge_kw, learned.rating(False)),
     ):
         if seen is None:
             continue
         # A rating worked out from the BMS's present current limit (`facts.EST_RATED_FROM_CURRENT`, "<A> x <V>") is
         # what the BMS allows now, which it lowers for its own reasons (near full or empty, cold, a setting): the
-        # power the battery has been seen to hold is a truer floor, so the higher of the two counts.
+        # power the battery has been seen to hold is a truer floor, so the higher of the two counts. It is also only
+        # the cells' upper bound: where the battery was seen to stop under a higher command (`saturated`, see the
+        # module), that is the rating, above the BMS' figure or below it.
         from_current = read is not None and " x " in sources.get(key, "")
-        if read is None or (from_current and seen > read):
+        if read is None or (from_current and (how == "saturated" or seen > read)):
             updates[f"{key}_kw"] = seen
-            sources[key] = "learned"
+            sources[key] = SOURCE_LEARNED
+            sources[f"{key}_learned"] = how or ""
             rated = True
     if rated:
         estimates.append(EST_RATED_LEARNED)

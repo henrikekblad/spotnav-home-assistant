@@ -518,6 +518,11 @@ advanced options are on). The Modbus integration's grid meter is found by itself
 GX's grid power per phase and the Multi's AC-input current and voltage are offered instead, which see only what
 passes through the Multi.
 
+The battery's rating is not the BMS's current limit alone: a large bank may allow 16 kW behind a Multi whose charger
+carries 6 kW. SpotNav plans with the lowest of the BMS's limit, the Multi's *Nominal inverter power* and your own
+*ESS max charge power limit*, *ESS max charge current* (DVCC) and *ESS max inverter power limit*, and lowers it
+further if the battery is seen to stop under what was asked ([how a rating is learnt](battery-plan.md)).
+
 SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
 ways in:
 

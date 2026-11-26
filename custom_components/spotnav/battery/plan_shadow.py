@@ -627,7 +627,10 @@ class Bucket:
     at the battery on a DC-side reading: the SoC's and the round trip's side) and on the AC side (`battery_ac_kwh`,
     `conversion_loss.py`: the meter's side, which the house, the review and the perfect plan count; `None` in a
     quarter hour from before it, which then counts as read). `first_*` is the first plan that covered it, `ran_*` the
-    plan in force when it began (what would have been written)."""
+    plan in force when it began (what would have been written). `asked_kw` is what SpotNav's control really asked of
+    the battery through the whole quarter hour (kW, + a grid charge, - a sale): the lowest rate it had standing, the
+    BMS' present charge limit where that was lower; 0 when it did not ask the same way throughout, `None` in a quarter
+    hour from before it. A battery that stays clearly under it has shown its own limit (`learned.py`)."""
 
     start: datetime
     buy: float | None = None
@@ -648,6 +651,7 @@ class Bucket:
     #: The same per mode planned beside it: `{mode: (action, kW)}`.
     ran_modes: dict[str, tuple[str, float]] = field(default_factory=dict)
     battery_ac_kwh: float | None = None
+    asked_kw: float | None = None
 
     @property
     def end(self) -> datetime:
@@ -718,13 +722,17 @@ class Bucket:
             r(self.ran_soc, 2),
             {mode: [action, round(kw, 3)] for mode, (action, kw) in sorted(self.ran_modes.items())} or None,
             r(self.battery_ac_kwh),
+            r(self.asked_kw, 3),
         ]
 
     @classmethod
     def from_row(cls, raw: Any) -> Bucket | None:
         # 18 fields with an action at 16: a row from before the modes, whose export variant is dropped; 17: a row from
-        # before the AC side.
-        if not isinstance(raw, list) or len(raw) not in (17, 18):
+        # before the AC side; 19: with what the control asked (`asked_kw`).
+        if not isinstance(raw, list) or len(raw) not in (17, 18, 19):
+            return None
+        asked = raw[18] if len(raw) == 19 else None
+        if asked is not None and not _finite(asked):
             return None
         old = len(raw) == 18 and isinstance(raw[16], str)
         battery_ac = None if len(raw) == 17 or old else raw[17]
@@ -771,6 +779,7 @@ class Bucket:
             ran_soc=raw[15],
             ran_modes=ran_modes,
             battery_ac_kwh=None if battery_ac is None else float(battery_ac),
+            asked_kw=None if asked is None else float(asked),
         )
 
     def view(self) -> dict[str, Any]:
@@ -796,6 +805,7 @@ class _Sample:
     car_kw: float | None
     battery_kw: float | None
     battery_ac_kw: float | None = None
+    asked_kw: float | None = None
 
 
 @dataclass(slots=True)
@@ -859,10 +869,12 @@ class PlanActuals:
         battery_kw: float | None,
         soc: float | None,
         battery_ac_kw: float | None = None,
+        asked_kw: float | None = None,
     ) -> None:
         """A reading: the last one's power counts until now in its quarter hour (a gap over `MAX_GAP_S` counts
         nothing); the SoC marks the quarter hour's start and end. [battery_ac_kw] is the battery's power on the AC side
-        (`conversion_loss.ac_kw`), the reading as it is where not given."""
+        (`conversion_loss.ac_kw`), the reading as it is where not given. [asked_kw] is what SpotNav's control asks of
+        the battery now (`Bucket.asked_kw`), `None` when it asks nothing."""
         last = self.last
         if last is not None:
             gap = (now - last.at).total_seconds()
@@ -885,13 +897,18 @@ class PlanActuals:
                 bucket.battery_kwh += last.battery_kw * hours
                 ac = last.battery_kw if last.battery_ac_kw is None else last.battery_ac_kw
                 bucket.battery_ac_kwh += ac * hours
+                asked, standing = last.asked_kw, bucket.asked_kw
+                if asked is None or (standing is None and bucket.covered_s > 0) or (standing or asked) * asked <= 0:
+                    bucket.asked_kw = 0.0  # nothing asked, or not the same way, for a part of it
+                elif standing is None or abs(asked) < abs(standing):
+                    bucket.asked_kw = asked
                 bucket.covered_s += gap
         bucket = self.buckets.get(bucket_start(now))
         if bucket is not None and soc is not None and _finite(soc):
             if bucket.soc_start is None:
                 bucket.soc_start = soc
             bucket.soc_end = soc
-        self.last = _Sample(now, grid_kw, car_kw, battery_kw, battery_ac_kw)
+        self.last = _Sample(now, grid_kw, car_kw, battery_kw, battery_ac_kw, asked_kw)
 
     def close_hours(self, now: datetime, tz: str) -> list[datetime]:
         """Turn every local hour that has ended and whose quarter hours are measured into a house row; the hours

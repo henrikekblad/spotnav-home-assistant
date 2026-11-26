@@ -462,6 +462,22 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
 
 * **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
   13.2 kW beside a battery rated 23.04 kW): the battery charges and discharges through it, so the plan takes the lower.
+* **The inverter's or charger's own limit** (`charge_limits`, `discharge_limits`): what the power electronics between
+  the grid and the battery carry, whatever the BMS allows. A BMS' current limit times the voltage is the cells' upper
+  bound and no rating of the plant: a Victron MultiPlus-II 48/8000/110 on a 32 kWh bank whose BMS allows 314 A
+  (16 kW) charges with about 6 kW. Each entity named is read (a current in A times the battery's voltage; a value at
+  or below 0, Victron's -1, holds no limit) and the lowest counts beside the rating and the plant's maximum
+  (`facts.BatteryFacts.max_charge_kw`). An entity SpotNav writes itself is read as it was found before the first
+  write (`facts.battery_facts`' `found_states`). Victron (`victron_gx`, `victron_mqtt`; victron-mqtt
+  `_victron_topics.py`, read 2026-11-26): `vebus_nominal_inverter_power` (`/Ac/Out/NominalInverterPower`, W: the
+  VE.Bus system's continuous power, which its charger never exceeds: 6400 W beside a 110 A charger's 5.7 kW), the
+  ESS settings `system_ess_max_charge_power` (`/Settings/CGwacs/MaxChargePower`, W) and
+  `system_ess_max_inverter_power_limit` (`/Settings/CGwacs/MaxDischargePower`, W), and DVCC's
+  `system_ess_max_charge_current` (`/Settings/SystemSetup/MaxChargeCurrent`, A). The Multi's own charge current
+  setting (VEConfigure) is on no topic. Victron Modbus (sfstar/hass-victron `const.py`, read 2026-11-26):
+  `settings_ess_maxchargecurrent` (2705, A, DVCC) and `settings_ess_maxdischargepower` (2704, W); the VE.Bus
+  registers hold no nominal power. No other brand has one mapped: theirs read the plant's own rating, or the falling
+  learnt rating (`learned.py`) finds the charger's limit.
 * **The reserve** (`reserves`): the SoC the battery itself does not discharge below (its discharge cut-off or backup
   reserve). Several may be read; the highest that can be read counts. Sigenergy's are disabled by default; Huawei's
   need the installer password; GoodWe and Sofar state the depth of discharge (the floor is 100 less it); Victron's
@@ -686,6 +702,9 @@ class Adapter:
     plant_max: Match | None = None
     #: The `plant_max` entity's attribute that holds it, in W, instead of its state (Solis: `device_limit`).
     plant_max_attribute: str | None = None
+    #: The inverter's or charger's own charge and discharge limits, the lowest read counts (see the module).
+    charge_limits: tuple[Match, ...] = ()
+    discharge_limits: tuple[Match, ...] = ()
     #: Where the battery's own floor is kept (see the module).
     reserves: tuple[ReserveSource, ...] = ()
     #: The plant's AC power on phases A, B and C, and the factor that makes it positive for output (see the module).
@@ -991,6 +1010,17 @@ VICTRON: Final = Adapter(
         "charged_total": _key("battery_charged_energy"),
         "discharged_total": _key("battery_discharged_energy"),
     },
+    # The Multi's continuous power and the ESS and DVCC settings (see the module): the BMS' limits alone are not
+    # what the charger carries. Numbers, or sensors where the integration is set up to read only.
+    charge_limits=(
+        _key("vebus_nominal_inverter_power"),
+        _key("system_ess_max_charge_power", "number", "sensor"),
+        _key("system_ess_max_charge_current", "number", "sensor"),
+    ),
+    discharge_limits=(
+        _key("vebus_nominal_inverter_power"),
+        _key("system_ess_max_inverter_power_limit", "number", "sensor"),
+    ),
     # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to: a
     # number, or a sensor where the integration is set up to read only.
     reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number", "sensor")),),
@@ -1032,6 +1062,8 @@ VICTRON_MODBUS: Final = Adapter(
         "charged_total": _key("battery_history_chargedenergy"),
         "discharged_total": _key("battery_history_dischargedenergy"),
     },
+    charge_limits=(_key("settings_ess_maxchargecurrent", "number", "sensor"),),
+    discharge_limits=(_key("settings_ess_maxdischargepower", "number", "sensor"),),
     # The ESS minimum SoC (register 2901, Settings/CGwacs/BatteryLife/MinimumSocLimit, %): a number with the
     # integration's advanced options and a sensor without them, the same unique id either way.
     reserves=(ReserveSource(_key("settings_ess_batterylife_minimumsoc", "number", "sensor")),),
