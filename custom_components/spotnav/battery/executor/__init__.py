@@ -192,6 +192,22 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 
 Pure: no Home Assistant import; times are aware datetimes from the caller. State survives a restart
 (`ExecState.as_dict`, `from_dict`); the ledger and the monitor keep their own.
+
+The package's parts (every name is imported from the package itself, as when it was one module):
+
+* `core.py`: `Executor`, its attributes, the order of one look (`step`), the start and the change of action.
+* `state.py`, `const.py`: the dataclasses of a look and the stored state; the constants.
+* Pure functions: `fuse.py` (the fuse rules), `values.py` (a role's values and the restore order), `management.py`,
+  `reads.py` (`role_reads`), `helpers.py`.
+* The executor's rules, as mixins of `Executor` on its one state, methods moved as they were: `rules.py` (start and
+  exit rules), `rate.py` (the aim and the rate), `ordering.py` (the order of the writes), `writer.py` (the write and
+  the day's caps), `claims.py` (what is owned, what is someone else's), `renewal.py` (watchdogs and charge blocks),
+  `handback.py` (the hand-back, its retries, a restart), `peak_cover.py`, `judge.py` (the command's effect),
+  `expiry_probe.py` (the expiry test).
+* `preview.py`: the dry run.
+
+`step`'s order is behaviour, and some rules write state as they are asked (`_exit_reason`, `_command_unread`): a
+change to one part is checked against the recorded traces (`tests/test_battery_golden_traces.py`).
 """
 
 from __future__ import annotations

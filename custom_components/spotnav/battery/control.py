@@ -1,4 +1,4 @@
-"""The shell of the battery's write path (`executor.py`): reads the brand's control entities, makes the writes the
+"""The shell of the battery's write path (`executor/`): reads the brand's control entities, makes the writes the
 executor returns, persists its state. One per site, owned by its `SiteCapacityController`.
 
 **The gate** (`gate.py`): nothing is written unless the site's options say so: `battery_control_enabled` (the
