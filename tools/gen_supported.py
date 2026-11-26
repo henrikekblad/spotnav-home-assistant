@@ -609,6 +609,8 @@ def meter_notes(row: sd.MeterRow) -> str:
         lines.append(f"Only devices whose model contains \"{row.device_model}\".")
     if row.voltage_any_device:
         lines.append("Voltage is taken from the inverter, which is on another device of the same integration.")
+    if row.fallback:
+        lines.append("Offered only where the same integration reports no grid meter.")
     lines.extend(_WARNING_TEXT[code] for code in row.warnings if code in _WARNING_TEXT)
     if row.totals:
         pair = any(pattern.role == "grid_power_export" for pattern in row.totals)

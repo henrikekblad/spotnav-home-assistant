@@ -190,6 +190,10 @@ class MeterRow:
     # The row's name in `docs/supported.md` where the platform names alone do not tell two rows apart
     # (the HACS and the core `solaredge_modbus`).
     label: str | None = None
+    # A stand-in for a meter: offered only for a config entry where no other row of the same platform
+    # makes a candidate (the Victron Multi's AC input, which is the grid connection only where the GX
+    # has no grid meter of its own).
+    fallback: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,13 +498,47 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         warnings=(WARNING_SIGN_UNVERIFIED,),
     ),
     MeterRow(
-        platforms=("victron_gx", "victron_mqtt", "victron"),
+        platforms=("victron_gx", "victron_mqtt"),
         patterns=(
             _p("current", r"grid_current_(?:phase_)?l?(?P<n>[123])$"),
             _p("power", r"grid_power_(?:phase_)?l?(?P<n>[123])$"),
             _p("voltage", r"grid_voltage_(?:phase_)?l?(?P<n>[123])$"),
         ),
         signed_current=True,
+    ),
+    # The community Victron Modbus integration (sfstar/hass-victron `32fb345`). Unique ids are
+    # `<unit id>_<register key>`, the key in Victron's own case (`30_grid_L1_power`). The GX's grid meter
+    # (`com.victronenergy.grid`, an ET112/ET340/EM24 at its own unit id) reports per phase
+    # `grid_L<n>_power` (W, import positive, register 2600-2602), `grid_L<n>_voltage` and the signed
+    # `grid_L<n>_current` (2616-2621), the same `/Ac/L<n>/...` paths the GX row reads; a meter per unit id.
+    # The id is anchored on the unit id, since the system's `system_grid_L<n>_power` ends the same way.
+    MeterRow(
+        platforms=("victron",),
+        patterns=(
+            _p("current", r"^(?P<m>\d+)_grid_l(?P<n>[123])_current$"),
+            _p("power", r"^(?P<m>\d+)_grid_l(?P<n>[123])_power$"),
+            _p("voltage", r"^(?P<m>\d+)_grid_l(?P<n>[123])_voltage$"),
+        ),
+        signed_current=True,
+        label="Victron Modbus, grid meter",
+    ),
+    # The same integration on a GX with no grid meter: the GX takes the grid from the Multi's AC input,
+    # and its system grid power per phase (`100_system_grid_L<n>`, register 820-822, W, import positive)
+    # is that input's. The Multi's own AC-input current and voltage (`<unit>_vebus_activein_L<n>_current`
+    # and `_voltage`, registers 3-8) complete it. Where a grid meter exists the Multi's input is not the
+    # grid connection (loads ahead of the Multi, often the car's charger, pass it by), so this row is a
+    # fallback: never offered beside a grid meter of the same integration entry.
+    MeterRow(
+        platforms=("victron",),
+        patterns=(
+            _p("power", r"^\d+_system_grid_l(?P<n>[123])$"),
+            _p("current", r"^\d+_vebus_activein_l(?P<n>[123])_current$"),
+            _p("voltage", r"^\d+_vebus_activein_l(?P<n>[123])_voltage$"),
+        ),
+        signed_current=True,
+        warnings=(WARNING_MAY_MEASURE_SUBCIRCUIT,),
+        label="Victron Modbus, the Multi's AC input (no grid meter)",
+        fallback=True,
     ),
     MeterRow(
         platforms=("goodwe",),
@@ -1131,6 +1169,9 @@ def _catalogue_candidates(
     for entity in entities:
         by_platform.setdefault(entity.platform, []).append(entity)
 
+    # A fallback row's candidates, kept until every row has run (see `MeterRow.fallback`).
+    fallbacks: list[tuple[tuple[str, str], list[MeterCandidate]]] = []
+    made: set[tuple[str, str]] = set()
     for row in METER_ROWS:
         for platform in row.platforms:
             groups: dict[tuple[str, str], dict[Role, dict[PhaseName, RegistryEntity]]] = {}
@@ -1159,9 +1200,20 @@ def _catalogue_candidates(
                 built = _build_row_candidates(
                     row, platform, entry_key, meter, roles, devices, totals.get((entry_key, meter), {})
                 )
+                if row.fallback:
+                    fallbacks.append(((platform, entry_key), built))
+                    continue
+                if built:
+                    made.add((platform, entry_key))
                 candidates.extend(built)
                 for candidate in built:
                     claimed.update(item.entity_id for item in candidate.entities)
+    for source, built in fallbacks:
+        if source in made:
+            continue
+        candidates.extend(built)
+        for candidate in built:
+            claimed.update(item.entity_id for item in candidate.entities)
     return candidates, claimed
 
 
