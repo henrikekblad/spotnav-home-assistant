@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 #: Let the house, the car and the sun run through the battery as the inverter does by itself: the battery covers
 #: a deficit and stores a surplus. The default, and the baseline every saving is measured against.
@@ -181,6 +181,46 @@ def _finite(value: float | None) -> bool:
     return value is not None and math.isfinite(value)
 
 
+class BatteryFigures(NamedTuple):
+    """A battery's figures as the plan's arithmetic reads them, worked out once (`BatteryParams.figures`): the search
+    reads them millions of times per plan, and `BatteryParams` derives each on every read. The same expressions, so
+    the same numbers; the plan's functions take either.
+    """
+
+    min_kwh: float
+    max_kwh: float
+    max_charge_kw: float
+    max_discharge_kw: float
+    discharge_efficiency: float
+    charge_efficiency: float
+    sun_charge_efficiency: float
+    sun_charge_cap_kw: float
+
+    def stored_kwh(self, power_kw: float, sun_kw: float, hours: float) -> float:
+        """The energy [power_kw] (AC side, + charging) adds to the battery over [hours] (- for a discharge), when up to
+        [sun_kw] of a charge is the sun's surplus and the rest the grid's."""
+        if power_kw <= 0:
+            return power_kw / self.discharge_efficiency * hours
+        sun = min(power_kw, max(0.0, sun_kw))
+        return (sun * self.sun_charge_efficiency + (power_kw - sun) * self.charge_efficiency) * hours
+
+    def charge_limit_kw(self, sun_kw: float) -> float:
+        """The most AC charge power with [sun_kw] of surplus: the rating, or where the surplus reaches the sun's cap
+        (`sun_charge_cap_kw`), that cap (the battery takes no grid beside a surplus it cannot take in full)."""
+        cap = self.sun_charge_cap_kw
+        return self.max_charge_kw if max(0.0, sun_kw) < cap else cap
+
+    def charge_for_room(self, room_kwh: float, sun_kw: float, hours: float) -> float:
+        """The most AC charge (kW) that fits [room_kwh] over [hours], the sun's surplus ([sun_kw]) charged first."""
+        if room_kwh <= 0 or hours <= 0:
+            return 0.0
+        sun = max(0.0, sun_kw)
+        sun_room = sun * self.sun_charge_efficiency * hours
+        if room_kwh <= sun_room:
+            return room_kwh / (self.sun_charge_efficiency * hours)
+        return sun + (room_kwh - sun_room) / (self.charge_efficiency * hours)
+
+
 @dataclass(frozen=True, slots=True)
 class BatteryParams:
     """A house battery as the plan sees it.
@@ -273,29 +313,32 @@ class BatteryParams:
         """The most of the sun's surplus (AC side) a charge takes: the rating, read at the battery on a DC bus."""
         return self.max_charge_kw * (1.0 - self.discharge_loss)
 
+    def figures(self) -> BatteryFigures:
+        """The figures the plan's arithmetic reads, worked out once (`BatteryFigures`)."""
+        return BatteryFigures(
+            min_kwh=self.min_kwh,
+            max_kwh=self.max_kwh,
+            max_charge_kw=self.max_charge_kw,
+            max_discharge_kw=self.max_discharge_kw,
+            discharge_efficiency=self.discharge_efficiency,
+            charge_efficiency=self.charge_efficiency,
+            sun_charge_efficiency=self.sun_charge_efficiency,
+            sun_charge_cap_kw=self.sun_charge_cap_kw,
+        )
+
     def stored_kwh(self, power_kw: float, sun_kw: float, hours: float) -> float:
         """The energy [power_kw] (AC side, + charging) adds to the battery over [hours] (- for a discharge), when up to
         [sun_kw] of a charge is the sun's surplus and the rest the grid's."""
-        if power_kw <= 0:
-            return power_kw / self.discharge_efficiency * hours
-        sun = min(power_kw, max(0.0, sun_kw))
-        return (sun * self.sun_charge_efficiency + (power_kw - sun) * self.charge_efficiency) * hours
+        return self.figures().stored_kwh(power_kw, sun_kw, hours)
 
     def charge_limit_kw(self, sun_kw: float) -> float:
         """The most AC charge power with [sun_kw] of surplus: the rating, or where the surplus reaches the sun's cap
         (`sun_charge_cap_kw`), that cap (the battery takes no grid beside a surplus it cannot take in full)."""
-        cap = self.sun_charge_cap_kw
-        return self.max_charge_kw if max(0.0, sun_kw) < cap else cap
+        return self.figures().charge_limit_kw(sun_kw)
 
     def charge_for_room(self, room_kwh: float, sun_kw: float, hours: float) -> float:
         """The most AC charge (kW) that fits [room_kwh] over [hours], the sun's surplus ([sun_kw]) charged first."""
-        if room_kwh <= 0 or hours <= 0:
-            return 0.0
-        sun = max(0.0, sun_kw)
-        sun_room = sun * self.sun_charge_efficiency * hours
-        if room_kwh <= sun_room:
-            return room_kwh / (self.sun_charge_efficiency * hours)
-        return sun + (room_kwh - sun_room) / (self.charge_efficiency * hours)
+        return self.figures().charge_for_room(room_kwh, sun_kw, hours)
 
 
 @dataclass(frozen=True, slots=True)
