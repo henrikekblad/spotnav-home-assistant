@@ -578,7 +578,7 @@ async def test_the_verification_routine_starts_through_the_shell(
     assert [service for _domain, service, _data in plant.calls][:2] == ["set_value", "turn_on"]
     await control.async_stop()
     assert hass.states.get(SWITCH).state == "off"
-    assert control_module.HAND_BACK_DEADLINE_S > 0
+    assert battery_patch.read("HAND_BACK_DEADLINE_S") > 0
 
 
 # --- the export limit --------------------------------------------------------------------------------------------------

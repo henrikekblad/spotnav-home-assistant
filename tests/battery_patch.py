@@ -5,7 +5,8 @@ A function reads a global from the module it is defined in. Once the shell is mo
 `monkeypatch.setattr(control_module, name, ...)` on the module the code was moved out of would change nothing and the
 test would go on passing or failing for another reason. So every such patch goes through `patch`: it sets the name in
 each module whose code reads it (`READ_IN`), and refuses a name that is not listed, not defined there, or not read by
-that module's code. `test_battery_patch.py` proves the list is exactly where the shell's code reads each name.
+that module's code. `test_battery_patch.py` proves the list is exactly where the shell's code reads each name. A test
+that needs such a global's value reads it with `read`.
 
 A move of code between the shell's modules changes `READ_IN` in the same commit."""
 
@@ -25,23 +26,23 @@ from custom_components.spotnav.battery import control
 #: Each patched name -> the shell modules whose code reads it as a global, by name under `battery`.
 READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "CALL_TIMEOUT_S": ("control.io",),
-    "GATED_AFTER_RUNNING": ("control",),
-    "HAND_BACK_DEADLINE_S": ("control", "control.stored",),
-    "HAND_BACK_LOOK_S": ("control", "control.stored",),
-    "IMPORT_LIMIT_READ_BACK_S": ("control",),
-    "IMPORT_LIMIT_READ_BACK_STEP_S": ("control",),
-    "START_RETRY_S": ("control",),
-    "STARTUP_LOOK_S": ("control",),
-    "STARTUP_WAIT_S": ("control",),
-    "Store": ("control",),
-    "blocked": ("control",),
-    "control_for": ("control", "control.stored",),
-    "export_control_for": ("control", "control.stored",),
-    "learning_gate_open": ("control",),
-    "plant_entity_id": ("control",),
-    "read_export_facts": ("control", "control.stored",),
-    "read_plant_entity": ("control",),
-    "recipe_field_tested": ("control",),
+    "GATED_AFTER_RUNNING": ("control.core",),
+    "HAND_BACK_DEADLINE_S": ("control.core", "control.stored",),
+    "HAND_BACK_LOOK_S": ("control.core", "control.stored",),
+    "IMPORT_LIMIT_READ_BACK_S": ("control.core",),
+    "IMPORT_LIMIT_READ_BACK_STEP_S": ("control.core",),
+    "START_RETRY_S": ("control.core",),
+    "STARTUP_LOOK_S": ("control.core",),
+    "STARTUP_WAIT_S": ("control.core",),
+    "Store": ("control.core",),
+    "blocked": ("control.core",),
+    "control_for": ("control.core", "control.stored",),
+    "export_control_for": ("control.core", "control.stored",),
+    "learning_gate_open": ("control.core",),
+    "plant_entity_id": ("control.core",),
+    "read_export_facts": ("control.core", "control.stored",),
+    "read_plant_entity": ("control.core",),
+    "recipe_field_tested": ("control.core",),
 }
 
 
@@ -98,3 +99,11 @@ def patch(monkeypatch: pytest.MonkeyPatch, name: str, value: Any) -> None:
         if name not in globals_read(member):
             raise LookupError(f"{name}: no code in {member.__name__} reads it")
         monkeypatch.setattr(member, name, value)
+
+
+def read(name: str) -> Any:
+    """The shell's global `name` as its code reads it now (a test's replacement, if one was made): never read it from
+    the package, which only names the constants and would show the value before the replacement."""
+    values = [vars(member)[name] for member in listed(name)]
+    assert all(value is values[0] for value in values), f"{name}: the shell's modules read different values"
+    return values[0]

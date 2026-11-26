@@ -301,7 +301,7 @@ async def test_an_incomplete_tests_report_says_incomplete_and_names_the_missing_
     relay = _relay(monkeypatch)
     await tester.async_signup(hass, control, "tester@example.com", "")
     # A recipe with a grid charge whose dead-man must be timed (Solis's), and the run as the first tester's ended.
-    recipe["control"] = replace(control_module.control_for("sigenergy"), deadman_must_pass=True)
+    recipe["control"] = replace(battery_patch.read("control_for")("sigenergy"), deadman_must_pass=True)
     monkeypatch.setattr(control, "_supported_modes", lambda: frozenset({"hold", "charge", "discharge_house", "normal"}))
     outcomes = {"hold": "obeyed", "expiry": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed",
                 "normal": "restored"}

@@ -64,7 +64,7 @@ def test_a_name_no_shell_code_reads_is_refused(monkeypatch: pytest.MonkeyPatch) 
         battery_patch.patch(monkeypatch, "NO_SUCH_GLOBAL", 1)
 
 
-def test_no_test_replaces_a_shell_global_without_the_helper() -> None:
+def test_no_test_replaces_or_reads_a_replaced_shell_global_without_the_helper() -> None:
     names = {module.__name__ for module in battery_patch.family()}
     aliases = re.compile(
         r"^\s*(?:from (custom_components\.spotnav\.battery(?:\.control)?) import (\([^)]*\)|.+)"
@@ -88,3 +88,12 @@ def test_no_test_replaces_a_shell_global_without_the_helper() -> None:
         for module in modules:
             hits = re.findall(rf"setattr\(\s*{re.escape(module)}\s*,\s*\"(\w+)\"", text)
             assert hits == [], f"{path.name}: {hits} replaced on the module, not through tests/battery_patch.py"
+            # Nor reads one there: the package would show the value before a replacement.
+            read = [name for name in re.findall(rf"\b{re.escape(module)}\.(\w+)", text) if name in battery_patch.READ_IN]
+            assert read == [], f"{path.name}: {read} read from the module, not with battery_patch.read"
+
+
+def test_a_replaced_global_is_read_back_as_replaced(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in battery_patch.READ_IN:
+        battery_patch.patch(monkeypatch, name, _SENTINEL)
+        assert battery_patch.read(name) is _SENTINEL
