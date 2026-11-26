@@ -3613,8 +3613,12 @@ class ChargingController:
         switch = self.adapter.phase_switch
         if switch is None:
             return
-        if switch.start_only and self.charging:
-            # Never mid-charge (Easee, NRGkick, Wattpilot): the charge goes on as it is, and the next start sets three phases back.
+        if switch.start_only and (
+            self.charging or self.adapter.charging_observation() is None or self._car_drawing() is True
+        ):
+            # Never mid-charge (Easee, NRGkick, Wattpilot), nor while a charge may run unseen (a status that cannot be
+            # read, the car drawing with the control off): the charge goes on as it is, and the next start sets three
+            # phases back.
             _LOGGER.debug(
                 "SpotNav charger %s: three phases are set back at the next start, not while it charges", self.entry_id
             )

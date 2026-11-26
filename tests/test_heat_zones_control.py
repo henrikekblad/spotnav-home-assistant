@@ -401,3 +401,66 @@ async def test_another_channel_s_fall_does_not_pass_the_effect_check(hass: HomeA
     for step in range(12, 16):
         await zones.async_look(now + step * MIN)
     assert zone.check is not None and zone.check["result"] == "failed"
+
+
+async def test_a_thermostat_that_refuses_the_setpoint_is_paused_for_the_day_not_written_again(
+    hass: HomeAssistant, freezer
+) -> None:
+    """SEM #1396/#1409: a thermostat whose integration refuses `set_temperature` (a validation error every time) gets
+    one write, then the zone is paused to the next local day: no write every look, and the card does not say lowered."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    _entry, zones, thermostat, now = await _running(hass, freezer, {h: "lower" for h in range(0, 6)})
+
+    async def refuse(call: ServiceCall) -> None:
+        thermostat.calls.append(call.data["temperature"])
+        raise ServiceValidationError("temperature not accepted in this mode")
+
+    hass.services.async_register("climate", "set_temperature", refuse)
+    for minute in range(0, 5 * 60, 1):
+        await zones.async_look(now + minute * MIN)
+    assert thermostat.calls == [21.0], "one write: the check's, failed, and none after it"
+    status = zones.status(FLOOR)
+    assert status is not None
+    assert (status["state"], status["reason"], status["check"]) == ("waiting", "check_failed", "failed")
+    assert status["held_c"] is None and thermostat.setpoint == 22.0
+
+
+async def test_a_thermostat_that_refuses_after_its_check_passed_is_paused_to_the_next_day(
+    hass: HomeAssistant, freezer
+) -> None:
+    from homeassistant.exceptions import ServiceValidationError
+
+    _entry, zones, thermostat, now = await _running(hass, freezer, {0: "lower", 2: "lower", 3: "lower", 4: "lower"})
+    for minute in range(0, 70, 1):
+        zones.shadow.made_at = now + minute * MIN  # the plan made again every hour, the same
+        await zones.async_look(now + minute * MIN)
+    assert thermostat.calls == [21.0, 22.0] and zones.status(FLOOR)["check"] == "passed"  # type: ignore[index]
+
+    async def refuse(call: ServiceCall) -> None:
+        thermostat.calls.append(call.data["temperature"])
+        raise ServiceValidationError("temperature not accepted in this mode")
+
+    hass.services.async_register("climate", "set_temperature", refuse)
+    for minute in range(70, 5 * 60, 1):
+        zones.shadow.made_at = now + minute * MIN
+        await zones.async_look(now + minute * MIN)
+    assert thermostat.calls == [21.0, 22.0, 21.0], "one refused write, never retried within the day"
+    status = zones.status(FLOOR)
+    assert status is not None
+    assert (status["state"], status["reason"]) == ("waiting", "no_read_back") and status["paused_until"] is not None
+    assert status["held_c"] is None and thermostat.setpoint == 22.0
+
+
+async def test_a_thermostat_in_auto_mode_is_never_written(hass: HomeAssistant, freezer) -> None:
+    """A NIBE climate reads `auto` unless its room sensor is in use, and refuses a bare setpoint there: SpotNav writes
+    only in `heat` mode, so it sends nothing and never shows a lowering."""
+    _entry, zones, thermostat, now = await _running(hass, freezer, {h: "lower" for h in range(0, 6)})
+    thermostat.mode = "auto"
+    thermostat.attributes = {**thermostat.attributes, "hvac_modes": ["auto", "heat", "off"]}
+    thermostat.show()
+    for minute in range(0, 3 * 60, 5):
+        await zones.async_look(now + minute * MIN)
+    assert thermostat.calls == []
+    status = zones.status(FLOOR)
+    assert status is None or status.get("held_c") is None

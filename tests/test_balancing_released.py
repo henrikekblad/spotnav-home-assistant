@@ -6,6 +6,7 @@ regulator's resume gives it back (`async_battery_probe_start`), and one no longe
 from __future__ import annotations
 
 import pytest
+from homeassistant.config_entries import ConfigEntryDisabler
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
@@ -130,3 +131,15 @@ async def test_a_reload_of_the_site_leaves_the_charge_to_its_regulator(
     await hass.async_block_till_done()
     assert len(halo.turn_on) == starts
     assert halo.cc.paused_by_balancing and halo.cc.paused_charge_origin == "plan_window"
+
+
+async def test_disabling_the_site_gives_back_the_charge_its_load_balancing_held(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    """A disabled site does not come back by itself: no regulator resumes the charge it held, so it is given back as at
+    a removal."""
+    halo = await _held_back(hass, monkeypatch, "disabled")
+    starts = len(halo.turn_on)
+    await hass.config_entries.async_set_disabled_by(halo.controller.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    _given_back(halo, starts, drives)
