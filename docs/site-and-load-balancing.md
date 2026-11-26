@@ -53,6 +53,14 @@ shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
   - *Derived*: current computed from each phase's active power and voltage, with the meter's own
     current, apparent power or reactive power when it has them. Without any of those the current
     is estimated, which is marked as such.
+- **A single-phase supply** needs no setting: give the meter's L1 sensors only and leave L2 and L3
+  empty. The site is then one phase: the main fuse is that one phase at its rating (never three times
+  it), load balancing, the import target, solar and the battery's grid charge caps all reckon with L1
+  alone, and every charger counts as single-phase on L1 whatever its wiring says. A meter that makes
+  L2 and L3 entities on a single-phase supply (hass-victron on a single-phase GX) is suggested with
+  L1 alone when those phases read nothing or 0 V; a site measured on L2 and L3 whose voltage both
+  read 0 V, with nothing drawn there, also runs on L1. A phase that is only unread or unknown on a
+  site set up with three phases stays a missing phase: the site never stops watching it by itself.
 - **Chargers on this site**, and for each charger whether it is three-phase or single-phase, and for
   a single-phase charger its phase: L1, L2, L3 or **Automatic (follows the charger)**, the default.
   Automatic is for a charger whose phase is not fixed, such as one behind an Easee Equalizer, which
