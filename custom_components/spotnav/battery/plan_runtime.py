@@ -103,6 +103,7 @@ from .preheat import derate_shadow, request_key, shadow_request
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
 from .plan import plan_mode, self_consumption
 from .plan_model import (
+    ACTION_EXPORT_DISCHARGE,
     ACTION_GRID_CHARGE,
     DEFAULT_MODE,
     DEFAULT_SELL_MARGIN,
@@ -155,7 +156,7 @@ from .plan_shadow import (
 from .review_baselines import no_battery_cost, sun_by_quarter
 from . import gate
 from .conversion_loss import ac_kw
-from .learned import LearnedBattery, with_learned
+from .learned import COLD_C, LearnedBattery, with_learned
 from .round_trip import DC_CAP, PLAN_CAP
 from .stored_value import StoredValue
 
@@ -917,6 +918,7 @@ class BatteryPlanShadow:
             None
             if facts.power_kw is None
             else ac_kw(facts.power_kw, self.learned.conversion.loss(facts.power_dc), grid_kw),
+            self._asked_kw(facts),
         )
         if turned:
             # After the reading above, which closed the quarter hour that just ended.
@@ -940,6 +942,24 @@ class BatteryPlanShadow:
             _LOGGER.debug("SpotNav battery plan: round trip %s", self.learned.round_trip.view()["windows"][-1:])
         if self.learned.round_trip.efficiency != before:
             _LOGGER.debug("SpotNav battery plan: the round trip is now %s", self.learned.round_trip.efficiency)
+
+    def _asked_kw(self, facts: BatteryFacts) -> float | None:
+        """What SpotNav's control asks of the battery now (kW, + a grid charge, - a sale; `Bucket.asked_kw`): the
+        rate its executor has standing, which already holds the fuse's and the site's caps, and the BMS' present
+        charge limit where that is lower. `None` when it asks nothing, or the cells are cold (`COLD_C`): what a cold
+        pack takes says nothing of its rating."""
+        control = getattr(self.site, "battery_control", None)
+        state = getattr(getattr(control, "executor", None), "state", None)
+        if state is None or state.phase != "active" or not state.rate_kw or state.rate_kw <= 0:
+            return None
+        if facts.cell_temperature_c is not None and facts.cell_temperature_c < COLD_C:
+            return None
+        if state.action == ACTION_GRID_CHARGE:
+            bms = facts.bms_charge_kw
+            return state.rate_kw if bms is None else min(state.rate_kw, bms)
+        if state.action == ACTION_EXPORT_DISCHARGE:
+            return -state.rate_kw
+        return None
 
     def _controlled(self) -> bool:
         """Whether SpotNav controls the battery now (`BatteryControl.state` `on`); false where it cannot be read."""
@@ -1482,8 +1502,8 @@ class BatteryPlanShadow:
             "inputs_key": (
                 facts.soc_pct is not None,
                 facts.capacity_kwh,
-                facts.rated_charge_kw,
-                facts.rated_discharge_kw,
+                facts.max_charge_kw,
+                facts.max_discharge_kw,
                 # Learnt slowly (`round_trip.py`): a change is rare and worth a new plan.
                 facts.round_trip_efficiency,
                 facts.sun_round_trip_efficiency,
@@ -1653,6 +1673,8 @@ class BatteryPlanShadow:
             "soc_pct": facts.soc_pct,
             "battery": {
                 "plant_max_kw": facts.plant_max_kw,
+                # Which limit set each rating (`BatteryFacts.limits`).
+                "limits": facts.limits(),
                 "reserve_soc_pct": facts.reserve_soc_pct,
                 "usable_kwh": params.usable_kwh,
                 "max_charge_kw": params.max_charge_kw,
