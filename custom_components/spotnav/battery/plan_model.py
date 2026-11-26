@@ -341,6 +341,26 @@ class BatteryParams:
         return self.figures().charge_for_room(room_kwh, sun_kw, hours)
 
 
+class SlotFigures(NamedTuple):
+    """A slot as the plan's arithmetic reads it, with what `PlanSlot` derives on every read (`hours`, `net_kw`,
+    `priced_ceiling`) worked out once (`PlanSlot.figures`); the same expressions, so the same numbers. The plan's
+    functions take either.
+    """
+
+    start: datetime
+    end: datetime
+    buy: float
+    sell: float
+    import_cap_kw: float | None
+    export_cap_kw: float | None
+    grid_charge_cap_kw: float | None
+    soft_cap_kw: float | None
+    peak_price: float
+    hours: float
+    net_kw: float
+    priced_ceiling: bool
+
+
 @dataclass(frozen=True, slots=True)
 class PlanSlot:
     """One slot of the horizon, 15 min or 1 h as its prices come.
@@ -382,6 +402,23 @@ class PlanSlot:
     def net_kw(self) -> float:
         """What the site needs from the battery or the grid before either acts: `+` a deficit, `-` a surplus."""
         return self.house_kw + self.car_kw - self.solar_kw
+
+    def figures(self) -> SlotFigures:
+        """The slot as the plan's arithmetic reads it, its derived figures worked out once (`SlotFigures`)."""
+        return SlotFigures(
+            start=self.start,
+            end=self.end,
+            buy=self.buy,
+            sell=self.sell,
+            import_cap_kw=self.import_cap_kw,
+            export_cap_kw=self.export_cap_kw,
+            grid_charge_cap_kw=self.grid_charge_cap_kw,
+            soft_cap_kw=self.soft_cap_kw,
+            peak_price=self.peak_price,
+            hours=self.hours,
+            net_kw=self.net_kw,
+            priced_ceiling=self.priced_ceiling,
+        )
 
     def validate(self) -> None:
         if self.start.tzinfo is None or self.end.tzinfo is None:

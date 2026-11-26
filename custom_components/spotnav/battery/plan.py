@@ -75,6 +75,7 @@ from .plan_model import (
     PlanRun,
     PlanSlot,
     SlotDecision,
+    SlotFigures,
 )
 
 #: Two battery powers closer than this are the same action (kW).
@@ -93,6 +94,8 @@ REFILL_MIN_DAYS = 2
 
 #: A battery as the arithmetic below takes it: as given, or its figures worked out once for a whole plan.
 _Battery = BatteryParams | BatteryFigures
+#: A slot likewise: as given, or with its hours and net load worked out once.
+_Slot = PlanSlot | SlotFigures
 
 
 class _Outcome(NamedTuple):
@@ -174,7 +177,7 @@ def default_end_value(
     return end_worth(statistics.median(slot.buy for slot in slots), days, battery, cycle_cost)
 
 
-def _limits(slot: PlanSlot, battery: _Battery, soc_kwh: float) -> tuple[float, float]:
+def _limits(slot: _Slot, battery: _Battery, soc_kwh: float) -> tuple[float, float]:
     """The AC charge and discharge power open in [slot] at [soc_kwh]: rated power (the sun's part of a charge at most
     `BatteryParams.sun_charge_cap_kw`), bounded by the energy left (the room counted with the sun's surplus charged
     first, at its own share, `BatteryParams.sun_charge_efficiency`)."""
@@ -189,7 +192,7 @@ def _limits(slot: PlanSlot, battery: _Battery, soc_kwh: float) -> tuple[float, f
 
 
 def action_power(
-    slot: PlanSlot,
+    slot: _Slot,
     battery: _Battery,
     soc_kwh: float,
     action: str,
@@ -264,7 +267,7 @@ def _reserves(request: PlanRequest) -> list[float] | None:
 
 
 def _candidates(
-    slot: PlanSlot,
+    slot: _Slot,
     battery: _Battery,
     soc_kwh: float,
     request: PlanRequest,
@@ -301,7 +304,7 @@ def _candidates(
 
 
 def _apply(
-    slot: PlanSlot,
+    slot: _Slot,
     battery: _Battery,
     soc_kwh: float,
     action: str,
@@ -346,7 +349,7 @@ def _apply(
     return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
 
 
-def _kept_action(slot: PlanSlot, action: str, power: float) -> str:
+def _kept_action(slot: _Slot, action: str, power: float) -> str:
     """The action a kept first slot runs: a grid charge the slot's grid charge cap leaves nothing of (its power is the
     sun's surplus alone) is a hold, as control would run it."""
     if (
@@ -388,7 +391,7 @@ class _Grid:
 
 
 def _best(
-    slot: PlanSlot,
+    slot: _Slot,
     request: PlanRequest,
     soc_kwh: float,
     after: Sequence[float],
@@ -409,7 +412,7 @@ def _best(
     return best, best_total
 
 
-def _decision(slot: PlanSlot, battery: BatteryParams, outcome: _Outcome) -> SlotDecision:
+def _decision(slot: _Slot, battery: BatteryParams, outcome: _Outcome) -> SlotDecision:
     return SlotDecision(
         start=slot.start,
         end=slot.end,
@@ -435,6 +438,11 @@ def _run(decisions: list[SlotDecision], outcomes: list[_Outcome], battery: Batte
     )
 
 
+def _slot_figures(request: PlanRequest) -> tuple[SlotFigures, ...]:
+    """The request's slots with their hours and net load worked out once, for a pass over the horizon."""
+    return tuple(slot.figures() for slot in request.slots)
+
+
 def self_consumption(request: PlanRequest) -> PlanRun:
     """The baseline: every slot left to self-consumption, with the same caps and prices."""
     request.validate()
@@ -445,7 +453,7 @@ def self_consumption(request: PlanRequest) -> PlanRun:
     peak = 0.0
     decisions: list[SlotDecision] = []
     outcomes: list[_Outcome] = []
-    for index, slot in enumerate(request.slots):
+    for index, slot in enumerate(_slot_figures(request)):
         action, power = _candidates(slot, figures, soc, request)[0]
         outcome = _apply(slot, figures, soc, action, power, request.cycle_cost)
         if days is not None:
@@ -497,10 +505,11 @@ def plan_battery(
 
     # Backwards: the value-to-go at each grid point, from the horizon's end value.
     figures = battery.figures()
-    values: list[list[float]] = [[] for _ in range(len(request.slots) + 1)]
+    slots = _slot_figures(request)
+    values: list[list[float]] = [[] for _ in range(len(slots) + 1)]
     values[-1] = [-end_value * point for point in grid.points]
-    for index in range(len(request.slots) - 1, -1, -1):
-        slot = request.slots[index]
+    for index in range(len(slots) - 1, -1, -1):
+        slot = slots[index]
         after = values[index + 1]
         reserve = None if reserves is None else reserves[index]
         values[index] = [_best(slot, request, point, after, grid, reserve, figures)[1] for point in grid.points]
@@ -537,7 +546,7 @@ def _forward(
     soc = battery.usable_kwh * request.soc_now_pct / 100
     decisions: list[SlotDecision] = []
     outcomes: list[_Outcome] = []
-    for index, slot in enumerate(request.slots):
+    for index, slot in enumerate(_slot_figures(request)):
         if index == 0 and first is not None:
             action, charge_kw = first
             power = action_power(slot, figures, soc, action, charge_kw)
@@ -594,7 +603,7 @@ def _priced(request: PlanRequest) -> bool:
     return any(slot.priced_ceiling for slot in request.slots)
 
 
-def _raise(slot: PlanSlot, peak: float, grid_kw: float) -> tuple[float, float]:
+def _raise(slot: _Slot, peak: float, grid_kw: float) -> tuple[float, float]:
     """What an import of [grid_kw] in [slot] adds to the demand charge when the day's peak so far is [peak], and the
     day's peak after it (see the module). A slot without a priced ceiling adds nothing and leaves the peak."""
     if not slot.priced_ceiling:
@@ -693,7 +702,7 @@ def _value_at(rows: Sequence[Sequence[float]], levels: Sequence[float], peak: fl
 
 
 def _shave_to(
-    slot: PlanSlot, battery: _Battery, soc_kwh: float, peak: float, limits: tuple[float, float] | None = None
+    slot: _Slot, battery: _Battery, soc_kwh: float, peak: float, limits: tuple[float, float] | None = None
 ) -> float | None:
     """The discharge that brings [slot]'s import down to the day's [peak] where that is above its soft ceiling;
     `None` where there is nothing of the kind to try."""
@@ -707,7 +716,7 @@ def _shave_to(
 
 
 def _best_peak(
-    slot: PlanSlot,
+    slot: _Slot,
     request: PlanRequest,
     soc_kwh: float,
     peaks: Sequence[float],
@@ -763,12 +772,13 @@ def _plan_peaks(
     battery = request.battery
     figures = battery.figures()
     days = _PeakDays(request)
-    count = len(request.slots)
+    slots = _slot_figures(request)
+    count = len(slots)
     values: list[list[list[float]]] = [[] for _ in range(count + 1)]
     values[-1] = [[-end_value * point for point in grid.points]]
     levels: list[Sequence[float]] = [*days.levels, (0.0,)]
     for index in range(count - 1, -1, -1):
-        slot = request.slots[index]
+        slot = slots[index]
         reserve = None if reserves is None else reserves[index]
         peaks = levels[index]
         rows: list[list[float]] = [[] for _ in peaks]
@@ -785,7 +795,7 @@ def _plan_peaks(
         peak = 0.0
         decisions: list[SlotDecision] = []
         outcomes: list[_Outcome] = []
-        for index, slot in enumerate(request.slots):
+        for index, slot in enumerate(slots):
             peak = days.start(index, peak)
             if index == 0 and first is not None:
                 action, charge_kw = first
