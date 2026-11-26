@@ -15,7 +15,7 @@ ends; the automatic routine after a later change tells no one.
 It runs the parts the site has, each through the engine that already writes to it, with every rule of that engine,
 in at most `MAX_TEST` all told (a slow recipe's own `BrandControl.test_total_s`: Tesla's cloud, about an hour):
 
-* **The home battery** (`battery/control.py`, `async_hardware_test_start`): the verification routine's modes in
+* **The home battery** (`battery/control/`, `async_hardware_test_start`): the verification routine's modes in
   minutes (`verify.quick_for`; a slow recipe waits for its re-arm and cloud read-backs at each mode): hold (and,
   where the test times the plant's dead-man, that step next, before anything is charged), a small
   grid charge under the HA-down fuse cap (the learned per-phase house peak, or its conservative default; where that

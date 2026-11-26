@@ -20,7 +20,6 @@ from typing import Any
 import pytest
 
 from custom_components.spotnav.battery import gate, optin
-from custom_components.spotnav.battery import control as control_module
 from custom_components.spotnav.battery.adapters import SOLIS, adapter_for
 from custom_components.spotnav.battery.commands import (
     CONTROLS,
@@ -53,6 +52,7 @@ from custom_components.spotnav.battery.executor import (
     preview,
 )
 from custom_components.spotnav.battery.facts import Management
+from tests import battery_patch
 from tests.battery_control_fakes import T0, TICK, FakeBattery, events, inputs, written
 
 SERIAL = "solis_modbus_2403123456_"
@@ -644,7 +644,7 @@ def test_a_restart_mid_force_stops_it_and_puts_the_found_timeout_back_first() ->
 
 
 def _bare(bms_kw: float | None, monkeypatch: pytest.MonkeyPatch) -> Any:
-    monkeypatch.setattr(control_module, "plant_entity_id", lambda _hass, _config, _match: None)
+    battery_patch.patch(monkeypatch, "plant_entity_id", lambda _hass, _config, _match: None)
     control = BatteryControl.__new__(BatteryControl)
     control.hass = SimpleNamespace(states=SimpleNamespace(get=lambda _id: None))  # type: ignore[assignment]
     control.site = SimpleNamespace(config={})  # type: ignore[assignment]
@@ -932,7 +932,7 @@ def test_the_inverters_own_top_up_counts_against_a_grid_charge_only_near_its_for
     def read(_hass: Any, _config: Any, match: Any) -> str | None:
         return next((value for key, value in values.items() if match is not None and match.matches("number", key)), None)
 
-    monkeypatch.setattr(control_module, "read_plant_entity", read)
+    battery_patch.patch(monkeypatch, "read_plant_entity", read)
     control = BatteryControl.__new__(BatteryControl)
     control.hass = None  # type: ignore[assignment]
     control.site = SimpleNamespace(config={})  # type: ignore[assignment]
@@ -986,7 +986,7 @@ def test_the_shell_reads_the_phases_from_the_model_definition_sensor(monkeypatch
             return states.get("model")
         return None
 
-    monkeypatch.setattr(control_module, "read_plant_entity", read)
+    battery_patch.patch(monkeypatch, "read_plant_entity", read)
     control = BatteryControl.__new__(BatteryControl)
     control.hass = None  # type: ignore[assignment]
     control.site = SimpleNamespace(config={})  # type: ignore[assignment]

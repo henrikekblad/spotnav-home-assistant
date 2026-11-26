@@ -1012,7 +1012,7 @@ def _plant_phase_w(site: SiteCapacityController, max_age_s: float, now: float) -
     return (values[0], values[1], values[2])
 
 
-#: The plant's own power per phase for the battery control's charge per phase (`battery/control.py`).
+#: The plant's own power per phase for the battery control's charge per phase (`battery/control/`).
 plant_phase_w = _plant_phase_w
 
 

@@ -410,13 +410,13 @@ def test_a_hardware_test_passes_only_with_the_hold_the_charge_and_the_hand_back_
 async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed(
     hass: Any, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
-    from custom_components.spotnav.battery import control as control_module  # noqa: PLC0415
+    from tests import battery_patch  # noqa: PLC0415
     from custom_components.spotnav.battery.control import NEED_HARDWARE_TEST_FIRST, BatteryControl  # noqa: PLC0415
     from tests.test_battery_control import _on, _site  # noqa: PLC0415
 
     site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
     waiting = replace(commands.SIGENERGY_CONTROL, hardware_test_first=True)
-    monkeypatch.setattr(control_module, "control_for", lambda brand, variant=None: waiting.with_hold(variant))
+    battery_patch.patch(monkeypatch, "control_for", lambda brand, variant=None: waiting.with_hold(variant))
     control = BatteryControl(hass, controller, plan_source=lambda _now: ("hold", 0.0, None))
     await control.async_start()
     _on(hass, site, control)
@@ -445,8 +445,8 @@ async def test_control_waits_as_shadow_only_until_the_sites_hardware_test_passed
     control.hardware_failed = [control.firmware_key()]
     assert control.state() == "shadow_only"
     # A field-tested recipe never waits.
-    monkeypatch.setattr(
-        control_module, "control_for", lambda brand, variant=None: replace(waiting, field_tested=True).with_hold(variant)
+    battery_patch.patch(
+        monkeypatch, "control_for", lambda brand, variant=None: replace(waiting, field_tested=True).with_hold(variant)
     )
     assert control.state() == "on"
     await control.async_shutdown()

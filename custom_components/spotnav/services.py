@@ -15,7 +15,7 @@ notification answers reach the decision store without a service call.
 it writes a file; nothing runs unless it is called.
 
 `battery_control_test` and `battery_control_settings` are the owner's, for the on-site tests of the home battery
-control (`battery/control.py`, plan `v3_battery_control_optin.md`), administrators only and in Developer tools only:
+control (`battery/control/`, plan `v3_battery_control_optin.md`), administrators only and in Developer tools only:
 the first runs one action through the battery's executor with every rule for some minutes (refused unless the
 site's battery control is turned on; while "shadow only" or before the battery check passed only with `force_test`),
 the second writes the site's `battery_control_*` options until the card

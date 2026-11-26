@@ -974,7 +974,7 @@ class SiteCapacityController:
         # The site's home battery in shadow (`battery/runtime.py`): its facts and what SpotNav would do with it,
         # logged and never written.
         self.battery_shadow = BatteryShadow(hass, self)
-        # SpotNav's battery and export-limit control (`battery/control.py`): behind the site's gate (`battery/gate.py`,
+        # SpotNav's battery and export-limit control (`battery/control/`): behind the site's gate (`battery/gate.py`,
         # off and "shadow only" by default), fed by the battery plan's running slot and the hold for the car. Started
         # in the background after the shadow (its restore may wait for the battery's integration); shut down first.
         self.battery_control = BatteryControl(hass, self)

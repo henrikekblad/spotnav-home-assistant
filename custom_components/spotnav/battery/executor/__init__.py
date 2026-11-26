@@ -1,6 +1,6 @@
 """The battery's write path: turns a slot's planned action into the brand's commands, safely.
 
-The shell (`control.py`) runs it only behind the site's gate (`gate.py`: the person's opt-in, the "shadow only" flag,
+The shell (`control/`) runs it only behind the site's gate (`gate.py`: the person's opt-in, the "shadow only" flag,
 off by default, and a passed verification for the plant's firmware). It is the one battery write route: since wave 7 the shadow hold for the car (`hold.py`) is a request for
 this executor's action `hold`, and what it logs comes from `preview`, which runs the executor's own start rules and
 commands on a throw-away instance and returns the writes and the hand-back without writing anything.

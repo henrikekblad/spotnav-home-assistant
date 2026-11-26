@@ -3,7 +3,7 @@
 The test's battery part charges the home battery from the grid for a few minutes under the HA-down grid charge cap
 (`battery/gate.py`): a cap reckoned for Home Assistant stopping in the middle of the charge (Sigenergy has no
 dead-man: the command stays), so every charger on the site counts at the current it may draw if nothing writes it
-again (`battery/control.py` `_cars_allowed_a`). On a small fuse that leaves no room at all. While the test runs this
+again (`battery/control/` `_cars_allowed_a`). On a small fuse that leaves no room at all. While the test runs this
 hold keeps every charger of the site stopped, and the cap may then count a charger at 0 A where that is sound
 (`counts_nothing`).
 

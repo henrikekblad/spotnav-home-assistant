@@ -1,5 +1,5 @@
 """The battery's verification routine: does this battery, on this firmware, do what each command asks? The gate of
-SpotNav's battery control (`control.py`, `gate.py`): control is on only once it passed.
+SpotNav's battery control (`control/`, `gate.py`): control is on only once it passed.
 
 Modelled on evcc's `evcc meter verifybatterymodes` (evcc `docs/features/battery.mdx`, docs commit 6c5bcd7 of
 2026-11-03; `plans/research_integrations/evcc_gap_2026-11-13.md` §2.1) and on the self-test of

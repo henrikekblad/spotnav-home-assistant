@@ -51,7 +51,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 
 # `support_report` (and through it the debug bundle, which reads every part of the integration) is imported where it
-# is used: the gate accessor below is imported by those parts (`battery/control.py`, the hot-water gate).
+# is used: the gate accessor below is imported by those parts (`battery/control/`, the hot-water gate).
 
 _LOGGER = logging.getLogger(__name__)
 
