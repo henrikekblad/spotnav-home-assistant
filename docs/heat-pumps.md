@@ -7,6 +7,17 @@ section: Heating and hot water
 
 # Heat pumps
 
+## In short
+
+- **What it does for you.** SpotNav reads your heat pump, shows the heat on [the heat card](#the-heat-card), and can
+  lower the heat in expensive hours on its own heat plan.
+- **What you need.** A heat pump whose integration SpotNav reads ([Which pumps are read](#which-pumps-are-read))
+  and a SpotNav site. For control: a relay or SG Ready contacts on the pump, or a pump whose own integration offers
+  SG Ready or the heating curve offset.
+- **What to do.** Nothing to read it: SpotNav finds the pump by itself. To let SpotNav steer the heat, turn on
+  **Control the heat** and choose the control path ([SpotNav's own heat
+  control](#spotnavs-own-heat-control-relay-off-by-default)). It is off by default and never writes a setpoint.
+
 SpotNav finds a heat pump by its Home Assistant integration, with no setting, and reads what the pump reports. It
 writes nothing to a heat pump unless you turn on **Control the heat** (see
 [below](#spotnavs-own-heat-control-relay-off-by-default)). Then it steers through the one control path you chose: a
