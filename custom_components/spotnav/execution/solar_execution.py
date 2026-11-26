@@ -79,7 +79,8 @@
   single-phase "Automatic" one (`SiteCapacityController.reckoned_phases`, `_car_phases`), and while a switch settles the watch on
   the charge reads no car ending it and no start not taken (`_watch_charge`). A charger whose phases are set only before
   a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) gets the phase inputs only while no charge runs
-  (`_start_only_charging`): it starts on the phases the surplus carries, and a running charge is never switched.
+  (`_start_only_charging`): it starts on the phases the surplus carries, and a running charge is never switched, nor
+  one that may run unseen (a status that cannot be read, a measurement that shows the car drawing).
 """
 
 from __future__ import annotations
@@ -150,6 +151,9 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Greppable token carried by every solar start/stop/state-transition log line.
 SOLAR_SURPLUS_LOG_TOKEN: Final = "SOLAR_SURPLUS"
+#: A charger measured drawing at least this much on a phase (A) may be charging, whatever its charge control reads: a
+#: phase switch that is made only before a start is not sent to it (`_start_only_charging`).
+DRAWING_A: Final = 1.0
 
 #: After the integration loads, the charger's own measured current gets this long (seconds) to report
 #: before its absence is warned about: on every restart it is unavailable for a moment, and a warning
@@ -1216,7 +1220,7 @@ class SolarExecutionCoordinator:
         settle (a charger set back to three for a charge that is not the sun's) is told."""
         controller = self._controller
         settling = controller.phase_switch_settling
-        if not controller.phase_switch_allowed() or self._start_only_charging():
+        if not controller.phase_switch_allowed() or self._start_only_charging(site):
             return replace(observation, phase_switch_settling=True) if settling else observation
         config = self._solar.config if self._solar is not None else self._solar_config(site)
         one_phase_max_a, three_phase_room = _phase_room(
@@ -1235,14 +1239,27 @@ class SolarExecutionCoordinator:
             phase_switch_settling=settling,
         )
 
-    def _start_only_charging(self) -> bool:
+    def _start_only_charging(self, site: SiteCapacityController) -> bool:
         """A charger whose phases are set only before a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) with
-        a charge running: no phase decision while it runs, so the charge follows the rules without switching."""
+        a charge running, or one that may run unseen: no phase decision then, so the charge follows the rules without
+        switching. Unseen is a status that cannot be read (`charging_observation` `None`), or a measurement that shows
+        the car drawing while the charge control reads off (a switch that does not open the contactor)."""
         controller = self._controller
         switch = controller.adapter.phase_switch
         if switch is None or not switch.start_only:
             return False
-        return controller.charging or (self._solar is not None and self._solar.running)
+        if controller.charging or (self._solar is not None and self._solar.running):
+            return True
+        if controller.adapter.charging_observation() is None or controller.car_drawing() is True:
+            return True
+        measured = site.charger_measured_current(self._charger_entry_id)
+        if measured is None:
+            return False
+        for phase in PHASES:
+            reading = measured.get(phase)
+            if reading.problem is None and isinstance(reading.value, (int, float)) and reading.value >= DRAWING_A:
+                return True
+        return False
 
     def _follow_plug_in(self) -> None:
         """A new plug-in on the charger (`plug_in_generation`): the solar controller's switch budget starts afresh. A
