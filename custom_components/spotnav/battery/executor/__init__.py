@@ -1606,6 +1606,22 @@ class Executor(ExpiryProbe, HandBack):
         idle = kind == "hold" and self.control.hold_idle()
         self.monitor.start(Command(kind, inputs.now, rate, before_kw=before, written=True, idle=idle))
 
+    def _end_priming(self, inputs: ExecInputs, action: str) -> list[dict[str, Any]]:
+        """A priming action (`BrandControl.prime`) whose writes are all read back takes its own values."""
+        state = self.state
+        if not (state.priming and state.pending is None and self._next_role(state, inputs) is None):
+            return []
+        # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
+        self.state = state = replace(state, priming=False, unsure=())
+        self.state = state = replace(
+            state, sent=(),
+            target=self._wanted(
+                state.action or action, state.rate_kw, state.restore_values, state.phase_kw,
+                house_kw=state.house_kw, behind=state.phase_behind_kw,
+            ),
+        )
+        return [_event(inputs.now, "primed", state.action or action)]
+
     def _retarget(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A new action, a new rate past the hysteresis, or a watchdog to renew."""
         now = inputs.now
@@ -1620,18 +1636,8 @@ class Executor(ExpiryProbe, HandBack):
             if state.renew:
                 self.state = state = replace(state, renew=())
             return self._silence(now)
-        events: list[dict[str, Any]] = []
-        if state.priming and state.pending is None and self._next_role(state, inputs) is None:
-            # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
-            self.state = state = replace(state, priming=False, unsure=())
-            self.state = state = replace(
-                state, sent=(),
-                target=self._wanted(
-                    state.action or action, state.rate_kw, state.restore_values, state.phase_kw,
-                    house_kw=state.house_kw, behind=state.phase_behind_kw,
-                ),
-            )
-            events.append(_event(now, "primed", state.action or action))
+        events = self._end_priming(inputs, action)
+        state = self.state
         if action != state.action and self.control.slow and state.rate_changed_at is not None and (
             (now - state.rate_changed_at).total_seconds() < self.control.min_change_s
         ):
