@@ -18,6 +18,10 @@ In short:
   first tester: nothing is written until a hardware test has passed on your plant and its result was approved with a
   control code ([Becoming a tester](home-battery.md#becoming-a-tester)).
 - Before you turn control on, note the values the page names under **Restore by hand** for your brand.
+- Some integrations state no rated power for the battery (EcoFlow, Marstek, Kostal, Ferroamp, Tesla, Deye). The
+  check and the hardware test then judge their small grid charge against the 2 kW they ask for (less where the
+  battery's own charge power setting takes less): the battery must reach at least half of it. Their discharge to the
+  house is not judged without a rating, and no brand's pass needs it.
 - How a grid charge is kept under the main fuse is on its own page: [Grid charging and the main fuse](battery-grid-charging.md).
 
 ## Control entities per brand

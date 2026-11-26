@@ -1016,6 +1016,10 @@
    "look"
   ],
   [
+   "--",
+   "look"
+  ],
+  [
    "call",
    "select",
    "select_option",
@@ -1226,6 +1230,13 @@
    "look"
   ],
   [
+   "save",
+   [
+    "gate",
+    "reports"
+   ]
+  ],
+  [
    "--",
    "ended"
   ],
@@ -1234,25 +1245,22 @@
    {
     "allowed": [],
     "carried": [],
-    "due": "hardware_test_first",
+    "due": "control_code",
     "export_phase": null,
     "hardware": {
      "completed": true,
-     "missing": [
-      {
-       "mode": "charge",
-       "outcome": "not_judgeable:rating_unknown"
-      }
-     ],
+     "missing": [],
      "modes": {
-      "charge": "not_judgeable:rating_unknown",
+      "charge": "obeyed",
       "discharge_house": "not_judgeable:rating_unknown",
       "expiry": "obeyed",
       "hold": "obeyed",
       "normal": "restored"
      }
     },
-    "hardware_brands": [],
+    "hardware_brands": [
+     "ecoflow"
+    ],
     "hardware_failed": 0,
     "log": [
      "hardware_test_started:V5.1.37.13 | ef_powerocean_tcpmodbus 1.0.0",
@@ -1317,12 +1325,18 @@
      "hardware_test_done"
     ],
     "needs": [
-     "hardware_test_first"
+     "control_code"
     ],
     "phase": "idle",
     "refusal": null,
-    "report": null,
-    "reports": 0,
+    "report": {
+     "charge": "obeyed",
+     "discharge_house": "not_judgeable:rating_unknown",
+     "expiry": "obeyed_once",
+     "hold": "obeyed",
+     "normal": "restored"
+    },
+    "reports": 1,
     "state": "shadow_only",
     "via": {}
    }
@@ -1364,27 +1378,27 @@
   [
    "end",
    {
-    "allowed": [],
+    "allowed": [
+     "grid_charge",
+     "hold"
+    ],
     "carried": [],
-    "due": "hardware_test_first",
+    "due": null,
     "export_phase": null,
     "hardware": {
      "completed": true,
-     "missing": [
-      {
-       "mode": "charge",
-       "outcome": "not_judgeable:rating_unknown"
-      }
-     ],
+     "missing": [],
      "modes": {
-      "charge": "not_judgeable:rating_unknown",
+      "charge": "obeyed",
       "discharge_house": "not_judgeable:rating_unknown",
       "expiry": "obeyed",
       "hold": "obeyed",
       "normal": "restored"
      }
     },
-    "hardware_brands": [],
+    "hardware_brands": [
+     "ecoflow"
+    ],
     "hardware_failed": 0,
     "log": [
      "hardware_test_started:V5.1.37.13 | ef_powerocean_tcpmodbus 1.0.0",
@@ -1448,14 +1462,18 @@
      "handed_back:plan_self_consume",
      "hardware_test_done"
     ],
-    "needs": [
-     "hardware_test_first"
-    ],
+    "needs": [],
     "phase": "idle",
     "refusal": null,
-    "report": null,
-    "reports": 0,
-    "state": "shadow_only",
+    "report": {
+     "charge": "obeyed",
+     "discharge_house": "not_judgeable:rating_unknown",
+     "expiry": "obeyed_once",
+     "hold": "obeyed",
+     "normal": "restored"
+    },
+    "reports": 1,
+    "state": "on",
     "via": {}
    }
   ]
@@ -5506,6 +5524,66 @@
    "look"
   ],
   [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "save",
+   [
+    "monitor"
+   ]
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "save",
+   [
+    "monitor"
+   ]
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
+   "--",
+   "look"
+  ],
+  [
    "call",
    "select",
    "select_option",
@@ -5853,7 +5931,6 @@
      "hold"
     ],
     "carried": [
-     "charge",
      "discharge_house"
     ],
     "due": null,
@@ -5915,7 +5992,7 @@
     "phase": "idle",
     "refusal": null,
     "report": {
-     "charge": "not_judgeable:rating_unknown",
+     "charge": "obeyed",
      "discharge_house": "not_judgeable:rating_unknown",
      "hold": "obeyed",
      "normal": "restored"
