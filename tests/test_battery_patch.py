@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -21,14 +23,26 @@ def test_a_listed_global_is_patched_in_every_shell_module_whose_code_reads_it_an
     assert listed, name
     assert {module.__name__ for module in listed} == {module.__name__ for module in battery_patch.readers(name)}
     battery_patch.patch(monkeypatch, name, _SENTINEL)
-    for module in battery_patch.family():
-        functions = [
-            value for value in vars(module).values()
-            if getattr(value, "__module__", None) == module.__name__ and hasattr(value, "__globals__")
-        ]
-        if name in battery_patch.globals_read(module):
-            # What the module's own functions will read from now on is the test's value.
-            assert functions and all(function.__globals__[name] is _SENTINEL for function in functions), module
+    for module in listed:
+        # What the module's own functions and methods read from now on is the test's value.
+        functions = _functions(module)
+        assert functions and all(function.__globals__[name] is _SENTINEL for function in functions), module
+
+
+def _functions(module: ModuleType) -> list[Any]:
+    """The functions defined in the module, its classes' methods among them."""
+    found: list[Any] = []
+    for value in vars(module).values():
+        if getattr(value, "__module__", None) != module.__name__:
+            continue
+        members = vars(value).values() if isinstance(value, type) else (value,)
+        for member in members:
+            member = getattr(member, "__func__", member)
+            member = getattr(member, "fget", member)
+            # Written in the module (a dataclass's generated methods are not).
+            if getattr(member, "__globals__", None) is vars(module):
+                found.append(member)
+    return found
 
 
 def test_a_name_no_shell_code_reads_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
