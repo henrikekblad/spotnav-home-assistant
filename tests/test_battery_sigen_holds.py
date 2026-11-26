@@ -538,6 +538,28 @@ def test_a_later_run_starts_after_the_variants_that_failed() -> None:
     assert gate.variants_tried(report) == tried and gate.hold_variant(report) is None
 
 
+def test_a_run_that_decides_no_hold_keeps_the_pass_in_a_dropped_variant_so_no_older_hold_is_carried() -> None:
+    # This key's hold passed in a variant the recipe no longer has, and was taken back to pending.
+    names = TWO_HOLD_CONTROL.variant_names()
+    dropped = {"outcome": "obeyed", "variant": "gone", "variants": [{"variant": "gone", "outcome": "obeyed"}]}
+    key, old_key = "B | sigen 1", "A | sigen 1"
+    stale = {"key": key, "brand": "sigenergy", "attempts": 1, "updated_at": "2026-11-05T10:00:00+00:00",
+             "modes": {"hold": dropped, "normal": {"outcome": "restored"}}}
+    own = gate.without_removed_hold(stale, names)
+    old = {"key": old_key, "brand": "sigenergy", "attempts": 1, "updated_at": "2026-11-01T10:00:00+00:00",
+           "modes": {"hold": {"outcome": "obeyed", "variant": names[0]}, "normal": {"outcome": "restored"}}}
+    assert gate.control_report(own, {old_key: old}, key=key, brand="sigenergy", variants=names) is own
+    # A run of the routine that ends before the hold is judged: still no older key's hold in its place.
+    executor = Executor(TWO_HOLD_CONTROL)
+    battery = OnlyModeFour(TWO_HOLD_CONTROL, dict(SIGENERGY_STATES))
+    run = _verify(executor, battery, looks=1, tried=gate.variants_tried(own)).report()
+    after = gate.merge_report(own, run, key=key, attempts=1, now=T0)
+    assert gate.hold_variant(after) is None and {"variant": "gone", "outcome": "obeyed"} in gate.variants_tried(after)
+    assert gate.control_report(after, {old_key: old}, key=key, brand="sigenergy", variants=names) is after
+    # The run still starts with the recipe's first hold: a pass in a dropped variant is no failure of another.
+    assert after["modes"]["hold"]["variant"] == names[0]
+
+
 @dataclass
 class HalfHeld(FakeBattery):
     """A plant that halves its discharge under the first hold: neither ignored nor obeyed."""
