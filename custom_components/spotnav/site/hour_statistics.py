@@ -527,6 +527,7 @@ def site_series(hass: HomeAssistant, site_data: Mapping[str, Any]) -> SiteSeries
         CONF_POWER_ENTITY,
         DEFAULT_MIN_CURRENT_A,
     )
+    from ..core.electric import site_phase_count  # noqa: PLC0415 - kept beside its only use
     from ..runtime import controller_for  # noqa: PLC0415 - it imports the site
     from .measurement_source import grid_power_source_from_dict, source_from_dict  # noqa: PLC0415
 
@@ -540,7 +541,8 @@ def site_series(hass: HomeAssistant, site_data: Mapping[str, Any]) -> SiteSeries
     else:
         derived = site_data.get(CONF_DERIVED_ENTITIES)
         if isinstance(derived, Mapping):
-            for phase in ("L1", "L2", "L3"):
+            # A single-phase site's power is its L1's alone.
+            for phase in ("L1",) if site_phase_count(site_data) == 1 else ("L1", "L2", "L3"):
                 entities = derived.get(phase)
                 if not isinstance(entities, Mapping) or not isinstance(entities.get("power"), str):
                     grid = []
@@ -553,6 +555,9 @@ def site_series(hass: HomeAssistant, site_data: Mapping[str, Any]) -> SiteSeries
     for charger_entry_id in site_data.get(CONF_CHARGER_ENTRY_IDS) or []:
         wiring = wiring_all.get(charger_entry_id) or {} if isinstance(wiring_all, Mapping) else {}
         phases = wiring.get("phases") if wiring.get("phases") in (1, 3) else 3
+        if site_phase_count(site_data) == 1:
+            # A charger uses no more phases than its site has.
+            phases = 1
         controller = controller_for(hass, charger_entry_id)
         # The charger's own floor where it is below 6 A: a DC charger's lowest power as a current per phase.
         floor = getattr(controller, "min_current_a", None)
