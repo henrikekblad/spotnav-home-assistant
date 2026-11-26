@@ -102,7 +102,8 @@ class Inputs:
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
                     reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
-                                           found=state is not None, enabled=state is not None)
+                                           found=state is not None, enabled=state is not None,
+                                           device_id=executor.state.device_id)
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         battery = self.executor
