@@ -7,6 +7,28 @@ section: Charging
 
 # The charging card
 
+## In short
+
+- **What it does for you.** One card per charger shows the price of every hour, when SpotNav plans to charge and what
+  it costs, and lets you start, stop or pause a charge.
+- **What you need.** A SpotNav charger entry. Add the card from the card picker, one card per charger
+  ([Add the card](setup.md#3-add-the-card)).
+- **What to do.** Set how much to charge and by when in the **Plan** cell, pick a **Strategy** (Cheapest, Solar or
+  Hybrid), and leave the rest to the plan. Everything else is under the gear icon, **Settings**.
+- **Who may change what.** Anyone can read the card and press Start, Stop, Pause and Resume. Settings, the strategy
+  and the plan need an administrator, unless an administrator allows other users.
+
+| Part of the card | What it is for |
+| --- | --- |
+| [Header](#header) | The charger's name, what it can do, the charge history and Settings; a banner when something needs attention. |
+| [The price graph](#the-price-graph) | The price of each interval, with the planned charging marked. |
+| [The plan](#the-plan) | The planned charging periods, their energy and cost. |
+| [The buttons](#the-buttons) | Charge now / Stop, Pause / Resume, Strategy and Plan. |
+| [Status lines](#status-lines) | What SpotNav is doing now and why, in one line each. |
+| [Charge history](#charge-history) | Every charge with its energy and cost, and the site's power per hour and day. |
+| [The settings popover](#the-settings-popover) | Price, car, charger, site, solar, home battery, heating, notifications, display and support. |
+| [Plan settings](#plan-settings) | How much to charge (energy or a target level), the departure and the current. |
+
 The card is the day-to-day view of one charger: the price graph, the charging plan, the buttons
 and all of the settings. One card shows one charger. [Add it](setup.md#3-add-the-card) from the
 card picker, and add one card per charger.
