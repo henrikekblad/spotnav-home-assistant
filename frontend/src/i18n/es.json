@@ -484,6 +484,7 @@
   "entity.detect.inUse": "En uso",
   "entity.detect.direct": "Mide directamente la corriente de fase",
   "entity.detect.derived": "Derivada de la potencia y la tensión",
+  "entity.detect.singlePhase": "Monofásico: solo L1. L2 y L3 no tienen suministro y se omiten.",
   "entity.detect.signed": "Corriente con signo: se lee su valor absoluto",
   "entity.detect.inverted": "Potencia con exportación positiva: se invierte",
   "entity.detect.gridPower": "Potencia total de red encontrada: se usa para la carga solar e híbrida",

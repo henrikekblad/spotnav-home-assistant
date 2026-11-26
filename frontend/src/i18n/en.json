@@ -484,6 +484,7 @@
   "entity.detect.inUse": "In use",
   "entity.detect.direct": "Measures phase current directly",
   "entity.detect.derived": "Derived from power and voltage",
+  "entity.detect.singlePhase": "Single-phase: L1 only. L2 and L3 have no supply and are left out.",
   "entity.detect.signed": "Signed current: read as its size",
   "entity.detect.inverted": "Export-positive power: negated",
   "entity.detect.gridPower": "Total grid power found: used for solar and hybrid charging",

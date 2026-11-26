@@ -484,6 +484,7 @@
   "entity.detect.inUse": "Utilisé",
   "entity.detect.direct": "Mesure directement le courant de phase",
   "entity.detect.derived": "Déduit de la puissance et de la tension",
+  "entity.detect.singlePhase": "Monophasé : L1 seulement. L2 et L3 n'ont pas d'alimentation et sont laissées de côté.",
   "entity.detect.signed": "Courant signé : lu en valeur absolue",
   "entity.detect.inverted": "Puissance positive en export : inversée",
   "entity.detect.gridPower": "Puissance réseau totale trouvée : utilisée pour la charge solaire et hybride",

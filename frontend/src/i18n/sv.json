@@ -484,6 +484,7 @@
   "entity.detect.inUse": "Används",
   "entity.detect.direct": "Mäter fasströmmen direkt",
   "entity.detect.derived": "Räknas fram ur effekt och spänning",
+  "entity.detect.singlePhase": "Enfas: endast L1. L2 och L3 saknar matning och tas inte med.",
   "entity.detect.signed": "Teckenmärkt ström: läses som sin storlek",
   "entity.detect.inverted": "Effekt med export som positiv: negeras",
   "entity.detect.gridPower": "Total näteffekt hittad: används för sol- och hybridladdning",
