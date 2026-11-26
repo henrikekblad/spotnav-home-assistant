@@ -22,27 +22,37 @@ import pytest
 
 from custom_components.spotnav.battery import control
 
-#: Each patched name -> the shell modules whose code reads it as a global.
-READ_IN: Final[dict[str, tuple[ModuleType, ...]]] = {
-    "CALL_TIMEOUT_S": (control,),
-    "GATED_AFTER_RUNNING": (control,),
-    "HAND_BACK_DEADLINE_S": (control,),
-    "HAND_BACK_LOOK_S": (control,),
-    "IMPORT_LIMIT_READ_BACK_S": (control,),
-    "IMPORT_LIMIT_READ_BACK_STEP_S": (control,),
-    "START_RETRY_S": (control,),
-    "STARTUP_LOOK_S": (control,),
-    "STARTUP_WAIT_S": (control,),
-    "Store": (control,),
-    "blocked": (control,),
-    "control_for": (control,),
-    "export_control_for": (control,),
-    "learning_gate_open": (control,),
-    "plant_entity_id": (control,),
-    "read_export_facts": (control,),
-    "read_plant_entity": (control,),
-    "recipe_field_tested": (control,),
+#: Each patched name -> the shell modules whose code reads it as a global, by name under `battery`.
+READ_IN: Final[dict[str, tuple[str, ...]]] = {
+    "CALL_TIMEOUT_S": ("control",),
+    "GATED_AFTER_RUNNING": ("control",),
+    "HAND_BACK_DEADLINE_S": ("control",),
+    "HAND_BACK_LOOK_S": ("control",),
+    "IMPORT_LIMIT_READ_BACK_S": ("control",),
+    "IMPORT_LIMIT_READ_BACK_STEP_S": ("control",),
+    "START_RETRY_S": ("control",),
+    "STARTUP_LOOK_S": ("control",),
+    "STARTUP_WAIT_S": ("control",),
+    "Store": ("control",),
+    "blocked": ("control",),
+    "control_for": ("control",),
+    "export_control_for": ("control",),
+    "learning_gate_open": ("control",),
+    "plant_entity_id": ("control",),
+    "read_export_facts": ("control",),
+    "read_plant_entity": ("control",),
+    "recipe_field_tested": ("control",),
 }
+
+
+def module(name: str) -> ModuleType:
+    """A shell module by its name under `battery` (`control`, `control.core`)."""
+    return importlib.import_module(f"{control.__name__.rsplit('.', 1)[0]}.{name}")
+
+
+def listed(name: str) -> tuple[ModuleType, ...]:
+    """The modules `READ_IN` names for the global `name`."""
+    return tuple(module(short) for short in READ_IN[name])
 
 
 def family() -> tuple[ModuleType, ...]:
@@ -75,16 +85,16 @@ def globals_read(module: ModuleType) -> frozenset[str]:
 
 def readers(name: str) -> tuple[ModuleType, ...]:
     """The shell's modules whose code reads the global `name`."""
-    return tuple(module for module in family() if name in globals_read(module))
+    return tuple(member for member in family() if name in globals_read(member))
 
 
 def patch(monkeypatch: pytest.MonkeyPatch, name: str, value: Any) -> None:
     """Replace the shell's global `name` with `value` where the shell's code reads it, for the test."""
     if name not in READ_IN:
         raise LookupError(f"{name}: not a listed global of the battery control's shell (tests/battery_patch.py)")
-    for module in READ_IN[name]:
-        if name not in vars(module):
-            raise LookupError(f"{name}: not defined in {module.__name__}")
-        if name not in globals_read(module):
-            raise LookupError(f"{name}: no code in {module.__name__} reads it")
-        monkeypatch.setattr(module, name, value)
+    for member in listed(name):
+        if name not in vars(member):
+            raise LookupError(f"{name}: not defined in {member.__name__}")
+        if name not in globals_read(member):
+            raise LookupError(f"{name}: no code in {member.__name__} reads it")
+        monkeypatch.setattr(member, name, value)

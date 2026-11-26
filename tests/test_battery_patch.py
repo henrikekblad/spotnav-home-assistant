@@ -17,7 +17,7 @@ _SENTINEL = object()
 def test_a_listed_global_is_patched_in_every_shell_module_whose_code_reads_it_and_nowhere_else(
     name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    listed = battery_patch.READ_IN[name]
+    listed = battery_patch.listed(name)
     assert listed, name
     assert {module.__name__ for module in listed} == {module.__name__ for module in battery_patch.readers(name)}
     battery_patch.patch(monkeypatch, name, _SENTINEL)
@@ -36,15 +36,16 @@ def test_a_name_no_shell_code_reads_is_refused(monkeypatch: pytest.MonkeyPatch) 
         battery_patch.patch(monkeypatch, "NO_SUCH_GLOBAL", 1)
     # Defined in the module, but only read at import (a constant no function reads): a patch would change nothing.
     module = battery_patch.family()[0]
+    short = module.__name__.split(".battery.", 1)[1]
     unread = next(
         name for name in vars(module)
         if name.isupper() and not any(name in battery_patch.globals_read(member) for member in battery_patch.family())
     )
-    monkeypatch.setitem(battery_patch.READ_IN, unread, (module,))
+    monkeypatch.setitem(battery_patch.READ_IN, unread, (short,))
     with pytest.raises(LookupError):
         battery_patch.patch(monkeypatch, unread, 1)
     # Listed for a module that does not define it.
-    monkeypatch.setitem(battery_patch.READ_IN, "NO_SUCH_GLOBAL", (module,))
+    monkeypatch.setitem(battery_patch.READ_IN, "NO_SUCH_GLOBAL", (short,))
     with pytest.raises(LookupError):
         battery_patch.patch(monkeypatch, "NO_SUCH_GLOBAL", 1)
 
