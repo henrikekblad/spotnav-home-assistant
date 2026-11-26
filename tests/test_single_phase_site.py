@@ -121,6 +121,21 @@ def test_battery_grid_charge_cap_on_one_phase() -> None:
     assert Caps._plant_phases(shell, control) == 3  # type: ignore[arg-type]  # noqa: SLF001
 
 
+def test_the_plans_import_cap_on_a_single_phase_site_is_one_phase(hass: HomeAssistant) -> None:
+    """What the battery, heat, pool and switched-load plans may import is the one phase's fuse less its margin."""
+    from custom_components.spotnav.battery import plan_runtime  # noqa: PLC0415
+    from custom_components.spotnav.battery.plan_shadow import import_cap_kw  # noqa: PLC0415
+
+    assert math.isclose(import_cap_kw(100.0, 2.0, 400.0, None, phases=1), 98 * PHASE_V / 1000.0)
+    assert math.isclose(import_cap_kw(100.0, 2.0, 400.0, None), math.sqrt(3.0) * 400 * 98 / 1000.0)
+    config = {**_direct(), "safety_margin_a": 2.0, CONF_DIRECT_ENTITIES: {"L1": "sensor.l1"}}
+    site = SimpleNamespace(entry_id="none", config=config, site_phases=SINGLE_PHASE)
+    assert math.isclose(plan_runtime.site_import_cap_kw(hass, site), 98 * PHASE_V / 1000.0)  # type: ignore[arg-type]
+    # A stand-in without the controller's phases reads them from the stored meter.
+    stand_in = SimpleNamespace(entry_id="none", config=config)
+    assert math.isclose(plan_runtime.site_import_cap_kw(hass, stand_in), 98 * PHASE_V / 1000.0)  # type: ignore[arg-type]
+
+
 async def test_controller_runs_a_single_phase_site_and_puts_every_charger_on_l1(hass: HomeAssistant) -> None:
     entry = make_site_entry(
         hass,

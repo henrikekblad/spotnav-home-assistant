@@ -86,7 +86,7 @@ from ..const import (
     CONF_SOLAR_FORECAST_ENTRIES,
     DOMAIN,
 )
-from ..core.electric import power_kw, stored_safety_margin_a
+from ..core.electric import power_kw, site_phase_count, stored_safety_margin_a
 from ..planning.demand_charge import hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.forecast_band import FORM_ADDITIVE, FORM_RATIO, BandView, ErrorBand, learn, pairs_from_log, view
@@ -354,15 +354,18 @@ def plan_windows(plan: Any, volts: float | None) -> list[tuple[datetime, datetim
 
 
 def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> float | None:
-    """The most the site may import (kW, `plan_shadow.import_cap_kw`): the main fuse less its margin, and the import
-    target's held level where one is set."""
+    """The most the site may import (kW, `plan_shadow.import_cap_kw`): the main fuse less its margin on the site's
+    phases (one on a single-phase site, `SiteCapacityController.site_phases`), and the import target's held level
+    where one is set."""
     entry = hass.config_entries.async_get_entry(site.entry_id)
     config = site.config
+    site_phases = getattr(site, "site_phases", None)
     return import_cap_kw(
         config.get(CONF_MAIN_FUSE_A),
         stored_safety_margin_a(config),
         stored_voltage_between_phases_v(config),
         stored_import_target_kw(config if entry is None else entry.data),
+        phases=len(site_phases) if isinstance(site_phases, tuple) and site_phases else site_phase_count(config),
     )
 
 
