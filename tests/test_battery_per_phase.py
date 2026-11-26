@@ -690,6 +690,17 @@ def test_the_runaway_is_judged_against_the_larger_of_the_old_and_new_target_and_
     assert executor.state.phase_over == 0 and executor.state.phase == "active"
 
 
+def test_a_phased_recipe_made_from_an_edited_one_turns_back_into_that_recipe_with_its_edits() -> None:
+    # A recipe with an edited field, run per phase and back (also through a change of hold variant), is still that
+    # recipe: never the registry's of its brand.
+    edited = replace(SIGENERGY_CONTROL, write_caps={"setting": 12}, min_change_s=123.0)
+    phased = edited.with_phases(True)
+    assert phased.with_phases(False) is edited
+    back = phased.with_hold("pv_first").with_phases(False)
+    assert back.variant == "pv_first" and back.write_caps == {"setting": 12} and back.min_change_s == 123.0
+    assert phased.with_hold("pv_first").write_cap("setting") == 12
+
+
 def test_a_recipe_may_set_the_grid_s_power_have_a_state_that_depends_on_the_charge_and_renew_a_watchdog() -> None:
     from custom_components.spotnav.battery.commands import Expiry, Want
 

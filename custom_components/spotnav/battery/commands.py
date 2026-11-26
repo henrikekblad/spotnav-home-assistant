@@ -1234,6 +1234,9 @@ class BrandControl:
     #: it (a hand-back, a fuse's too, always runs), but a cap spent by them refuses the next start. For settings whose
     #: every write is a register write nobody states the wear of (Deye's current limits). `False`: not counted.
     count_restores: bool = False
+    #: On a phased control (`with_phases(True)`), the control it was made from, which `with_phases(False)` gives back:
+    #: the recipe it was called on with all its fields, not the registry's by brand. `None` on an unphased control.
+    unphased: BrandControl | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.command_role is not None and self.command_role not in {role.name for role in self.roles}:
@@ -1341,7 +1344,7 @@ class BrandControl:
         if spec is None or on == self.phased:
             return self
         if not on:
-            base = next(control for control in CONTROLS if control.brand == self.brand)
+            base = self.unphased or next(control for control in CONTROLS if control.brand == self.brand)
             return base.with_hold(self.variant)
         idle = spec.idle()
 
@@ -1360,7 +1363,7 @@ class BrandControl:
             # What it owns it writes itself; nothing of them is left to watch.
             watched=tuple(row for row in self.watched if row[0].name not in owned),
             own_states={**self.own_states, **spec.own_states},
-            phased=True,
+            phased=True, unphased=self,
         )
 
     def supports(self, action: str) -> bool:
