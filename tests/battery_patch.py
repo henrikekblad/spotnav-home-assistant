@@ -38,7 +38,6 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "blocked": ("control.gate_record", "control.report",),
     "control_for": (
         "control.caps",
-        "control.core",
         "control.exec_inputs",
         "control.expiry",
         "control.gate_record",
@@ -48,6 +47,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
         "control.look",
         "control.per_phase",
         "control.report",
+        "control.status",
         "control.stored",
         "control.verify_driver",
     ),
