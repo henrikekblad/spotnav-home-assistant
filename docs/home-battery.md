@@ -451,8 +451,10 @@ Home Assistant is down, that limit is back until the timeout has been measured o
 the plan holds the battery, charges it from the grid or lets it cover the house on the new version, and the battery
 is seen to do it (three readings in a row, as for any command), that step has passed on the new version. A hand-back
 that leaves every setting as it was found counts as the hand-back. Only a clear case counts: a hold must stop a
-battery that was discharging while the house draws from the grid, a charge or a discharge must be at least 1 kW, and
-a charge must start on a battery that was not already charging. A command the battery did not follow is counted as
+battery that was discharging while the house draws from the grid, with the battery at 30 % or more, a charge or a
+discharge must be at least 1 kW, and a charge must start on a battery that was not already charging and run while
+the site draws from the grid (so that sun is not taken for it). A command written before the new version was read,
+or before a restart, does not count. A command the battery did not follow is counted as
 before but never fails the check: only the check itself does that, and its answer replaces the plan's. The check
 then runs only the steps still open. What is still not shown seven days after the update is checked ahead of the
 plan: at the next moment that suits the check (the same conditions as above) the plan steps aside for it. Control

@@ -279,6 +279,30 @@ async def test_only_the_plans_own_command_on_this_key_in_the_mode_control_runs_i
     assert credit(_proved("grid_charge", now, written=False)) is None
     for action in ("export_discharge", "curtail_export", "self_consume", "per_phase", "expiry"):
         assert credit(_proved(action, now)) is None, action
+    # A command of another kind than the action's (one still watched from before).
+    wrong = _proved("hold", now)
+    wrong["detail"]["command"]["kind"] = "charge"
+    assert credit(wrong) is None
+    # The key was first read long ago and is read again only now (a downgrade, a restart): what was written before
+    # that was written on another key, or is no longer known to be the plan's.
+    first_read = control.key_since[control.firmware_key()]
+    control.key_since[control.firmware_key()] = (now - timedelta(days=30)).isoformat()
+    assert control._key_run == (control.firmware_key(), control._key_run[1]) and control._key_run[1] <= now
+    assert credit(_proved("grid_charge", control._key_run[1] - timedelta(minutes=5))) is None
+    control._key_run = (old_key, now - timedelta(hours=1))
+    assert credit(_proved("grid_charge", now)) is None, "the key noted at the last look is another"
+    await _looks(control, now, 1)
+    assert control._key_run[0] == control.firmware_key() and control._key_run[1] >= now
+    assert credit(_proved("grid_charge", now - timedelta(seconds=1))) is None
+    control._key_run = (control.firmware_key(), now - timedelta(hours=1))
+    control.key_since[control.firmware_key()] = first_read
+    # A stored time that cannot be read is no time: nothing counts until the key is noted afresh, at the next look.
+    control.key_since[control.firmware_key()] = "soon"
+    assert credit(_proved("grid_charge", now)) is None
+    await _looks(control, now, 1)
+    assert gate.parse_time(control.key_since[control.firmware_key()]) is not None
+    control._key_run = (control.firmware_key(), now - timedelta(hours=1))
+    control.key_since[control.firmware_key()] = first_read
     # A hand-back of something the plan did not write on this key (a test's, the routine's, an old key's).
     assert credit({"at": now.isoformat(), "kind": "handed_back", "reason": "plan", "written": ["x"], "clean": True}) is None
     # One that did not leave everything as found.

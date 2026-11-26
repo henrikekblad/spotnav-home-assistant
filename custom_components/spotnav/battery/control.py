@@ -42,8 +42,8 @@ The order on every path:
   report, one passed on a key this release holds back (`commands.blocked`), a hold passed in a variant the recipe
   dropped, a report older than a failed one.
 * **The plan's own commands show steps on the key** (`_credit_plan`, `gate.plan_proved`): while control runs the
-  plan, a command it wrote on the key now (`key_since`) that the executor's monitor saw act (the event `proved`,
-  `monitor.proves`) counts as that mode passed in the key's own report, and a hand-back of what the plan wrote on the
+  plan, a command it wrote on the key now (`key_since`, and read without a break since: `_credit_since`) that the
+  executor's monitor saw act (the event `proved`, `monitor.proves`) counts as that mode passed in the key's own report, and a hand-back of what the plan wrote on the
   key that left every control as found (the event `handed_back` with `clean`) as the hand-back passed. The rows say
   `via: plan`. Only the plan's own: nothing a test action, the routine or a hardware test wrote, nothing in shadow,
   never a failure, never the export limit, a charge per phase or an expiry; a hold only in the variant control runs
@@ -240,6 +240,9 @@ NOTE_AI_MODE_BACK: Final = "ai_mode_back"
 #: The mode of the report each action of the plan's shows when its command was seen to act (`_credit_plan`). A sale
 #: is left out: the routine's step is the discharge to the house, and a sale may write another control.
 _PLAN_PROVES: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge_house"}
+#: The kind of command (`monitor.Command.kind`) that shows each of those modes: a command of another kind still
+#: watched under the action (one kept from before a restart) shows nothing of it.
+_PLAN_KINDS: Final = {"hold": "hold", "charge": "charge", "discharge_house": "discharge"}
 #: How long the plan stands aside for a check past its deadline to start (s, `_plan_aside`): the hand-back and the
 #: battery taking up the house again take well under a minute; the routine then runs its own length.
 ASIDE_S: Final = 300.0
@@ -568,6 +571,10 @@ class BatteryControl:
         self.key_since: dict[str, str] = {}
         #: The key the plan last wrote something on that it still holds (`_credit_plan`); not kept over a restart.
         self._plan_wrote: str | None = None
+        #: The key read at the last look, and since when it has been read without a break in this run
+        #: (`_note_key`): a key read again after another (a downgrade) or after a restart counts no command written
+        #: before that, though it was first read long ago.
+        self._key_run: tuple[str, datetime] | None = None
         #: Until when the plan stands aside for a check past its deadline, and when it last began to (`_plan_aside`).
         self._aside_until: datetime | None = None
         self._aside_at: datetime | None = None
@@ -1490,20 +1497,30 @@ class BatteryControl:
     def _note_key(self, now: datetime) -> None:
         """Remember when the firmware key read now was first read (`key_since`)."""
         key = self.firmware_key()
-        if not gate.firmware_known(key) or key in self.key_since:
-            return
+        if self._key_run is None or self._key_run[0] != key:
+            self._key_run = (key, now)
+        if not gate.firmware_known(key) or gate.parse_time(self.key_since.get(key)) is not None:
+            return  # (a stored time that cannot be read is no time: the key is noted afresh)
         kept = sorted({**self.key_since, key: now.isoformat()}.items(), key=lambda item: item[1])
         self.key_since = dict(kept[-MAX_REPORTS:])
 
     def _key_since(self) -> datetime | None:
         return gate.parse_time(self.key_since.get(self.firmware_key()))
 
+    def _credit_since(self) -> datetime | None:
+        """From when a command of the plan's counts for the key now: written after the key was first read, and
+        while it has been read without a break in this run (`_key_run`). `None`: no command counts."""
+        since, run = self._key_since(), self._key_run
+        if since is None or run is None or run[0] != self.firmware_key():
+            return None
+        return max(since, run[1])
+
     def _credit_plan(self, result: StepResult | None, now: datetime) -> None:
         """Count what a step of the plan's showed for the report of the key now (see the module). Called only for a
         step control made for the plan: never for the routine's, a hardware test's or a test action's."""
         executor = self.executor
         key = self.firmware_key()
-        since = self._key_since()
+        since = self._credit_since()
         if result is None or executor is None or since is None or not gate.firmware_known(key):
             self._plan_wrote = None
             return
@@ -1516,7 +1533,9 @@ class BatteryControl:
                 command = Command.from_dict(detail.get("command"))
                 mode = _PLAN_PROVES.get(str(event.get("reason")))
                 if mode is None or command is None or not command.written or command.at < since:
-                    continue  # a dry run, or a command written before this key was read
+                    continue  # a dry run, or a command written before this key was read (without a break)
+                if command.kind != _PLAN_KINDS[mode]:
+                    continue  # not this action's command
                 report = self.control_report()
                 if mode == "charge" and gate.charge_by_phases(report):
                     continue  # the balanced charge says nothing where a charge is allowed only per phase
