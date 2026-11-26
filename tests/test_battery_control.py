@@ -2940,7 +2940,7 @@ async def test_after_the_first_pass_a_change_is_checked_by_the_routine_and_only_
     # No person needed: control runs on with what passed here, and the routine checks the new key at the first
     # suitable moment of any hour, writing as it does.
     assert control.hardware_test_due() is None and not control.options().shadow_only
-    assert control.state() == "on" and control.carried_from() == first
+    assert control.state() == "on" and set(control.carried_from().values()) == {first}
     assert control.allowed() == control._supported(gate.allowed_actions(control.reports[first], control.options()))
     assert not any(need.startswith("hardware_test") for need in control._needs())
     evening = dt_util.as_local(dt_util.now()).replace(hour=11, minute=0)

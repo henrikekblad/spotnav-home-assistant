@@ -106,7 +106,8 @@ def test_a_mode_the_plan_showed_on_the_new_key_counts_there_and_the_open_ones_st
     old = _report("A | sigen 1")
     shown = gate.plan_proved(None, "hold", key="B | sigen 1", brand="sigenergy", firmware="B", now=T0)
     carried = gate.control_report(shown, {"A | sigen 1": old, "B | sigen 1": shown}, key="B | sigen 1", brand="sigenergy")
-    assert carried is not None and carried["carried_from"] == "A | sigen 1"
+    assert carried is not None
+    assert carried["carried_from"] == dict.fromkeys(("charge", "discharge_house", "normal"), "A | sigen 1")
     assert carried["modes"]["hold"]["via"] == "plan" and "via" not in carried["modes"]["charge"]
 
 
@@ -181,7 +182,8 @@ async def test_the_plans_commands_on_the_new_key_pass_its_check_one_step_at_a_ti
     hold = _plan_row(control.report(), "hold")
     assert hold["outcome"] == "obeyed" and hold["via"] == "plan" and hold["before_kw"] == -2.0
     assert len(hold["readings"]) == 3 and gate.report_status(control.report()) == "pending"
-    assert control.state() == "on" and control.snapshot()["carried_from"] == old_key
+    assert control.state() == "on"
+    assert control.snapshot()["carried_from"] == dict.fromkeys(("charge", "discharge_house", "normal"), old_key)
 
     plan["slot"] = None
     now = await _looks(control, now, 12)
@@ -190,7 +192,8 @@ async def test_the_plans_commands_on_the_new_key_pass_its_check_one_step_at_a_ti
     assert gate.report_status(control.report()) == "passed" and control.report()["attempts"] == 0
     assert control.snapshot()["plan_proof"]["shown_by_plan"] == ["hold", "normal"]
     # The charge and the discharge still run on the old key's answer.
-    assert control.snapshot()["carried_from"] == old_key and "grid_charge" in control.allowed()
+    assert control.snapshot()["carried_from"] == dict.fromkeys(("charge", "discharge_house"), old_key)
+    assert "grid_charge" in control.allowed()
 
     plan["slot"] = ("grid_charge", 2.0, None)
     now = await _looks(control, now, PROVING_LOOKS)

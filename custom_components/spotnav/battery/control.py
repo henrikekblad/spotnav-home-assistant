@@ -32,15 +32,15 @@ The order on every path:
 * **Verification**: started at the first suitable moment after enabling (`gate.suitable`: a discharging battery
   between 30 and 80 %, no car charging, the plant SpotNav's to take), a mode that could not be judged is tried again
   at a later one. The report is kept per firmware key. After a firmware, integration or recipe-revision change
-  control keeps running the actions of the brand's last passed report on this plant (`control_report`,
-  `gate.control_report`: the hold variant and the capability per phase are that report's too, a measured expiry never
-  is) and the routine checks the new key at the first suitable moment of any hour, which is one where the plan
+  control keeps running each step on the latest answer it has on the brand's earlier keys on this plant
+  (`control_report`, `gate.control_report`: each step by itself, the hold with the variant of the key it comes
+  from, the capability per phase like a step, a measured expiry never) and the routine checks the new key at the first suitable moment of any hour, which is one where the plan
   leaves the battery to itself (the executor idle); control yields to the run as to the first one. A mode decided on
   the new key counts from then on; a check that fails or gives up there stops control as on any key, and turning
   control on again after that runs the check without the old report, as a person's failed hardware test leaves no
   older pass to run on (`carry_after`). Never carried: another brand's
   report, one passed on a key this release holds back (`commands.blocked`), a hold passed in a variant the recipe
-  dropped, a report older than a failed one.
+  dropped, a report older than a failed one, a step a later key failed.
 * **The plan's own commands show steps on the key** (`_credit_plan`, `gate.plan_proved`): while control runs the
   plan, a command it wrote on the key now (`key_since`, and read without a break since: `_credit_since`) that the
   executor's monitor saw act (the event `proved`, `monitor.proves`) counts as that mode passed in the key's own report, and a hand-back of what the plan wrote on the
@@ -1239,8 +1239,8 @@ class BatteryControl:
 
     def control_report(self, key: str | None = None) -> Mapping[str, Any] | None:
         """The report control runs on (`gate.control_report`): the routine's own for the key now (`report`), with
-        each mode still open there answered by the brand's last passed report on this plant while the routine has
-        not finished the key, so an update never stops control by itself. The reports are this site's; one passed
+        each mode still open there answered by the latest answer it has on the brand's earlier keys on this plant
+        while the routine has not finished the key, so an update never stops control by itself. The reports are this site's; one passed
         on a key this release holds back (`commands.blocked`) is no source, nor one passed before the plant last
         failed a check that left no failed report (`carry_after`). The routine itself, the status's `report` and a measured
         expiry read `report`. `key`: read the stored report of that key as it stands instead (`_phases_mapped`)."""
@@ -1264,11 +1264,11 @@ class BatteryControl:
             own, self.reports, key=key, brand=control.brand, variants=control.variant_names(), since=since, void=void
         )
 
-    def carried_from(self) -> str | None:
-        """The key whose passed report control runs on while the routine checks the key now, `None` when control
-        runs on the key's own report (or not at all)."""
+    def carried_from(self) -> dict[str, str] | None:
+        """The steps control runs on an earlier key's answer while the routine checks the key now, each with the key
+        it came from (by mode); `None` when control runs on the key's own report (or not at all)."""
         source = (self.control_report() or {}).get("carried_from")
-        return source if isinstance(source, str) else None
+        return dict(source) if isinstance(source, Mapping) and source else None
 
     def _phases_mapped(self) -> bool:
         """Whether the plant's phases A, B and C are shown to be the meter's L1, L2 and L3: only the verification's
@@ -2232,7 +2232,7 @@ class BatteryControl:
 
     def _reverifying(self) -> bool:
         """Whether this is the check after a firmware, integration or recipe change that control runs through on
-        the brand's last passed report (`carried_from`)."""
+        the answers of the brand's earlier keys (`carried_from`)."""
         return self.carried_from() is not None
 
     def _moment(self, now: datetime, executor: Executor) -> gate.Moment:
@@ -4203,7 +4203,8 @@ class BatteryControl:
             "export_gate": self.export.snapshot(),
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
-            # The key whose passed report control runs on while the routine checks the key now (`control_report`).
+            # The steps control runs on an earlier key's answer while the routine checks the key now, each with the
+            # key it came from (`control_report`).
             "carried_from": self._carried_block(),
             # When the plant last failed a check that left no failed report: nothing older is carried.
             "carry_after": self.carry_after,
@@ -4224,7 +4225,7 @@ class BatteryControl:
             ],
         }
 
-    def _carried_block(self) -> str | None:
+    def _carried_block(self) -> dict[str, str] | None:
         try:
             return self.carried_from()
         except Exception:  # noqa: BLE001 - diagnostics must never fail on one block

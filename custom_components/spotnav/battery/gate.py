@@ -5,7 +5,7 @@ The site's options (`Options`, kept in the site entry's data beside its other se
 * `battery_control_enabled` (default off): the person's opt-in. Turning it on does not turn control on: it starts the
   verification routine (`verify.py`), and control is on only once that passed for the plant's current firmware and
   integration version (`firmware_key`). After a change of either, or of the recipe's revision, control runs on with
-  what last passed for the brand on this plant while the routine checks the new key (`control_report`).
+  each step's latest answer for the brand on this plant while the routine checks the new key (`control_report`).
 * `battery_control_shadow_only`: while on, nothing is written whatever else is set; the shell only logs what it would
   do. Its default depends on the plant (`shadow_default`): **off** for a recipe tested on a real plant
   (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
@@ -74,8 +74,9 @@ for normal) passes; `ignored`, `partial` and an abort that shows the plant does 
 fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances: the fuse, a stale reading, a stop)
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
 Control reads the report through `control_report`: on a key the routine has not finished, a mode still open keeps
-the answer of the brand's last passed report on this plant, so an update never stops control by itself; a check that
-fails or gives up on the new key stops it as on any key.
+the latest answer it has on the brand's earlier keys on this plant, each mode by itself (a key that showed only hold
+and normal hides no older answer of the charge; a failure on a later key always stands), so an update never stops
+control by itself; a check that fails or gives up on the new key stops it as on any key.
 **The plan's own commands show steps too** (`plan_proved`, owner rule 2026-11-26): the routine runs only when the plan
 leaves the battery alone, so on a busy plant the check of a new key could wait for weeks. A command the plan wrote on
 the key and the control-failure monitor saw act (`monitor.proves`: a full run of readings that could not have read so
@@ -683,53 +684,92 @@ def _decided_at(report: Mapping[str, Any]) -> datetime:
     return parse_time(report.get("updated_at")) or _NEVER
 
 
-def _last_verdict(
-    reports: Mapping[str, Any], *, key: str, brand: str | None, variants: tuple[str, ...], since: datetime | None,
-    void: Collection[str] = (),
-) -> tuple[str, Mapping[str, Any]] | None:
-    """The brand's last decided report under another key (`updated_at`) with that key, when that verdict is a pass that still
-    stands with the recipe's hold variants (`without_removed_hold`), is later than `since` and is not under a key
-    whose pass is void (`void`); `None` otherwise, also when the last verdict is a failure or void: an older pass
-    says nothing of a plant that stopped obeying since."""
-    decided = [
-        (name, report) for name, report in reports.items()
-        if name != key and firmware_known(name) and isinstance(report, Mapping) and brand is not None
-        and report.get("brand") == brand and report_status(report) in ("passed", "failed")
-    ]
-    if not decided:
-        return None
-    name, last = max(decided, key=lambda item: _decided_at(item[1]))
-    if name in void:
-        return None
-    if since is not None:
-        updated = parse_time(last.get("updated_at"))
-        if updated is None or updated <= since:
-            return None
-    return (name, last) if report_status(without_removed_hold(last, variants)) == "passed" else None
+#: The steps carried over an update, each by itself (`control_report`). An expiry is never one of them.
+CARRIED_MODES: Final = (*BATTERY_MODES, MODE_NORMAL, MODE_PER_PHASE)
 
 
-def _failed_since(
-    reports: Mapping[str, Any], *, key: str, source: str, brand: str | None
-) -> tuple[frozenset[str], frozenset[str]]:
-    """The modes and the hold variants the brand's reports under other keys show as failed, written after the
-    report `source`: a key the plant passed through whose check never became a verdict (hold or normal still open
-    there) but where a mode was ignored, a hold variant failed or the capability per phase was withdrawn."""
-    after = _decided_at(reports[source])
-    modes: set[str] = set()
-    tried: set[str] = set()
-    for name, report in reports.items():
-        if (
-            name in (key, source) or not isinstance(report, Mapping) or report.get("brand") != brand
-            or _decided_at(report) <= after
-        ):
-            continue
-        modes |= {mode for mode, row in _modes(report).items() if mode_verdict(row.get("outcome")) == "fail"}
-        if per_phase(report) == "failed":
-            modes.add(MODE_PER_PHASE)
-        tried |= {
-            str(row.get("variant")) for row in variants_tried(report) if mode_verdict(row.get("outcome")) == "fail"
-        }
-    return frozenset(modes), frozenset(tried)
+def _failed_variants(report: Mapping[str, Any] | None) -> set[str]:
+    """The hold variants a report records as failed."""
+    return {str(row.get("variant")) for row in variants_tried(report) if mode_verdict(row.get("outcome")) == "fail"}
+
+
+def _hold_dropped(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> bool:
+    """Whether a report's hold passed in a variant the recipe no longer has (`names`): still so, or already taken
+    back to pending (`without_removed_hold` leaves the pass among the variants tried). Such a hold is no answer to
+    carry, and no older hold stands in for it: the routine checks the recipe's hold first."""
+    if not names:
+        return False
+    passed = hold_variant(report)
+    if passed is not None:
+        return passed not in names
+    if mode_verdict((_modes(report).get("hold") or {}).get("outcome")) != "pending":
+        return False
+    return any(
+        mode_verdict(row.get("outcome")) == "pass" and row.get("variant") not in names
+        for row in variants_tried(report)
+    )
+
+
+def _carried_steps(
+    current: Mapping[str, Any] | None, reports: Mapping[str, Any], *, key: str, brand: str | None,
+    variants: tuple[str, ...], since: datetime | None, void: Collection[str],
+) -> dict[str, tuple[str, Mapping[str, Any]]]:
+    """Each step's latest answer on the brand's earlier keys, where that answer is a pass that may be carried: the
+    key it stands under and its row, by mode (`CARRIED_MODES`).
+
+    The brand's reports under other keys are read from the newest (`updated_at`). A step takes the first decided
+    answer met, and only that one: a pass is carried, a failure is not and hides every older pass of the step, and a
+    row still open (not judgeable, skipped, missing) is passed over, so it hides nothing. The capability per phase
+    reads as `per_phase` does (a charge tried per phase that failed fails it). A hold is carried as its row, so with
+    the variant it passed in on that key; not when that variant failed on a newer key or on this one, nor when the
+    recipe no longer has it (`_hold_dropped`), and no older hold is looked for then.
+
+    Nothing is read from, or past: a report later than `since` is needed; a check that failed or gave up
+    (`report_status` `failed`) ends the reading before its own rows; a key the routine used all its runs on
+    (`MAX_ATTEMPTS`) ends it after them (what it never showed there stayed off). A key that is no source (`void`, a
+    firmware not read) gives no pass, and its answer still is the step's latest."""
+    if brand is None:
+        return {}
+    earlier = sorted(
+        (
+            (name, report) for name, report in reports.items()
+            if name != key and isinstance(report, Mapping) and report.get("brand") == brand
+        ),
+        key=lambda item: _decided_at(item[1]), reverse=True,
+    )
+    steps: dict[str, tuple[str, Mapping[str, Any]]] = {}
+    answered: set[str] = set()
+    failed_variants = _failed_variants(current)
+    for name, report in earlier:
+        if since is not None and _decided_at(report) <= since:
+            break
+        if report_status(report) == "failed":
+            break
+        source = firmware_known(name) and name not in void
+        rows = _modes(report)
+        for mode in CARRIED_MODES:
+            if mode in answered:
+                continue
+            row = rows.get(mode) or {}
+            verdict = mode_verdict(row.get("outcome"))
+            if mode == MODE_PER_PHASE and per_phase(report) == "failed":
+                verdict = "fail"
+            if mode == "hold" and _hold_dropped(report, variants):
+                answered.add(mode)
+                continue
+            if verdict == "pending":
+                continue
+            answered.add(mode)
+            if verdict != "pass" or not source:
+                continue
+            if mode == "hold" and row.get("variant") in failed_variants:
+                continue
+            steps[mode] = (name, row)
+        failed_variants |= _failed_variants(report)
+        attempts = report.get("attempts")
+        if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
+            break
+    return steps
 
 
 def control_report(
@@ -738,47 +778,39 @@ def control_report(
 ) -> Mapping[str, Any] | None:
     """The report control runs on for `key` (owner rule 2026-11-24: control never stops because of an update).
     `current` is the routine's own report for the key. While the routine still has runs left on it and has not
-    failed, each mode still open there keeps the answer it had in the brand's last passed report on this plant
-    (`_last_verdict` of `reports`, the site's own, never another brand's), so that a change of firmware, integration
+    failed, each step still open there keeps the latest answer it has on the brand's earlier keys on this plant
+    (`_carried_steps` of `reports`, the site's own, never another brand's), each step by itself (owner rule
+    2026-11-26): a key that showed only some steps hides nothing of the others, so a change of firmware, integration
     version or recipe revision leaves control running what ran before until the routine has checked the new key. A
-    mode decided on the new key counts as decided there, pass or fail. `current` itself (the same object) when
-    nothing is carried: no such report, the check on the key failed or gave up (`MAX_ATTEMPTS`), every mode decided,
-    or the hold that passed before already failed on this key. `since`: when the plant last failed a check that
-    left no failed report in `reports` (a person's hardware test, a failed check forgotten by turning control on
-    again): only a pass later than that is carried. `void`: the keys whose stored pass does not count (held back by
-    the release, a person's hardware test failed there since); such a key is no source, and when it holds the last
-    verdict nothing older is carried either. What failed on a key the plant passed through after that report
-    (`_failed_since`) is not carried past it: a mode stays off, and with the hold variant that passed failed there
-    nothing is carried. The carried report names its source
-    (`carried_from`); a measured expiry is never carried (`expiry_measured`: a cap is lifted only by a measurement
-    on the firmware read now)."""
+    step decided on the new key counts as decided there, pass or fail. `current` itself (the same object) when
+    nothing is carried: no such answer, the check on the key failed or gave up (`MAX_ATTEMPTS`), every step decided,
+    or hold and normal do not both pass with what is carried (control would not run on it anyway). A hold taken back
+    on this key because the recipe dropped its variant is not answered by an older key's. `since`: when the plant
+    last failed a check that left no failed report in `reports` (a person's hardware test, a failed check forgotten
+    by turning control on again): only what was written later than that is carried. `void`: the keys whose stored
+    answers do not count (held back by the release, a person's hardware test failed there since). The report says
+    where each carried step came from (`carried_from`: the key by mode); a measured expiry is never carried
+    (`expiry_measured`: a cap is lifted only by a measurement on the firmware read now)."""
     if not firmware_known(key) or report_status(current) == "failed":
         return current
     attempts = (current or {}).get("attempts")
     if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
         return current
-    found = _last_verdict(reports, key=key, brand=brand, variants=variants, since=since, void=void)
-    if found is None:
-        return current
-    source, last = found
-    failed_modes, failed_variants = _failed_since(reports, key=key, source=source, brand=brand)
-    held = hold_variant(last)
-    if held is not None and (held in failed_variants or any(
-        row.get("variant") == held and mode_verdict(row.get("outcome")) == "fail" for row in variants_tried(current)
-    )):
-        return current
+    steps = _carried_steps(current, reports, key=key, brand=brand, variants=variants, since=since, void=void)
     modes: dict[str, Any] = dict(_modes(current))
-    carried = False
-    for name, row in _modes(last).items():
-        if name.startswith(MODE_EXPIRY) or name in failed_modes or mode_verdict(row.get("outcome")) != "pass":
+    carried: dict[str, str] = {}
+    for name, (source, row) in steps.items():
+        if mode_verdict((modes.get(name) or {}).get("outcome")) != "pending":
             continue
-        if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending":
-            modes[name] = row
-            carried = True
+        if name == "hold" and _hold_dropped(current, variants):
+            continue
+        modes[name] = row
+        carried[name] = source
     if not carried:
         return current
     base = dict(current) if current is not None else {"brand": brand, "attempts": 0}
-    return {**base, "key": key, "modes": modes, "carried_from": source}
+    composed = {**base, "key": key, "modes": modes, "carried_from": carried}
+    return composed if report_status(composed) == "passed" else current
 
 
 def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any], *, most: int) -> dict[str, Any]:
