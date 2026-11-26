@@ -323,8 +323,11 @@ def _car_phases(
     or for an "Automatic" one the phase its measured current has it on (`followed_phase`). Empty when
     neither is known (`_phase_unknown`). A three-phase charger `forced_one_phase` (the sun switched it,
     `ChargingController.switched_phases`) is a single-phase "Automatic" one, as the site reckons it
-    (`SiteCapacityController.reckoned_phases`).
+    (`SiteCapacityController.reckoned_phases`). On a single-phase site every charger is on L1.
     """
+    site_phases = _site_phases(site)
+    if len(site_phases) == 1:
+        return site_phases
     wiring = _wiring(site, charger_entry_id)
     if wiring.get("phases", 3) == 3:
         if not forced_one_phase:
@@ -333,6 +336,12 @@ def _car_phases(
     else:
         phase = wiring.get("phase") or site.followed_phase(charger_entry_id)
     return (phase,) if phase else ()
+
+
+def _site_phases(site: SiteCapacityController) -> tuple[PhaseName, ...]:
+    """The site's phases (`SiteCapacityController.site_phases`): L1 alone on a single-phase site."""
+    phases = getattr(site, "site_phases", PHASES)
+    return phases if isinstance(phases, tuple) and phases else PHASES
 
 
 def _phase_unknown(site: SiteCapacityController, charger_entry_id: str, *, forced_one_phase: bool = False) -> bool:
@@ -556,10 +565,14 @@ def _build_observation(
         voltage_v: dict[PhaseName, float | None] = {phase: nominal_v for phase in PHASES}
         phase_cap_a = _observation_caps(site, charger_entry_id, car_delivered_a, phase_unknown=phase_unknown)
     else:
+        site_phases = _site_phases(site)
+        # A phase the site does not have (a single-phase site's L2 and L3) carries nothing.
         signed_grid_w = {
             phase: _liveness_gated(
                 result.phase_liveness, result.phase_signed_active_power_diagnostic_w, phase
             )
+            if phase in site_phases
+            else 0.0
             for phase in PHASES
         }
         voltage_v = {
@@ -603,13 +616,13 @@ def _battery_reading(site: SiteCapacityController) -> tuple[float | None, bool]:
 
 def site_net_grid_w(site: SiteCapacityController) -> float | None:
     """The site's net grid power (positive = import) on solar's basis: a direct site's total grid power (unknown
-    unless fresh), a derived site's signed power summed over every phase, each live (`_liveness_gated`)."""
+    unless fresh), a derived site's signed power summed over every phase it has, each live (`_liveness_gated`)."""
     if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
         return site.grid_total_reading()[0]
     result = site.result
     phases = [
         _liveness_gated(result.phase_liveness, result.phase_signed_active_power_diagnostic_w, phase)
-        for phase in PHASES
+        for phase in _site_phases(site)
     ]
     if any(value is None for value in phases):
         return None

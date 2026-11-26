@@ -433,7 +433,9 @@ charger with no single measured-current sensor), it goes on with the forms.
 
 Manual measurement has two shapes. Choose **one entity with the three phase currents as
 attributes** when a single entity carries them (the Easee Equalizer does). Choose **three separate
-entities, one per phase** when each phase is its own sensor, which is typical for P1 readers. A
+entities, one per phase** when each phase is its own sensor, which is typical for P1 readers. On a
+single-phase supply fill in L1 only and leave L2 and L3 empty: SpotNav then treats the site as one
+phase (see [Add a site](site-and-load-balancing.md#add-a-site)). A
 sensor without a device class can be picked, which a DIY meter reader needs. SpotNav checks the
 unit instead: current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar,
 and apparent power in VA or kVA; a sensor in another unit is refused.

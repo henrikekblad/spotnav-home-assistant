@@ -657,8 +657,8 @@ describe("the site's editor", () => {
         changes: { measurement_mode: "derived_phase_current", derived_L1_power: "sensor.l1_power" },
       },
     ]);
-    // Six fields are named `required`; every one shows its sentence on its own field.
-    for (const name of ["derived_L1_power", "derived_L1_voltage", "derived_L3_voltage"]) {
+    // L1's two fields are named `required` (a single-phase supply has L1 alone); each shows its sentence on its own field.
+    for (const name of ["derived_L1_power", "derived_L1_voltage"]) {
       expect(fieldError(element, name)?.textContent, name).toBe(translate("en", "entity.error.field.required"));
     }
   });

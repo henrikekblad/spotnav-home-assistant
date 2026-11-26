@@ -82,6 +82,7 @@ from .measured_source import (
     site_device_scope,
 )
 from .labels import PHASES
+from ..core.electric import site_phase_count
 from .site_form import (
     parse_site_details,
     parse_site_flags,
@@ -706,16 +707,18 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             charger not in wiring for charger in chargers
         ):
             return "chargers"
+        # A single-phase site is measured on L1 alone (`core.electric.site_phase_count`).
+        phases = PHASES if site_phase_count(data) == 3 else ("L1",)
         if mode == MEASUREMENT_MODE_DIRECT:
             direct = data.get(CONF_DIRECT_ENTITIES) or {}
-            if not (all(direct.get(phase) for phase in PHASES) or data.get(CONF_SITE_CURRENT_SOURCE)):
+            if not (all(direct.get(phase) for phase in phases) or data.get(CONF_SITE_CURRENT_SOURCE)):
                 return "measurement"
         else:
             derived = data.get(CONF_DERIVED_ENTITIES) or {}
             if not all(
                 (derived.get(phase) or {}).get("power")
                 and ((derived.get(phase) or {}).get("voltage") or (derived.get(phase) or {}).get("current"))
-                for phase in PHASES
+                for phase in phases
             ):
                 return "measurement"
         return None

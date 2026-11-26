@@ -7,6 +7,8 @@
 // input, which is a real path and what the tests exercise.
 
 import {
+  phasesNamed,
+  DERIVED_KINDS,
   APPLY_DETECTION,
   DERIVED_KIND_KEYS,
   DETECT_WARNING_KEYS,
@@ -1294,10 +1296,20 @@ export function entityEditorBody(
               { fieldsAfter: "choose" },
             );
       if (phaseSource !== null) {
-        // Chosen instead, all three are needed: one left empty would keep the source unseen.
+        // Chosen instead, L1 is needed, and L2 and L3 both or neither (a single-phase supply has L1 alone): one left
+        // empty would keep the source unseen.
+        // A source that reads all three phases is replaced on all three: naming L1 alone never makes a site single-phase.
+        const sourceOnThree =
+          currentSource !== null &&
+          (currentSource.kind === "attributes"
+            ? currentSource.attributes.L2 !== null || currentSource.attributes.L3 !== null
+            : currentSource.kind === "separate_entities" &&
+              (currentSource.entityIds.L2 !== null || currentSource.entityIds.L3 !== null));
         requirers.push((draft) =>
           currentMode() === MEASUREMENT_DIRECT && phaseSourceKind === "choose"
-            ? PHASES.map((phase) => directFieldName(phase)).filter((name) => (draft[name] ?? "").trim() === "")
+            ? (sourceOnThree ? PHASES.map((phase) => directFieldName(phase)) : phasesNamed(draft, directFieldName)).filter(
+                (name) => (draft[name] ?? "").trim() === "",
+              )
             : [],
         );
         clearers.push((draft) => {
@@ -1490,7 +1502,11 @@ export function entityEditorBody(
         }
         const names =
           currentMode() === MEASUREMENT_DERIVED
-            ? PHASES.map((phase) => derivedFieldName(phase, "power_export"))
+            ? phasesNamed(
+                draft,
+                (phase) => derivedFieldName(phase, "power_export"),
+                DERIVED_KINDS.map((kind) => (phase: string) => derivedFieldName(phase, kind)),
+              )
             : [GRID_TOTAL_FIELDS[1]];
         return names.filter((name) => (draft[name] ?? "").trim() === "");
       };

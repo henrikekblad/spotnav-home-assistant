@@ -46,8 +46,9 @@ async def test_derived_mode_lists_the_required_and_optional_sources_and_both_sig
     fields = fields_of(await ws_call(client, get_message(charger.entry_id)))
 
     for phase in PHASES:
-        assert fields[f"derived_{phase}_power"]["required"] is True
-        assert fields[f"derived_{phase}_voltage"]["required"] is True
+        # L2's and L3's may stay empty for a single-phase supply.
+        assert fields[f"derived_{phase}_power"]["required"] is (phase == "L1")
+        assert fields[f"derived_{phase}_voltage"]["required"] is (phase == "L1")
         for optional in ("power_export", "reactive_power", "apparent_power", "current"):
             assert fields[f"derived_{phase}_{optional}"]["required"] is False
     assert fields["derived_L1_apparent_power"]["allowed_device_classes"] == ["apparent_power"]

@@ -66,6 +66,14 @@ from ..const import (
 
 PhaseName = Literal["L1", "L2", "L3"]
 PHASES: tuple[PhaseName, ...] = ("L1", "L2", "L3")
+#: The phases of a single-phase site (`core.electric.site_phase_count`): its meter measures L1 alone.
+SINGLE_PHASE: tuple[PhaseName, ...] = ("L1",)
+
+
+def phases_of(count: int) -> tuple[PhaseName, ...]:
+    """A site's phases from its phase count (`core.electric.site_phase_count`)."""
+    return SINGLE_PHASE if count == 1 else PHASES
+
 
 # Prerequisites for commanding chargers: a verified grid-meter sign convention
 # (every source was the inverter's own), a signed source per phase (derived mode's
@@ -307,16 +315,18 @@ class ChargerRequest:
         return (self.phase,)
 
 
-def worst_phase(headroom_a: Mapping[PhaseName, float | None]) -> PhaseName | None:
-    """The phase with the least headroom (the first in `PHASES` on a tie), or `None` when any phase's
-    headroom is unknown: an "Automatic" single-phase charger may draw on any of them."""
+def worst_phase(
+    headroom_a: Mapping[PhaseName, float | None], phases: Sequence[PhaseName] = PHASES
+) -> PhaseName | None:
+    """The phase of `phases` (the site's) with the least headroom (the first on a tie), or `None` when any of
+    their headroom is unknown: an "Automatic" single-phase charger may draw on any of them."""
     values: dict[PhaseName, float] = {}
-    for phase in PHASES:
+    for phase in phases:
         value = headroom_a.get(phase)
         if value is None:
             return None
         values[phase] = value
-    return min(PHASES, key=lambda phase: values[phase])
+    return min(phases, key=lambda phase: values[phase])
 
 
 def _draw_on_one_phase(
@@ -348,12 +358,14 @@ def _draw_on_one_phase(
 
 
 def resolve_worst_case_phases(
-    requests: Sequence[ChargerRequest], headroom_a: Mapping[PhaseName, float | None]
+    requests: Sequence[ChargerRequest],
+    headroom_a: Mapping[PhaseName, float | None],
+    phases: Sequence[PhaseName] = PHASES,
 ) -> list[ChargerRequest]:
     """Every "Automatic" single-phase charger not followed to a measured phase, reckoned on the phase
     with the least headroom (`worst_phase`), its draw the largest phase its measured current reads.
     Left unresolved (`phases_used` `None`) only when a phase's headroom is unknown."""
-    worst = worst_phase(headroom_a)
+    worst = worst_phase(headroom_a, phases)
     resolved: list[ChargerRequest] = []
     for request in requests:
         if request.phases != 1 or request.phase is not None or worst is None:
@@ -368,6 +380,27 @@ def resolve_worst_case_phases(
             )
         )
     return resolved
+
+
+def on_site_phases(requests: Sequence[ChargerRequest], phases: Sequence[PhaseName]) -> list[ChargerRequest]:
+    """Every request as it can draw on a site of `phases`: on a single-phase site a charger can use no more phases
+    than the site has, so each is a single-phase one on L1, its draw the largest phase its measured current reads.
+    A three-phase site's requests are returned as they are."""
+    if tuple(phases) == PHASES:
+        return list(requests)
+    phase = phases[0]
+    return [
+        request
+        if request.phases == 1 and request.phase == phase
+        else replace(
+            request,
+            phases=1,
+            phase=phase,
+            phase_basis="chosen",
+            measured_current_a=_draw_on_one_phase(request.measured_current_a, phase),
+        )
+        for request in requests
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +451,9 @@ class SiteCalculationConfig:
     # `direct_sign_confirmed`: only there does the sign give the phase a direction.
     direct_signed: DirectPhaseMeasurement | None = None
     direct_sign_confirmed: Collection[PhaseName] = ()
+    #: The site's phases (`phases_of`): all three, or L1 alone on a single-phase site, whose L2 and L3 are no phase
+    #: at all: never read, never missing, their margins `None`, and every charger on L1 (`on_site_phases`).
+    phases: tuple[PhaseName, ...] = PHASES
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,6 +545,9 @@ class SiteCapacityResult:
     phase_signed_current_a: Mapping[PhaseName, float | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
     )
+    #: The site's phases (`SiteCalculationConfig.phases`): L1 alone on a single-phase site, whose L2 and L3 read
+    #: `None` everywhere above and are never a problem.
+    site_phases: tuple[PhaseName, ...] = PHASES
 
 
 # Accepted ampere spellings, shared via `normalized_ampere_unit` with
@@ -989,6 +1028,7 @@ def estimated_headroom_if_battery_yields(
     battery: BatteryYieldEstimate | None,
     voltage_v: Mapping[PhaseName, float | None] | None,
     max_age_s: float,
+    phases: Sequence[PhaseName] = PHASES,
 ) -> tuple[dict[PhaseName, float | None], BatteryPhaseBasis]:
     """`headroom_a` plus the battery's charging current, if it stopped now.
 
@@ -1019,21 +1059,21 @@ def estimated_headroom_if_battery_yields(
         confirmation is not None
         and _fresh_and_positive(confirmation)
         and per_phase is not None
-        and all(_fresh_and_positive(per_phase.get(phase)) for phase in PHASES)
+        and all(_fresh_and_positive(per_phase.get(phase)) for phase in phases)
     ):
         return (
-            {phase: _added_to_headroom(phase, per_phase.get(phase).value) for phase in PHASES},
+            {phase: _added_to_headroom(phase, per_phase.get(phase).value) if phase in phases else None for phase in PHASES},
             "measured_per_phase",
         )
 
     aggregate = battery.aggregate_charge_power_w
     if aggregate is not None and _fresh_and_positive(aggregate) and voltage_v is not None:
-        share_w = aggregate.value / len(PHASES)
+        share_w = aggregate.value / len(phases)
         estimate: dict[PhaseName, float | None] = {}
         any_computed = False
         for phase in PHASES:
             voltage = voltage_v.get(phase)
-            if voltage is None or voltage <= 0:
+            if phase not in phases or voltage is None or voltage <= 0:
                 estimate[phase] = None
                 continue
             estimate[phase] = _added_to_headroom(phase, share_w / voltage)
@@ -1077,6 +1117,7 @@ def charger_order_key(priority: str | int, order: int, charger_entry_id: str) ->
 def allocate_chargers(
     phase_headroom_a: Mapping[PhaseName, float],
     requests: Sequence[ChargerRequest],
+    phases: Sequence[PhaseName] = PHASES,
 ) -> dict[str, ChargerAllocation]:
     """Split each phase's headroom across every charger that uses it.
 
@@ -1086,8 +1127,9 @@ def allocate_chargers(
     charger not followed to a measured phase is reckoned on the phase with the least
     headroom (`resolve_worst_case_phases`).
     """
-    # An "Automatic" single-phase charger is reckoned on the phase with the least headroom.
-    requests = resolve_worst_case_phases(requests, phase_headroom_a)
+    # An "Automatic" single-phase charger is reckoned on the phase with the least headroom; on a single-phase site
+    # every charger is on L1.
+    requests = resolve_worst_case_phases(on_site_phases(requests, phases), phase_headroom_a, phases)
     phases_blocked_by_unknown_request: set[PhaseName] = set()
     for request in requests:
         if request.requested_current_a is None:
@@ -1217,8 +1259,10 @@ def calculate_site_capacity(
             bases=bases,
         )
 
-    # Every phase is usable here, so every value is a real float.
-    confirmed_measured = cast(dict[PhaseName, float], measured)
+    # Every phase of the site is usable here, so every value is a real float; a phase the site does not have
+    # (a single-phase site's L2 and L3) is reckoned at 0 A and its margins are `None` in the result.
+    confirmed_measured = {phase: 0.0 if measured[phase] is None else cast(float, measured[phase]) for phase in PHASES}
+    requests = on_site_phases(requests, config.phases)
     # Phases accepted on a re-reported unchanged value: usable, at a discount.
     uncertain_phases = _confirmed_unchanged_phases(liveness)
     confidence: Confidence = "guarded" if uncertain_phases else mode_confidence
@@ -1252,19 +1296,23 @@ def calculate_site_capacity(
     # the site exports and the direction is known. Without a known direction the charger is
     # treated as additive (`measured_margin`); the odd reading is only reported.
     exceeds = tuple(
-        phase for phase in PHASES if phase in inconsistent_phases and signed_margin[phase] is None
+        phase for phase in config.phases if phase in inconsistent_phases and signed_margin[phase] is None
     )
-    allocations = allocate_chargers(headroom, requests)
+    allocations = allocate_chargers(headroom, requests, config.phases)
 
-    limiting = _limiting_phase(headroom, PHASES)
+    limiting = _limiting_phase(headroom, config.phases)
     ordered_allocations = tuple(allocations[request.charger_entry_id] for request in requests)
     battery_estimate, battery_basis = estimated_headroom_if_battery_yields(
-        headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s
+        headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s, config.phases
     )
     signed_power, signed_power_age, signed_power_reason, signed_power_diagnostic = (
         _signed_active_power_by_phase(config)
     )
     voltage_diagnostic = _derived_voltage_diagnostic_by_phase(config)
+    if config.phases != PHASES:
+        headroom = measured_margin = _site_phases_only(measured_margin, config.phases)
+        credited_headroom = _site_phases_only(credited_headroom, config.phases)
+        signed_margin = _site_phases_only(signed_margin, config.phases)
 
     return SiteCapacityResult(
         state="observing",
@@ -1296,7 +1344,13 @@ def calculate_site_capacity(
         charger_reading_exceeds_site_phases=exceeds,
         phase_direction_source=_direction_source_by_phase(config),
         phase_signed_current_a=_signed_current_diagnostic_by_phase(config),
+        site_phases=config.phases,
     )
+
+
+def _site_phases_only(values: Mapping[PhaseName, float | None], phases: Sequence[PhaseName]) -> dict[PhaseName, float | None]:
+    """`values` with every phase the site does not have as `None`."""
+    return {phase: values.get(phase) if phase in phases else None for phase in PHASES}
 
 
 def _signed_margin_per_phase(
@@ -1383,7 +1437,7 @@ def _short_circuit(
         for request in requests
     )
     battery_estimate, battery_basis = estimated_headroom_if_battery_yields(
-        headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s
+        headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s, config.phases
     )
     signed_power, signed_power_age, signed_power_reason, signed_power_diagnostic = (
         _signed_active_power_by_phase(config)
@@ -1417,6 +1471,7 @@ def _short_circuit(
         estimated_power_factor=ESTIMATED_POWER_FACTOR if _any_estimated(bases) else None,
         phase_direction_source=_direction_source_by_phase(config),
         phase_signed_current_a=_signed_current_diagnostic_by_phase(config),
+        site_phases=config.phases,
     )
 
 
@@ -1624,6 +1679,10 @@ def _resolve_measurements(
     bases: dict[PhaseName, CurrentBasis | None] = {phase: None for phase in PHASES}
 
     for phase in PHASES:
+        if phase not in config.phases:
+            # Not a phase of this (single-phase) site: nothing to read, nothing missing.
+            values[phase] = ages[phase] = report_ages[phase] = liveness[phase] = None
+            continue
         if config.measurement_mode == "direct_phase_current":
             phase_value = config.direct.get(phase) if config.direct is not None else None
             if phase_value is None:

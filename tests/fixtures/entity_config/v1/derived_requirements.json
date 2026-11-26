@@ -261,7 +261,7 @@
         },
         "field": "direct_L2",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -284,7 +284,7 @@
         },
         "field": "direct_L3",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -871,22 +871,6 @@
     {
       "code": "required",
       "field": "derived_L1_voltage"
-    },
-    {
-      "code": "required",
-      "field": "derived_L2_power"
-    },
-    {
-      "code": "required",
-      "field": "derived_L2_voltage"
-    },
-    {
-      "code": "required",
-      "field": "derived_L3_power"
-    },
-    {
-      "code": "required",
-      "field": "derived_L3_voltage"
     }
   ],
   "ok": false

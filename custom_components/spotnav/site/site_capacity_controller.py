@@ -107,7 +107,7 @@ from ..execution.controller import (
 from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
-from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
+from ..core.electric import PHASE_V, site_fuse_kw, site_phase_count, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from .does_not_fit import site_does_not_fit
 from .not_ready import site_not_ready
@@ -129,6 +129,7 @@ from ..battery.runtime import BatteryShadow
 from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .meter_cadence import ReportCadence, solar_liveness
+from .site_detection import DEAD_PHASE_BELOW_V, DEAD_PHASE_IDLE_A, DEAD_PHASE_IDLE_W
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
 from .charger_test_hold import ChargerTestHold
@@ -206,6 +207,7 @@ from .site_capacity import (
     PhaseBasis,
     PhaseName,
     PHASES,
+    phases_of,
     PhaseValue,
     resolve_worst_case_phases,
     SiteCalculationConfig,
@@ -694,6 +696,12 @@ class RegulatedStep:
     setpoint: int | float | None = None
     site_read_at: float | None = None
     phases_read_at: Mapping[PhaseName, float | None] | None = None
+
+
+def _phase_count(site: Any) -> int | None:
+    """A site controller's phase count (`SiteCapacityController.site_phases`), `None` for a stand-in without one."""
+    phases = getattr(site, "site_phases", None)
+    return len(phases) if isinstance(phases, tuple) and phases else None
 
 
 class SiteCapacityController:
@@ -2111,7 +2119,9 @@ class SiteCapacityController:
                 )
                 for phase in PHASES
             }
-            battery_bound = self._battery_fall_credit(credit, battery_now, site_a, theirs_by_phase, tuple(values))
+            battery_bound = self._battery_fall_credit(
+                credit, battery_now, site_a, theirs_by_phase, tuple(values), self.site_phases
+            )
             for phase, value in values.items():
                 if value.value is None or value.problem is not None:
                     continue
@@ -2170,6 +2180,7 @@ class SiteCapacityController:
         site_a: Mapping[PhaseName, float | None],
         theirs_by_phase: Mapping[PhaseName, float],
         car_phases: tuple[PhaseName, ...],
+        site_phases: tuple[PhaseName, ...] = PHASES,
     ) -> dict[PhaseName, float] | None:
         """What a just-started car drew per phase it uses, by the site's rise since the start and what the home battery
         stopped drawing since, where the battery changed; `None` where it cannot be said (no fresh battery reading at
@@ -2186,7 +2197,7 @@ class SiteCapacityController:
         if before_w is None or now_w is None:
             return None
         rises: dict[PhaseName, float] = {}
-        for phase in PHASES:
+        for phase in site_phases:
             now_a, before_a = site_a.get(phase), credit.baseline_a.get(phase)
             if now_a is None or before_a is None:
                 return None
@@ -5365,7 +5376,67 @@ class SiteCapacityController:
             battery=self._read_battery_estimate(),
             direct_signed=direct_signed,
             direct_sign_confirmed=self._current_sign.confirmed if direct_signed is not None else (),
+            phases=self.site_phases,
         )
+
+    @property
+    def site_phases(self) -> tuple[PhaseName, ...]:
+        """The site's phases: L1 alone on a single-phase site (its meter measures L1 alone,
+        `core.electric.site_phase_count`, or a derived site's L2 and L3 have no supply, `_dead_other_phases`), else
+        all three."""
+        if site_phase_count(self.config) == 1 or self._dead_other_phases():
+            return phases_of(1)
+        return PHASES
+
+    def _dead_other_phases(self) -> bool:
+        """Whether a derived site's L2 and L3 both have no supply now while L1 has: each one's own voltage reads below
+        `DEAD_PHASE_BELOW_V` and its power (and current, where read) about nothing, fresh, and L1's voltage reads above
+        it. An integration that makes all three phases' entities on a single-phase supply (hass-victron on a
+        single-phase GX). A phase whose readings are missing or unknown is no such evidence: on a three-phase meter
+        that is a phase unread, which the site reports and never leaves unwatched."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+            return False
+        entities: Mapping[str, Any] = self.config.get(CONF_DERIVED_ENTITIES) or {}
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+
+        def reading(entity_id: Any, kind: str = "voltage") -> float | None:
+            state = self._state_or_none(entity_id) if isinstance(entity_id, str) and entity_id else None
+            if state is None:
+                return None
+            unit = state.attributes.get("unit_of_measurement")
+            if kind == "voltage":
+                # 0 V is the evidence looked for, which the voltage's own check refuses as no reading.
+                try:
+                    value: float | None = float(state.state)
+                except (TypeError, ValueError):
+                    return None
+                problem = None if str(unit or "").strip().lower() == "v" else "invalid"
+            else:
+                classify = classify_power if kind == "power" else classify_current
+                value, problem = classify(state.state, unit)
+            if value is None or problem is not None:
+                return None
+            age_s = (dt_util.utcnow() - state.last_updated).total_seconds()
+            reported = getattr(state, "last_reported", None)
+            if reported is not None:
+                age_s = min(age_s, (dt_util.utcnow() - reported).total_seconds())
+            return value if math.isfinite(value) and age_s <= max_age_s else None
+
+        l1_volts = reading((entities.get("L1") or {}).get("voltage"))
+        if l1_volts is None or l1_volts < DEAD_PHASE_BELOW_V:
+            return False
+        for phase in ("L2", "L3"):
+            phase_entities = entities.get(phase) or {}
+            volts = reading(phase_entities.get("voltage"))
+            if volts is None or abs(volts) >= DEAD_PHASE_BELOW_V:
+                return False
+            for key, idle in (("power", DEAD_PHASE_IDLE_W), ("current", DEAD_PHASE_IDLE_A)):
+                if not phase_entities.get(key):
+                    continue
+                value = reading(phase_entities.get(key), key)
+                if value is None or abs(value) > idle:
+                    return False
+        return True
 
     def _read_battery_estimate(self) -> BatteryYieldEstimate | None:
         """Optional diagnostic home-battery input (`site/site_capacity.py`); `None` when neither a
@@ -5436,7 +5507,7 @@ class SiteCapacityController:
             requests.append(request)
         latest: SiteCapacityResult | None = getattr(self, "result", None)
         if resolve and latest is not None:
-            requests = resolve_worst_case_phases(requests, latest.measured_margin_a)
+            requests = resolve_worst_case_phases(requests, latest.measured_margin_a, self.site_phases)
         if not credit:
             return requests
         return self._with_credits(requests)
@@ -5473,7 +5544,11 @@ class SiteCapacityController:
         """The phases a charger is reckoned on and its chosen phase: its wiring, except that a three-phase charger
         the sun forced to one phase (`ChargingController.switched_phases`) is a single-phase one with no phase
         chosen ("Automatic": the phase its measured current shows, else the worst), exactly as such a charger is
-        reckoned. A must-lower never waits for, and never uses, a phase switch."""
+        reckoned. A must-lower never waits for, and never uses, a phase switch. On a single-phase site every charger is
+        a single-phase one on L1, whatever its wiring says: it can use no more phases than the site has."""
+        site_phases = self.site_phases
+        if len(site_phases) == 1:
+            return 1, site_phases[0]
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         phases = wiring.get("phases", 3)
         phase = wiring.get("phase")
@@ -5594,7 +5669,7 @@ class SiteCapacityController:
             return value.value
 
         self._current_sign.observe(
-            {phase: fresh(signed.get(phase)) for phase in PHASES}, fresh(self.grid_total_power())
+            {phase: fresh(signed.get(phase)) for phase in PHASES}, fresh(self.grid_total_power()), self.site_phases
         )
 
     def _compute_regulator_decisions(self) -> dict[str, RegulatorDecision]:
@@ -5761,9 +5836,9 @@ class SiteCapacityController:
         return tuple(stat for stat, value in belongs.items() if value == BELONG_HEAT)
 
     def _main_fuse_kw(self) -> float | None:
-        """The main fuse's capacity (kW, three phases on the site's network, `site_fuse_kw`); `None` where it is not
-        set, 0 kW where it is stored but unusable."""
-        return site_fuse_kw(self.config)
+        """The main fuse's capacity (kW, three phases on the site's network or the one phase of a single-phase site,
+        `site_fuse_kw`); `None` where it is not set, 0 kW where it is stored but unusable."""
+        return site_fuse_kw(self.config, _phase_count(self))
 
     def _heat_meter_setting(self) -> str | None:
         """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it
@@ -5869,9 +5944,9 @@ class SiteCapacityController:
         return True, None if battery_w is None else max(0.0, -battery_w)
 
     def _import_ceiling_w(self) -> float:
-        """The most the import target's budget lets the chargers draw (W): the main fuse as three-phase power on the
-        site's network (`site_fuse_kw`); unbounded without a fuse, 0 W for one that is stored but unusable."""
-        fuse_kw = site_fuse_kw(self.config)
+        """The most the import target's budget lets the chargers draw (W): the main fuse as power on the site's
+        network and phases (`site_fuse_kw`); unbounded without a fuse, 0 W for one that is stored but unusable."""
+        fuse_kw = site_fuse_kw(self.config, _phase_count(self))
         return float("inf") if fuse_kw is None else fuse_kw * 1000.0
 
     def _typical_house_kw(self) -> float | None:
@@ -6225,19 +6300,20 @@ class SiteCapacityController:
             return self._fresh_reading(total, now, max_age_s)
         powers = self.result.phase_signed_active_power_w
         ages = self.result.phase_signed_active_power_age_s
-        if any(powers.get(phase) is None or ages.get(phase) is None for phase in PHASES):
+        phases = self.site_phases
+        if any(powers.get(phase) is None or ages.get(phase) is None for phase in phases):
             return None
-        oldest = max(cast(float, ages[phase]) for phase in PHASES)
+        oldest = max(cast(float, ages[phase]) for phase in phases)
         if oldest > max_age_s:
             return None
-        return GridSignReading(sum(cast(float, powers[phase]) for phase in PHASES), now - oldest)
+        return GridSignReading(sum(cast(float, powers[phase]) for phase in phases), now - oldest)
 
     def _grid_sign_current(self, now: float, max_age_s: float) -> GridSignReading | None:
         """A direct site's signed phase currents added up at the nominal voltage (positive = import as read)."""
         signed = self._read_direct_signed_entities()
         if signed is None:
             return None
-        readings = [self._fresh_reading(signed.get(phase), now, max_age_s) for phase in PHASES]
+        readings = [self._fresh_reading(signed.get(phase), now, max_age_s) for phase in self.site_phases]
         if any(reading is None for reading in readings):
             return None
         found = [cast(GridSignReading, reading) for reading in readings]
@@ -6866,7 +6942,7 @@ class SiteCapacityController:
         returns a `PhaseValue`, even if currently unusable. An import/export pair is import minus
         export, and a missing or invalid half makes the whole value missing or invalid, never zero.
         `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. A total beyond what the main
-        fuse could carry on all three phases is invalid (`implausible_power`). Used by the solar
+        fuse could carry on all the site's phases is invalid (`implausible_power`). Used by the solar
         executor and diagnostics, and on a direct site only to confirm the sign of its per-phase currents
         (`site/current_sign.py`); never as amps by the fuse protection, which stays per phase on the
         measured currents.
@@ -6881,7 +6957,7 @@ class SiteCapacityController:
         )
         main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
         if total.value is not None and implausible_power(
-            total.value, float(main_fuse_a) if main_fuse_a is not None else None, len(PHASES)
+            total.value, float(main_fuse_a) if main_fuse_a is not None else None, len(self.site_phases)
         ):
             return PhaseValue(None, total.age_s, "invalid", report_age_s=total.report_age_s)
         return total

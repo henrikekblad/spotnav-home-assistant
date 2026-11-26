@@ -14,6 +14,7 @@ import {
   fieldErrorKey,
   phaseField,
   phaseFieldNames,
+  phasesNamed,
   type EntityConfig,
 } from "../src/entity-config";
 import { LANGUAGES, translate } from "../src/i18n";
@@ -345,5 +346,19 @@ describe("the site's measurement, warnings and detection", () => {
     const read = config("get_direct");
     expect(phaseField(read, "derived_L1_apparent_power")).toMatchObject({ required: false, deviceClasses: ["apparent_power"] });
     expect(phaseField(read, "derived_L1_power")).toMatchObject({ required: true });
+  });
+
+  it("lets a single-phase supply leave L2 and L3 empty, and wants both once either is named", () => {
+    const read = config("get_direct");
+    expect(phaseField(read, "derived_L2_power")).toMatchObject({ required: false });
+    expect(phaseField(read, "derived_L3_voltage")).toMatchObject({ required: false });
+    const direct = (phase: string): string => `direct_${phase}`;
+    expect(phasesNamed({ direct_L1: "sensor.l1" }, direct)).toEqual(["direct_L1"]);
+    expect(phasesNamed({ direct_L1: "sensor.l1", direct_L2: " " }, direct)).toEqual(["direct_L1"]);
+    expect(phasesNamed({ direct_L1: "sensor.l1", direct_L3: "sensor.l3" }, direct)).toEqual([
+      "direct_L1",
+      "direct_L2",
+      "direct_L3",
+    ]);
   });
 });

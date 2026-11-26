@@ -349,11 +349,14 @@ class Caps:
 
     def _plant_phases(self, control: BrandControl | None) -> int:
         """The phases the plant spreads a grid charge over: its Output Type (Solis: the inverter's own type) when
-        it shows one, else the brand's (`commands.plant_phases`)."""
+        it shows one, else the brand's (`commands.plant_phases`); never more than the site has: on a single-phase
+        site one, so every cap is the one phase's room, never three times the fuse."""
         if control is None:
             return 1
         state = read_plant_entity(self.hass, self.site.config, control.output_type)
-        return plant_phases(control, state)
+        site_phases = getattr(self.site, "site_phases", None)
+        site_count = len(site_phases) if isinstance(site_phases, tuple) and site_phases else 3
+        return min(plant_phases(control, state), site_count)
 
     def _house_peak_kw(self, now: datetime) -> float | None:
         """The house forecast's p90 for the running hour (kW), read once an hour; `None` when it has none."""

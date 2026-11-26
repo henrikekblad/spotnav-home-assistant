@@ -35,7 +35,7 @@ from ..const import (
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
-from ..core.electric import stored_safety_margin_a
+from ..core.electric import site_phase_count, stored_safety_margin_a
 from ..execution.controller import (
     CURRENT_RANGE_MIN_A,
     CURRENT_RANGE_SOURCE_DEFAULT,
@@ -235,8 +235,12 @@ def site_for_charger(hass: HomeAssistant, charger_entry_id: str) -> ConfigEntry 
 
 
 def wired_phases(site: ConfigEntry | None, charger_entry_id: str) -> int | None:
+    """The phases the site wires the charger on (1 or 3), `None` where it says nothing; on a single-phase site 1,
+    whatever the wiring says: a charger can use no more phases than the site has."""
     if site is None:
         return None
+    if site_phase_count(site.data) == 1:
+        return 1
     wiring = (site.data.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id)
     phases = wiring.get("phases") if isinstance(wiring, dict) else None
     return phases if phases in (1, 3) and not isinstance(phases, bool) else None

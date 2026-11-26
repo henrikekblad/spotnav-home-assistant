@@ -99,7 +99,7 @@ def measurement_problem(
     if result.state not in UNHEALTHY_STATES:
         return None
     problems: list[PhaseProblem] = []
-    for phase in PHASES:
+    for phase in result.site_phases:
         value = result.measured_phase_current_a.get(phase)
         liveness = result.phase_liveness.get(phase)
         if value is None:
@@ -108,7 +108,7 @@ def measurement_problem(
             problems.append(PhaseProblem(phase, "stale", entities.get(phase), result.phase_age_s.get(phase)))
     if not problems:
         return None
-    gone, inverter = _unavailable_together(problems, unavailable, platforms or {})
+    gone, inverter = _unavailable_together(problems, unavailable, platforms or {}, len(result.site_phases))
     negative_phases = tuple(
         problem.phase for problem in problems if problem.cause == "no_value" and problem.phase in negative
     )
@@ -116,7 +116,7 @@ def measurement_problem(
 
 
 def _unavailable_together(
-    problems: list[PhaseProblem], unavailable: Collection[str], platforms: Mapping[str, str]
+    problems: list[PhaseProblem], unavailable: Collection[str], platforms: Mapping[str, str], phases: int = len(PHASES)
 ) -> tuple[tuple[str, ...], bool]:
     """The entities of a problem that is only the meter's sensors being unavailable, and whether they are
     an inverter's: every problem phase has no value from a named entity that reads `unavailable`/`unknown`,
@@ -127,6 +127,6 @@ def _unavailable_together(
     if not all(entity_id in unavailable for entity_id in entity_ids):
         return (), False
     inverter = all(platforms.get(entity_id) in INVERTER_PLATFORMS for entity_id in entity_ids)
-    if len(problems) < len(PHASES) and not inverter:
+    if len(problems) < phases and not inverter:
         return (), False
     return tuple(dict.fromkeys(entity_ids)), inverter

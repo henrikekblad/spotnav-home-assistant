@@ -15,7 +15,8 @@ into a wire refusal and a pass into a write.
   for a charger it can work on (`phase_switching_offered`); turning it on anywhere else is `not_writable`,
   turning it off is always allowed.
 * Site fields (`SITE_FIELDS`): main fuse (A), measurement mode (`direct|derived`), the per-phase
-  meters each mode needs (three `direct_L{n}`, or per phase in derived mode the required
+  meters each mode needs, on L1 alone for a single-phase supply or on all three phases (`direct_L{n}`, or per
+  phase in derived mode the required
   `derived_L{n}_{power,voltage}` (a phase with its own `_current` may leave the voltage empty: the site's
   nominal voltage stands in) and the optional `_power_export` (the export half of an import/export
   pair), `_reactive_power`, `_apparent_power` and `_current`; without the last three the fuse check
@@ -88,7 +89,7 @@ from ..const import (
 from ..planning.first_run import charger_phases_from_entry, site_for_charger
 from ..site.priority_store import charger_priority_value
 from ..planning.phases import charger_wiring, dc_charger, DEFAULT_WIRING_PHASES
-from ..core.electric import stored_safety_margin_a
+from ..core.electric import site_phase_count, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.heat_meter import needs_setting
@@ -264,6 +265,29 @@ def required_derived_fields() -> tuple[str, ...]:
 _OPTIONAL_PHASE_FIELDS: Final = frozenset(
     derived_field(phase, sub) for phase in PHASES for sub in DERIVED_SUBFIELDS if sub not in DERIVED_REQUIRED_SUBFIELDS
 )
+#: The phases a single-phase supply does not have: their meters may stay empty, both of them
+#: (`core.electric.site_phase_count`), and a site is measured on L1 alone or on all three.
+_OTHER_PHASES: Final = ("L2", "L3")
+#: The meter fields of L2 and L3 that are required on a three-phase site and empty on a single-phase one.
+_OTHER_PHASE_FIELDS: Final = frozenset(
+    [direct_field(phase) for phase in _OTHER_PHASES]
+    + [derived_field(phase, sub) for phase in _OTHER_PHASES for sub in DERIVED_REQUIRED_SUBFIELDS]
+)
+
+
+def _phase_measured(mode: str, phase: str, value_of: Callable[[str], Any]) -> bool:
+    """Whether a phase is given a meter: its current in direct mode, any of its sensors in derived mode."""
+    if mode == MEASUREMENT_MODE_DIRECT:
+        return bool(value_of(direct_field(phase)))
+    return any(value_of(derived_field(phase, sub)) for sub in DERIVED_SUBFIELDS)
+
+
+def _measured_phases(mode: str, value_of: Callable[[str], Any]) -> tuple[str, ...]:
+    """The phases a site's meter fields name: L1 alone (a single-phase supply) when neither L2 nor L3 is given its
+    meter, else all three (any one left empty is then missing)."""
+    if any(_phase_measured(mode, phase, value_of) for phase in _OTHER_PHASES):
+        return PHASES
+    return ("L1",)
 
 
 # Shared with the flow's `vol.Range` on these two fields so the numbers cannot drift.
@@ -1197,7 +1221,9 @@ def site_field_errors(
             continue
         value = changes[field]
         if not value:
-            if field in _OPTIONAL_PHASE_FIELDS:
+            if field in _OPTIONAL_PHASE_FIELDS or field in _OTHER_PHASE_FIELDS:
+                # L2's and L3's meters may be cleared for a single-phase supply; whether the set that results is
+                # whole is checked below.
                 continue
             errors.append(FieldError(field, ERR_REQUIRED))
             continue
@@ -1219,25 +1245,37 @@ def site_field_errors(
     if FIELD_APPLY_DETECTION in changes:
         # The detected candidate supplies the whole set; nothing else is required of this write.
         return errors
-    required_fields = direct_fields() if mode == MEASUREMENT_MODE_DIRECT else required_derived_fields()
+    def resulting(name: str) -> Any:
+        return changes.get(name, current[name])
+
+    # L1 alone (a single-phase supply) or all three phases: once L2 or L3 is given its meter, every phase needs one.
+    measured = _measured_phases(mode, resulting)
+    if mode == MEASUREMENT_MODE_DIRECT and stored_site_current_source(entry) is not None and site_phase_count(entry.data) == 3:
+        # Entities named in place of a stored source that measures three phases replace it on all three: a site is
+        # never made single-phase by naming L1 alone.
+        measured = PHASES
+    required_fields = tuple(
+        field
+        for field in (direct_fields() if mode == MEASUREMENT_MODE_DIRECT else required_derived_fields())
+        if any(field.startswith(f"{prefix}_{phase}") for phase in measured for prefix in ("direct", "derived"))
+    )
     if (
         mode == MEASUREMENT_MODE_DIRECT
         and stored_site_current_source(entry) is not None
         and not any(field in changes for field in direct_fields())
     ):
-        # The stored current source measures every phase; naming one entity replaces it, and then all
-        # three are needed.
+        # The stored current source measures the site's phases; naming one entity replaces it, and then L1, or all
+        # three, are needed.
         required_fields = ()
     for field in required_fields:
         if field in failed_fields:
             continue
-        resulting = changes.get(field, current[field])
-        if not resulting and not _voltage_stands_in(field, lambda name: changes.get(name, current[name])):
+        if not resulting(field) and not _voltage_stands_in(field, resulting):
             errors.append(FieldError(field, ERR_REQUIRED))
     if mode != MEASUREMENT_MODE_DIRECT:
-        # An export half on some phases only is no pair: all three or none (a half-filled set reads the
-        # others as import and silently drops the sign of the meter).
-        export_fields = [derived_field(phase, "power_export") for phase in PHASES]
+        # An export half on some phases only is no pair: on every phase the site measures or none (a half-filled
+        # set reads the others as import and silently drops the sign of the meter).
+        export_fields = [derived_field(phase, "power_export") for phase in measured]
         filled = [bool(changes.get(field, current[field])) for field in export_fields]
         if any(filled) and not all(filled):
             errors.extend(
@@ -1352,7 +1390,10 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
                 hass,
                 field=field,
                 scope="site",
-                required=field not in _OPTIONAL_PHASE_FIELDS and not _voltage_stands_in(field, values.__getitem__),
+                # L2's and L3's meters may stay empty for a single-phase supply (`_measured_phases`).
+                required=field not in _OPTIONAL_PHASE_FIELDS
+                and field not in _OTHER_PHASE_FIELDS
+                and not _voltage_stands_in(field, values.__getitem__),
                 writable=True,
                 current_entity_id=values[field] or None,
             )

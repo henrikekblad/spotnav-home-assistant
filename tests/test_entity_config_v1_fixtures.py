@@ -241,7 +241,8 @@ async def _derived_requirements(hass, ws, _token) -> dict[str, Any]:
             charger.entry_id, scope="site", changes={"measurement_mode": MEASUREMENT_MODE_DERIVED}
         ),
     )
-    assert len(frame["result"]["field_errors"]) == 6
+    # L1's two: a single-phase supply has L1 alone.
+    assert len(frame["result"]["field_errors"]) == 2
     return frame["result"]
 
 

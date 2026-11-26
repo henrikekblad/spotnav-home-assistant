@@ -307,14 +307,15 @@ async def test_the_heat_pump_meter_is_offered_while_not_found_and_written_withou
     assert "heat_meter_entity" not in names
 
 
-async def test_switching_to_derived_needs_the_six_required_meters_and_keeps_direct(hass: HomeAssistant, hass_ws_client) -> None:
+async def test_switching_to_derived_needs_the_required_meters_and_keeps_direct(hass: HomeAssistant, hass_ws_client) -> None:
     charger, site = await setup_charger_and_site(hass)
     client = await admin(hass, hass_ws_client)
     mode = {"measurement_mode": MEASUREMENT_MODE_DERIVED}
 
     refused = (await ws_call(client, update_entity_config_message(charger.entry_id, scope="site", changes=mode)))["result"]
     assert refused["error"] == "spotnav_invalid_value"
-    assert len(refused["field_errors"]) == 6
+    # L1's two at least: a single-phase supply has L1 alone, and naming L2 or L3 then needs all six.
+    assert sorted(item["field"] for item in refused["field_errors"]) == ["derived_L1_power", "derived_L1_voltage"]
     assert {item["code"] for item in refused["field_errors"]} == {"required"}
 
     changes = dict(mode)

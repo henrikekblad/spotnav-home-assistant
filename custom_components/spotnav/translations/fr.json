@@ -103,7 +103,7 @@
       },
       "site_details": {
         "title": "Entités de mesure",
-        "description": "Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois.{charger_hint}",
+        "description": "Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois. Pour un raccordement monophasé, renseignez seulement L1.{charger_hint}",
         "data": {
           "direct_L1": "Courant réseau L1",
           "direct_L2": "Courant réseau L2",
@@ -324,7 +324,8 @@
       "fee_value_required": "Saisissez votre propre montant, ou choisissez la suggestion.",
       "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien.",
       "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu.",
-      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3."
+      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3.",
+      "phases_incomplete": "Pour un raccordement monophasé, laissez L2 et L3 vides ; sinon, renseignez les trois phases."
     }
   },
   "options": {
@@ -404,7 +405,7 @@
       },
       "site_details": {
         "title": "Entités de mesure",
-        "description": "{reason}Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois.",
+        "description": "{reason}Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois. Pour un raccordement monophasé, renseignez seulement L1.",
         "data": {
           "direct_L1": "Courant réseau L1",
           "direct_L2": "Courant réseau L2",
@@ -527,7 +528,8 @@
       "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu.",
       "switch_load_incomplete": "Indiquez la puissance nominale et la durée de fonctionnement de la charge.",
       "switch_load_floor_pair": "Le capteur de température et la température minimale vont ensemble : indiquez les deux ou aucun.",
-      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3."
+      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3.",
+      "phases_incomplete": "Pour un raccordement monophasé, laissez L2 et L3 vides ; sinon, renseignez les trois phases."
     }
   },
   "selector": {

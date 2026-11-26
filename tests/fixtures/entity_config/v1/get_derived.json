@@ -320,7 +320,7 @@
         "effective": null,
         "field": "derived_L2_power",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -335,7 +335,7 @@
         "effective": null,
         "field": "derived_L2_voltage",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -410,7 +410,7 @@
         "effective": null,
         "field": "derived_L3_power",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -425,7 +425,7 @@
         "effective": null,
         "field": "derived_L3_voltage",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },

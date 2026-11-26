@@ -26,7 +26,7 @@ right, which only stops the regulator deciding on it until it is confirmed again
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from ..core.electric import PHASE_V
 from .site_capacity import PHASES, PhaseName
@@ -66,19 +66,22 @@ class CurrentSignCheck:
         self._confirmed.discard(phase)
 
     def observe(
-        self, signed_current_a: Mapping[PhaseName, float | None], total_w: float | None
+        self,
+        signed_current_a: Mapping[PhaseName, float | None],
+        total_w: float | None,
+        phases: Sequence[PhaseName] = PHASES,
     ) -> None:
         """Take one new reading: each phase's signed current (fresh, else `None`) and the meter's
-        total grid power (fresh, else `None`)."""
+        total grid power (fresh, else `None`), over the site's `phases` (L1 alone on a single-phase site)."""
         if total_w is None or abs(total_w) <= self._zero_margin_w:
             return
         powers: dict[PhaseName, float] = {}
-        for phase in PHASES:
+        for phase in phases:
             current = signed_current_a.get(phase)
             if current is None:
                 return
             powers[phase] = current * self._voltage_v
-        clear = [phase for phase in PHASES if abs(powers[phase]) > self._zero_margin_w]
+        clear = [phase for phase in phases if abs(powers[phase]) > self._zero_margin_w]
         if not clear:
             return
         import_total = total_w > 0
