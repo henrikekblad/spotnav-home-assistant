@@ -15,7 +15,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.spotnav.battery.commands import control_for
 from custom_components.spotnav.battery.facts import EntityFact
 from custom_components.spotnav.battery.mirrored import (
+    AMBIGUOUS,
     BATTERY_NOT_POWER,
+    GENERIC_KEYS,
+    GENERIC_LABEL,
     MATCHED,
     MIRROR_PLATFORM,
     NEED_MIRRORED_READ_ONLY,
@@ -69,6 +72,7 @@ def test_the_mirrored_solax_battery_is_read_as_solax_with_its_level_size_and_pow
     assert facts.control_brand is None and control_for(facts.control_brand) is None
     assert control_for(facts.brand) is not None, "the brand has a recipe; the mirror is what refuses it"
     assert facts.mirror is not None and facts.mirror["reason"] == MATCHED and facts.mirror["prefix"] == "grid_"
+    assert facts.mirror["specific"]["solax"] > 0, "SolaX's own keys name it"
     assert facts.mirror["missing"] == ["rated_charge", "rated_discharge"]
     # The tester's battery entity is not SolaX's own battery power key: its sign is the site's setting alone.
     assert facts.mirror["power_sign"] == "unknown"
@@ -131,19 +135,93 @@ def test_a_remote_set_without_a_battery_is_not_matched() -> None:
     assert facts.management.reason == "no_adapter"
 
 
-def test_a_level_in_a_key_many_brands_share_is_ambiguous_and_not_matched() -> None:
-    """`battery_soc` and `battery_power` are several brands' keys: the battery stays unknown, and why is said."""
-    rows = [
-        {"entity_id": "sensor.grid_inverter_battery_power", "state": "100", "unit": "W", "device_class": "power"},
-        {"entity_id": "sensor.grid_inverter_battery_soc", "state": "50", "unit": "%", "device_class": "battery"},
-    ]
-    entities = [_fact(row) for row in rows]
+def _rows(*rows: tuple[str, str, str | None, str | None]) -> list[EntityFact]:
+    return [_fact({"entity_id": entity_id, "state": state, "unit": unit, "device_class": device_class})
+            for entity_id, state, unit, device_class in rows]
+
+
+def test_only_keys_many_brands_share_name_no_brand_but_the_readings_are_kept() -> None:
+    """A SolaX whose other instance is not on solax_modbus's own keys: `battery_soc`, `battery_power` and
+    `battery_voltage` are several brands' keys (Solinteg's among them), so no brand is named; the level, the
+    voltage and the power are still read, the size and the ratings learnt, and it stays read only."""
+    entities = _rows(
+        ("sensor.grid_solax1_battery_power", "0", "W", "power"),
+        ("sensor.grid_solax1_battery_soc", "50", "%", "battery"),
+        ("sensor.grid_solax1_battery_voltage", "52.1", "V", "voltage"),
+        ("sensor.grid_solax1_feed_in_total", "1200", "kWh", "energy"),
+        ("sensor.grid_solax1_solar_energy_total", "3400", "kWh", "energy"),
+    )
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_", power_kw=0.0, external_planner="predbat")
+
+    assert facts.brand is None and facts.control_brand is None
+    assert facts.label == GENERIC_LABEL
+    assert facts.soc_pct == 50.0 and facts.power_kw == 0.0
+    assert facts.sources == {
+        "power": "sensor.grid_solax1_battery_power",
+        "soc": "sensor.grid_solax1_battery_soc",
+        "voltage": "sensor.grid_solax1_battery_voltage",
+    }
+    assert facts.read_only == READ_ONLY_MIRRORED and facts.integration == MIRROR_PLATFORM
+    assert facts.hold is None and facts.grid_charge is None and facts.preheat is None
+    assert facts.management.state == "externally_controlled"
+    assert facts.mirror is not None and facts.mirror["reason"] == GENERIC_KEYS and facts.mirror["brand"] is None
+    assert facts.mirror["scores"]["solinteg"] == 3, "the scores are kept for the diagnostics"
+    assert set(facts.mirror["specific"].values()) == {0}
+    assert facts.mirror["learnt_if_missing"] == ["capacity", "rated_charge", "rated_discharge"]
+    assert facts.as_dict()["label"] == GENERIC_LABEL
+
+
+def test_a_shared_level_and_power_alone_name_no_brand_and_the_level_is_read() -> None:
+    entities = _rows(
+        ("sensor.grid_inverter_battery_power", "100", "W", "power"),
+        ("sensor.grid_inverter_battery_soc", "50", "%", "battery"),
+    )
 
     facts = mirrored_facts(entities[0], entities, prefix="grid_")
 
-    assert facts.brand is None and facts.soc_pct is None
-    assert facts.mirror is not None and facts.mirror["reason"].startswith("ambiguous:")
-    assert len(facts.mirror["reason"].removeprefix("ambiguous:").split(",")) >= 2
+    assert facts.brand is None and facts.label == GENERIC_LABEL and facts.soc_pct == 50.0
+    assert facts.management.state == "unknown"
+    assert facts.mirror is not None and facts.mirror["reason"] == GENERIC_KEYS
+
+
+def test_a_mirrored_solinteg_with_its_own_keys_is_solinteg() -> None:
+    entities = _rows(
+        ("sensor.grid_inverter_battery_power", "-800", "W", "power"),
+        ("sensor.grid_inverter_battery_soc", "71", "%", "battery"),
+        ("sensor.grid_inverter_battery_voltage", "51.2", "V", "voltage"),
+        ("sensor.grid_inverter_battery_rated_capacity", "10.24", "kWh", "energy"),
+        ("sensor.grid_inverter_battery_charge_total", "800", "kWh", "energy"),
+        ("select.grid_inverter_working_mode", "General", None, None),
+        ("number.grid_inverter_battery_soc_min_ongrid", "10", "%", None),
+    )
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_")
+
+    assert facts.brand == "solinteg" and facts.label == "Solinteg (SolaX Modbus)"
+    assert facts.soc_pct == 71.0 and facts.capacity_kwh == pytest.approx(10.24)
+    assert facts.control_brand is None and facts.read_only == READ_ONLY_MIRRORED
+    assert facts.mirror is not None and facts.mirror["reason"] == MATCHED
+    assert facts.mirror["specific"]["solinteg"] >= 2
+
+
+def test_two_brands_with_as_many_keys_of_their_own_are_ambiguous() -> None:
+    """Two of SolaX's own keys (its level and size) and two of Solinteg's (its mode and floor): neither is taken."""
+    entities = _rows(
+        ("sensor.grid_inverter_battery_power", "100", "W", "power"),
+        ("sensor.grid_inverter_battery_capacity", "50", "%", "battery"),
+        ("sensor.grid_inverter_battery_system_installed_capacity", "11520", "Wh", "energy"),
+        ("sensor.grid_inverter_battery_soc", "50", "%", "battery"),
+        ("select.grid_inverter_working_mode", "General", None, None),
+        ("number.grid_inverter_battery_soc_min_ongrid", "10", "%", None),
+    )
+
+    match = match_adapter(entities[0], entities, "grid_")
+
+    assert match.adapter is None and match.reader is None
+    assert match.reason.startswith(f"{AMBIGUOUS}:")
+    assert match.reason == f"{AMBIGUOUS}:solax,solinteg"
+    assert match.specific["solax"] == match.specific["solinteg"] == 2
 
 
 def test_a_level_that_is_not_a_percentage_does_not_count() -> None:
