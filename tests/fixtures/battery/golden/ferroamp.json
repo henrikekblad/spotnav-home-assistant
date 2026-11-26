@@ -1,0 +1,7677 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abd1f2f473103f8f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b3ea648e4ee79138",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd2c48e339b229eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9f121837c9c7e14",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a777ce8649242172",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f3605b311c4f0959",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876e26e8a4310e21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7b764050e9e87b3e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7b764050e9e87b3e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c3baa8ae004973ae",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "436e823622787cf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T09:07:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T09:07:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T09:09:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T09:07:40+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e59b278ad6febfc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67940487523d092f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "085d74af6b830bae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "085d74af6b830bae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6f19195b08ae4853",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "382a11935ccb778b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31cfaddc93d1d28a",
+    "events": [
+     {
+      "at": "2026-11-14T09:07:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T09:07:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [
+     {
+      "at": "2026-11-14T09:07:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78c67d97472807ed",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a5632122ee55506f",
+    "events": [
+     {
+      "at": "2026-11-14T09:09:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T09:09:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [
+     {
+      "at": "2026-11-14T09:09:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T09:09:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "460b9c3e8dd6e1df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 3,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a94bba476f1bd7d7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:1500"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:1500",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "853b4371058edb3c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:1500",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "853b4371058edb3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "853b4371058edb3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "853b4371058edb3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "853b4371058edb3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "634514d174704e38",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.693
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "323a62910a326f5f",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "323a62910a326f5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "323a62910a326f5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "323a62910a326f5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "323a62910a326f5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad59d4c5b7374cdf",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab60053400c790f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 3,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f3605b311c4f0959",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d57cd7c706133",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "command"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0e3947112ffd98",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0e3947112ffd98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6b492a320b72de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f0391a07ec0e472",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4c73abe20888b7a6",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c73abe20888b7a6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c73abe20888b7a6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c73abe20888b7a6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c73abe20888b7a6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c29ff5ae5773e497",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a076934af2c6d80e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 12,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 10
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:05:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 11,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:05:10+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f3605b311c4f0959",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "91cd80f274191ccc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f342abde88bb143a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f342abde88bb143a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f342abde88bb143a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d16c3d06e179958",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "discharge:2000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "discharge:2000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a81072bf2ea82a3d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "discharge:2000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a81072bf2ea82a3d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a81072bf2ea82a3d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1eb88141605ada01",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "54c8002565a13135",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "54c8002565a13135",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "54c8002565a13135",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec392a7f97cb6303",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "89525eb5aae4f9b1",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89525eb5aae4f9b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89525eb5aae4f9b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d4fa222a7518430",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a973d86e2684629e",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a973d86e2684629e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a973d86e2684629e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5703a76ed12e814a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "623403ecc99472eb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "623403ecc99472eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "623403ecc99472eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cb1ccfcf7bfc329",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "66840b05d64d682b",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1bf2a631fb473d22",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c0dc11fd9ee53f06",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ad5eb312aa0b576f",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad5eb312aa0b576f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad5eb312aa0b576f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad5eb312aa0b576f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ccc1ed00bbbbeaf",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61ddd92e2cbc75f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a847c07d23678d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58a74ece01dc3b8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "918c00d7200c8242",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": "charge_zero"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "918c00d7200c8242",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "918c00d7200c8242",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "918c00d7200c8242",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e81eb1c594f804",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c01563875124d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a5f96811246b434",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "229669ef10e03856",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f053d9aca1fa43f4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a5f96811246b434",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "159fc0bb36e51021",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14e9f22fc874e6b8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 6
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a5f96811246b434",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "2b9b75ec6f9c7102",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e4316776a54a8017",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cb9f183bf1a7b8fd",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cb9f183bf1a7b8fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7744929f606ffc73",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "528fc1c8b8693b1d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "51f5f25038b9a132",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "51f5f25038b9a132",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e237c6f83e67e0b",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ea97007165635537",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513cf12b47290bd5",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513cf12b47290bd5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2ae1034f1edeca3",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0490cbb7ce96a1ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "19cc26a9f35155b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7283ca6e343eacc3",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b4b354597e462fe8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137bf87575aff1b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f742dfa9d173b76",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "654e30319ee7878b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "654e30319ee7878b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "654e30319ee7878b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "command",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f9fcd86590a1380",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77fc22fe908b3af9",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f29d2367f3c620",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {
+     "sensor.ferroamp_command": {
+      "adopted": false,
+      "at": "2026-11-14T02:05:20+01:00",
+      "deadline": "2026-11-14T02:06:20+01:00",
+      "diverging_since": null,
+      "entity_id": "sensor.ferroamp_command",
+      "given_up": false,
+      "intended": "charge:3000",
+      "last_read": "charge:3000",
+      "owned": "charge:3000",
+      "owned_at": "2026-11-14T02:06:00+01:00",
+      "step": 500.0,
+      "verdict": "owned"
+     }
+    },
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": {
+     "command": {
+      "at": "2026-11-14T02:05:20+01:00",
+      "before_kw": -3.0,
+      "idle": false,
+      "kind": "charge",
+      "rate_kw": 3.0,
+      "slot_end": null,
+      "written": true
+     },
+     "done": false,
+     "last_reading_at": null,
+     "why_not": null
+    }
+   },
+   "state": {
+    "action": "grid_charge",
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": "DEVICE",
+    "entered_at": "2026-11-14T02:05:20+01:00",
+    "entities": {
+     "command": "sensor.ferroamp_command"
+    },
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "active",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:05:20+01:00",
+    "rate_kw": 3.0,
+    "reason": null,
+    "released_at": "2026-11-14T02:01:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [
+     "command"
+    ],
+    "setpoint_writes_today": 2,
+    "settle": {},
+    "settle_misses": 0,
+    "settle_until": null,
+    "snapshot": {},
+    "snapshot_at": "2026-11-14T02:05:20+01:00",
+    "target": {
+     "command": "charge:3000"
+    },
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:05:20+01:00",
+    "writes_today": 0,
+    "written": [
+     "command"
+    ],
+    "wrote": {
+     "command": "charge:3000"
+    }
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a5f96811246b434",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "7a4898df2409c0f0",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a4898df2409c0f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a4898df2409c0f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7a4898df2409c0f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48ec3923c108ddb",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "49969a1bbb7e447c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49969a1bbb7e447c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49969a1bbb7e447c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f611d406581e76d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {}
+     }
+    ],
+    "ops": [],
+    "persist_first": true
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba7dfb9e27277d78",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": []
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12ca40eb6e03b737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_export_discharge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e064c6ec8015e633",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 2.0,
+      "reason": "export_discharge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "discharge:2000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "discharge:2000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "discharge:2000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cc387fc6f9f6a12",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0dffeb654b7a7ca9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ee0ed76530460d46",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold_charge_zero": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f3605b311c4f0959",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb8492c2275dcf77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2e9ff5235db6477",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2488bbf9692f9109",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold_discharge_zero": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "discharge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "discharge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "24aa1032964ef130",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "discharge:0"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "discharge:0",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "discharge:0",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ea2d5e5206d63cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "91dffb3e291a0fb7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3793e40cd0d563ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:command:no_read_back",
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:command:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "571713e2d378a7ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "571713e2d378a7ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "571713e2d378a7ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "571713e2d378a7ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "571713e2d378a7ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "auto",
+      "reason": "command",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:command:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:command:no_read_back",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "219e653e32c2e2e2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:command:service_failed",
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:command:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "command",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:command:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:command:service_failed",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8696ecee62263229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4fa11b17a2c28dcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ee0ed76530460d46",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0fb3f014f2513a82",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "command",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fb3f014f2513a82",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fb3f014f2513a82",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "814a8602730add33",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e56a1ea08e21407",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ferroamp",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "charge_zero",
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "charge_zero"
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37559fd911a94e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "command",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:command"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:command",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9952986bc5c0ecd6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaa8ebd10dfcdb9c",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:command"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "command"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc20347d36f0479f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "66cb7a991a11a660",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "write",
+      "reason": "command",
+      "restore": true,
+      "value": "auto"
+     }
+    ],
+    "ops": [
+     [
+      "command",
+      "service",
+      "sensor.ferroamp_command",
+      "auto",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "sensor.ferroamp_command",
+      "kind": "confirmed",
+      "read": "auto",
+      "reason": "command"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "command"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0fd073d1189fefbb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

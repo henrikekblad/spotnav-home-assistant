@@ -1,0 +1,6195 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     },
+     "2026-11-15": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     },
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "ab7b33cdedc03b7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e31339d359223083",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "daily_write_cap"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "daily_write_cap",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40a8382d506051ec",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aee31fa7885cfc4d",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93bb178ea39e4985",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7020e805ff8768c0",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0e833fc3eb43d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba318447b675445f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "170e0a2eb9b5e5d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "170e0a2eb9b5e5d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cd99c251e7d3633",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bd3c6b8003bb528",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 1,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:discharge_current",
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "discharge_current"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:discharge_current",
+    "released_at": "2026-11-14T02:05:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6710609f006f129",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d154fa401ea6cb5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d154fa401ea6cb5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "external",
+      "read": "7777",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:discharge_current",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16117401dea9cedb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fb67ce0480caf93a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_current"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "234e6f751ce0e81c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "234e6f751ce0e81c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d40e640602bea73e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c7a42f8bb722e44f",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "07b8c4fcf2879d6a",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "07b8c4fcf2879d6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "07b8c4fcf2879d6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "07b8c4fcf2879d6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "07b8c4fcf2879d6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144237192f89ebe",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93a9cd3ac88c8f49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 6,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:02:00+01:00",
+    "writes_today": 5,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af471428cb20151a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c04e5baf278a65f3",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.foxess_charge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d929bfbbc931532d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d929bfbbc931532d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c888513b8818fc0f",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "562cfb0e7dbf3ba1",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.foxess_charge_current",
+      25.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69cf85cf6fb0f271",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b2be1416d443569",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current",
+       "charge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8076c55e1a54da1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8777c6b7e96732ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaf121fb7ad9587c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b8f01c7390731d0",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "hold",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "hold",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b8f01c7390731d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b8f01c7390731d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b8f01c7390731d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c63ab0a13fd47350",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2798cb3fea0c83a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f8872f88107afd",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "fca5f6db24d11c94",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f10bf77fe06f059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f8872f88107afd",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "320be48e0db77f36",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3029e9ce09992b9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 6
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f8872f88107afd",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "eab2f02fa4f675b1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9aed5743cdfa258b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b77fde7b3a69740",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b77fde7b3a69740",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c35367bbb57589bf",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ebcd958ab85e8c4e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1035f3d91dc82c8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1035f3d91dc82c8a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4101fde40f241532",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "de8794eb966791c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d2c268694a5746",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d2c268694a5746",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a0b051da341767e6",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9be3857db3aa5a45",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d02bcd1a5969976",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9203853180e79da7",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e9e7d37512da6360",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ba41a1dde8a25f8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b0b27cfe4f63f756",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c88ee1a0e07aec8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c88ee1a0e07aec8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c88ee1a0e07aec8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ea80dd21c69bb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a93c997d64c38e",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8969738ade8c0a4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f8872f88107afd",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "eab2f02fa4f675b1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "eab2f02fa4f675b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eab2f02fa4f675b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eab2f02fa4f675b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ba19f07a28a959",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ba19f07a28a959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33ba19f07a28a959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9770cc3044ed2f9",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:50+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c57fb34e8dd4ff1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c2606cf630002f1e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.foxess_charge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9398ac5fcef47229",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2043de7c5f4f3ec4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.foxess_charge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.foxess_charge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "charge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b57d568a2ec3dba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1eb603e588541482",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1a3cef1ea654f2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:discharge_current:no_read_back",
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:discharge_current:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "39a058b1d07c0a54",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "39a058b1d07c0a54",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "39a058b1d07c0a54",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "39a058b1d07c0a54",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "39a058b1d07c0a54",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "25",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:discharge_current:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:discharge_current:no_read_back",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7eb079af68df70e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:discharge_current:service_failed",
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:discharge_current:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:discharge_current:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:discharge_current:service_failed",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619087924024c324",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70c848ff7fd62b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1eb603e588541482",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a2337ba1d3539051",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a2337ba1d3539051",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a2337ba1d3539051",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7532586c36988ff9",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c73f0bfc7417261",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "foxess",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b3f1272c4d3b4b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:discharge_current",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85cdd639cafecacb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d384ce5c6f348d5",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "25",
+       "discharge_current": "25"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "43f46e0a983155d6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "549aa3bba9de311c",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 25.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.foxess_discharge_current",
+      25.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.foxess_discharge_current",
+      "kind": "confirmed",
+      "read": "25",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d48eb1ae96c8568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

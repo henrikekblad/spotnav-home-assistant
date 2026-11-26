@@ -1,0 +1,8637 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7acea9668e42646",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "60b4cec432d974b7",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "02c68ecba150135a",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3f1078eecc84317e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35baa6c4badf0b11",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a9e4029ad054a846",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e8d35aa33a71a3a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "4b32c9cb6a8d6a42",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3c829f5cc6a8f700",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178df1ebe1549ddd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178df1ebe1549ddd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e76cbcf04bfd9a9f",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e435bfe3f7a80f29",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:working_mode",
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "working_mode"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:working_mode",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa157a60edf2515d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94f6f302f8d64b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94f6f302f8d64b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "188e3fd24f5999dd",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "external",
+      "read": "Someone Else",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:working_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:working_mode",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1740bc8b2214cdd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "65561738bbd50193",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ],
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12e835daac984028",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "4b32c9cb6a8d6a42",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d99a5de5c7844531",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "working_mode"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0c99b7268e864fb4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0c99b7268e864fb4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ddcd5fad0be51cc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "32966581a7c56d2e",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72205215c2ec30fa",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72205215c2ec30fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72205215c2ec30fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72205215c2ec30fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72205215c2ec30fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f668d0053d0ba5c7",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a89c274467671ff0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_phases": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 12,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:02:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 6,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "9bf88e7a4829ef4d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "phase_kw": [
+       1.15,
+       1.15,
+       1.15
+      ],
+      "rate_kw": 3.45,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -1.15
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.solinteg_phase_l1_target",
+      -1.15,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "be4f364953022359",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-1.15",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": -1.15
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number",
+      "number.solinteg_phase_l2_target",
+      -1.15,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "85bdef17deb2ecf6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "confirmed",
+      "read": "-1.15",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": -1.15
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number",
+      "number.solinteg_phase_l3_target",
+      -1.15,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5023cfbd01f82631",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "confirmed",
+      "read": "-1.15",
+      "reason": "phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.solinteg_acctrl_mode",
+      "kind": "write",
+      "reason": "acctrl_mode",
+      "restore": false,
+      "value": "Power Setting on each Phase"
+     }
+    ],
+    "ops": [
+     [
+      "acctrl_mode",
+      "select",
+      "select.solinteg_acctrl_mode",
+      "Power Setting on each Phase",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8dcda5d5b80ddd52",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "select.solinteg_acctrl_mode",
+      "kind": "confirmed",
+      "read": "Power Setting on each Phase",
+      "reason": "acctrl_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS ACCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS ACCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS ACCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ae238b19370f48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31205c59926edca5",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "rate",
+      "phase_kw": [
+       0.92,
+       1.38,
+       1.38
+      ],
+      "rate_kw": 3.68,
+      "reason": "grid_charge",
+      "was_kw": 3.45,
+      "was_phase_kw": [
+       1.15,
+       1.15,
+       1.15
+      ]
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -0.92
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.solinteg_phase_l1_target",
+      -0.92,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fb5bad304f9780dd",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-0.92",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": -1.38
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number",
+      "number.solinteg_phase_l2_target",
+      -1.38,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b946b86a1136c9ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "confirmed",
+      "read": "-1.38",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": -1.38
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number",
+      "number.solinteg_phase_l3_target",
+      -1.38,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fd2ff77fd9d8809b",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "confirmed",
+      "read": "-1.38",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd2ff77fd9d8809b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd2ff77fd9d8809b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd2ff77fd9d8809b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd2ff77fd9d8809b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6795ff125fdc69a0",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ],
+     [
+      "phase_l1_target",
+      "number",
+      "number.solinteg_phase_l1_target",
+      0.0,
+      true,
+      "DEVICE"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.solinteg_phase_l2_target",
+      0.0,
+      true,
+      "DEVICE"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.solinteg_phase_l3_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.solinteg_phase_l1_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.solinteg_phase_l2_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.solinteg_phase_l3_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "phase_l1_target",
+       "phase_l2_target",
+       "phase_l3_target",
+       "acctrl_mode",
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c472942aa606602d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 13,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 10
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:05:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 9,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:05:10+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "4b32c9cb6a8d6a42",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4e2b6644d185e536",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b99721487a0c93b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99721487a0c93b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99721487a0c93b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4af5abd2f91dff32",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 2.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      2.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c1561440f34afe73",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "2.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c1561440f34afe73",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c1561440f34afe73",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bdf142e67b2856c",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ca27071e5ab26e71",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca27071e5ab26e71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca27071e5ab26e71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c29177be04edf08",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "44787916ff415848",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44787916ff415848",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44787916ff415848",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b10aee9f5466af",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e149ae86164f45b8",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "58c2acfb88019602",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58c2acfb88019602",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c3346f13edcc3e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4ab2616223f9af9c",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ab2616223f9af9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ab2616223f9af9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9905a4c001e4dd84",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9536ca651ee011d4",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "87f7d14655535e67",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "987784140b5b3437",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "32aca7601ec8942b",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "32aca7601ec8942b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "32aca7601ec8942b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "32aca7601ec8942b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "50c37d62c9dc477f",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b0c3be3822b88e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d26e9abc03036e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7b55782629821b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68ee813459b91c40",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 4.616580753730952,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 4.616580753730952,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 4.616580753730952,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": "battctrl_idle"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68ee813459b91c40",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68ee813459b91c40",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68ee813459b91c40",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec38335438d3cc42",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4bd92b9008ca31b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2bd3cd462285b270",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc51884abef3e561",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "e7a85dac137d166b",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bbb3727c6cc0b3d2",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9a9518bda3e5fd9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4681cd6bf859b04a",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "535ef43d9d466a63",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dffeb8bd1cb8e2fc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bca1fc2d3cb3f21",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 11
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc51884abef3e561",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "2f5d176cafbeefbe",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ed990a7cc8e7edb6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bfe3ceda62c826b4",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "18e0a9796d30b1ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "26d5eacdae2947a8",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "-3.0",
+      "reason": "battery_target",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "118ac68f2d7e3f90",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9c4d1c10d714969d",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "590d4eb0cea63909",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58c078fe65d12a82",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "-3.0",
+      "reason": "battery_target",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b79652a0fb1c77c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1da7f72a0f3ec673",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "aa3e67ff5a612d82",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "329e18ea06b2d0e3",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "-3.0",
+      "reason": "battery_target",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d4e99797871a8357",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1c6b4084d793860a",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "949560ce74fd90df",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a026a786ad7a1d25",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "-3.0",
+      "reason": "battery_target",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a026a786ad7a1d25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a026a786ad7a1d25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a026a786ad7a1d25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c83bff8d96ea4352",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5e36b2d277990a14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e7f35642da83db1",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e61a4d5105290e82",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a88e6c29c48aed8d",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "-3.0",
+      "reason": "battery_target",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a88e6c29c48aed8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a88e6c29c48aed8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a88e6c29c48aed8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bd694b339be0d9",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ccbe36ac42739c67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ccbe36ac42739c67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ccbe36ac42739c67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5a0580fda8d431",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff2926af85d3eeea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5c72fa4ec7053f0",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bb5cf9b59f3243c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc51884abef3e561",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "ee480dde7ac2a0e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ee480dde7ac2a0e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ee480dde7ac2a0e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ee480dde7ac2a0e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60854924f3a623c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c60854924f3a623c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60854924f3a623c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60854924f3a623c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f8d4dc9d2acbdb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {}
+     }
+    ],
+    "ops": [],
+    "persist_first": true
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "635c84a8a0ae43b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": []
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "006515fba6d4639d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_export_discharge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "6e0035ce220cece3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 2.0,
+      "reason": "export_discharge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "52cecae9a259ddc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": 2.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      2.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "2.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72dd83fa1d3e1902",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aac995a37bbe5ed2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "df09af16f77f131b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bcc8f6f02c32f5f4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1e83380195c9868d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9da21d969eaedc7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "4b32c9cb6a8d6a42",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24598e9e94a63349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be4ea8fa1bfee064",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "77f476ddf65e1c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:working_mode:no_read_back",
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:working_mode:no_read_back",
+    "released_at": "2026-11-14T02:04:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d11207c84d47623e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "not_taken",
+      "read": "General",
+      "reason": "working_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:working_mode:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:working_mode:no_read_back",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5996c47aeb62cd26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:working_mode:service_failed",
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:working_mode:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "working_mode",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:working_mode:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:working_mode:service_failed",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f3cc4024d568057",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "bda5c842bc903368",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db082477abaf1880",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bcc8f6f02c32f5f4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1e83380195c9868d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "01253e931521c370",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_taken",
+      "reason": "battery_target",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01253e931521c370",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01253e931521c370",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0b81f53a2fa0d9d5",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e36e3131ef731b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solinteg",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "battctrl_idle",
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "battctrl_idle"
+   }
+  },
+  "looks": [
+   {
+    "digest": "f42f451f9d2f8c7c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "working_mode",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:working_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:working_mode",
+      "written": [
+       "working_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1f14a9b251e559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7100918613dc0929",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:working_mode"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": false,
+      "value": "EMS BattCtrl"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "EMS BattCtrl",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "3292aa536b57301b",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "EMS BattCtrl",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": false,
+      "value": -3.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      -3.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "-3.0",
+      "reason": "battery_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0123d2fc94df56da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bbc93cfd07cb549a",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "write",
+      "reason": "working_mode",
+      "restore": true,
+      "value": "General"
+     }
+    ],
+    "ops": [
+     [
+      "working_mode",
+      "select",
+      "select.solinteg_working_mode",
+      "General",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2cadddfe7877768f",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "select.solinteg_working_mode",
+      "kind": "confirmed",
+      "read": "General",
+      "reason": "working_mode"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "write",
+      "reason": "battery_target",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "battery_target",
+      "number",
+      "number.solinteg_battery_target",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.solinteg_battery_target",
+      "kind": "confirmed",
+      "read": "0.0",
+      "reason": "battery_target"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "working_mode",
+       "battery_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17b3d6a9a25a84c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

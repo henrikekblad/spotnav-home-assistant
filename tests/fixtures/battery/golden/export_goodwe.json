@@ -1,0 +1,5401 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     },
+     "2026-11-15": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     },
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-15T02:19:00+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f0e1da3cb582cb59",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a8dc2c09c1ce4d65",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "daily_write_cap"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "daily_write_cap",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea045af7c1208c1f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6e1d15f05e9ef7d",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "edf67979c209709c",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93aba6898dbac2a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "153c6d0d033a7224",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "68f843265738a994",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b328003ba8d980ce",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "export_limit"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:04:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c436edd3017819e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c436edd3017819e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c436edd3017819e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c436edd3017819e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686a1bb88aae8544",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e91b206463d9817d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c5158448812ddfb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "detail": {
+       "at": "2026-11-14T02:04:00+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:02:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:03:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:04:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "expected": "0",
+      "kind": "external",
+      "read": "7777",
+      "reason": "export_limit",
+      "why": "changed_before_write"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f144c91ff37ed142",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ffc7aef224b247d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:33:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:48:40+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "917d02549cb34464",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edcf31970968f9e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7ae2d173313886ca",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "80e3f538e273ccae",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:33:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "49d79255ad26e24d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:21:40+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b95c4d61d84ed1a",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "f6d7166cd8e48ed7",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9614cb1d225131e2",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46c705f027eec42c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:15:40+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "67fb13342baeaf34",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "c00d4678d652cbc5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6807870b559b146c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bff11554e491b59c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 11
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T06:11:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 15,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b95c4d61d84ed1a",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "23b57832e3bad28a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5ae2cf1f43fa0567",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85abb62617edf75",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "df09c32299b38c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eec578fadb957e69",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "11373f1ccabab953",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c3e365b224663385",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6549e6c0aac0ac0e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f99d4f35d6d1ef81",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e54e3294dc40e937",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "07d951f23cc07fce",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f7f8377959a5a906",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "30b2ebb43b2a0814",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9045b883b4141df6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4a3f903fe4df37f6",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "edeb1e7b356da774",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0f4096f2d8fe0899",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0f4096f2d8fe0899",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0f4096f2d8fe0899",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0f4096f2d8fe0899",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e88a0c452df8840d",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a3e66b37c50836a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8313b2c7dc6d6ac7",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6b1ff53ea5e08063",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4928ffa37953a937",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4928ffa37953a937",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4928ffa37953a937",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4928ffa37953a937",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0385f4f08fa0c32f",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "474ba46c287a7d4e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "474ba46c287a7d4e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "474ba46c287a7d4e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "002fbd41197d87b5",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e78767ff10b81b7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "892d28d1b010c7fa",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f3d351a2fe163cb0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:21:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b95c4d61d84ed1a",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "f12e70eaaa621663",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f12e70eaaa621663",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f12e70eaaa621663",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f12e70eaaa621663",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5b3f6bc256d92438",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5b3f6bc256d92438",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5b3f6bc256d92438",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5b3f6bc256d92438",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a9266d5ae2412f0e",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "565fb66126abc059",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_curtail_export": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:16:40+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7c56c06a9268c9b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "120d60f61f2d6cbc",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "513b9d5e2663fba1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:no_read_back",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "178af4ec0a91444a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178af4ec0a91444a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178af4ec0a91444a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178af4ec0a91444a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "178af4ec0a91444a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "10000",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:no_read_back",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55ff874d0415227c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc74988c777ccee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:service_failed",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:service_failed",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53f172c4e048cec1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "89423b25230c67cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:17:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 5,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d9a3c99439e05eef",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d48bc61d5756f356",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7c56c06a9268c9b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ce864d66bf65adf9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "export_enable",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d56f656ea051d58f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d56f656ea051d58f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe35222408a3e4e8",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fcdab106c38acb9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "export_enable": [
+      "off",
+      "off",
+      true,
+      "switch.goodwe_export_enable"
+     ],
+     "export_limit": [
+      "10000",
+      10000.0,
+      0.0,
+      "number.goodwe_export_limit"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:40:20+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 5,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6630509b723ea6ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:export_limit",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6007b9acb0de32a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d00a7526d0f4ff7f",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "10000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "d2e5c8e0e63c7c6c",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866297623a3f77f6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0530420d8f234c3a",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.goodwe_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2972740d5ffd2449",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.goodwe_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 10000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.goodwe_export_limit",
+      10000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.goodwe_export_limit",
+      "kind": "confirmed",
+      "read": "10000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6424d65eee9e4c57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

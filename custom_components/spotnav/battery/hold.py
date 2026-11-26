@@ -1,7 +1,7 @@
 """Hold the house battery while the car charges from the grid (evcc's "discharge lock"), decided in shadow.
 
 This part decides **when** the battery should be held; **what** a hold writes, and how it is handed back, is the
-executor's action `hold` (`executor.py`, `commands.py`), the one write path a later opt-in will use. Until wave 7
+executor's action `hold` (`executor/`, `commands.py`), the one write path a later opt-in will use. Until wave 7
 the part kept its own write: the adapter's discharge-limit number set to 0, with its own snapshot, "unset" rule,
 restore value, write cap and control checks. That duplicated the executor and differed from it (on Sigenergy the
 executor's hold also turns Remote EMS on in Maximum Self Consumption, which firmware SPC117 needs before it obeys the

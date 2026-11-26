@@ -1,0 +1,9521 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f54ab9246b8779b3",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "f3a71f0bcf9379aa",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "40adbe89c637b472",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f0bd487dec7b0330",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:50+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-15T02:02:50+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "231d06004e7951ac",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "231d06004e7951ac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "231d06004e7951ac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "231d06004e7951ac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "baa3f2039a929982",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d671a5fc85e28661",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "35ff2d026e7aeb16",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ea04a333bef11e74",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-15T02:04:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-15T02:04:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f568cb6d13578ca",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:21:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b620ef452e371671",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e8b5ae4516324c85",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "110f32b723a6c349",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "324de9fdcb988d09",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "324de9fdcb988d09",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c67c5e0ae0a8b40",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5517cd812ba9ab63",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [
+     {
+      "at": "2026-11-14T02:21:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:21:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_limit",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "76d71abf3acc47dd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:charge_limit",
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "charge_limit"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:charge_limit",
+    "released_at": "2026-11-14T02:05:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84a7432dc2e8282e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "939d6d649759d6eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "939d6d649759d6eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "54cb20e4ecbee56e",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "external",
+      "read": "7777",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b43cf3b5c4808f46",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "533c3c6411ab9dac",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:05:50+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:charge_limit",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5a4122c607c005bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 12,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 8,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85c6dfb852681797",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -28.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -28.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "89d9773a39d4a413",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-28",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 28.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      28.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f69d165a704996ba",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "28",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f69d165a704996ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f69d165a704996ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f69d165a704996ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9ce80f6f3f9fd86b",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.693
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a90558d2ec1d5d70",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7131756ba44315c0",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7131756ba44315c0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7131756ba44315c0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7131756ba44315c0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f403c36bd78e41b",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ],
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ],
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ],
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b89445564b6868",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 5,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b620ef452e371671",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e8b5ae4516324c85",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a24a2ece253edc8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_limit_on"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5f8cad78a40fd47c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5f8cad78a40fd47c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fde66321d265be16",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "discharge_limit",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12f0682d0b61b982",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc32884da15aeec8",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "3b1ed3cdc2ee09c7",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "729ef0303f1dc157",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "729ef0303f1dc157",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "729ef0303f1dc157",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "729ef0303f1dc157",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2c75848ae3fb335a",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f6de96cfc4794423",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_limit",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "022eccfb09f97d75",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 24,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 9
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:04:30+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:05:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 22,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:04:30+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b620ef452e371671",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e8b5ae4516324c85",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8c5a61157edc857",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e73c739044e668b4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2aff3ffeef1f13ed",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "673423611c706b08",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "26adc0e8a811e4fb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2adc32c4dbaf0d60",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cf5f946d3fcc7df7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1b4ba0c0493bfd36",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e373194d6af58491",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "61af97ccd890b150",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1f7f75f86bee53a6",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6929743c3f40dedb",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "266bc8a4860f6400",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "101e585a028d0836",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ee3062b5af9bd6f0",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2a8277cb3190ef36",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7125b010bdbe8f5a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "de2d0857ecbea3b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6fb62cc47fb250ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d0918867118e1e4f",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "153a59e26cfe8e73",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0c3c8dc27a86fffb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a29aa579562eb42a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b7bab93931f73a46",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "97ad7c6d88db6b07",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97ad7c6d88db6b07",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97ad7c6d88db6b07",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97ad7c6d88db6b07",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a9b0752ab5f5e96f",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bcff94e91f14a640",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_limit",
+       "discharge_limit_on",
+       "charge_limit",
+       "charge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce087d50479fa22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf76244a401cb688",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7cef6b28f05ee5b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d3a587297afcb4a",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d3a587297afcb4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d3a587297afcb4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d3a587297afcb4a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aa20effa975b432b",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ab97b0986f6cd2ed",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "69a3b360451f92ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1b609fc4dfe8d62a",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e7f533fed0b0d88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:07:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7f85be92fc22cf8",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "5e45694b45593dbb",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ede39672ad353f29",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b1f05cc4349aee8f",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3b170d54d7eaf7a8",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [
+     {
+      "at": "2026-11-14T02:07:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:07:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33f2a58b5e73267",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6f44505ad0788bd5",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "2b010e2b3d5aa107",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ff9c750f23ceebba",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_limit",
+       "discharge_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f9b9a0a132f77c74",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 15
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7f85be92fc22cf8",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "9c18439d04fb6d8f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "51a28649050c1289",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "78772d2480391d8c",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9476d29807107617",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd06ab13f8e9ce7a",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "charge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fd125bd60ee293d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf0f69ecff33c357",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "919efb0cfad6691e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf7f7f17b51b7a26",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "charge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b47df55e619572db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3736cbd76f5e1990",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d46f258dc02e59d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "282e15196a2f12ce",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "charge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e5d06c4da49921e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b4314f4de39880d",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d30ae2da7699918a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f16800da0ccc94e",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "charge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "579ad3575aed1f36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e54e807a75c266a9",
+    "events": [
+     {
+      "at": "2026-11-14T02:22:20+01:00",
+      "kind": "not_taken",
+      "read": "-50",
+      "reason": "discharge_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:22:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "238e1b40bcd4d1aa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e96077f4df104b62",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "kind": "not_taken",
+      "read": "50",
+      "reason": "charge_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d61d985ff42dc4e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e4743ad9c13a3be2",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "06d1f7a11df2c366",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "38c02a433a88f9af",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "charge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fb0f6a9621587ff3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9dbccbbc8a44ee78",
+    "events": [
+     {
+      "at": "2026-11-14T02:31:40+01:00",
+      "kind": "not_taken",
+      "read": "-50",
+      "reason": "discharge_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:31:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1957d00380e4ef07",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "25ccd8484211cef4",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "kind": "not_taken",
+      "read": "50",
+      "reason": "charge_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9e09fd11df2ef9cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e09fd11df2ef9cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e09fd11df2ef9cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "18c9377810f42c4c",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a18d2373a034d632",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "09278d6b2e1b33f8",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T04:48:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T04:48:30+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9aae8703633d15b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e403d2418dd2ddab",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b83b09b853677c48",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7f85be92fc22cf8",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "d3a4065bd5cd7c49",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d3a4065bd5cd7c49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3a4065bd5cd7c49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3a4065bd5cd7c49",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad126eb039a8be9e",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "discharge_limit_on",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ad126eb039a8be9e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad126eb039a8be9e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ad126eb039a8be9e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "05674d071d0b7cdc",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f72a03b541ad5ace",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ecf084e43456fc1b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "9f088d9f00214240",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "c5b2a31a30570521",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9222d1cdc935f14",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b355e86bee57fb00",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6e1a35b9a5c88be5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "charge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06a0f4305c8bd6bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df75a33d98f48b07",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "52c8237b5e237b5d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dce8faf366194c6b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "182211a61738efbb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e6b1874ad84eda9c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "b620ef452e371671",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e8b5ae4516324c85",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4be9dcee72dc7874",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12c50886c1e93ad0",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fd1431486804d31f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_limit",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36ba9bfa31e9242b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:charge_limit:no_read_back",
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:charge_limit:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fa5fc2f26030ce20",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa5fc2f26030ce20",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa5fc2f26030ce20",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa5fc2f26030ce20",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa5fc2f26030ce20",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "100",
+      "reason": "charge_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:charge_limit:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:charge_limit:no_read_back",
+      "written": [
+       "charge_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f15ea1d25cfc56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:charge_limit:service_failed",
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:charge_limit:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "charge_limit",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:charge_limit:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:charge_limit:service_failed",
+      "written": [
+       "charge_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1520afd4ffa2d8d9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a85856a3e07f2824",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0d5f3a043d9c4125",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fdf2e4d2c5671ff6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5900c67843cf1e84",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df75a33d98f48b07",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "03456598adcb55be",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_limit_on",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5a8a8f6f7cc35ed7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2cf9bd0c19f01267",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d54c67ece90d88d4",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8e4b0f14b02edf80",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "fronius",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 5,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f6bde6a8a5b6a2d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "charge_limit",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:charge_limit",
+      "written": [
+       "charge_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1534667cbd85b202",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a499605f4de4c812",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "100",
+       "charge_limit_on": "off",
+       "discharge_limit": "100",
+       "discharge_limit_on": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72e8c5d5ca3b311a",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": -50.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      -50.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57069cdbf2ed3f70",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "-50",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1ba356613f9d451a",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:24:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4d20a513aaa8ae56",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:20+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "discharge_limit_on"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d20a513aaa8ae56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d20a513aaa8ae56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d20a513aaa8ae56",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75e6e979bfaa384e",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "write",
+      "reason": "discharge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit_on",
+      "switch",
+      "switch.fronius_discharge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f86c2ae4d7dd6192",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.fronius_discharge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "discharge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "write",
+      "reason": "charge_limit_on",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit_on",
+      "switch",
+      "switch.fronius_charge_limit_on",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bd39bc31423ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "switch.fronius_charge_limit_on",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "charge_limit_on"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number",
+      "number.fronius_discharge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "850a0b43fecd50f7",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:30+01:00",
+      "entity_id": "number.fronius_discharge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:25:30+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number",
+      "number.fronius_charge_limit",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:40+01:00",
+      "entity_id": "number.fronius_charge_limit",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:25:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "charge_limit_on",
+       "discharge_limit_on"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0221ef04c383c1a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

@@ -1,0 +1,7749 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "12097dfacaa31f09",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fc2b7be101091558",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "245f423b31f462ce",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8eb075378d76e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:forcible:no_read_back",
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:forcible:no_read_back",
+    "released_at": "2026-11-14T02:19:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "ff8317bb7624693c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7b30c0800edf251",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b11de36d3aa5d36c",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "forcible",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:18:20+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:forcible:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:18:20+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3a03efda1925b97e",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:30+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:18:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3a03efda1925b97e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a03efda1925b97e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a03efda1925b97e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a03efda1925b97e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:forcible:no_read_back",
+      "written": [
+       "discharge_power",
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "196e54a2f3fba17d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T09:07:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T09:07:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T09:09:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T09:07:40+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "70f1d9c05a4fa4d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d9f7a715f06c77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9b89e4c46b14a090",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9b89e4c46b14a090",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0fcae38ba8c1842",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16a21a5da69d7467",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d2ca0de2a57f289",
+    "events": [
+     {
+      "at": "2026-11-14T09:07:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T09:07:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [
+     {
+      "at": "2026-11-14T09:07:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fd16cb5f48c8ba0c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abf3d6c738171447",
+    "events": [
+     {
+      "at": "2026-11-14T09:09:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T09:09:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [
+     {
+      "at": "2026-11-14T09:09:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T09:09:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16bc12509e81c84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31bf3382c58f8ffe",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:1693"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:1693",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6fce561ab68a2711",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:1693",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6fce561ab68a2711",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6fce561ab68a2711",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6fce561ab68a2711",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6fce561ab68a2711",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b67660b10d694a6",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.693
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3b14486b1967a6f5",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b14486b1967a6f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b14486b1967a6f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b14486b1967a6f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b14486b1967a6f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fbfeb2540ce7ac3",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4f7b2976eee20abb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "ff8317bb7624693c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "987bfee55f6a75f9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_power"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5abf8becabeb816e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5abf8becabeb816e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b99c447133967ade",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6b20fbca884fa8fd",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a4432176f70b4952",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a4432176f70b4952",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a4432176f70b4952",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a4432176f70b4952",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a4432176f70b4952",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fab119d91d656c98",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfec28e1c6c15681",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 17,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 10
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:05:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:05:10+01:00",
+    "writes_today": 16,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "ff8317bb7624693c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27f5de37016f7c9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2a17d3ee344df3c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d6ffa6cb2248af92",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6ffa6cb2248af92",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbc921c8575f4870",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "discharge:2000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "discharge:2000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a85860a05fa87924",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "discharge:2000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a85860a05fa87924",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a85860a05fa87924",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b0526331527c0e6",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3102c448a3903948",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d3781efc2996f0c4",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3781efc2996f0c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a938b2392a16eb",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "41a1145ef8bd122c",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "adef5dc3a9ed4b4c",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "adef5dc3a9ed4b4c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fab9d6b345dd327",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c82722e5791912b8",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.huawei_charge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5d1f5557b69f994b",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5d1f5557b69f994b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4a8b3fff71a3aeb4",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4ce137ab69260e48",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.huawei_charge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cd7b9ee9cd5e7243",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd7b9ee9cd5e7243",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c1f4bfc911b0ae18",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8a84db36c39359aa",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7d34d10296d062d3",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a3bf2141184f4609",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2b5281c73a293fe3",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b5281c73a293fe3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b5281c73a293fe3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b5281c73a293fe3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d18ac6571fb13589",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power",
+       "forcible",
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e3a1c07c2b5607bf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:32:20+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b274e6bcaba411d0",
+    "events": [
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "kind": "renew",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "617536b89d31f512",
+    "events": [
+     {
+      "at": "2026-11-14T02:16:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "617536b89d31f512",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "617536b89d31f512",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "617536b89d31f512",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "617536b89d31f512",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "kind": "renew",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5ef873e328a5439",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3aeeed630627e420",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3aeeed630627e420",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3aeeed630627e420",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3aeeed630627e420",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17fa8f0466d4cd64",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "367d4e7ce9af633a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fbab284413a17ef",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "90dfae259632b7bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d1156a4efe2597f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fbab284413a17ef",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "38f319f816019c60",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4810bf26265fefa3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 6
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fbab284413a17ef",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "6068ff919cfabfe8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5641ebc00f3267d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d9cce1f0d81cbe6",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3d9cce1f0d81cbe6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd2ceb5120b25a0d",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8074a588b6f7613f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e410a0700e1acd09",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e410a0700e1acd09",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95f67855092a1cbf",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a8f4b70fe6cd30c0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff5776a8098ba410",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff5776a8098ba410",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9a0de8fcc29dfaa",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0e27167aa7a8b005",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "80b2ecdd06bce390",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc7855b772aa9366",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fa9db093253378fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8ea97b868778819",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c55480c3d794ed63",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ac96480018f3947c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac96480018f3947c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac96480018f3947c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "charge:3000",
+      "reason": "forcible",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64c29cdbab80f4e4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb29385915cddf6d",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "472adb226741b89d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fbab284413a17ef",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "6068ff919cfabfe8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6068ff919cfabfe8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6068ff919cfabfe8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6068ff919cfabfe8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d51b8a8b3bf6e34",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "forcible",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d51b8a8b3bf6e34",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d51b8a8b3bf6e34",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ca2433442fa5b1c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da8291079e4eb474",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "089660023bd2289b",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.huawei_charge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1def75b0a38965fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9050da7b51714a8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.huawei_charge_power",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.huawei_charge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d1ee7d49927518c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_export_discharge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "f19b5ed821a04faf",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 2.0,
+      "reason": "export_discharge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "discharge:2000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "discharge:2000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "discharge:2000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e82ff8dc1da4a459",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53e267d43caf458d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "390994caeba75e09",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "ff8317bb7624693c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "269ac3110306e796",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0def6affc979af2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.huawei_discharge_power",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2a453de5d806df98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:forcible:no_read_back",
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:forcible:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b8ac9b074cba7800",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8ac9b074cba7800",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8ac9b074cba7800",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8ac9b074cba7800",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8ac9b074cba7800",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "stop",
+      "reason": "forcible",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:forcible:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:forcible:no_read_back",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b42fcd1555533a0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:forcible:service_failed",
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:forcible:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "forcible",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:forcible:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:forcible:service_failed",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d79e9fa1848d297",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "df17e081bdef2ba2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "390994caeba75e09",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c9b4016efd9054f2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "forcible",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9b4016efd9054f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c9b4016efd9054f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "11dc45dbd0e54aa9",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f692bcb181deb14b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "huawei",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "afa025bb6a4b5787",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "forcible",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:forcible"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:forcible",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "abc725918fe58fc7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a0be1ad8a38d13d7",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:forcible"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046531a7951ef653",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c52af40fa76d7b5f",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": true,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "service",
+      "sensor.huawei_forcible",
+      "stop",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94e0ffeb4f39cc67",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

@@ -227,7 +227,7 @@ class BatteryInputs:
     #: Whether SpotNav controls the battery (`BatteryControl.state`: `off`, `shadow_only`, `verifying`, `waiting`,
     #: `on` or `failed`), so the card says "Test" only while it does not; `None` where the control is not read.
     control: str | None = None
-    #: What the battery does now, for the card's header: the action SpotNav's control runs (`battery/executor.py`'s
+    #: What the battery does now, for the card's header: the action SpotNav's control runs (`battery/executor/`'s
     #: `ExecState.action` while active; `None` when it runs none) and the battery's measured power (kW, + charging).
     action_now: str | None = None
     power_kw: float | None = None

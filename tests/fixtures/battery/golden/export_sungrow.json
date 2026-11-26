@@ -1,0 +1,5254 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     },
+     "2026-11-15": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     },
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dffe785f25167723",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0b2ab6b0ff5531b3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "daily_write_cap"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "daily_write_cap",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69ea1d773a409e4d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c283c577fe0c4026",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "73fdbc16f55d2b26",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a130cf32dafd7e9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3d093c580f69f79",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1710a709942de497",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "359cd838ec7002a1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "export_limit"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:04:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22b4f6be8609728d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22b4f6be8609728d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22b4f6be8609728d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22b4f6be8609728d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "04c17a32cfab34e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b30a05f26495c8a9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73bd89e9ee08d4c6",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "detail": {
+       "at": "2026-11-14T02:04:00+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:02:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:03:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:04:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "expected": "0",
+      "kind": "external",
+      "read": "7777",
+      "reason": "export_limit",
+      "why": "changed_before_write"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef7ed287570b36e6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:33:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "53c14e925ecac106",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24857d91413a734a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f1e1bc005b4e917",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "44b3a4b984994b0c",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:33:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "500b919103668b88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b576a8c9d532d9ec",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "bc6efb9685106843",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3f00fff70c071361",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "832b2dee961b28cc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f421d1374b000164",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "7f1a807ad9f8e328",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0cd841519e6650d2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "302325af8806fd32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 11
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 15,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b576a8c9d532d9ec",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "e662f6e8cd09d3b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "14bbd292428cdd87",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46aa2dacf60a435b",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da406b0b98b607a3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f0b860a548930782",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d516d988ec0d4522",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d0cbb236ebbcf5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3622d12ffe0abbf1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7337df1142b9204b",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f263f676e0123711",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d8df9e4aca77368",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cc8df09e82421c1d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a1a96c0afdd3171f",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "abc4010ad8395757",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd0af1afb7ad41bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3166c4b2a7de4590",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9e454e2c2166b01",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9e454e2c2166b01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9e454e2c2166b01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9e454e2c2166b01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8c991343e0fc26",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dc016ff2cec6a70c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f5e7ab0f51adcb6a",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2ff54568010a631",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "de2bdc1b7d79e2ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "de2bdc1b7d79e2ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "de2bdc1b7d79e2ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "de2bdc1b7d79e2ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "468db80c0aa51160",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1cf8776a1ecf52ff",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1cf8776a1ecf52ff",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1cf8776a1ecf52ff",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c2c878dabcbacfed",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "export_enable",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e709a58ec57a8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ebbb43ab2a4bd08",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "13a6b27932b5fbbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b576a8c9d532d9ec",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "9113a7f675c36833",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9113a7f675c36833",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9113a7f675c36833",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9113a7f675c36833",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5d3794d732109524",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5d3794d732109524",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5d3794d732109524",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5d3794d732109524",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b5352d786ec1bdce",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "869963df5854f8bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_curtail_export": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3745047d3e5678c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f42f1b4e83ac97af",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa7a42f0d2040b2b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:no_read_back",
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "204ec354711529f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "204ec354711529f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "204ec354711529f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "204ec354711529f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "204ec354711529f2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "5000",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:no_read_back",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37f10740c1c289f5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:service_failed",
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:service_failed",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8468b744ef6fd31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 5,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "676a7e9c52bfb770",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "100f3206ca7d8be4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3745047d3e5678c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cef2461db957b0e0",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "export_enable",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "66c7acc9c51c66b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "66c7acc9c51c66b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d936d6c6466bdb2",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e92e6c533c2a726c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "sungrow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 5,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "c4c4d078630b95a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:export_limit",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a3ce5393f66c51db",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ccb501021566eeba",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_enable": "off",
+       "export_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "4bcfd0eeacb52a63",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "export_enable"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ec7dab66e0d21eb3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "18fd417a3311ec87",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "write",
+      "reason": "export_enable",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "export_enable",
+      "switch",
+      "switch.sungrow_export_enable",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "18f95e8ba2ac0b12",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.sungrow_export_enable",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "export_enable"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.sungrow_export_limit",
+      5000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.sungrow_export_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit",
+       "export_enable"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "739b06859ebc99ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

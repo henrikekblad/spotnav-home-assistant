@@ -1,0 +1,9013 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:03:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-15T02:19:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1b78cbbdb0d285c8",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "ea6daf1ee2765f52",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7e9d56a598ba89a3",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "331bdafc5f966da6",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:50+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "331bdafc5f966da6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "331bdafc5f966da6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ced8737b0deca2af",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-15T02:03:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "538171836f12e3ce",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "26abafe89ba779c2",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ad3795aaf4d91173",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b9154c30cd356dd7",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-15T02:04:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1902e56692a8d114",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "depth_of_discharge": [
+      "80",
+      80.0,
+      58.0,
+      "number.goodwe_depth_of_discharge"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:35:50+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "3098315ccc19a200",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c9ae76e501d3758",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7caa152a50feb6c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7caa152a50feb6c8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f7a8052d856f9547",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": true,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "depth_of_discharge"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d05b0226863cbf63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 6,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:eco_soc",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "eco_soc"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:eco_soc",
+    "released_at": "2026-11-14T02:05:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a32806ed222f518b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1aca3a7b0e562af",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "external",
+      "read": "7777",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ff7b987f06f44e61",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:05:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:eco_soc",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7103e0985e60c7b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7c2f1f7c61cb451",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 9,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 4
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      19.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:18:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 6,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7dbad6cf0b960089",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.231,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 12.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      12.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bc22dd1962539fee",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "12",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc22dd1962539fee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc22dd1962539fee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc22dd1962539fee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc22dd1962539fee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c14d799499b264de",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.924,
+      "reason": "grid_charge",
+      "was_kw": 1.231
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 19.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      19.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "076419dfdd3b6ecb",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "19",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "076419dfdd3b6ecb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "076419dfdd3b6ecb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "076419dfdd3b6ecb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "076419dfdd3b6ecb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8afb0a2f94fdbfa5",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ],
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ],
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a17f729a65dbbd2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "depth_of_discharge": [
+      "80",
+      80.0,
+      58.0,
+      "number.goodwe_depth_of_discharge"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:34:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "3098315ccc19a200",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36a50fc636a57b63",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "284468695da3c1fa",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": true,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "depth_of_discharge"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6c48a27cee19a84e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 22,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 9
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:04:30+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "depth_of_discharge": [
+      "80",
+      80.0,
+      58.0,
+      "number.goodwe_depth_of_discharge"
+     ],
+     "eco_power": [
+      "0",
+      0.0,
+      0.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      0.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "general",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:20:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:04:30+01:00",
+    "writes_today": 21,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "3098315ccc19a200",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a049d0a8b64b1ea5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ad589368c84d210e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5649b135e8ee3d35",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "71d2a30c86a80dba",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3d88b0583d7dcdc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9f1d2f6c621559e0",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0967c3e9af69df33",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c58693c021ebaa0b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "24efde25b1460af3",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ccc25da21d2cd511",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "395d861e44dbcc21",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "27a914456f03c8d4",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "98e0a708fa1bc676",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "be3f0817d7e80b7a",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e3445786187100b6",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6a506622b623dcc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33cbbf853ec94f4a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d525892a18537b39",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d525892a18537b39",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d525892a18537b39",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a94f47b4c64d8d1",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7260f290932d914b",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f2bbceea639e95f6",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5fcda4f719f36f55",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c43f9a51ea03e9c5",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c43f9a51ea03e9c5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c43f9a51ea03e9c5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c43f9a51ea03e9c5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8291f98c75b5b0bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": true,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "depth_of_discharge",
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "877d1405d8050add",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:49:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "95d4499bf8561ea8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02210b6907609507",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9dea819a1174a5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9dea819a1174a5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9dea819a1174a5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b9dea819a1174a5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bcc00690f5dae50d",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e12538a7231c9774",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a9b8b24d55861581",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbe18b6836c768c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:21:50+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a088c46bb0f2535",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "9979de0cb16730d9",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "561322ef27cd687c",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dcc7e84934775a17",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "981cb0936c15802d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      11.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:15:40+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4f46a98e5676d793",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "aa9f1b877873c0e0",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "07374a7174356fcc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "eco_soc",
+       "eco_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "42eaf7411fa9fef3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 13
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T06:11:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a088c46bb0f2535",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "099097b0e6c01cf8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "160cb517c36d52b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0de731886eef5a69",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b0ebb64a5fe2e31a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6cd1cf02a7f967e3",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "30",
+      "reason": "eco_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1abedcf9961688e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b590c1b2e46bc234",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56d60d5c7b649ae9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "943e59f857bf063b",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "30",
+      "reason": "eco_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "955cb541d4daeaf7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "37e5bfcbc3e1301e",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1ed13d966af2182b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca264a68a3203b50",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "30",
+      "reason": "eco_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b6658cd34d884729",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "729615a59ceb4e7e",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5129d678bd0a5f47",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e25ef0107fd0b7d8",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "30",
+      "reason": "eco_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "121ed58e74ef5013",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4e2e04660270a268",
+    "events": [
+     {
+      "at": "2026-11-14T02:22:20+01:00",
+      "kind": "not_taken",
+      "read": "100",
+      "reason": "eco_soc",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4e2e04660270a268",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9a50d9d7a63fba60",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e25847aa81288054",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dfd1c7672ea2d6bd",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7fc4fcf81c45687e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ba9810ec8d4b3e18",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "30",
+      "reason": "eco_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ef19d74680aec397",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68e842e4335780fd",
+    "events": [
+     {
+      "at": "2026-11-14T02:31:40+01:00",
+      "kind": "not_taken",
+      "read": "100",
+      "reason": "eco_soc",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "68e842e4335780fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0eac1cc7bdf342f7",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "be8af26eaaa711f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be8af26eaaa711f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be8af26eaaa711f3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84ad3281053cf303",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "eco_charge",
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0abefa578e84a749",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T04:48:20+01:00",
+      "kind": "restore_failed",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6bfc7b757606665",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7e61fcc0a0662e0e",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "63978bafe62320cb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 6,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:21:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a088c46bb0f2535",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "8860cb3404ce389f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8860cb3404ce389f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8860cb3404ce389f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8860cb3404ce389f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fcacd72b127f5d27",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "operation_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fcacd72b127f5d27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fcacd72b127f5d27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fcacd72b127f5d27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35ab86d012442e6d",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "401ea2c20302ce2f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     }
+    ],
+    "ops": [],
+    "persist_first": true
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8b28fb3d5d30fc9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": []
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bed0880dea048964",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:16:50+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e551713e4f7c23c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9cfc8755274b6ebf",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "579529d6f7f12d46",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "447c2e5fe604afc5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "depth_of_discharge": [
+      "80",
+      80.0,
+      58.0,
+      "number.goodwe_depth_of_discharge"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:16:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "3098315ccc19a200",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": false,
+      "value": 58.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      58.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "58",
+      "reason": "depth_of_discharge"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "268b6b8c4090b698",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "66c792923b311036",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "write",
+      "reason": "depth_of_discharge",
+      "restore": true,
+      "value": 80.0
+     }
+    ],
+    "ops": [
+     [
+      "depth_of_discharge",
+      "number",
+      "number.goodwe_depth_of_discharge",
+      80.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_depth_of_discharge",
+      "kind": "confirmed",
+      "read": "80",
+      "reason": "depth_of_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "depth_of_discharge"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86e5a6c64f15ef71",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:eco_soc:no_read_back",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:eco_soc:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "93b97326ae03c23e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93b97326ae03c23e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93b97326ae03c23e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93b97326ae03c23e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93b97326ae03c23e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "eco_soc",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:eco_soc:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:eco_soc:no_read_back",
+      "written": [
+       "eco_soc"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea16107e1df3803b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e94286571477ed77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:eco_soc:service_failed",
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:eco_soc:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "eco_soc",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:eco_soc:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:eco_soc:service_failed",
+      "written": [
+       "eco_soc"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40510802aa9d716e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "340c9fa3317039da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:01:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:17:10+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 4,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7a1849031a8b06b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57ab2dbfae103a5e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bd337a1eb9067d2c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5487338517e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e204614471331b8a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e551713e4f7c23c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "970d04d776ea2706",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "operation_mode",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8d8277742943aec9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5922da5ce1f7fec9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f7d22b3e90cf27ed",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "74d4cab9f2c402e1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "goodwe",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:24:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "settle": {
+     "eco_power": [
+      "0",
+      0.0,
+      30.0,
+      "number.goodwe_eco_power"
+     ],
+     "eco_soc": [
+      "0",
+      0.0,
+      100.0,
+      "number.goodwe_eco_soc"
+     ],
+     "operation_mode": [
+      "general",
+      "general",
+      "eco_charge",
+      "select.goodwe_operation_mode"
+     ]
+    },
+    "settle_misses": 0,
+    "settle_until": "2026-11-14T02:40:30+01:00",
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 5,
+    "written": [],
+    "wrote": {}
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "694c7f8e646e85ee",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "eco_soc",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:eco_soc",
+      "written": [
+       "eco_soc"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06b220dc96a777fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "79355865356a6095",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 1.157,
+      "reason": "grid_charge",
+      "snapshot": {
+       "depth_of_discharge": "80",
+       "eco_power": "0",
+       "eco_soc": "0",
+       "operation_mode": "general"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "1eed459906ee3deb",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 11.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      11.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "394f20a6dc30ab30",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "11",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": false,
+      "value": "eco_charge"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "eco_charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4b55a859694c8f5b",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:10+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "eco_charge",
+      "reason": "operation_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4b55a859694c8f5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4b55a859694c8f5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "59bc01ff2ac62a79",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.157
+     },
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": false,
+      "value": 30.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      30.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a91bf17d1c5d8047",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:50+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "30",
+      "reason": "eco_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "98ba705858140fb4",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "write",
+      "reason": "operation_mode",
+      "restore": true,
+      "value": "general"
+     }
+    ],
+    "ops": [
+     [
+      "operation_mode",
+      "select",
+      "select.goodwe_operation_mode",
+      "general",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b6286c46635ed507",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "select.goodwe_operation_mode",
+      "kind": "confirmed",
+      "read": "general",
+      "reason": "operation_mode"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "write",
+      "reason": "eco_power",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_power",
+      "number",
+      "number.goodwe_eco_power",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "edfef274596f6cee",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.goodwe_eco_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_power"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "write",
+      "reason": "eco_soc",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "eco_soc",
+      "number",
+      "number.goodwe_eco_soc",
+      0.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:30+01:00",
+      "entity_id": "number.goodwe_eco_soc",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "eco_soc"
+     },
+     {
+      "at": "2026-11-14T02:25:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "eco_soc",
+       "eco_power",
+       "operation_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "379d73c79f23189e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

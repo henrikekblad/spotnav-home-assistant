@@ -4,7 +4,7 @@
 Each brand's control is a set of **roles** (the entities it writes or reads back) and, per plan action, the
 **state** those roles must be in: a value per role, or `SNAPSHOT` for "the value found before SpotNav first wrote".
 "Normal" (the plan's `self_consume`, and every restore) is the state with every written role back at its snapshot.
-The executor (`executor.py`) writes only the roles whose reading differs from the wanted state, one at a time and in
+The executor (`executor/`) writes only the roles whose reading differs from the wanted state, one at a time and in
 the brand's order, each confirmed by read-back through the ledger before the next.
 
 The entity keys, options and services below were checked against each integration's source on 2026-11-13
@@ -1133,7 +1133,7 @@ class BrandControl:
     house_states: Mapping[str, Callable[[float, float], tuple[Want, ...]]] = field(default_factory=dict)
     #: A slow control (a cloud: Tesla): planned actions only. No hold for a car, no peak cover, no change of action
     #: sooner than `min_change_s`, the read-back waits `readback_s` and a hand-back waits `rearm_s` before the next
-    #: action (`executor.py`, `control.py`). `None`: the executor's own figure.
+    #: action (`executor/`, `control.py`). `None`: the executor's own figure.
     slow: bool = False
     min_change_s: float = 0.0
     rearm_s: float | None = None

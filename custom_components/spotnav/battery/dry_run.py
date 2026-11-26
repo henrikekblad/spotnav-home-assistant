@@ -1,7 +1,7 @@
 """The ledger and the control-failure monitor run dry beside the shadow hold: what they can tell without a write.
 
 A shadow hold writes nothing, so neither can do its real job. They are the same ledger and monitor the executor
-uses (`executor.py`); since wave 7 the dry run follows the executor's own hold (`hold.would_hold`, every role it would
+uses (`executor/`); since wave 7 the dry run follows the executor's own hold (`hold.would_hold`, every role it would
 write: on Sigenergy the discharge limit, the Remote EMS switch and its control mode), not one discharge-limit entity
 of the part's own. What each still tells, and what it cannot:
 
