@@ -24,7 +24,7 @@ from custom_components.spotnav.battery import control
 
 #: Each patched name -> the shell modules whose code reads it as a global, by name under `battery`.
 READ_IN: Final[dict[str, tuple[str, ...]]] = {
-    "CALL_TIMEOUT_S": ("control",),
+    "CALL_TIMEOUT_S": ("control.io",),
     "GATED_AFTER_RUNNING": ("control",),
     "HAND_BACK_DEADLINE_S": ("control",),
     "HAND_BACK_LOOK_S": ("control",),

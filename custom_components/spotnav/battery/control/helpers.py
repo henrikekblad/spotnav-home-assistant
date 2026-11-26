@@ -1,4 +1,5 @@
-"""The battery control shell's small helpers: a reading as a number, a role's state as the executor reads it, and what a recipe's expiry and the HA-down acceptance mean for a plant."""
+"""The battery control shell's small helpers: a reading as a number, a role's state as the executor reads it, and what
+a recipe's expiry and the HA-down acceptance mean for a plant."""
 
 from __future__ import annotations
 
