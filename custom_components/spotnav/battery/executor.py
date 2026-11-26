@@ -1597,10 +1597,19 @@ class Executor:
                     inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else self._house_cap(inputs)
                 ),
             )
-            grid = inputs.grid_import_kw if self.state.action == ACTION_HOLD and inputs.measurement_ok else None
+            # A hold is judged on the grid's power too; a grid charge only shown to act with it (`monitor.proves`).
+            grid = (
+                inputs.grid_import_kw
+                if self.state.action in (ACTION_HOLD, ACTION_GRID_CHARGE) and inputs.measurement_ok else None
+            )
             judged = self.monitor.observe(
                 Reading(facts.power_kw, inputs.battery_age_s, facts.soc_pct, grid), capability, now
             )
+            if judged is not None and judged.kind == "proved":
+                # The command was seen to act (`monitor.proves`): the shell may count it for the plant's report.
+                events.append(_event(
+                    now, "proved", self.state.action or "", variant=self.control.variant, detail=judged.as_dict()
+                ))
             if judged is not None and judged.kind == "failure":
                 events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
                 if judged.outcome == "no_effect":
@@ -2273,7 +2282,11 @@ class Executor:
             settle=settle, settle_until=now + timedelta(seconds=self.control.settle_s) if settle else None,
             settle_misses=state.settle_misses if settle else 0,
         )
-        return [_event(now, "handed_back", state.reason or "")]
+        # Whether this hand-back shows the plant restored (`gate.plan_proved`'s `normal`): something was written, every
+        # role was written back or read as found (`_next_role` left none, none was given up to another writer or
+        # could not be restored), nothing blocks, and no restore is still watched for holding (`settle`).
+        clean = bool(state.written) and not blocked and not state.given_up and not settle
+        return [_event(now, "handed_back", state.reason or "", written=list(state.written), clean=clean)]
 
     def _settle(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """After a hand-back (`ExecState.settle`): a role that reads SpotNav's value again did not keep its restore

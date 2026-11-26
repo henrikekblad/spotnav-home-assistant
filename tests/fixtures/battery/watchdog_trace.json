@@ -197,6 +197,53 @@
     "events": [
      {
       "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
       "kind": "rate",
       "rate_kw": 2.0,
       "reason": "grid_charge",
@@ -443,8 +490,13 @@
      },
      {
       "at": "2026-11-14T02:51:50+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "forcible",
+       "discharge_power"
+      ]
      }
     ],
     "ops": [],
@@ -821,6 +873,53 @@
     "events": [
      {
       "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
       "kind": "rate",
       "rate_kw": 2.0,
       "reason": "grid_charge",
@@ -1141,8 +1240,14 @@
      },
      {
       "at": "2026-11-14T02:52:00+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "command_timeout",
+       "charge_limit",
+       "command_mode"
+      ]
      }
     ],
     "ops": [],
@@ -1466,6 +1571,53 @@
     "events": [
      {
       "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
       "kind": "rate",
       "rate_kw": 2.0,
       "reason": "grid_charge",
@@ -1783,8 +1935,15 @@
      },
      {
       "at": "2026-11-14T02:52:10+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "autorepeat",
+       "active_power",
+       "power_control",
+       "trigger"
+      ]
      }
     ],
     "ops": [],

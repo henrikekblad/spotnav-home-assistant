@@ -36,6 +36,20 @@ What each command expects:
   below `FAIL_FRACTION` of it is `no_effect`, one below `PARTIAL_FRACTION` is `partial`. The executor counts
   `CONFIRM_READINGS` in a row, `PHASE_GAP_S` apart, after `PHASE_GRACE_S` (a target settles in seconds).
 
+**A command shown to act** (`proves`, the event `proved`). A written command's readings that are "ok" are no failure,
+and on their own say little: a battery left alone often does what a command asks. `CONFIRM_READINGS` in a row that
+are "ok" **and** could not have read so without the command are told once per command (`MonitorEvent.kind`
+`proved`), so that the shell can count the plan's own command as that mode shown on the plant's firmware
+(`gate.plan_proved`). A charge or discharge: what the battery could deliver is at least `PROVE_MIN_KW`, and for a
+charge the battery was not charging before the command and the site's grid power is known and shows the site
+drawing from the grid (a battery left alone charges only from a surplus of sun, with nothing drawn: sun that came
+out after the command is not the command acting). A hold: the battery was discharging before the command
+(above `FLOOR_KW`, what the verification asks before it judges a hold), it is not near its floor and at least at
+`PROVE_HOLD_SOC_MIN_PCT` (a floor of the battery's own that is not read stops it too), and the site's
+grid power is known and shows the house drawing from the grid (so there is something the battery would cover if it
+were not held). An export limit never. The run is broken by any reading that is not such a one, and is not kept
+over a restart. A failure is still only counted: it is never written to a report from here.
+
 **In shadow** nothing was commanded, so the monitor cannot tell whether a command would have taken: "a hold of 0 kW
 would not have taken, the battery kept discharging" is unknowable without writing. A dry run (`Command.written`
 false) runs the same windows on the real readings and reports, once, either that it could not have judged (and
@@ -90,6 +104,15 @@ PHASE_OVER_KW: Final = 0.3
 #: were taken (s; a target settles in under 5 s), a reading every this long (s).
 PHASE_OVER_GRACE_S: Final = 20.0
 PHASE_OVER_GAP_S: Final = 10.0
+
+#: The least a charge or a discharge must be expected to deliver (kW) for a run of "ok" readings to show the mode
+#: obeyed (`proves`): an "ok" needs only `PARTIAL_FRACTION` of it, 0.5 kW here, which is clear of an idle battery
+#: (`FLOOR_KW`) and of a meter's noise; it is the size of the verification's own probe (`verify.PROBE_KW`).
+PROVE_MIN_KW: Final = 1.0
+#: The least state of charge (%) at which a hold's "ok" readings show it obeyed (`proves`): the level the
+#: verification asks before it starts (`gate.SUITABLE_SOC_PCT`). Below it a battery may have stopped at a floor of
+#: its own that the facts do not read (`Capability.soc_min_pct` is then 0).
+PROVE_HOLD_SOC_MIN_PCT: Final = 30.0
 
 PhaseVerdict = Literal["ok", "over", "partial", "no_effect"]
 
@@ -159,7 +182,7 @@ class Reading:
     age_s: float | None = None
     soc_pct: float | None = None
     #: The site's grid power (kW, + import), for a hold that stores the sun: `None` when unknown (then the battery's
-    #: own power alone is judged).
+    #: own power alone is judged). For a charge it is read only by `proves`.
     grid_kw: float | None = None
     #: For a curtail: what the battery charges and the site's chargers draw now (kW), where read: an import up to it
     #: is theirs, not a sign of an inverter held at no output (`import_rose`).
@@ -245,6 +268,26 @@ def judge(
     return "ok"
 
 
+def proves(command: Command, expected_kw: float, reading: Reading, capability: Capability) -> bool:
+    """Whether an "ok" reading of a written command shows the command acting, not a battery that would have read
+    the same left alone (see the module)."""
+    if not command.written:
+        return False
+    before = command.before_kw
+    soc, grid = reading.soc_pct, reading.grid_kw
+    importing = grid is not None and math.isfinite(grid) and grid > FLOOR_KW
+    if command.kind == "charge":
+        # Charging while the site draws from the grid: the sun alone never does that.
+        return expected_kw >= PROVE_MIN_KW and before is not None and before <= FLOOR_KW and importing
+    if command.kind == "discharge":
+        return expected_kw >= PROVE_MIN_KW
+    if command.kind != "hold" or before is None or before >= -FLOOR_KW:
+        return False
+    if soc is None or soc <= capability.soc_min_pct + DISCHARGE_MARGIN_PCT or soc < PROVE_HOLD_SOC_MIN_PCT:
+        return False  # near its floor the battery stops by itself
+    return importing
+
+
 def judge_phases(
     targets_kw: tuple[float, float, float], plant_kw: tuple[float, float, float], *, tapering: bool = False
 ) -> PhaseVerdict:
@@ -267,12 +310,14 @@ def judge_phases(
 
 @dataclass(frozen=True, slots=True)
 class MonitorEvent:
-    """A failure counted (a written command), or what a dry run could tell."""
+    """A failure counted (a written command), a written command shown to act (`proved`), or what a dry run could
+    tell."""
 
-    kind: Literal["failure", "dry_run"]
+    kind: Literal["failure", "dry_run", "proved"]
     at: datetime
     command: Command
-    #: `no_effect`/`partial`/`import_rose` for a failure; for a dry run `baseline_<verdict>` or `not_judgeable:<why>`.
+    #: `no_effect`/`partial`/`import_rose` for a failure; for a dry run `baseline_<verdict>` or `not_judgeable:<why>`;
+    #: `ok` for a command shown to act (`expected_kw` is then the least of its readings').
     outcome: str
     expected_kw: float | None = None
     readings: tuple[dict[str, Any], ...] = ()
@@ -297,6 +342,10 @@ class Watch:
     #: Why the last reading could not be judged.
     why_not: str | None = None
     done: bool = False
+    #: The run of consecutive "ok" readings that show the command acting (`proves`), and whether a full run was
+    #: told; neither is kept over a restart.
+    oks: tuple[dict[str, Any], ...] = ()
+    proved: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -362,11 +411,11 @@ class Monitor:
             return None
         power = reading.power_kw
         if power is None or not math.isfinite(power) or reading.age_s is None or reading.age_s > READING_MAX_AGE_S:
-            self.watch = replace(watch, run=(), last_reading_at=now, why_not="reading_stale")
+            self.watch = replace(watch, run=(), oks=(), last_reading_at=now, why_not="reading_stale")
             return None
         expected, why_not = deliverable_kw(command, capability, reading.soc_pct)
         if expected is None:
-            self.watch = replace(watch, run=(), last_reading_at=now, why_not=why_not)
+            self.watch = replace(watch, run=(), oks=(), last_reading_at=now, why_not=why_not)
             return None
         verdict = judge(command, expected, power, reading.grid_kw, reading.soc_pct, excused_kw=reading.excused_kw)
         if verdict == "import_rose" and (now - command.at).total_seconds() > IMPORT_ROSE_WINDOW_S:
@@ -384,11 +433,18 @@ class Monitor:
             baseline = verdicts.pop() if len(verdicts) == 1 else "mixed"
             return MonitorEvent("dry_run", now, command, f"baseline_{baseline}", expected, run)
         if verdict == "ok":
-            self.watch = replace(watch, run=(), last_reading_at=now, why_not=None)
-            return None
+            oks: tuple[dict[str, Any], ...] = ()
+            if not watch.proved and proves(command, expected, reading, capability):
+                oks = (*watch.oks, row | {"expected_kw": round(expected, 3), "grid_kw": reading.grid_kw})
+            if len(oks) < CONFIRM_READINGS:
+                self.watch = replace(watch, run=(), oks=oks, last_reading_at=now, why_not=None)
+                return None
+            # Told once per command; the watch goes on, a later failure is still counted.
+            self.watch = replace(watch, run=(), oks=(), proved=True, last_reading_at=now, why_not=None)
+            return MonitorEvent("proved", now, command, "ok", min(item["expected_kw"] for item in oks), oks)
         run = (*watch.run, row)
         if len(run) < CONFIRM_READINGS:
-            self.watch = replace(watch, run=run, last_reading_at=now, why_not=None)
+            self.watch = replace(watch, run=run, oks=(), last_reading_at=now, why_not=None)
             return None
         verdicts = {item["verdict"] for item in run}
         outcome = next(iter(verdicts)) if len(verdicts) == 1 and verdicts <= {"no_effect", "import_rose"} else "partial"

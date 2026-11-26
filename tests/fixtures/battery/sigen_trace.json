@@ -310,8 +310,15 @@
      },
      {
       "at": "2026-11-14T02:02:30+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "remote_ems",
+       "control_mode",
+       "discharge_limit"
+      ]
      }
     ],
     "ops": [],
@@ -968,8 +975,14 @@
      },
      {
       "at": "2026-11-14T02:11:20+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "fuse_headroom"
+      "reason": "fuse_headroom",
+      "written": [
+       "charge_limit",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],
@@ -1282,8 +1295,14 @@
      },
      {
       "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],
@@ -1573,8 +1592,14 @@
      },
      {
       "at": "2026-11-14T02:01:50+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "fuse_headroom"
+      "reason": "fuse_headroom",
+      "written": [
+       "charge_limit",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],
@@ -1977,7 +2002,55 @@
     "persist_first": false
    },
    {
-    "events": [],
+    "events": [
+     {
+      "at": "2026-11-14T02:10:50+01:00",
+      "detail": {
+       "at": "2026-11-14T02:10:50+01:00",
+       "command": {
+        "at": "2026-11-14T02:03:50+01:00",
+        "before_kw": -3.0,
+        "idle": true,
+        "kind": "hold",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:08:50+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:09:50+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:10:50+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": 0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "hold",
+      "variant": "pv_first"
+     }
+    ],
     "ops": [],
     "persist_first": false
    },
@@ -2104,8 +2177,15 @@
      },
      {
       "at": "2026-11-14T02:12:30+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_limit",
+       "discharge_limit",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],
@@ -2944,8 +3024,16 @@
      },
      {
       "at": "2026-11-14T02:11:40+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "fuse_headroom"
+      "reason": "fuse_headroom",
+      "written": [
+       "phase_l1_target",
+       "phase_l2_target",
+       "phase_l3_target",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],
@@ -3419,8 +3507,15 @@
      },
      {
       "at": "2026-11-14T02:04:10+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "plan_self_consume"
+      "reason": "plan_self_consume",
+      "written": [
+       "phase_l1_target",
+       "remote_ems",
+       "control_mode",
+       "charge_limit"
+      ]
      }
     ],
     "ops": [],
@@ -3585,8 +3680,14 @@
      },
      {
       "at": "2026-11-14T02:06:50+01:00",
+      "clean": true,
       "kind": "handed_back",
-      "reason": "restart"
+      "reason": "restart",
+      "written": [
+       "charge_limit",
+       "remote_ems",
+       "control_mode"
+      ]
      }
     ],
     "ops": [],

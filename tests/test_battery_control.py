@@ -522,7 +522,9 @@ async def test_a_plant_silent_for_a_minute_and_a_half_is_ridden_out_and_a_longer
     if handed_back:
         assert hand_backs == ["stale_data"], "handed back once, never blocked, and taken again after the rearm"
     else:
-        assert hand_backs == [] and len(plant.calls) == calls and new == []
+        # (The charge seen to act is told once, `proved`: no change to the plant.)
+        assert hand_backs == [] and len(plant.calls) == calls
+        assert [row for row in new if row["kind"] != "proved"] == []
 
 
 class ModbusIOException(Exception):

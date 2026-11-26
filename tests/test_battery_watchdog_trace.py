@@ -2,6 +2,8 @@
 `test_battery_sigen_trace` pins Sigenergy: a grid charge through two renewals (one with its role reading nothing),
 a rate change, a hold and the hand-back, compared with a trace recorded on v3 at ca6c3a6c
 (`fixtures/battery/watchdog_trace.json`).
+Recorded again when the event `proved` and the hand-back's `written` and `clean` came (2026-11-26): rows were added,
+no write and no other event changed.
 
 Regenerate only on purpose: `python -m tests.test_battery_watchdog_trace`."""
 

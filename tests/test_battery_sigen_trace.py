@@ -3,7 +3,8 @@ lowering and hand-back), a discharge, the peak cover under a hold, a charge per 
 raise, the fuse hand-back) and a restart mid-charge, each run against the fake plants and compared with a trace
 recorded on the engine before the recipe data for grid targets, fast watchdogs and the house's load was added
 (`fixtures/battery/sigen_trace.json`, v3 at ca6c3a6c). Any change to what Sigenergy writes, when, or what it
-reports, fails here.
+reports, fails here. Recorded again when the event `proved` and the hand-back's `written` and `clean` came
+(2026-11-26): rows were added, no write and no other event changed.
 
 Regenerate only on purpose, on the engine whose behaviour is wanted:
 `python -m tests.test_battery_sigen_trace`."""

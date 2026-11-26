@@ -76,6 +76,18 @@ is pending and tried again at a later suitable moment (`modes_to_run`, `suitable
 Control reads the report through `control_report`: on a key the routine has not finished, a mode still open keeps
 the answer of the brand's last passed report on this plant, so an update never stops control by itself; a check that
 fails or gives up on the new key stops it as on any key.
+**The plan's own commands show steps too** (`plan_proved`, owner rule 2026-11-26): the routine runs only when the plan
+leaves the battery alone, so on a busy plant the check of a new key could wait for weeks. A command the plan wrote on
+the key and the control-failure monitor saw act (`monitor.proves`: a full run of readings that could not have read so
+without the command) counts as that mode `obeyed` in the key's report, and a hand-back of what the plan wrote that
+left every control as found as `restored` for normal; such a row says `via: plan` (`VIA_PLAN`). Credit only: what the
+monitor sees fail is counted there and never written here, so only the routine decides a failure. A row of the
+routine's for the same mode replaces a plan's, pass or fail (`merge_report`); the routine no longer tries a mode the
+plan showed (`modes_to_run` reads it as decided), and hold and normal shown by the plan make the report `passed` as
+the routine's would. Never from the plan: an expiry, the capability per phase, a charge where it is allowed only per
+phase (`charge_by_phases`), the export limit. What is still open `PLAN_PROOF_DEADLINE_S` after the key was first read
+is checked ahead of the plan (`deadline_passed`, `suitable_ahead`: the shell has the plan stand aside at a moment
+that suits the routine by every other rule). Control never stops for the deadline itself.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed (where it could be tried only as a charge on one phase, a charge per phase
 only, once `per_phase` is verified too: `charge_by_phases`), a discharge for the house only if `discharge_house` passed, a discharge to the
@@ -204,6 +216,18 @@ _ACTION_MODE: Final = {
     ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge_house",
     ACTION_EXPORT_DISCHARGE: "discharge_house",
 }
+
+#: What a row the plan's own command showed says in `via` (`plan_proved`); the routine's rows have none, or
+#: `per_phase` for a charge tried on one phase.
+VIA_PLAN: Final = "plan"
+#: The modes a command of the plan's can show, and the outcome each is given.
+PLAN_MODES: Final[Mapping[str, str]] = {
+    "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", MODE_NORMAL: "restored",
+}
+#: How long after a key was first read the plan may go on showing its steps before the routine checks what is still
+#: open ahead of the plan (s): a week holds every kind of day a plan has (cheap nights, expensive evenings, a weekend),
+#: so what it has not shown by then it will not show soon.
+PLAN_PROOF_DEADLINE_S: Final = 7 * 86400.0
 
 Verdict = Literal["pass", "fail", "pending"]
 ReportStatus = Literal["none", "pending", "passed", "failed"]
@@ -410,7 +434,8 @@ def merge_report(
     previous: Mapping[str, Any] | None, run: Mapping[str, Any], *, key: str, attempts: int, now: datetime
 ) -> dict[str, Any]:
     """The report for `key` with a run's outcomes added: a mode decided (passed or failed) keeps its row; a mode
-    still pending takes the run's row when the run has one."""
+    still pending takes the run's row when the run has one. A row the plan's own command showed (`VIA_PLAN`) gives
+    way to a run's decided row, pass or fail: the routine's answer is the one that counts."""
     modes: dict[str, Any] = {name: dict(row) for name, row in _modes(previous).items() if isinstance(row, Mapping)}
     for name, row in _modes(run).items():
         if not isinstance(row, Mapping):
@@ -420,6 +445,7 @@ def merge_report(
             kept is not None and mode_verdict(kept.get("outcome")) != "pending"
             # An expiry decided for another expiry than the one this run tried (the recipe changed) is not kept.
             and not (name.startswith(MODE_EXPIRY) and kept.get("expiry_id") != row.get("expiry_id"))
+            and not (kept.get("via") == VIA_PLAN and mode_verdict(row.get("outcome")) != "pending")
         ):
             continue
         modes[name] = _expiry_row(row, kept) if name.startswith(MODE_EXPIRY) else dict(row)
@@ -433,6 +459,46 @@ def merge_report(
         "attempts": attempts,
         "modes": modes,
     }
+
+
+def plan_proved(
+    report: Mapping[str, Any] | None, mode: str, *, key: str, brand: str | None, firmware: str | None, now: datetime,
+    variant: str | None = None, detail: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """The report for `key` with `mode` shown by the plan's own command (see the module), `None` when nothing
+    changes: the mode is none the plan can show (`PLAN_MODES`), or its row is already decided, by the routine (pass
+    or fail: a failure stands) or by an earlier command. `report`: the key's own, `None` before the routine ran
+    there (the report then starts here, with no run counted). `variant`: the hold variant the command ran;
+    `detail`: what is kept of the command and its readings."""
+    if mode not in PLAN_MODES:
+        return None
+    modes: dict[str, Any] = {name: dict(row) for name, row in _modes(report).items()}
+    kept = modes.get(mode) or {}
+    if mode_verdict(kept.get("outcome")) != "pending":
+        return None
+    row: dict[str, Any] = {**(detail or {}), "mode": mode, "outcome": PLAN_MODES[mode], "via": VIA_PLAN,
+                           "decided_at": now.isoformat()}
+    if mode == "hold" and variant is not None:
+        tried = [dict(item) for item in variants_tried(report)]
+        row |= {"variant": variant, "variants": [*tried, {"variant": variant, "outcome": row["outcome"]}]}
+    modes[mode] = row
+    base: dict[str, Any] = dict(report) if isinstance(report, Mapping) else {
+        "key": key, "brand": brand, "firmware": firmware, "first_run_at": None, "last_run_at": None, "attempts": 0,
+    }
+    return {**base, "key": key, "updated_at": now.isoformat(), "modes": modes}
+
+
+def plan_shown(report: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The modes of a report that stand on the plan's own command (`VIA_PLAN`), for diagnostics."""
+    return tuple(
+        name for name, row in _modes(report).items()
+        if row.get("via") == VIA_PLAN and mode_verdict(row.get("outcome")) == "pass"
+    )
+
+
+def deadline_passed(since: datetime | None, now: datetime) -> bool:
+    """Whether a key first read at `since` has had its `PLAN_PROOF_DEADLINE_S` (an unknown time: not yet)."""
+    return since is not None and (now - since).total_seconds() >= PLAN_PROOF_DEADLINE_S
 
 
 #: Separate runs on one firmware key that must each give the mode `expiry` `obeyed` before it counts as measured
@@ -740,6 +806,9 @@ class Moment:
     blocker: str | None
     #: The executor is idle and holds nothing.
     executor_idle: bool
+    #: What the house needs beyond the sun (kW, `executor.ExecInputs.house_deficit_kw`): what the battery would
+    #: cover left alone. Read only by `suitable_ahead`.
+    house_deficit_kw: float | None = None
 
 
 def suitable(moment: Moment) -> str | None:
@@ -762,6 +831,23 @@ def suitable(moment: Moment) -> str | None:
     if moment.headroom_a is None or moment.headroom_a < SUITABLE_HEADROOM_A:
         return "headroom_too_small"
     return None
+
+
+def suitable_ahead(moment: Moment) -> str | None:
+    """Why a check past its deadline (`deadline_passed`) may not have the plan stand aside now, `None` when it may:
+    every rule of `suitable` but the idle executor. Under the plan's command the battery's own power says nothing of
+    what it would do left alone, so the discharge a hold is judged against is read from the house instead: it must
+    need at least `SUITABLE_DISCHARGE_KW` more than the sun gives."""
+    deficit = moment.house_deficit_kw
+    if deficit is None or not math.isfinite(deficit):
+        return "stale_data"
+    if deficit < SUITABLE_DISCHARGE_KW:
+        return "battery_not_discharging"
+    return suitable(Moment(
+        soc_pct=moment.soc_pct, power_kw=None if moment.power_kw is None else -deficit, fresh=moment.fresh,
+        measurement_ok=moment.measurement_ok, headroom_a=moment.headroom_a, car_charging=moment.car_charging,
+        blocker=moment.blocker, executor_idle=True,
+    ))
 
 
 # --- the grid charge cap -----------------------------------------------------------------------------------------------
