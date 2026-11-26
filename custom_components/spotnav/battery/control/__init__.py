@@ -83,7 +83,6 @@ The order on every path:
 
 from __future__ import annotations
 
-from ..commands import control_for
 from ..executor import Op
 from .const import (
     ACTING_GRACE_S,
@@ -199,7 +198,6 @@ __all__ = [
     "_orphans",
     "_state_of",
     "async_hand_back_stored",
-    "control_for",
     "resolve_follows_max",
     "store_key",
     "stored_reads",
