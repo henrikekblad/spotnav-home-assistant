@@ -461,3 +461,20 @@ async def test_an_exit_never_leaves_the_heat_pump_on_without_circulation(hass: H
     devices.set(CIRC, "on")
     await looks(control, NOW + 5 * MIN, NOW + 6 * MIN)
     assert devices.state(PUMP) == "heat" and not control.pool.hp.holds()
+
+
+async def test_a_removal_with_a_load_still_held_says_what_to_set_back_by_hand(
+    hass: HomeAssistant, caplog: Any
+) -> None:
+    """The site's unload hands back what it can; a circulation kept for its run-on is the last record of SpotNav's
+    change when the site is removed then: logged, as the heat control logs its own, before the record goes."""
+    devices = _devices(hass, setpoint=26.0)
+    control, shadow, _order = make_control(hass, _pool(target_c=28.0))
+    shadow.pool_action("heat")
+    await looks(control, NOW, NOW + 20 * MIN)
+    assert devices.state(PUMP) == "heat"
+    await control.async_shutdown()
+    assert control.pool.circ.holds(), "kept for the run-on"
+    await PoolSpaControl.async_remove_stored(hass, control.site.entry_id)
+    assert "set it back by hand" in caplog.text and "circulation" in caplog.text
+    assert await PoolSpaControl(hass, control.site)._store.async_load() is None

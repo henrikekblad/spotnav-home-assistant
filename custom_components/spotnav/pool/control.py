@@ -43,7 +43,7 @@ import asyncio
 import copy
 import logging
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -57,7 +57,7 @@ from ..const import DOMAIN
 from ..core.parse import finite_number, number_from_state
 from ..heat.automations import steering_automations
 from ..heat.config import HeatConfig
-from ..loads.hold import KIND_SETTING, KIND_SWITCH, OBSERVED_FOREIGN, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
+from ..loads.hold import KIND_SETTING, KIND_SWITCH, OBSERVED_FOREIGN, Held, READ_BACK_CLOUD, READ_BACK_LOCAL, Value, same
 from ..loads.hold_part import (
     REASON_AUTOMATION,
     REASON_CLOUD,
@@ -130,6 +130,22 @@ _UNREADABLE: Final = frozenset({"unavailable", "unknown"})
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.pool_spa_control.{entry_id}"
+
+
+def _held_settings(raw: Any, path: str = "") -> list[str]:
+    """Each setting a kept record says SpotNav still holds, as `<load>.<setting> back to <the person's value>`."""
+    if not isinstance(raw, Mapping):
+        return []
+    found: list[str] = []
+    helds = raw.get("helds")
+    if isinstance(helds, Mapping):
+        for key, item in helds.items():
+            if isinstance(key, str) and (held := Held.from_stored(key, item)).holds():
+                found.append(f"{path}{key} back to {held.person if held.person is not None else 'unknown'}")
+    for key, value in raw.items():
+        if key != "helds" and isinstance(key, str) and isinstance(value, Mapping):
+            found.extend(_held_settings(value, f"{path}{key}."))
+    return found
 
 
 def to_unit(celsius: float, unit: Any) -> float:
@@ -762,7 +778,22 @@ class PoolSpaControl:
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
-        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+        """Forget the record when the site is removed. What the unload's hand-back could not give back (a circulation
+        kept for its run-on, a write not read back) is the last record of it: logged first, so it can be set back by
+        hand."""
+        store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
+        try:
+            kept = await store.async_load()
+        except Exception:  # noqa: BLE001 - nothing to tell
+            _LOGGER.debug("async_remove_stored: ignored failure (nothing to tell)", exc_info=True)
+            kept = None
+        held = _held_settings(kept)
+        if held:
+            _LOGGER.warning(
+                "SpotNav pool and spa control: removed while a change of its was not handed back; set it back by hand: %s",
+                "; ".join(held),
+            )
+        await store.async_remove()
 
     # ---- life cycle
 
