@@ -7470,10 +7470,12 @@ def _plugged_in_for_resume(adapter: Any) -> bool:
 
 
 async def async_release_held_charges(hass: HomeAssistant, charger_entry_ids: Sequence[str]) -> None:
-    """Load balancing governs these chargers no more (turned off, a charger taken off its site, the site removed), so
-    no regulator will resume a charge it holds back: one still wanted is given back as the regulator's resume gives it
+    """Load balancing governs these chargers no more (turned off, a charger taken off its site, the site removed or
+    disabled), so no
+    regulator will resume a charge it holds back: one still wanted is given back as the regulator's resume gives it
     back (`async_battery_probe_start`, at the current on record, with no site left to cap it), one no longer wanted is
-    forgotten. Not at an unload: a reload's controller and the next start of Home Assistant resume it themselves."""
+    forgotten. Not at another unload: a reload's controller and the next start of Home Assistant resume it
+    themselves."""
     for charger_entry_id in charger_entry_ids:
         charger_controller = controller_for(hass, charger_entry_id)
         if charger_controller is None or not charger_controller.paused_by_balancing:

@@ -1020,6 +1020,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # No member charger's sun reads the controller once it is going.
         async_unbind_solar_execution(hass, site.controller)
         await site.controller.async_shutdown()
+        if entry.disabled_by is not None:
+            # A disabled site does not come back by itself: as at a removal, a charge its load balancing held back is
+            # given back or forgotten, since no regulator resumes it.
+            await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
     return unloaded
 
 
