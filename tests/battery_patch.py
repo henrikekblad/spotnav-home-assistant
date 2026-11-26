@@ -35,14 +35,14 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "STARTUP_LOOK_S": ("control.life",),
     "STARTUP_WAIT_S": ("control.life",),
     "Store": ("control.core", "control.life",),
-    "blocked": ("control.core", "control.gate_record",),
-    "control_for": ("control.core", "control.gate_record", "control.life", "control.stored",),
+    "blocked": ("control.gate_record", "control.report",),
+    "control_for": ("control.core", "control.gate_record", "control.life", "control.report", "control.stored",),
     "export_control_for": ("control.life", "control.stored",),
-    "learning_gate_open": ("control.core",),
+    "learning_gate_open": ("control.report",),
     "plant_entity_id": ("control.core",),
     "read_export_facts": ("control.core", "control.life", "control.stored",),
     "read_plant_entity": ("control.core",),
-    "recipe_field_tested": ("control.core",),
+    "recipe_field_tested": ("control.report",),
 }
 
 
