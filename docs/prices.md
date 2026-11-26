@@ -7,6 +7,16 @@ section: Settings
 
 # Prices
 
+## In short
+
+- **What it does for you.** SpotNav plans on the spot price of every interval, with your own fees, taxes and VAT
+  added, so a plan shows what you really pay.
+- **What you need.** A price source in Home Assistant for your area: Nord Pool (built in) for most of Europe, PVPC in
+  Spain, Octopus Energy in Great Britain, Zonneplan in the Netherlands, or your own free ENTSO-E key elsewhere
+  ([Where prices come from](#where-prices-come-from)).
+- **What to do.** Add the source once, then check your fees in the card's **Settings → Electricity price**
+  ([What you pay](#what-you-pay)).
+
 Where SpotNav's prices come from, what is added to them, and how the integration uses them. The
 last part describes the day document SpotNav keeps and hands to the app, for anyone who reads it
 directly.

@@ -9,6 +9,15 @@ section: Help
 
 For when something does not work as expected: how to get diagnostics and the debug info for a bug report, and fixes for the common problems.
 
+## In short
+
+- **To report a problem**, right after it happened: the card's **Settings → Support → Send debug info**
+  ([Send debug info](#send-debug-info)): write what happened, tick the box and press **Send** (administrators).
+  Mention the reference it shows when you write about it.
+- **To look yourself**, find your problem below: [the cards](#the-cards), [setting up](#setting-up),
+  [charging](#charging), [prices](#prices), [vehicles](#vehicles), [the site](#site) or
+  [phone and pairing](#phone-and-pairing).
+
 ## Diagnostics
 
 The easiest way to report a problem is to send the debug info from the card, right after it happened:

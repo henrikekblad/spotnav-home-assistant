@@ -7,6 +7,15 @@ section: House and battery
 
 # The house card
 
+## In short
+
+- **What it does for you.** One card for the whole house: live power flows between the sun, the grid, the battery,
+  the house, the car and the heat, the energy history, what SpotNav saved, and the battery plan.
+- **What you need.** A SpotNav site (*Your home*). A charger is not needed: a home with only a battery or heating
+  starts here.
+- **What to do.** Add the card (see [Add it](#add-it)). Its gear opens the site's settings. The card itself never
+  writes to anything.
+
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
 Its header is the charging card's: the SpotNav mark, "House" and a muted status after it. Until battery control is on
 and checked, the status says "· Test" (tap it: "SpotNav is not controlling anything yet" and what that means): the
