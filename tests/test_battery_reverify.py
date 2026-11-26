@@ -587,3 +587,11 @@ def test_a_failed_check_of_no_readable_time_ends_all_carrying() -> None:
     reports[B] = {**failed, "brand": "huawei"}
     assert _sources(gate.control_report(None, reports, key=C, brand="sigenergy")) == {A}
 
+
+def test_the_capability_per_phase_is_not_carried_onto_a_key_whose_own_charge_per_phase_failed() -> None:
+    old = _report(A, at=T_A, per_phase="obeyed")
+    now = _only(C, attempts=1, charge=_row("ignored", via="per_phase"))
+    carried = gate.control_report(now, {A: old}, key=C, brand="sigenergy")
+    assert "per_phase" not in carried["carried_from"] and "per_phase" not in carried["modes"]
+    assert gate.per_phase(carried) == "failed" and "grid_charge" not in gate.allowed_actions(carried, OPTIONS)
+    assert carried["carried_from"] == dict.fromkeys(("hold", "discharge_house", "normal"), A)

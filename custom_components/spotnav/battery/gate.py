@@ -807,6 +807,8 @@ def control_report(
             continue
         if name == "hold" and _hold_dropped(current, variants):
             continue
+        if name == MODE_PER_PHASE and per_phase(current) == "failed":
+            continue  # this key's charge tried per phase failed: the capability is decided here
         modes[name] = row
         carried[name] = source
     if not carried:
