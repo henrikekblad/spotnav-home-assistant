@@ -23,10 +23,6 @@ from .helpers import _least
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
 
-#: How far under the rate asked a start of the test's charge still counts as all of it (kW: the executor rounds).
-_RATE_SLACK_KW = 0.01
-
-
 class HardwareRun:
     """A person's hardware test. A mixin of `BatteryControl`, on its state."""
 
@@ -53,10 +49,11 @@ class HardwareRun:
         the brand's balanced charge at the rate the charge step asks for (`TEST_CHARGE_KW`, within the battery's
         rating, its charge power entity, its BMS and the HA-down cap, as `_async_verify` bounds it): the headroom is
         measured while the battery covers the house, and that cover, which ends with the charge, is counted out of it
-        as the executor counts it (`Executor._change_cover_a`). The whole rate must fit: a start the executor refuses
-        (`aborted:fuse_headroom`) leaves the test `incomplete` whatever the plant does, and a charge it lowers far
-        under the rate asked is judged against that rate (`verify.Verification._read`: `partial`, a failure of a
-        plant that did as told). So the test waits for the house to use less instead.
+        as the executor counts it (`Executor._change_cover_a`). Only a start the executor refuses is waited out
+        (`aborted:fuse_headroom` leaves the test `incomplete` whatever the plant does): the test waits for the house
+        to use less instead. A charge the executor starts lowered to the room there is needs no wait: it is at least
+        `gate.MIN_RATE_KW` and is judged against the rate commanded (`verify.Verification._read`), so a plant that
+        charges at it did as told. A plant that charges at its own power is never lowered: all of it must fit.
 
         Never a wait where the step is not the moment's to decide: a recipe without a grid charge
         (`_supported_modes`), a BMS that takes nothing now, an HA-down cap that leaves no balanced charge (the test
@@ -79,13 +76,9 @@ class HardwareRun:
             if cap < gate.MIN_RATE_KW or (fixed is not None and math.isfinite(fixed) and fixed > cap):
                 return None
             asked = min(asked, cap)
-        rate, why = start_rate(control, replace(
+        _rate, why = start_rate(control, replace(
             inputs, action=ACTION_GRID_CHARGE, rate_kw=asked, slot_end=None, phase_caps_kw=None, phase_probe_kw=None,
         ))
-        if why is None:
-            # A plant that charges at its own power starts at that or not at all.
-            fits = control.fixed_charge or rate >= asked - _RATE_SLACK_KW
-            return None if fits else NO_ROOM_FOR_CHARGE
         return NO_ROOM_FOR_CHARGE if why in gate.MOMENT_ABORTS else None
 
     def hardware_test_refusal(self) -> str | None:

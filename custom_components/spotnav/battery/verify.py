@@ -28,6 +28,16 @@ leaves a live charge, whose rate is the plan's and may be far over the battery's
 needs could never be shown on such a plant. The discharge to the house stays unjudged without a rating: what it is
 asked for is the house's own load, which may be far over what the battery can give, and the pass does not need it.
 
+**A charge the fuse lowers.** The charge step is judged against what the executor commands, as the charge per phase
+below is: the rate after the HA-down cap the shell bounds it by and after the executor's own lowering to the fuse's
+live room, never against the rate first asked for (`TEST_CHARGE_KW`). A plant on a small fuse that charges exactly at
+a cap of 0.7 kW did as told. Each reading is judged against the least rate commanded since the reading before it
+(`Verification.charge_low_kw`: a rate just raised does not show in the battery's power yet). The executor runs no
+charge under `gate.MIN_RATE_KW`: a cap under it leaves the step `not_judgeable:grid_charge_cap` (the shell's), a live
+room under it `aborted:fuse_headroom` (the executor's refusal or hand-back, an abort for the moment's circumstances),
+and a reading at a rate under it, should one ever be taken, `not_judgeable:fuse_headroom`; none is a failure. A plant
+that takes nothing of a lowered charge still reads `ignored`, one that takes under half of it `partial`.
+
 **Hold variants** (`commands.HoldVariant`; no shipping brand has more than one since Sigenergy's hold became `pv_first`
 only, 2026-11-23): hold is tried with the
 brand's first variant; when the plant ignores it (`VARIANT_RETRY`: every reading as if nothing was written) the
@@ -173,6 +183,7 @@ from .ledger import READBACK_DEADLINE_S
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES, phase_volts
 from .gate import (
     EXPIRY_LOOK_S,
+    MIN_RATE_KW,
     MODE_EXPIRY,
     MODE_PER_PHASE,
     PHASE_NAMES,
@@ -523,6 +534,9 @@ class Verification:
         self.phased_before: bool | None = None
         #: Settled looks in a row in which the executor could raise the charge step and kept it too small.
         self.unraised_looks = 0
+        #: The balanced charge step: the least rate the executor commanded since the reading before (kW; see the
+        #: module), `None` before its first look.
+        self.charge_low_kw: float | None = None
         # The hold variants still to try: those an earlier run (`tried`, from the report's hold row) did not fail.
         failed = {str(row.get("variant")) for row in tried if mode_verdict(row.get("outcome")) == "fail"}
         names = executor.control.variant_names()
@@ -597,6 +611,7 @@ class Verification:
                 self.variant_wait_since = None
             result.commanded_at = now
             result.before_kw = sample.power_kw
+            self.charge_low_kw = None
             if result.action == ACTION_GRID_CHARGE:
                 result.rate_kw = min(self.charge_kw, rated_charge_kw) if rated_charge_kw else self.charge_kw
         return result.action, result.rate_kw
@@ -810,6 +825,7 @@ class Verification:
                 taken = False
             if taken:
                 result.taken_at = now
+                self.charge_low_kw = None
                 self._enter(now, "settle")
                 if not (result.phased and self._settle_s(result) <= 0):
                     return
@@ -824,6 +840,9 @@ class Verification:
                 self._abort(now, "aborted:command_timeout")
             if self.stage != "settle":
                 return
+        if result.action == ACTION_GRID_CHARGE and not result.phased and self.stage in ("settle", "read"):
+            # What the executor commands now, after every cap and its own fuse rule (see the module).
+            self.charge_low_kw = state.rate_kw if self.charge_low_kw is None else min(self.charge_low_kw, state.rate_kw)
         if self.stage == "settle":
             if (now - self.stage_at).total_seconds() >= self._settle_s(result):
                 self._enter(now, "read")
@@ -835,7 +854,7 @@ class Verification:
             elif result.phased:
                 self._read_phase(now, result, sample, state.phase_kw)
             else:
-                self._read(now, result, sample, capability)
+                self._read(now, result, sample, capability, state.rate_kw)
             return
         if self.stage == "hand_back" and self.expiry_retake_since is not None:
             self._retake(now, result, step)
@@ -870,7 +889,11 @@ class Verification:
             return max(self.timing.zero_settle_s, ZERO_SETTLE_S)
         return self.timing.phase_settle_s
 
-    def _read(self, now: datetime, result: ModeResult, sample: Sample, capability: Capability) -> None:
+    def _read(
+        self, now: datetime, result: ModeResult, sample: Sample, capability: Capability, commanded_kw: float
+    ) -> None:
+        """One reading of a balanced mode's step. `commanded_kw`: the rate the executor runs now; a charge is judged
+        against the least it commanded since the reading before, never over the rate asked for (see the module)."""
         if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < self.timing.reading_gap_s:
             return
         self.last_reading_at = now
@@ -878,6 +901,11 @@ class Verification:
         kind = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
                 ACTION_CURTAIL_EXPORT: "hold"}[result.action]
         rate = result.rate_kw if kind == "charge" else (sample.house_deficit_kw or 0.0)
+        judged_kw: float | None = None
+        if kind == "charge":
+            low = commanded_kw if self.charge_low_kw is None else min(self.charge_low_kw, commanded_kw)
+            judged_kw = min(rate, low)
+            self.charge_low_kw = commanded_kw
         idle = result.action == ACTION_HOLD and self.executor.control.hold_idle()
         command = Command(  # type: ignore[arg-type]
             kind, result.commanded_at or now, rate, before_kw=result.before_kw, written=True, idle=idle
@@ -895,6 +923,9 @@ class Verification:
             why = "battery_not_discharging"
         elif kind == "discharge" and sample.house_deficit_kw is None:
             why = "house_deficit_unknown"
+        elif judged_kw is not None and judged_kw < MIN_RATE_KW - 1e-9:
+            # Under the least charge the executor runs: nothing a plant could show.
+            why = "fuse_headroom"
         else:
             cap = capability if kind != "discharge" else Capability(
                 capability.rated_charge_kw, capability.rated_discharge_kw, capability.soc_min_pct,
@@ -903,6 +934,10 @@ class Verification:
             if kind == "charge" and cap.rated_charge_kw is None:
                 # No rating read: judged against the rate commanded (see the module).
                 cap = replace(cap, rated_charge_kw=command.rate_kw)
+            if judged_kw is not None:
+                # The rate after every cap and the executor's own lowering is the site's limit on the command.
+                site = judged_kw if cap.site_cap_kw is None else min(cap.site_cap_kw, judged_kw)
+                cap = replace(cap, site_cap_kw=site)
             full = self.charge_soc_max_pct if kind == "charge" else CHARGE_TAPER_SOC_PCT
             expected, why = deliverable_kw(command, cap, sample.soc_pct, full_soc_pct=full)
         if why is not None:

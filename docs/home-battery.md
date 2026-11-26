@@ -249,11 +249,13 @@ plant's own hardware test stops its control only when a step fails, never when t
    battery (Support → Hardware test says why).
 2. **Run the hardware test.** Settings → Support → Hardware test, then Start, once. Nothing else is asked of you: the
    test waits for a suitable moment by itself, runs only in waking hours (08–21), tells your phones while it runs
-   (with a Stop button) and always hands the battery back. Part of that moment is room under the fuse for all of the
-   small grid charge once the battery stops covering the house: while the house draws too much the card says
-   *Waiting for the house to use less power, so the small grid charge fits under the fuse*, and the test starts by
-   itself when it does. A wait that never ends (three days) ends as not run, never as a failure. The small grid
-   charge is 2 kW, and it is judged against that where the integration states no rated power for the battery
+   (with a Stop button) and always hands the battery back. Part of that moment is room under the fuse for the
+   small grid charge once the battery stops covering the house (at least 0.5 kW): while the house draws too much the
+   card says *Waiting for the house to use less power, so the small grid charge fits under the fuse*, and the test
+   starts by itself when it does. A wait that never ends (three days) ends as not run, never as a failure. The small
+   grid charge is 2 kW, or less where the fuse leaves room for less, and it is judged against the power SpotNav
+   actually commanded: a battery on a small fuse that charges at the 0.7 kW it was asked for has passed. It is
+   judged against that also where the integration states no rated power for the battery
    (see [Home battery brands in detail](battery-brands.md)). Its result is sent by itself when it ends, with the
    battery's log and history over the test, while Beta tester is on. The card then says *The result has been sent. You get an answer by
    e-mail.* A test where nothing failed but a step the brand needs could not be shown (the small grid charge had no
