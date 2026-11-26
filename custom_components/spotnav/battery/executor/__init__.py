@@ -1376,22 +1376,7 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims):
             if unresolved is not None:
                 # A value that depends on a reading gone missing (the rating, the SoC) is never written as it stands.
                 return events + self._begin_restore(now, unresolved)
-            # The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
-            # timeout) is written again with the new command: with an action change every quarter hour it would
-            # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
-            # a button, pressed once per target (SolaX's trigger sends the whole new command).
-            # At most once a `RENEW_ON_CHANGE_GAP_S` (an action that flips at every look would otherwise renew at
-            # every look, uncounted): a change sooner keeps the last renewal's time, so the shared timer still
-            # renews `WATCHDOG_RENEW_S` after it.
-            unchanged = () if self._fast_renewal() else tuple(
-                name for name in self.control.watchdog_roles
-                if name in target and state.target.get(name) == target[name]
-                and self.control.role(name).method != "button"
-            )
-            due = state.watchdog_at is None or (now - state.watchdog_at).total_seconds() >= RENEW_ON_CHANGE_GAP_S
-            # Within the gap, a renewal the timer already owed (and `watchdog_at` records as done) is kept.
-            renew = unchanged if due else tuple(name for name in state.renew if name in unchanged)
-            watchdog_at = state.watchdog_at if unchanged and not due else now
+            renew, watchdog_at = self._renew_on_change(state, target, now)
             self.state = replace(
                 state, action=action, rate_kw=rate,
                 target=target,
@@ -1430,6 +1415,35 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims):
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
         events += self._follow_surplus(inputs)
         events += self._renew_block(inputs)
+        return events + self._renewal(inputs)
+
+    def _renew_on_change(
+        self, state: ExecState, target: Mapping[str, Native], now: datetime
+    ) -> tuple[tuple[str, ...], datetime | None]:
+        """The roles renewed with a change of action to `target`, and the renewal's time from it.
+        The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
+        timeout) is written again with the new command: with an action change every quarter hour it would
+        otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
+        a button, pressed once per target (SolaX's trigger sends the whole new command).
+        At most once a `RENEW_ON_CHANGE_GAP_S` (an action that flips at every look would otherwise renew at
+        every look, uncounted): a change sooner keeps the last renewal's time, so the shared timer still
+        renews `WATCHDOG_RENEW_S` after it."""
+        unchanged = () if self._fast_renewal() else tuple(
+            name for name in self.control.watchdog_roles
+            if name in target and state.target.get(name) == target[name]
+            and self.control.role(name).method != "button"
+        )
+        due = state.watchdog_at is None or (now - state.watchdog_at).total_seconds() >= RENEW_ON_CHANGE_GAP_S
+        # Within the gap, a renewal the timer already owed (and `watchdog_at` records as done) is kept.
+        renew = unchanged if due else tuple(name for name in state.renew if name in unchanged)
+        watchdog_at = state.watchdog_at if unchanged and not due else now
+        return renew, watchdog_at
+
+    def _renewal(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A watchdog's renewal falling due: the shared round, or a fast watchdog's own (handed back when the day's
+        renewals are spent)."""
+        now = inputs.now
+        events: list[dict[str, Any]] = []
         state = self.state
         if not self._fast_renewal():
             # A watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX): renewed as it always was, every
@@ -1716,11 +1730,7 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims):
         sent = state.sent if name in state.sent else (*state.sent, name)
         # A restore and a watchdog renewal are not counted: the renewal is the brand's dead-man, on a fixed timer
         # (`WATCHDOG_RENEW_S`, at most a few roles), never a change of the wanted state.
-        # On a fast watchdog a role in a renewal round whose value changed meanwhile is a change, and is counted;
-        # the brands on `WATCHDOG_RENEW_S` count no renewal, as before (their round is a few roles a quarter-hour).
-        renewing = name in state.renew and (
-            not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
-        )
+        renewing = self._is_renewal(state, name, role, value, read)
         counted = 0 if renewing or (restoring and not self.control.count_restores) else 1
         setpoint = role.write_class == "setpoint"
         writes = state.writes_today + (0 if setpoint else counted)
@@ -1761,6 +1771,14 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims):
         if wait is None or state.phase == "restoring" or self._covering(state, name):
             return READBACK_DEADLINE_S
         return wait
+
+    def _is_renewal(self, state: ExecState, name: str, role: Role, value: Native, read: RoleRead | None) -> bool:
+        """Whether this write of `name` is a renewal (never counted against the day's writes).
+        On a fast watchdog a role in a renewal round whose value changed meanwhile is a change, and is counted;
+        the brands on `WATCHDOG_RENEW_S` count no renewal, as before (their round is a few roles a quarter-hour)."""
+        return name in state.renew and (
+            not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
+        )
 
     def _fast_renewal(self) -> bool:
         """Whether the control's watchdog is renewed on the recipe's own short interval
