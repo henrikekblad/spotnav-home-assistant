@@ -12,6 +12,17 @@ For everyone who charges with SpotNav: what the cheapest, solar and hybrid strat
 A charger has one strategy at a time, chosen in the card (**Strategy**). A strategy that cannot
 work on this installation is listed as unavailable with the reason.
 
+## In short
+
+| Strategy | What it does | What it needs | Choose it when |
+| --- | --- | --- | --- |
+| [Cheapest](#cheapest) | Buys the energy you asked for in the cheapest quarter hours before your departure. | A charger and a price source. | You charge from the grid and want the lowest price. |
+| [Solar](#solar) | Charges only from surplus sun, following it with the charger's current. | A [site](site-and-load-balancing.md) that can measure the surplus (power per phase, or the meter's total grid power). | You have solar panels and no deadline. |
+| [Hybrid](#hybrid) | Cheapest, but may hold back grid energy where the forecast expects sun. Never late because of it. | A site and a solar forecast source; without a forecast it plans like Cheapest. | You have solar panels and a departure to meet. |
+
+Whatever the strategy, **Start** and **Stop** hand the charger to you until the car is unplugged, and load
+balancing still keeps the main fuse safe.
+
 ## What every strategy shares
 
 The plan is calculated from the charger's settings: price area, current in amps, the
