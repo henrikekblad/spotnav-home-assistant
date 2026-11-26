@@ -93,6 +93,7 @@ from .providers import (
 )
 from .providers.entsoe import EntsoeProvider
 from .providers.nordpool import NordPoolProvider
+from .export_rates import ExportRates
 from .providers.octopus import OctopusProvider
 from .providers.pvpc import PvpcProvider
 from .providers.zonneplan import ZonneplanProvider
@@ -319,6 +320,12 @@ class PriceRepository:
     def source_status(self, area_id: str) -> SourceStatus:
         """The area's price source now and its notice (`providers/notices.py`)."""
         return self._router.source_status(area_id)
+
+    def export_rates(self, area_id: str) -> ExportRates | None:
+        """What a sold kWh earns per slot from the area's provider (`export_rates.ExportRates`), where it reads an
+        export meter's own rates (an Octopus export meter); `None` otherwise. Nothing is fetched."""
+        read = getattr(self._router.provider_for(area_id), "export_rates", None)
+        return None if read is None else read(area_id)
 
     def entsoe_provider(self) -> EntsoeProvider | None:
         """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""

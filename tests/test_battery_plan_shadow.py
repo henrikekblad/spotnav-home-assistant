@@ -749,6 +749,28 @@ def test_a_sell_credit_is_added_to_every_exported_kwh() -> None:
     assert price_slots(rows, FiscalChoice(), sell_credit=4.0)[0].sell == pytest.approx(54.0)
 
 
+def test_the_suppliers_export_rate_is_what_a_slot_it_covers_earns() -> None:
+    """An Octopus export meter's rates (pence) stand in for spot plus the figure where they cover a slot; a slot they
+    do not cover keeps spot plus the figure, and the buy price never changes."""
+    from custom_components.spotnav.pricing.export_rates import ExportRates
+
+    half = timedelta(minutes=30)
+    rows = [(MIDNIGHT + half * index, MIDNIGHT + half * (index + 1), 0.30) for index in range(4)]
+    fiscal = FiscalChoice(sell_adjustment_minor_per_kwh=2.0).validated()
+    export = ExportRates({MIDNIGHT: 8.32, MIDNIGHT + half: 18.49, MIDNIGHT + 2 * half: -1.5})
+    slots = price_slots(rows, fiscal, export=export)
+    assert [slot.sell for slot in slots] == pytest.approx([8.32, 18.49, -1.5, 32.0])
+    assert [slot.buy for slot in slots] == [slot.buy for slot in price_slots(rows, fiscal)]
+    # No export rates: spot plus the figure, as before.
+    assert [slot.sell for slot in price_slots(rows, fiscal, export=None)] == pytest.approx([32.0] * 4)
+    # Quarter-hour slots take their half-hour's rate; an hour across two rates their mean.
+    quarter = [(MIDNIGHT + timedelta(minutes=15), MIDNIGHT + half, 0.30), (MIDNIGHT, MIDNIGHT + 2 * half, 0.30)]
+    assert [slot.sell for slot in price_slots(quarter, fiscal, export=export)] == pytest.approx([(8.32 + 18.49) / 2, 8.32])
+    # A slot only partly covered is not the export rate's.
+    late = [(MIDNIGHT + 2 * half, MIDNIGHT + 4 * half, 0.30)]
+    assert price_slots(late, fiscal, export=export)[0].sell == pytest.approx(32.0)
+
+
 def test_a_sold_kwh_earns_the_prices_own_figure_beyond_spot_with_no_vat() -> None:
     rows = [(MIDNIGHT, MIDNIGHT + timedelta(hours=1), 0.50)]
     fiscal = FiscalChoice(vat_enabled=True, vat_percent=25, sell_adjustment_minor_per_kwh=6.0).validated()

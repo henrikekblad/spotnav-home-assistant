@@ -36,6 +36,12 @@ meter's rates are used for the chosen area (they are what the person pays), and 
 says so for the card's notice. Several import meters in different regions, none of them the chosen one, serve
 nothing: there is no telling which meter the person meant.
 
+An export meter's rates (Agile Outgoing, Flux export, Outgoing fixed) are what a sold kWh earns in each slot
+([OctopusProvider.export_rates], `pricing/export_rates.py`): the export meter on the same smart meter as the
+import meter read for the area (they share a serial number), else the first in that meter's region. They are kept
+in pence, never converted, and remembered while Home Assistant runs for [EXPORT_KEPT] after the integration has
+let them go, so a review of a few days back still prices a sold kWh at its own rate.
+
 The rates are converted to EUR with the day's ECB rate, written beside them like the relay does; without a rate
 the day is refused (`fx_missing`), as the relay refuses it, and asked for again. `src` is `octopus.energy`, as
 the relay writes it. Nothing about the rates or the meter is logged.
@@ -59,6 +65,7 @@ from homeassistant.util import dt as dt_util
 from ... import time_zones
 from ..area_catalogue import BundledCatalogue
 from ..day_document import build_day_document
+from ..export_rates import ExportRates
 from ..relay_contract import AreaPublication, PriceDocument
 from . import DayFetch, FailureCode, market_today, ProviderKey
 from .rates import DayRate, FX_SRC, RateSource
@@ -85,6 +92,9 @@ SRC: Final = "octopus.energy"
 
 #: The three event entities of one meter, by the end of their unique id.
 KINDS: Final = ("previous_day_rates", "current_day_rates", "next_day_rates")
+
+#: How long an export rate is remembered once the integration no longer holds it.
+EXPORT_KEPT: Final = timedelta(days=40)
 
 #: `E-1R-<product>-<region>` or `E-2R-…`: a single- or two-register electricity tariff (the integration's own
 #: pattern, `REGEX_TARIFF_PARTS`, narrowed to electricity).
@@ -193,6 +203,10 @@ class OctopusProvider:
         self._rate = DayRate(fx, self._now)
         self._meters: tuple[OctopusMeter, ...] = ()
         self._exports: tuple[OctopusMeter, ...] = ()
+        #: Every export rate read so far (UTC start → pence per kWh), by export meter key.
+        self._export_seen: dict[str, dict[datetime, float]] = {}
+        #: The last [export_rates] answer and what it was read from (the entities' last updates, the day).
+        self._export_cache: tuple[Any, ExportRates | None] | None = None
 
     # -------------------------------------------------------------- the meters
 
@@ -289,6 +303,47 @@ class OctopusProvider:
         if routes is None or meter is None or meter.region == routes.octopus:
             return None
         return meter.region
+
+    def export_meter_for(self, area_id: str) -> OctopusMeter | None:
+        """The export meter whose rates are a sold kWh's price for the area: the one sharing the import meter's
+        serial number, else the first in the import meter's region; `None` without either."""
+        meter = self.meter_for(area_id)
+        if meter is None or not self._exports:
+            return None
+        if meter.serial is not None:
+            for export in self._exports:
+                if export.serial == meter.serial:
+                    return export
+        return next((export for export in self._exports if export.region == meter.region), None)
+
+    def export_rates(self, area_id: str) -> ExportRates | None:
+        """What a sold kWh earns per slot for the area (pence per kWh), from its export meter's rates; `None`
+        without an export meter, or when its rates cannot be read."""
+        export = self.export_meter_for(area_id)
+        if export is None:
+            return None
+        now = self._now()
+        stamp = (
+            export.key,
+            tuple(getattr(self._hass.states.get(entity_id), "last_updated", None) for entity_id in export.entity_ids()),
+            now.date(),
+        )
+        cached = self._export_cache
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        seen = self._export_seen.setdefault(export.key, {})
+        try:
+            pool = self._pool(export)
+        except _Refusal as err:
+            _LOGGER.debug("Octopus export rates for %s: %s", area_id, err.code)
+            pool = {}
+        seen.update({start: round(value * 100, 4) for start, value in pool.items()})
+        oldest = now - EXPORT_KEPT
+        for start in [start for start in seen if start < oldest]:
+            del seen[start]
+        rates = ExportRates(dict(seen), SLOT) if seen else None
+        self._export_cache = (stamp, rates)
+        return rates
 
     # -------------------------------------------------------------- what the router and repository ask
 

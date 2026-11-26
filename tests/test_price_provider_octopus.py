@@ -702,3 +702,163 @@ async def test_a_fixed_tariff_is_read_as_its_half_hours(world: World) -> None:
     await world.hass.async_block_till_done()
     fetch = await world.provider.async_fetch_day(AREA, TOMORROW)
     assert fetch.outcome == "fetched" and set(pounds(fetch.document)) == {0.2486}
+
+
+# ------------------------------------------------------------------ the export meter: what a sold kWh earns
+
+FLUX_EXPORT_C = "E-1R-FLUX-EXPORT-23-02-14-C"
+EXPORT_MPAN = "1170000000001"
+
+
+def export_value(start: datetime) -> float:
+    """Flux export pays its own three bands."""
+    return {FLUX_NIGHT: 0.0832, FLUX_DAY: 0.1849, FLUX_PEAK: 0.3075}[flux_value(start)]
+
+
+def export_meter(world: World, serial: str = SERIAL, mpan: str = EXPORT_MPAN) -> Meter:
+    return Meter(world.hass, world.entry, serial, mpan, export=True)
+
+
+async def _flux_with_export(world: World, *, tariff: str = FLUX_EXPORT_C, serial: str = SERIAL) -> Meter:
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TOMORROW), world.clock.now, tariff=FLUX_C)
+    exporter = export_meter(world, serial)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(TODAY - timedelta(days=1), TOMORROW)},
+        world.clock.now,
+        tariff=tariff,
+    )
+    await world.hass.async_block_till_done()
+    return exporter
+
+
+async def test_the_export_meter_on_the_same_smart_meter_gives_each_slot_its_sell_price(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world)
+
+    assert world.provider.export_meter_for(AREA).serial == SERIAL
+    rates = world.repository.export_rates(AREA)
+    assert rates is not None and len(rates.rates) == 3 * 48
+    zone = ZoneInfo(LONDON)
+    night = datetime(2026, 10, 4, 3, 0, tzinfo=zone)
+    peak = datetime(2026, 10, 4, 17, 0, tzinfo=zone)
+    # Pence per kWh, as the sell price is kept (minor units).
+    assert rates.over(night, night + SLOT) == 8.32 and rates.over(peak, peak + SLOT) == 30.75
+    # A quarter-hour inside a half-hour earns that half-hour's rate; an hour across two bands their mean.
+    assert rates.over(night, night + timedelta(minutes=15)) == 8.32
+    edge = datetime(2026, 10, 4, 15, 30, tzinfo=zone)
+    assert rates.over(edge, edge + timedelta(hours=1)) == pytest.approx((18.49 + 30.75) / 2)
+
+
+async def test_agile_outgoing_beside_agile_is_read_and_agile_is_unchanged(world: World) -> None:
+    await world.start()
+    await world.publish(TODAY)
+    exporter = export_meter(world)
+    exporter.publish({start: 0.15 for start in relay_slots(TODAY)}, world.clock.now, tariff="E-1R-AGILE-OUTGOING-19-05-13-C")
+    await world.hass.async_block_till_done()
+    assert (await world.provider.async_fetch_day(AREA, TODAY)).document["prices"] == relay_file(TODAY)["prices"]
+    assert world.provider.publication == PUBLICATION
+    assert set(world.repository.export_rates(AREA).rates.values()) == {15.0}
+
+
+async def test_without_an_export_meter_there_are_no_export_rates(world: World) -> None:
+    await world.start()
+    await world.publish(TODAY)
+    assert world.provider.export_rates(AREA) is None and world.repository.export_rates(AREA) is None
+    # Not a GB area: no provider with export rates.
+    assert world.repository.export_rates("SE4") is None
+
+
+async def test_an_export_meter_elsewhere_is_paired_by_region_only(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world, serial="99X0000009")
+    assert world.provider.export_meter_for(AREA) is not None
+
+    other = export_meter(world, "88X0000008", "1170000000002")
+    other.publish({NOW: 0.1}, world.clock.now, tariff="E-1R-OUTGOING-VAR-24-10-26-A")
+    await world.hass.async_block_till_done()
+    # Two export meters, neither on the import meter's smart meter: the one in its region.
+    assert world.provider.export_meter_for(AREA).region == "C"
+
+
+async def test_an_export_meter_in_another_region_is_not_read(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world, tariff="E-1R-FLUX-EXPORT-23-02-14-A", serial="99X0000009")
+    assert world.provider.export_rates(AREA) is None
+
+
+async def test_unreadable_export_rates_give_none_and_import_is_unaffected(world: World) -> None:
+    await world.start()
+    exporter = await _flux_with_export(world)
+    for entity_id in exporter.entity_ids.values():
+        state = world.hass.states.get(entity_id)
+        world.hass.states.async_set(entity_id, state.state, {**state.attributes, "rates": "garbage"})
+    await world.hass.async_block_till_done()
+    assert world.provider.export_rates(AREA) is None
+    assert (await world.provider.async_fetch_day(AREA, TODAY)).outcome == "fetched"
+
+
+async def test_export_rates_are_remembered_after_the_integration_lets_them_go(world: World) -> None:
+    await world.start()
+    exporter = await _flux_with_export(world)
+    first = world.provider.export_rates(AREA)
+    night = datetime(2026, 10, 3, 3, 0, tzinfo=ZoneInfo(LONDON))
+    assert first.over(night, night + SLOT) == 8.32
+
+    # Two days on the integration holds the 5th to the 7th only; the 3rd is still known, a rate read before.
+    world.clock.now = NOW + timedelta(days=2)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(date(2026, 10, 5), date(2026, 10, 7))},
+        world.clock.now,
+        tariff=FLUX_EXPORT_C,
+    )
+    await world.hass.async_block_till_done()
+    later = world.provider.export_rates(AREA)
+    assert later.over(night, night + SLOT) == 8.32 and len(later.rates) == 5 * 48
+
+    # Past [EXPORT_KEPT], forgotten.
+    world.clock.now = NOW + timedelta(days=60)
+    exporter.publish({}, world.clock.now, tariff=FLUX_EXPORT_C)
+    await world.hass.async_block_till_done()
+    assert world.provider.export_rates(AREA) is None
+
+
+async def test_the_days_record_sells_at_the_export_rate_and_without_one_at_spot(world: World) -> None:
+    """The day record (`day_record.prices_part`) reads what every plan reads: the export rate where it is held."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.day_record import prices_part
+    from custom_components.spotnav.planning.planner import FiscalChoice
+    from custom_components.spotnav.pricing.export_rates import area_export_rates
+    from custom_components.spotnav.runtime import domain_data
+
+    await world.start()
+    exporter = await _flux_with_export(world)
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+    domain_data(world.hass).price_repository = world.repository
+    try:
+        assert area_export_rates(world.hass, AREA) is not None and area_export_rates(world.hass, None) is None
+        source = SimpleNamespace(
+            area_id=AREA,
+            area=world.repository.area_entry(AREA),
+            fiscal=FiscalChoice(sell_adjustment_minor_per_kwh=1.0).validated(),
+        )
+        zone = ZoneInfo(LONDON)
+        start = datetime(2026, 10, 4, 0, 0, tzinfo=zone)
+        part = prices_part(world.hass, source, start, start + timedelta(days=1), TODAY)
+        rows = part["rows"]
+        assert len(rows) == 48
+        # [start, end, spot, buy, sell]: 03:00 UK is a night slot, 17:00 a peak one; sells are the export bands.
+        assert rows[6][4] == 8.32 and rows[34][4] == 30.75
+        assert rows[34][3] == pytest.approx(rows[34][2], abs=0.01)
+
+        # The export meter gone: spot plus the figure, as before.
+        for entity_id in exporter.entity_ids.values():
+            world.hass.states.async_remove(entity_id)
+            er.async_get(world.hass).async_remove(entity_id)
+        await world.hass.async_block_till_done()
+        assert world.provider.export_meters == ()
+        part = prices_part(world.hass, source, start, start + timedelta(days=1), TODAY)
+        assert all(row[4] == pytest.approx(row[2] + 1.0, abs=1e-3) for row in part["rows"])
+    finally:
+        domain_data(world.hass).price_repository = None
