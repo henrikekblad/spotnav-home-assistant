@@ -192,6 +192,27 @@ def test_the_hardware_test_stops_at_the_first_mode_that_does_not_pass_and_hands_
         key: value for key, value in SIGENERGY_STATES.items() if key != "charge_limit"}
 
 
+def test_a_step_with_no_room_under_the_fuse_does_not_skip_the_rest_of_the_hardware_test() -> None:
+    def tight(mode: str | None) -> float:
+        return 1.5 if mode == "charge" else 20.0
+
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, quick=True, headroom=tight)
+    # The executor refused the charge's start (under its margin); the discharge still ran, normal judged the hand-back.
+    assert _outcomes(verification) == {
+        "hold": "obeyed", "charge": "aborted:headroom_too_small", "discharge_house": "obeyed", "normal": "restored",
+    }
+    assert all(op.value != "Command Charging (Grid First)" for op in battery.writes)
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    # The routine is as before: it stops there and tries the open modes at a later run.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    routine = _verify(Executor(SIGENERGY_CONTROL), battery, headroom=tight)
+    assert _outcomes(routine) == {
+        "hold": "obeyed", "charge": "aborted:headroom_too_small", "discharge_house": "skipped", "normal": "restored",
+    }
+
+
 class _NearlyFull(FakeBattery):
     """A battery at a high charge level that takes `taken` of a grid charge's rate."""
 

@@ -784,3 +784,39 @@ def test_a_phase_dead_man_lifts_only_the_phases_it_was_proven_on() -> None:
     accepted = grid_charge_phase_caps_kw(20.0, 400.0, expiry_lifts=(False, True, False), accept_ha_down=True,
                                          site_margin_a=1.0, **base)
     assert accepted == pytest.approx((19.0 * volts / 1000, lifted, 19.0 * volts / 1000))
+
+
+def test_what_a_hardware_test_left_unshown_is_named_and_agrees_with_the_pass() -> None:
+    from custom_components.spotnav.battery import gate  # noqa: PLC0415
+
+    def report(**outcomes: str | None) -> dict[str, object]:
+        return {"modes": {mode.replace("__", ":"): {"outcome": outcome} for mode, outcome in outcomes.items()}}
+
+    passed = report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
+    assert gate.hardware_test_missing(passed) == () and gate.hardware_test_passed(passed)
+    # A required step aborted for the fuse, skipped, not judgeable or never reached; another step may be unjudged.
+    for outcome in ("aborted:fuse_headroom", "skipped", "not_judgeable:grid_charge_cap", None, "ignored"):
+        left = report(hold="obeyed", charge=outcome, discharge_house="not_judgeable:nothing_to_cover", normal="restored")
+        assert gate.hardware_test_missing(left) == (("charge", outcome),)
+        assert not gate.hardware_test_passed(left)
+        # A recipe without a grid charge does not wait for one: only a step stopped, open or failed is no pass.
+        assert (gate.hardware_test_missing(left, {"hold", "discharge_house", "normal"}) == ()) == (
+            outcome in ("skipped", "not_judgeable:grid_charge_cap")
+        )
+    fixed = report(hold="obeyed", charge=gate.NOT_APPLICABLE_FIXED_CHARGE, discharge_house="obeyed", normal="restored")
+    assert gate.hardware_test_missing(fixed) == ()
+    # The dead-man: tried is enough unless the recipe needs it timed; then also when it never ran.
+    tried = report(hold="obeyed", charge="obeyed", expiry="not_judgeable:house_changed", normal="restored")
+    assert gate.hardware_test_missing(tried) == ()
+    assert gate.hardware_test_missing(tried, deadman_required=True) == (("expiry", "not_judgeable:house_changed"),)
+    assert gate.hardware_test_missing(passed, deadman_required=True) == (("expiry", None),)
+    phases = report(hold="obeyed", charge="obeyed", expiry__L1="obeyed", expiry__L2="skipped", normal="restored")
+    assert gate.hardware_test_missing(phases) == (("expiry:L2", "skipped"),)
+    # Nothing kept, or a row missing: every step the pass needs is named.
+    assert gate.hardware_test_missing(None) == (("hold", None), ("charge", None), ("normal", None))
+    assert gate.hardware_test_missing(report(hold="obeyed")) == (("charge", None), ("normal", None))
+    for left in (passed, tried, phases, fixed, report(hold="obeyed"), report(hold="partial", normal="restored")):
+        for required in (False, True):
+            assert gate.hardware_test_passed(left, deadman_required=required) == (
+                not gate.hardware_test_missing(left, deadman_required=required)
+            )
