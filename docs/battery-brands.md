@@ -20,7 +20,8 @@ In short:
 - Before you turn control on, note the values the page names under **Restore by hand** for your brand.
 - Some integrations state no rated power for the battery (EcoFlow, Marstek, Kostal, Ferroamp, Tesla, Deye). The
   check and the hardware test then judge their small grid charge against the 2 kW they ask for (less where the
-  battery's own charge power setting takes less): the battery must reach at least half of it. Their discharge to the
+  battery's own charge power setting takes less or the fuse leaves room for less): the battery must reach at least
+  half of what was commanded. Their discharge to the
   house is not judged without a rating, and no brand's pass needs it.
 - How a grid charge is kept under the main fuse is on its own page: [Grid charging and the main fuse](battery-grid-charging.md).
 

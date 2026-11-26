@@ -33,7 +33,7 @@ _RATED = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
 def _verify(
     executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0,
     modes: tuple[str, ...] | None = None, headroom: Callable[[str | None], float] = lambda _mode: 20.0,
-    quick: bool = False, capability: Capability = _RATED,
+    quick: bool = False, capability: Capability = _RATED, cap_kw: float | None = None,
 ) -> Verification:
     now = T0
     verification = Verification(
@@ -48,6 +48,8 @@ def _verify(
         sample = Sample(power, 5.0, battery.soc_pct, house_kw)
         action, rate = verification.command(now, sample, capability.rated_charge_kw)
         current = verification.current
+        if cap_kw is not None and action == ACTION_GRID_CHARGE:
+            rate = min(rate, cap_kw)  # the shell's HA-down cap (`VerifyDriver._async_verify`)
         result = executor.step(inputs(
             battery, now, action, rate, failed=failed, house_deficit_kw=house_kw,
             headroom_a=headroom(None if current is None else current.mode), timed_out=timed_out,
@@ -171,6 +173,93 @@ def test_a_charge_on_a_battery_with_no_rating_read_is_judged_against_the_rate_co
     assert _outcomes(verification)["charge"] == "obeyed"
     # The control-failure monitor still leaves a live charge unjudged without a rating: its rate is the plan's.
     assert deliverable_kw(Command("charge", T0, rate_kw=8.0, written=True), unrated, 50.0) == (None, "rating_unknown")
+
+
+def test_a_charge_lowered_to_a_cap_is_judged_against_the_rate_commanded_in_the_routine_and_the_hardware_test() -> None:
+    # A one-phase plant on a small fuse: the HA-down cap leaves 0.7 kW of the 2 kW the step asks for. A plant that
+    # charges exactly at that did as told (it read `partial`, under half of 2 kW, and stopped control).
+    for quick in (False, True):
+        battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+        verification = _verify(Executor(SIGENERGY_CONTROL), battery, quick=quick, cap_kw=0.7)
+        outcomes = _outcomes(verification)
+        assert outcomes == {
+            "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"}, quick
+        charge = verification.report()["modes"]["charge"]
+        assert charge["rate_kw"] == TEST_CHARGE_KW, "the row keeps the rate asked for"
+        assert {row["expected_kw"] for row in charge["readings"]} == {0.7}
+        assert {row["power_kw"] for row in charge["readings"]} == {0.7}
+        if quick:
+            assert hardware_test_passed(verification.report())
+        # Never easier for the cap: under half of the capped rate is no pass, nothing at all is ignored.
+        for share, outcome in ((0.6, "obeyed"), (0.4, "partial"), (0.05, "ignored")):
+            weak = _Weak(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), share=share)
+            capped = _verify(Executor(SIGENERGY_CONTROL), weak, modes=("charge",), quick=quick, cap_kw=0.7)
+            assert _outcomes(capped)["charge"] == outcome, (quick, share)
+        ignoring = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), obeys=False)
+        capped = _verify(Executor(SIGENERGY_CONTROL), ignoring, modes=("charge",), quick=quick, cap_kw=0.7)
+        assert _outcomes(capped)["charge"] == "ignored", quick
+
+
+def test_a_charge_the_executor_lowers_to_the_fuse_s_room_is_judged_at_that_and_never_at_a_rate_just_raised() -> None:
+    # The fuse's live room leaves under half of the 2 kW asked (16 A less the 13 A of cover that ends and the margin,
+    # on three phases: 0.7 kW): the executor starts the charge lowered, and the plant that charges at what it was
+    # told passes.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    verification = _verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), quick=True, headroom=lambda _m: 16.0)
+    charge = verification.report()["modes"]["charge"]
+    assert charge["outcome"] == "obeyed", charge
+    assert [(row["power_kw"], row["expected_kw"]) for row in charge["readings"]] == [(0.699, 0.699)] * 2
+    # A plant that takes nothing of it, or under half, is still told apart.
+    for share, outcome in ((0.4, "partial"), (0.05, "ignored")):
+        weak = _Weak(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), share=share)
+        lowered = _verify(Executor(SIGENERGY_CONTROL), weak, modes=("charge",), quick=True, headroom=lambda _m: 16.0)
+        assert _outcomes(lowered)["charge"] == outcome, share
+    # The routine's longer step: the executor raises the charge once the cover has ended, and each reading is judged
+    # against the least rate commanded since the one before.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    verification = _verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), headroom=lambda _m: 16.0)
+    charge = verification.report()["modes"]["charge"]
+    assert charge["outcome"] == "obeyed", charge
+    assert [row["expected_kw"] for row in charge["readings"]] == [0.699, 2.0, 2.0]
+    # The room stays small once the charge runs and grows at some look of the step: the reading of the look the
+    # executor raises the charge in (the battery still at the lower rate) is judged against the lower one, never a
+    # failure of a plant that did as told.
+    patterns = set()
+    for grows_at in range(3, 60):
+        looks = {"n": 0}
+
+        def growing(_mode: str | None, grows_at: int = grows_at, looks: dict[str, int] = looks) -> float:
+            looks["n"] += 1
+            return 16.0 if looks["n"] < 3 else 2.0 if looks["n"] < grows_at else 20.0
+
+        battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+        verification = _verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), headroom=growing)
+        charge = verification.report()["modes"]["charge"]
+        assert charge["outcome"] == "obeyed", (grows_at, charge)
+        assert all(row["power_kw"] >= row["expected_kw"] - 1e-9 for row in charge["readings"]), (grows_at, charge)
+        patterns.add(tuple(row["power_kw"] for row in charge["readings"]))
+    assert {(0.699, 0.699, 0.699), (0.699, 2.0, 2.0), (0.699, 0.699, 2.0), (2.0, 2.0, 2.0)} <= patterns
+
+
+def test_a_charge_under_the_least_rate_is_never_a_failure() -> None:
+    # A cap under the least charge the executor runs is the shell's to say (`not_judgeable:grid_charge_cap`); a live
+    # room under it is the executor's refusal, an abort for the moment's circumstances.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    verification = _verify(Executor(SIGENERGY_CONTROL), battery, quick=True, cap_kw=0.3)
+    outcomes = _outcomes(verification)
+    assert outcomes["charge"] == "aborted:fuse_headroom" and mode_verdict(outcomes["charge"]) != "fail"
+    assert outcomes["discharge_house"] == "obeyed" and outcomes["normal"] == "restored"
+    assert all(op.value != "Command Charging (Grid First)" for op in battery.writes)
+    # A reading taken at a rate under it, should the executor ever run one, judges nothing.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    verification = Verification(Executor(SIGENERGY_CONTROL), T0, firmware="V1", modes=("charge",))
+    sample = Sample(0.0, 5.0, 50.0, 2.0)
+    verification.command(T0, sample, 10.0)
+    result = verification.current
+    assert result is not None and result.rate_kw == TEST_CHARGE_KW
+    verification.stage = "read"
+    verification._read(T0, result, sample, _RATED, 0.3)
+    assert result.outcome == "not_judgeable:fuse_headroom" and verification.stage == "hand_back"
 
 
 def test_the_recipes_whose_integration_states_no_rating_are_the_ones_named() -> None:

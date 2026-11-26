@@ -64,11 +64,15 @@ async def test_the_test_waits_while_its_grid_charge_would_not_fit_under_the_fuse
     assert control._grid_charge_cap_kw(now, control.options()) == pytest.approx(1.31, abs=0.01)
     assert control.hardware_test_moment(now) == NO_ROOM_FOR_CHARGE == "charge_no_room"
     assert control.executor.state.phase == "idle", "asking writes nothing and takes nothing"
-    # 16 A: the charge would start, lowered to 16 - 8.7 - 2 = 5.3 A, 1.23 kW: still not all of it.
-    amps["a"] = 16.0
+    # 12.8 A: 2.1 A, 0.48 kW, still under the least charge.
+    amps["a"] = 12.8
     assert control.hardware_test_moment(now) == NO_ROOM_FOR_CHARGE
-    # The house uses less (or the fuse has more room): 17 A leave 6.3 A, 1.46 kW, and the moment suits.
-    amps["a"] = 17.0
+    # The house uses less (or the fuse has more room): at 14 A the charge would start, lowered to 14 - 8.7 - 2 =
+    # 3.3 A, 0.77 kW. Not all of the 1.31 kW asked, and the moment suits: the step is judged against the rate
+    # commanded.
+    amps["a"] = 14.0
+    assert control.hardware_test_moment(now) is None
+    amps["a"] = 17.0  # 6.3 A, 1.46 kW: all of it
     assert control.hardware_test_moment(now) is None
     # Under the hold's own rule nothing changes: no room for the hold is still said as that.
     amps["a"] = 10.0
@@ -76,9 +80,9 @@ async def test_the_test_waits_while_its_grid_charge_would_not_fit_under_the_fuse
 
 
 @pytest.mark.parametrize(("headroom_a", "waits", "charge"), [
-    # Refused at its start: the test would be incomplete. Lowered to 0.77 kW of the 2 kW judged: a failure of a
-    # plant that did as told. All of it fits: the step passes.
-    (12.0, True, "aborted:fuse_headroom"), (14.0, True, "partial"), (17.0, False, "obeyed"),
+    # Refused at its start: the test would be incomplete. Lowered to 0.77 kW of the 1.31 kW asked: judged against
+    # the 0.77 kW commanded, a plant that did as told passes. All of it fits: the step passes.
+    (12.0, True, "aborted:fuse_headroom"), (14.0, False, "obeyed"), (17.0, False, "obeyed"),
 ])
 async def test_the_wait_is_for_what_a_test_started_at_that_moment_would_meet(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], headroom_a: float,
@@ -90,6 +94,96 @@ async def test_the_wait_is_for_what_a_test_started_at_that_moment_would_meet(
     assert (control.hardware_test_moment(dt_util.now()) == NO_ROOM_FOR_CHARGE) is waits
     outcomes = await _run_test(control)
     assert outcomes["charge"] == charge and outcomes["hold"] == "obeyed", outcomes
+    if headroom_a == 14.0:
+        readings = control.hardware_test_progress()["report"]["modes"]["charge"]["readings"]
+        assert {(row["power_kw"], row["expected_kw"]) for row in readings} == {(0.771, 0.771)}
+
+
+def _cap(monkeypatch: pytest.MonkeyPatch, cap_kw: float) -> None:
+    monkeypatch.setattr(BatteryControl, "_grid_charge_cap_kw", lambda self, now, options, **kwargs: cap_kw)
+
+
+def _charge_share(monkeypatch: pytest.MonkeyPatch, plant: Any, share: float) -> None:
+    """A plant that takes `share` of a grid charge's power and does everything else as told."""
+
+    def power(self: BatteryControl) -> tuple[float, float]:
+        kw = plant.power_kw()
+        return (kw * share if kw > 0 else kw), 5.0
+
+    monkeypatch.setattr(BatteryControl, "_battery_power", power)
+
+
+@pytest.mark.parametrize(("share", "charge"), [(1.0, "obeyed"), (0.4, "partial"), (0.0, "ignored")])
+async def test_a_charge_at_the_ha_down_cap_is_judged_against_the_cap_in_the_hardware_test(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], share: float, charge: str,
+) -> None:
+    # A one-phase plant on a small fuse: the HA-down cap leaves 0.7 kW of the 2 kW the step asks for. The plant that
+    # charges exactly at that passed (it read `partial`, which ended the test as failed); one that takes too little
+    # of the capped charge, or nothing, still fails.
+    _site_entry, control, plant = await _control(hass, monkeypatch, hass_storage)
+    _cap(monkeypatch, 0.7)
+    _charge_share(monkeypatch, plant, share)
+    assert control.hardware_test_moment(dt_util.now()) is None
+    outcomes = await _run_test(control)
+    assert outcomes["hold"] == "obeyed" and outcomes["charge"] == charge, outcomes
+    report = control.hardware_test_progress()["report"]
+    assert gate.hardware_test_passed(report) is (share == 1.0)
+    if share == 1.0:
+        row = report["modes"]["charge"]
+        assert row["rate_kw"] == 2.0 and {(r["power_kw"], r["expected_kw"]) for r in row["readings"]} == {(0.7, 0.7)}
+        assert any(call[2].get("value") == 0.7 for call in plant.calls), "charged at the cap"
+
+
+@pytest.mark.parametrize(("share", "charge"), [(1.0, "obeyed"), (0.4, "partial"), (0.0, "ignored")])
+async def test_a_charge_at_the_ha_down_cap_is_judged_against_the_cap_in_the_routine(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], share: float, charge: str,
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _cap(monkeypatch, 0.7)
+    _charge_share(monkeypatch, plant, share)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    await _looks(control, dt_util.now(), 400)
+    report = control.report()
+    assert report["modes"]["charge"]["outcome"] == charge, report
+    assert gate.mode_verdict(charge) == ("pass" if share == 1.0 else "fail")
+    assert ("grid_charge" in control.allowed()) is (share == 1.0)
+    if share == 1.0:
+        readings = report["modes"]["charge"]["readings"]
+        assert {(row["power_kw"], row["expected_kw"]) for row in readings} == {(0.7, 0.7)}
+        assert control.state() == "on" and gate.report_status(report) == "passed"
+
+
+async def test_a_cap_under_the_least_charge_is_not_judged_and_never_a_failure(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # The routine: the step is left for a later run.
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _cap(monkeypatch, 0.4)
+    monkeypatch.setattr(BatteryControl, "_phase_charge_possible", lambda self: False)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    await _looks(control, dt_util.now(), 400)
+    report = control.report()
+    assert report["modes"]["charge"]["outcome"] == "not_judgeable:grid_charge_cap"
+    assert gate.report_status(report) == "passed" and "grid_charge" not in control.allowed()
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls), "no grid charge"
+
+
+async def test_a_cap_under_the_least_charge_is_not_judged_in_the_hardware_test_either(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # Never waited for, said as not judged: the test is not complete rather than failed.
+    _site_entry, control, plant = await _control(hass, monkeypatch, hass_storage)
+    _cap(monkeypatch, 0.4)
+    monkeypatch.setattr(BatteryControl, "_phase_charge_possible", lambda self: False)
+    assert control.hardware_test_moment(dt_util.now()) is None
+    outcomes = await _run_test(control)
+    assert outcomes["charge"] == "not_judgeable:grid_charge_cap" and outcomes["hold"] == "obeyed", outcomes
+    assert gate.mode_verdict(outcomes["charge"]) != "fail"
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls), "no grid charge"
 
 
 async def test_a_plant_that_spreads_its_charge_over_three_phases_needs_a_third_of_it_on_each(
