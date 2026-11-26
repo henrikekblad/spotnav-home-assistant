@@ -7,6 +7,24 @@ section: Advanced
 
 # Setup in detail
 
+## In short
+
+- **What it does for you.** Setup tells SpotNav which charger to plan, which home (main fuse and grid meter) it
+  belongs to, and where the prices come from. SpotNav finds most of it by itself and asks you to confirm.
+- **What you need.** SpotNav installed, your charger's own integration in Home Assistant, your main fuse rating, and
+  for a home also your grid meter's integration. A price source: Nord Pool (built in), your own free ENTSO-E key,
+  PVPC in Spain or Octopus Energy in Great Britain.
+- **What to do.** Add a charger, then your home, then the card. Pair the app if you want it. Nothing is applied until
+  you confirm, and everything can be changed later.
+
+| Step | What it asks | Needed for | Change it later |
+| --- | --- | --- | --- |
+| [1. Add a charger](#1-add-a-charger) | The charger's device (found automatically), or a switch for a manual charger | The charging card and its plan | The card's **Settings → Charger entities**, or **Configure** on the entry |
+| [2. Add your home](#2-add-your-home) | Name, main fuse, safety margin, the grid meter, the chargers on this fuse | The house card, home battery, heating, solar charging and load balancing | **Configure** on the site's entry, or the card's **Site** section |
+| [Where the prices come from](#where-the-prices-come-from) | A price source for your area, once | Every plan | The card's **Settings → Electricity price** |
+| [3. Add the card](#3-add-the-card) | Nothing: pick the card and the charger | Seeing and steering it all | The card's editor |
+| [4. Pair the app](#4-pair-the-app-optional) | A six-digit code to compare | The SpotNav app (optional) | Pair again, or disconnect every phone under **Support** |
+
 This page walks through the whole setup in Home Assistant, dialog by dialog. For the short version, see
 [Get started](get-started.md). It assumes you installed SpotNav from **Settings → Marketplace** (Home Assistant
 2026.11 and newer) or from HACS (older versions, then restart Home Assistant). SpotNav
