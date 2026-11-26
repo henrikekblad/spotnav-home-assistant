@@ -27,8 +27,8 @@ from custom_components.spotnav.battery import control
 READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "CALL_TIMEOUT_S": ("control.io",),
     "GATED_AFTER_RUNNING": ("control.core", "control.gate_record",),
-    "HAND_BACK_DEADLINE_S": ("control.core", "control.life", "control.stored",),
-    "HAND_BACK_LOOK_S": ("control.core", "control.stored",),
+    "HAND_BACK_DEADLINE_S": ("control.life", "control.stored", "control.write_path",),
+    "HAND_BACK_LOOK_S": ("control.stored", "control.write_path",),
     "IMPORT_LIMIT_READ_BACK_S": ("control.core",),
     "IMPORT_LIMIT_READ_BACK_STEP_S": ("control.core",),
     "START_RETRY_S": ("control.life",),
