@@ -7,6 +7,7 @@ without an adapter gets its level from a battery sensor on its device and no con
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -556,6 +557,34 @@ def test_victron_modbus_in_self_consumption_is_free() -> None:
     assert battery_facts(battery, entities).management.state == "self_managed"
     entities[-1] = EntityFact("select.victron_dess", "victron", "100_settings_dynamicess_mode", device_id="system", state="OFF")
     assert battery_facts(battery, entities).management.state == "free"
+
+
+@pytest.mark.parametrize("domain", ["sensor", "number"])
+def test_victron_modbus_reads_the_ess_minimum_soc_as_the_floor_whether_a_sensor_or_a_number(domain: str) -> None:
+    # sfstar/hass-victron 32fb345: register 2901 is a sensor without the advanced options, a number with them.
+    brand = BRANDS["victron_modbus"]
+    floor = EntityFact(
+        f"{domain}.victron_settings_ess_batterylife_minimumsoc", "victron", "100_settings_ess_batterylife_minimumsoc",
+        device_id="system", config_entry_id="entry", state="5.0", unit="%",
+    )
+    entities = [*_entities(brand), floor]
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+
+    facts = battery_facts(battery, entities)
+
+    assert facts.reserve_soc_pct == 5.0 and facts.sources["reserve"] == floor.entity_id
+
+
+def test_victron_gx_reads_the_ess_minimum_soc_when_it_is_a_sensor() -> None:
+    brand = BRANDS["victron"]
+    row = next(row for row in brand["entities"] if row["unique_id"].endswith("_system_ess_min_soc_limit"))
+    sensor_id = "sensor." + row["entity_id"].split(".", 1)[1]
+    entities = [replace(e, entity_id=sensor_id) if e.entity_id == row["entity_id"] else e for e in _entities(brand)]
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+
+    facts = battery_facts(battery, entities)
+
+    assert facts.reserve_soc_pct == float(row["state"]) and facts.sources["reserve"] == sensor_id
 
 
 def test_goodwe_reads_its_ratings_from_the_bms_limits_but_no_size_and_so_no_plan() -> None:

@@ -991,8 +991,9 @@ VICTRON: Final = Adapter(
         "charged_total": _key("battery_charged_energy"),
         "discharged_total": _key("battery_discharged_energy"),
     },
-    # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to.
-    reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number")),),
+    # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to: a
+    # number, or a sensor where the integration is set up to read only.
+    reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number", "sensor")),),
     modes=(
         ModeRule(
             _key("system_ess_batterylife_state", "select", "sensor"),
@@ -1031,7 +1032,9 @@ VICTRON_MODBUS: Final = Adapter(
         "charged_total": _key("battery_history_chargedenergy"),
         "discharged_total": _key("battery_history_dischargedenergy"),
     },
-    reserves=(ReserveSource(_key("settings_ess_batterylife_minimumsoc", "number")),),
+    # The ESS minimum SoC (register 2901, Settings/CGwacs/BatteryLife/MinimumSocLimit, %): a number with the
+    # integration's advanced options and a sensor without them, the same unique id either way.
+    reserves=(ReserveSource(_key("settings_ess_batterylife_minimumsoc", "number", "sensor")),),
     modes=(
         ModeRule(
             _key("settings_ess_mode", "select"),

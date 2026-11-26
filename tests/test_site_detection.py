@@ -1239,6 +1239,49 @@ def test_the_community_victron_modbus_battery_is_its_system_battery_power_charge
     assert battery.inverted is False
 
 
+def _hass_victron(*, grid_meter: bool) -> Registry:
+    """sfstar/hass-victron `32fb345` unique ids (`<unit id>_<register key>`, Victron's case): the GX system at 100,
+    a MultiPlus at 227 and, with `grid_meter`, an ET112 grid meter at 30; each unit its own device."""
+    r = Registry()
+    for n in "123":
+        r.add("victron", f"victron_system_grid_l{n}", f"100_system_grid_L{n}", device_class="power", unit="W", device="u100", entry="vm")
+        r.add("victron", f"victron_system_grid_l{n}_power", f"100_system_grid_L{n}_power", device_class="power", unit="W", device="u100", entry="vm")
+        for key, unit, device_class in (("current", "A", "current"), ("voltage", "V", "voltage"), ("power", "W", "power")):
+            r.add("victron", f"victron_vebus_activein_l{n}_{key}_227", f"227_vebus_activein_L{n}_{key}", device_class=device_class, unit=unit, device="u227", entry="vm")
+            if grid_meter:
+                r.add("victron", f"victron_grid_l{n}_{key}_30", f"30_grid_L{n}_{key}", device_class=device_class, unit=unit, device="u30", entry="vm")
+    r.add("victron", "victron_system_battery_power", "100_system_battery_power", device_class="power", unit="W", device="u100", entry="vm")
+    return r
+
+
+def test_the_community_victron_modbus_grid_meter_is_found_by_its_unit_id_and_the_multi_is_not_offered_beside_it() -> None:
+    meters = _hass_victron(grid_meter=True).detect().meters
+
+    assert {m.candidate_id for m in meters} == {"victron:vm:30"}
+    meter = meters[0]
+    assert meter.mode == MEASUREMENT_MODE_DERIVED and meter.signed_current is True and meter.estimated is False
+    assert meter.derived_entities["L1"] == {
+        "power": "sensor.victron_grid_l1_power_30",
+        "voltage": "sensor.victron_grid_l1_voltage_30",
+        "current": "sensor.victron_grid_l1_current_30",
+    }
+    assert not meter.warnings
+
+
+def test_without_a_grid_meter_the_gx_s_grid_power_and_the_multi_s_ac_input_make_the_meter() -> None:
+    meters = _hass_victron(grid_meter=False).detect().meters
+
+    assert [m.candidate_id for m in meters] == ["victron:vm"]
+    meter = meters[0]
+    assert meter.mode == MEASUREMENT_MODE_DERIVED and meter.signed_current is True and meter.estimated is False
+    assert meter.derived_entities["L1"] == {
+        "power": "sensor.victron_system_grid_l1",
+        "voltage": "sensor.victron_vebus_activein_l1_voltage_227",
+        "current": "sensor.victron_vebus_activein_l1_current_227",
+    }
+    assert meter.warnings == (WARNING_MAY_MEASURE_SUBCIRCUIT,)
+
+
 def test_battery_only_integrations_are_detected_as_batteries() -> None:
     r = Registry()
     r.add("powerwall", "powerwall_battery_power", "PW1_battery_instant_power", device_class="power", unit="kW", entry="pw")

@@ -512,7 +512,11 @@ Assistant core or the HACS **Victron MQTT**. Nobody has run it on a plant yet: i
 [field report](supported.md) is what it needs. Nothing is written until a hardware test has passed on the plant and
 its result was approved with a control code ([Becoming a tester](home-battery.md#becoming-a-tester)). The community Modbus integration (`victron`) is read only: its
 maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
-to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
+to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write. The ESS minimum SoC is
+read as the battery's floor either way, a number or a sensor (the Modbus integration has it as a sensor unless its
+advanced options are on). The Modbus integration's grid meter is found by itself; on a GX without a grid meter, the
+GX's grid power per phase and the Multi's AC-input current and voltage are offered instead, which see only what
+passes through the Multi.
 
 SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
 ways in:
