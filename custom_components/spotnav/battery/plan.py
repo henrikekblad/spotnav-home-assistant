@@ -184,7 +184,12 @@ def _limits(slot: PlanSlot, battery: BatteryParams, soc_kwh: float) -> tuple[flo
 
 
 def action_power(
-    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, action: str, charge_kw: float = 0.0
+    slot: PlanSlot,
+    battery: BatteryParams,
+    soc_kwh: float,
+    action: str,
+    charge_kw: float = 0.0,
+    limits: tuple[float, float] | None = None,
 ) -> float:
     """The AC battery power [action] asks for in [slot] at [soc_kwh], before the grid's caps.
 
@@ -194,8 +199,11 @@ def action_power(
     (the planned kW, which house first may have held below that). A shave discharges into the deficit above the
     slot's soft ceiling, or (replaying a plan, where [charge_kw] is the planned kW) as much as was planned, never more
     than the deficit; with nothing to shave it stores a sun surplus as a hold does.
+
+    [limits] is `_limits` of the same slot, battery and energy where the caller already has it (the search asks for
+    several actions from one point).
     """
-    charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
+    charge_lim, discharge_lim = _limits(slot, battery, soc_kwh) if limits is None else limits
     net = slot.net_kw
     surplus = max(0.0, -net)
     deficit = max(0.0, net)
@@ -251,27 +259,34 @@ def _reserves(request: PlanRequest) -> list[float] | None:
 
 
 def _candidates(
-    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, request: PlanRequest, reserve: float | None = None
+    slot: PlanSlot,
+    battery: BatteryParams,
+    soc_kwh: float,
+    request: PlanRequest,
+    reserve: float | None = None,
+    limits: tuple[float, float] | None = None,
 ) -> list[tuple[str, float]]:
     """The actions open in [slot] at [soc_kwh], as (action, wanted AC battery power), duplicates dropped. With a
     [reserve] (house first), a discharge for export leaves at least that much stored above the floor, and is not
-    open where that leaves nothing beyond the slot's own deficit."""
+    open where that leaves nothing beyond the slot's own deficit. [limits] as in `action_power`."""
+    if limits is None:
+        limits = _limits(slot, battery, soc_kwh)
     wanted = [
-        (action, action_power(slot, battery, soc_kwh, action))
+        (action, action_power(slot, battery, soc_kwh, action, 0.0, limits))
         for action in (ACTION_SELF_CONSUME, ACTION_HOLD, ACTION_DISCHARGE_HOUSE)
     ]
     for share in request.charge_shares:
-        power = action_power(slot, battery, soc_kwh, ACTION_GRID_CHARGE, share * battery.max_charge_kw)
+        power = action_power(slot, battery, soc_kwh, ACTION_GRID_CHARGE, share * battery.max_charge_kw, limits)
         wanted.append((ACTION_GRID_CHARGE, power))
     if request.allow_export_discharge:
-        power = action_power(slot, battery, soc_kwh, ACTION_EXPORT_DISCHARGE)
+        power = action_power(slot, battery, soc_kwh, ACTION_EXPORT_DISCHARGE, 0.0, limits)
         if reserve is not None:
             room = max(0.0, (soc_kwh - battery.min_kwh - reserve) * battery.discharge_efficiency / slot.hours)
             power = max(power, -room)
         if reserve is None or -power > max(0.0, slot.net_kw) + _SAME_KW:
             wanted.append((ACTION_EXPORT_DISCHARGE, power))
     if slot.priced_ceiling and slot.net_kw > (slot.soft_cap_kw or 0.0):
-        wanted.append((ACTION_SHAVE, action_power(slot, battery, soc_kwh, ACTION_SHAVE)))
+        wanted.append((ACTION_SHAVE, action_power(slot, battery, soc_kwh, ACTION_SHAVE, 0.0, limits)))
 
     out: list[tuple[str, float]] = []
     for action, power in wanted:
@@ -288,10 +303,12 @@ def _apply(
     power: float,
     cycle_cost: float,
     export_hurdle: float = 0.0,
+    limits: tuple[float, float] | None = None,
 ) -> _Outcome:
-    """Run [action] at [power] for one slot, with the grid's caps enforced, and price it."""
+    """Run [action] at [power] for one slot, with the grid's caps enforced, and price it. [limits] as in
+    `action_power`."""
     hours = slot.hours
-    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
+    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh) if limits is None else limits
     net = slot.net_kw
     over_cap = False
     curtailed = 0.0
@@ -376,8 +393,9 @@ def _best(
     battery = request.battery
     best: _Outcome | None = None
     best_total = 0.0
-    for action, power in _candidates(slot, battery, soc_kwh, request, reserve):
-        outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle)
+    limits = _limits(slot, battery, soc_kwh)
+    for action, power in _candidates(slot, battery, soc_kwh, request, reserve, limits):
+        outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle, limits)
         total = outcome.cost + outcome.wear + outcome.hurdle + outcome.peak + grid.value(after, outcome.soc_end_kwh)
         if best is None or total < best_total - _TIE:
             best, best_total = outcome, total
@@ -665,14 +683,16 @@ def _value_at(rows: Sequence[Sequence[float]], levels: Sequence[float], peak: fl
     return below + (_row_value(rows[j + 1], k, frac) - below) * share if share else below
 
 
-def _shave_to(slot: PlanSlot, battery: BatteryParams, soc_kwh: float, peak: float) -> float | None:
+def _shave_to(
+    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, peak: float, limits: tuple[float, float] | None = None
+) -> float | None:
     """The discharge that brings [slot]'s import down to the day's [peak] where that is above its soft ceiling;
     `None` where there is nothing of the kind to try."""
     if not slot.priced_ceiling or slot.net_kw <= peak + _SAME_KW:
         return None
     if peak <= slot.soft_cap_kw + _SAME_KW:  # type: ignore[operator]
         return None
-    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
+    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh) if limits is None else limits
     power = -min(slot.net_kw - peak, discharge_lim)
     return power if power < -_SAME_KW else None
 
@@ -690,17 +710,18 @@ def _best_peak(
     """Per day's peak in [peaks]: the best outcome from [soc_kwh], and its total with the value-to-go."""
     battery = request.battery
     cycle_cost, hurdle = request.cycle_cost, request.export_hurdle
+    limits = _limits(slot, battery, soc_kwh)
     tried = []
-    for action, power in _candidates(slot, battery, soc_kwh, request, reserve):
-        outcome = _apply(slot, battery, soc_kwh, action, power, cycle_cost, hurdle)
+    for action, power in _candidates(slot, battery, soc_kwh, request, reserve, limits):
+        outcome = _apply(slot, battery, soc_kwh, action, power, cycle_cost, hurdle, limits)
         tried.append((outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh)))
     priced = slot.priced_ceiling
     out: list[tuple[_Outcome, float]] = []
     for peak in peaks:
         options = tried
-        power = _shave_to(slot, battery, soc_kwh, peak)
+        power = _shave_to(slot, battery, soc_kwh, peak, limits)
         if power is not None:
-            outcome = _apply(slot, battery, soc_kwh, ACTION_SHAVE, power, cycle_cost, hurdle)
+            outcome = _apply(slot, battery, soc_kwh, ACTION_SHAVE, power, cycle_cost, hurdle, limits)
             extra = (outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh))
             options = [*tried, extra]
         best: _Outcome | None = None
