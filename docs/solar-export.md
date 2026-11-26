@@ -7,6 +7,18 @@ section: Solar and forecasts
 
 # No export at negative prices
 
+## In short
+
+- **What it does for you.** When selling a kWh would cost you money, SpotNav sets your inverter's export limit to
+  zero, and puts back the value it found once the price turns positive. Your sun still runs the house, the car and
+  the battery.
+- **What you need.** An inverter whose export limit SpotNav can set (Sigenergy, Victron, Sungrow, Solis, GoodWe or
+  SolaX, see [Brands](#brands)), with that entity enabled, and a site that reads the grid's power with a direction.
+  A home battery is not needed.
+- **What to do.** Turn on **Settings → Solar → No export at negative prices** (administrators). Turn it off, and
+  SpotNav puts the limit back.
+- **In testing.** Only Sigenergy has run it on a real plant. For now it writes only on a beta tester's installation.
+
 When an exported kWh costs you money, SpotNav can tell the inverter to stop exporting. "Costs money" means the spot
 price plus any credit you get per exported kWh is below zero: with a 5 öre credit, the spot price must be below
 −5 öre.
