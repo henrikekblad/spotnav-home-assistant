@@ -1,7 +1,7 @@
 """What an area's price source is, and the one thing the person can do when it has none they can keep.
 
 The choice itself is [choose_provider] (`providers/__init__.py`): Home Assistant's PVPC integration for Spain's
-PVPC, the Octopus Energy integration's Agile rates for a Great Britain region, the Zonneplan integration's tariff for
+PVPC, the Octopus Energy integration's rates for a Great Britain region, the Zonneplan integration's tariff for
 the Zonneplan area, Home Assistant's Nord Pool integration for an area Nord Pool trades, the person's ENTSO-E key for an area the platform publishes. An area that
 gets none of these has no source: nothing is fetched for it (the SpotNav relay delivers no prices since 2.0), so it
 carries a **notice** naming the action that gives it one ([source_notice]). Nothing else is a notice: a source
@@ -13,10 +13,10 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | PVPC | a `pvpc_hourly_pricing` entry loaded | none |
 | PVPC | an entry, not loaded | `pvpc_not_loaded` |
 | PVPC | no entry | `add_pvpc` |
-| GB region | an Agile meter in the region | none |
-| GB region | an Agile meter in one other region, read for it | `octopus_region_mismatch` `{region}` |
+| GB region | an import meter in the region | none |
+| GB region | an import meter in one other region, read for it | `octopus_region_mismatch` `{region}` |
 | GB region | an `octopus_energy` entry, not loaded | `octopus_not_loaded` |
-| GB region | the integration loaded, no Agile meter for the region | `octopus_no_agile` |
+| GB region | the integration loaded, no import meter for the region | `octopus_no_agile` |
 | GB region | no entry | `add_octopus` |
 | Zonneplan | a `zonneplan_one` entry loaded, its tariff sensor there | none |
 | Zonneplan | an entry, not loaded | `zonneplan_not_loaded` |
@@ -115,7 +115,7 @@ class SourceFacts:
     pvpc_entry: EntryState = "none"
     octopus_route: bool = False
     octopus_entry: EntryState = "none"
-    #: Whether an Agile meter's rates are read for the area (its own region's, or the only region's).
+    #: Whether an import meter's rates are read for the area (its own region's, or the only region's).
     octopus_meter: bool = False
     #: The meter's region when it is not the area's own.
     octopus_region: str | None = None

@@ -1,31 +1,39 @@
-"""Great Britain's Agile Octopus rates through the "Octopus Energy" integration (HACS, BottlecapDave).
+"""Great Britain's Octopus Energy rates through the "Octopus Energy" integration (HACS, BottlecapDave).
 
 SpotNav never calls Octopus itself: it reads the rates the integration the person added has already fetched for
 their own meter. What the integration exposes (version 19.2, `electricity/rates_*_day.py`,
-`coordinators/__init__.py`, documented in `_docs/entities/electricity.md`):
+`coordinators/__init__.py`, documented in `_docs/entities/electricity.md`; checked again against main at commit
+91d0fd8d47aa18dafa6a343e812dcfdec100f533, version 19.3.0, `coordinators/electricity_rates.py` and
+`api_client/__init__.py` `rates_to_thirty_minute_increments`):
 
 * per electricity meter three event entities, platform `octopus_energy`, unique ids
   `octopus_energy_electricity_{serial}_{mpan}_previous_day_rates`, `…_current_day_rates` and
-  `…_next_day_rates` (an export meter has `_export` before the suffix; it is never read). They are found in the
-  entity registry by platform and unique id, never by entity id, which the person may rename;
+  `…_next_day_rates`; an export meter has `_export` before the suffix (its rates are what a sold kWh earns, see
+  [OctopusProvider.export_rates]). They are found in the entity registry by platform and unique id, never by
+  entity id, which the person may rename;
 * each one's attributes, set by the integration's rates coordinator (every 15 minutes) and restored after a
   restart: `rates`, a list of `{"start", "end", "value_inc_vat"}` (aware datetimes in Home Assistant's zone,
   or ISO strings when restored; the value in pounds per kWh including VAT), plus `tariff_code`, `mpan` and
   `serial_number`. "Previous", "current" and "next" are calendar days of Home Assistant's zone;
-* the tariff code names the customer's tariff and region, `E-1R-AGILE-24-10-01-C`: product `AGILE-…` and GSP
-  group letter `C`. Only an Agile import tariff is read (`AGILE` in the product, not `AGILE-OUTGOING`): any other
-  Octopus tariff is not the Agile price the GB areas stand for.
+* every tariff's rates are thirty-minute slots: the integration cuts a fixed or time-of-use rate (Flux's three
+  bands, Go, Cosy, a fixed or variable tariff, Economy 7's day and night) into half-hours over the whole window it
+  holds, yesterday to the end of tomorrow, so a tariff known in advance has tomorrow's rates at any hour. On
+  Intelligent Octopus Go the integration moves the car's dispatches into the off-peak rate as they are planned;
+* the tariff code names the customer's tariff and region, `E-1R-AGILE-24-10-01-C` or
+  `E-1R-FLUX-IMPORT-23-02-14-C`: product and GSP group letter `C`. Any single- or two-register electricity import
+  tariff is read (not a product with `OUTGOING` or `EXPORT` in it, which is what an export meter is paid).
 
 A GB area's day is the relay's: the Paris day, 23:00 to 23:00 UK time (`routes.cet_market_tz`), which is how
-Agile is published (about 16:00 UK time for 23:00 to 23:00). So the three entities' rates are pooled by instant
+Agile is published (about 16:00 UK time for 23:00 to 23:00; a tariff known in advance is asked for from early
+morning, [PUBLICATION_KNOWN]). So the three entities' rates are pooled by instant
 and the Paris day cut from them: tomorrow's Paris day needs the last half-hours of the current day's rates and
 the first 23 hours of the next day's. Yesterday's Paris day starts an hour before the oldest rate the integration
 keeps, so no past day is served ([HISTORY_REACH]).
 
 The region comes from the customer's meter, not from a choice: an area is served by the meter in its region;
-when the person chose another GB region than their meter's and all their Agile meters are in one region, the
+when the person chose another GB region than their meter's and all their import meters are in one region, the
 meter's rates are used for the chosen area (they are what the person pays), and [OctopusProvider.region_mismatch]
-says so for the card's notice. Several Agile meters in different regions, none of them the chosen one, serve
+says so for the card's notice. Several import meters in different regions, none of them the chosen one, serve
 nothing: there is no telling which meter the person meant.
 
 The rates are converted to EUR with the day's ECB rate, written beside them like the relay does; without a rate
@@ -62,10 +70,14 @@ DOMAIN: Final = "octopus_energy"
 #: Agile's next day appears at about 16:00 UK time; the integration asks every 15 minutes.
 PUBLICATION: Final = AreaPublication(local_time=time(16, 0), tz="Europe/London")
 
+#: A tariff whose rates are known in advance (Flux, Go, Cosy, fixed): the integration holds tomorrow's rates from
+#: its first refresh of the day, so tomorrow is asked for from early morning, when no meter read is on Agile.
+PUBLICATION_KNOWN: Final = AreaPublication(local_time=time(1, 0), tz="Europe/London")
+
 #: The integration keeps rates from the start of yesterday (UK): not a whole past Paris day.
 HISTORY_REACH: Final = timedelta(0)
 
-#: Agile's slot.
+#: The slot every tariff's rates come in (the integration cuts them into half-hours).
 SLOT: Final = timedelta(minutes=30)
 
 #: Where the file says it came from (`src`), as the relay writes it.
@@ -74,8 +86,12 @@ SRC: Final = "octopus.energy"
 #: The three event entities of one meter, by the end of their unique id.
 KINDS: Final = ("previous_day_rates", "current_day_rates", "next_day_rates")
 
-#: `E-1R-<product>-<region>`: a single-rate electricity tariff (the integration's own pattern, narrowed).
-_TARIFF: Final = re.compile(r"^E-1R-(?P<product>[A-Z0-9-]+)-(?P<region>[A-Z])$")
+#: `E-1R-<product>-<region>` or `E-2R-…`: a single- or two-register electricity tariff (the integration's own
+#: pattern, `REGEX_TARIFF_PARTS`, narrowed to electricity).
+_TARIFF: Final = re.compile(r"^E-[12]R-(?P<product>[A-Z0-9-]+)-(?P<region>[A-Z])$")
+
+#: What a product an export meter is paid on has in its code (`AGILE-OUTGOING-…`, `OUTGOING-VAR-…`, `FLUX-EXPORT-…`).
+_EXPORT_PRODUCT: Final = ("OUTGOING", "EXPORT")
 
 #: A price beyond this (in pounds per kWh) is not a rate.
 _MAX_ABS_RATE: Final = 100.0
@@ -88,52 +104,79 @@ class _Refusal(Exception):
 
 
 @dataclass(frozen=True, slots=True)
-class AgileMeter:
-    """One import meter on an Agile tariff: its region and its three rate entities (kind → entity id)."""
+class OctopusMeter:
+    """One electricity meter: its region, its product (`AGILE-24-10-01`), whether it is an export meter, its
+    serial number (an import and an export meter on one smart meter share it) and its three rate entities
+    (kind → entity id)."""
 
     key: str
     region: str
     entities: tuple[tuple[str, str], ...]
+    product: str = ""
+    export: bool = False
+    serial: str | None = None
 
     def entity_ids(self) -> list[str]:
         return [entity_id for _, entity_id in self.entities]
 
+    @property
+    def agile(self) -> bool:
+        return self.product.startswith("AGILE")
 
-def agile_region(tariff_code: Any) -> str | None:
-    """The GSP group letter of an Agile import tariff code, else `None`."""
+
+def _tariff_parts(tariff_code: Any) -> tuple[str, str] | None:
+    """(product, region) of an electricity tariff code, else `None`."""
     if not isinstance(tariff_code, str):
         return None
     match = _TARIFF.match(tariff_code.strip())
     if match is None:
         return None
-    product = match.group("product")
-    if not product.startswith("AGILE") or "OUTGOING" in product:
+    return match.group("product"), match.group("region")
+
+
+def _is_export_product(product: str) -> bool:
+    return any(word in product for word in _EXPORT_PRODUCT)
+
+
+def import_region(tariff_code: Any) -> str | None:
+    """The GSP group letter of an electricity import tariff code (Agile, Flux, Go, Cosy, fixed…), else `None`."""
+    parts = _tariff_parts(tariff_code)
+    if parts is None or _is_export_product(parts[0]):
         return None
-    return match.group("region")
+    return parts[1]
 
 
-def _meter_key(unique_id: Any) -> tuple[str, str] | None:
-    """(meter key, kind) of an import meter's rate event entity, from its unique id; else `None`."""
+def export_region(tariff_code: Any) -> str | None:
+    """The GSP group letter of an export tariff code (Agile Outgoing, Flux export, Outgoing fixed…), else `None`."""
+    parts = _tariff_parts(tariff_code)
+    if parts is None or not _is_export_product(parts[0]):
+        return None
+    return parts[1]
+
+
+def _region_of(tariff_code: Any, export: bool) -> str | None:
+    return export_region(tariff_code) if export else import_region(tariff_code)
+
+
+def _meter_key(unique_id: Any) -> tuple[str, str, bool] | None:
+    """(meter key, kind, whether an export meter) of a meter's rate event entity, from its unique id; else `None`."""
     if not isinstance(unique_id, str) or not unique_id.startswith("octopus_energy_electricity_"):
         return None
     for kind in KINDS:
         suffix = "_" + kind
         if unique_id.endswith(suffix):
             key = unique_id[: -len(suffix)]
-            if key.endswith("_export"):
-                return None
-            return key, kind
+            return key, kind, key.endswith("_export")
     return None
 
 
 class OctopusProvider:
-    """Day files from the rates the Octopus Energy integration holds for the customer's Agile meter."""
+    """Day files from the rates the Octopus Energy integration holds for the customer's import meter."""
 
     key: ProviderKey = "octopus"
     #: What the card and the app call it, and where it is (attribution).
-    name: str = "Octopus Energy (Agile)"
-    url: str = "https://octopus.energy/smart/agile/"
-    publication: AreaPublication = PUBLICATION
+    name: str = "Octopus Energy"
+    url: str = "https://octopus.energy/"
     history_reach: timedelta | None = HISTORY_REACH
 
     def __init__(
@@ -148,42 +191,71 @@ class OctopusProvider:
         self._bundled = bundled
         self._now = now if now is not None else dt_util.utcnow
         self._rate = DayRate(fx, self._now)
-        self._meters: tuple[AgileMeter, ...] = ()
+        self._meters: tuple[OctopusMeter, ...] = ()
+        self._exports: tuple[OctopusMeter, ...] = ()
 
     # -------------------------------------------------------------- the meters
 
     @property
-    def meters(self) -> tuple[AgileMeter, ...]:
-        """The Agile import meters found at the last [refresh]."""
+    def meters(self) -> tuple[OctopusMeter, ...]:
+        """The import meters found at the last [refresh]."""
         return self._meters
+
+    @property
+    def export_meters(self) -> tuple[OctopusMeter, ...]:
+        """The export meters found at the last [refresh]."""
+        return self._exports
+
+    @property
+    def publication(self) -> AreaPublication:
+        """When tomorrow is asked for: Agile's afternoon, or early morning when every import meter read is on a
+        tariff known in advance."""
+        if self._meters and not any(meter.agile for meter in self._meters):
+            return PUBLICATION_KNOWN
+        return PUBLICATION
 
     @callback
     def refresh(self) -> bool:
-        """Look for the Agile meters again (registry and states); whether what is served changed."""
-        meters = tuple(self._find_meters())
-        changed = meters != self._meters
+        """Look for the meters again (registry and states); whether what is served changed."""
+        found = tuple(self._find_meters())
+        meters = tuple(meter for meter in found if not meter.export)
+        exports = tuple(meter for meter in found if meter.export)
+        changed = meters != self._meters or exports != self._exports
         self._meters = meters
+        self._exports = exports
         return changed
 
-    def _find_meters(self) -> Iterable[AgileMeter]:
+    def _find_meters(self) -> Iterable[OctopusMeter]:
         registry = er.async_get(self._hass)
         grouped: dict[str, dict[str, str]] = {}
+        exports: set[str] = set()
         for entry in registry.entities.values():
             if entry.platform != DOMAIN or entry.domain != "event" or entry.disabled:
                 continue
             found = _meter_key(entry.unique_id)
             if found is None or not self._entry_loaded(entry.config_entry_id):
                 continue
-            key, kind = found
+            key, kind, export = found
             grouped.setdefault(key, {})[kind] = entry.entity_id
+            if export:
+                exports.add(key)
         for key in sorted(grouped):
             entities = grouped[key]
+            export = key in exports
             current = entities.get("current_day_rates")
             state = None if current is None else self._hass.states.get(current)
-            region = None if state is None else agile_region(state.attributes.get("tariff_code"))
-            if region is None:
+            parts = None if state is None else _tariff_parts(state.attributes.get("tariff_code"))
+            if parts is None or _is_export_product(parts[0]) != export:
                 continue
-            yield AgileMeter(key=key, region=region, entities=tuple(sorted(entities.items())))
+            serial = state.attributes.get("serial_number") if state is not None else None
+            yield OctopusMeter(
+                key=key,
+                region=parts[1],
+                entities=tuple(sorted(entities.items())),
+                product=parts[0],
+                export=export,
+                serial=serial if isinstance(serial, str) and serial else None,
+            )
 
     def _entry_loaded(self, entry_id: str | None) -> bool:
         if entry_id is None:
@@ -198,7 +270,7 @@ class OctopusProvider:
         entry = er.async_get(self._hass).async_get(entity_id)
         return entry is not None and entry.platform == DOMAIN and _meter_key(entry.unique_id) is not None
 
-    def meter_for(self, area_id: str) -> AgileMeter | None:
+    def meter_for(self, area_id: str) -> OctopusMeter | None:
         """The meter whose rates an area is read from: the one in its region, else the only region's."""
         routes = self._bundled.routes.get(area_id)
         if routes is None or routes.octopus is None or not self._meters:
@@ -221,12 +293,12 @@ class OctopusProvider:
     # -------------------------------------------------------------- what the router and repository ask
 
     def has_route(self, area_id: str) -> bool:
-        """Whether the area is an Agile region (it has an Octopus route in the bundled catalogue)."""
+        """Whether the area is a GB region (it has an Octopus route in the bundled catalogue)."""
         routes = self._bundled.routes.get(area_id)
         return routes is not None and routes.octopus is not None
 
     def serves(self, area_id: str) -> bool:
-        """Whether an Agile meter's rates are there for the area."""
+        """Whether an import meter's rates are there for the area."""
         return self.meter_for(area_id) is not None
 
     def market_calendar(self, area_id: str) -> str | None:
@@ -280,11 +352,12 @@ class OctopusProvider:
         )
         return DayFetch("fetched", document=document)
 
-    def _pool(self, meter: AgileMeter) -> dict[datetime, float]:
-        """Every Agile rate the meter's three entities hold, by start instant (UTC), in pounds per kWh.
+    def _pool(self, meter: OctopusMeter) -> dict[datetime, float]:
+        """Every rate the meter's three entities hold, by start instant (UTC), in pounds per kWh.
 
-        An entity whose rates belong to another tariff or region (the day the customer changed tariff) is left
-        out; two entities that disagree about one slot refuse the pool.
+        An entity whose tariff is of another region or kind (an import tariff on an export meter) is left out; the
+        day the customer changed tariff, an entity still under the old code holds what the meter was charged then,
+        and is read. Two entities that disagree about one slot refuse the pool.
         """
         pool: dict[datetime, float] = {}
         seen = False
@@ -292,7 +365,7 @@ class OctopusProvider:
             state = self._hass.states.get(entity_id)
             if state is None:
                 continue
-            if agile_region(state.attributes.get("tariff_code")) != meter.region:
+            if _region_of(state.attributes.get("tariff_code"), meter.export) != meter.region:
                 continue
             rates = state.attributes.get("rates")
             if rates is None:
