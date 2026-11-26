@@ -727,7 +727,8 @@ def _carried_steps(
     Nothing is read from, or past: a report later than `since` is needed; a check that failed or gave up
     (`report_status` `failed`) ends the reading before its own rows; a key the routine used all its runs on
     (`MAX_ATTEMPTS`) ends it after them (what it never showed there stayed off). A key that is no source (`void`, a
-    firmware not read) gives no pass, and its answer still is the step's latest."""
+    firmware not read) gives no pass, and its answer still is the step's latest. A failed check whose time cannot
+    be read ends all of it."""
     if brand is None:
         return {}
     earlier = sorted(
@@ -737,6 +738,8 @@ def _carried_steps(
         ),
         key=lambda item: _decided_at(item[1]), reverse=True,
     )
+    if any(report_status(report) == "failed" and parse_time(report.get("updated_at")) is None for _, report in earlier):
+        return {}  # (storage is untrusted) a failed check of no readable time may be the latest: nothing is carried
     steps: dict[str, tuple[str, Mapping[str, Any]]] = {}
     answered: set[str] = set()
     failed_variants = _failed_variants(current)

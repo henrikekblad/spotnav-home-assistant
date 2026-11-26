@@ -573,3 +573,17 @@ async def test_the_charge_stays_on_over_a_key_that_showed_only_hold_and_the_hand
     assert again.state() == "on" and "grid_charge" in again.allowed()
     assert again.snapshot()["carried_from"] == expected
     await again.async_shutdown()
+
+
+def test_a_failed_check_of_no_readable_time_ends_all_carrying() -> None:
+    # Storage is untrusted: a failed report whose time cannot be read may be the latest, so no older pass is used.
+    failed = {**_only(B, attempts=1, hold="ignored"), "updated_at": None}
+    assert gate.control_report(None, {A: _report(A, at=T_A), B: failed}, key=C, brand="sigenergy") is None
+    failed["updated_at"] = "soon"
+    assert gate.control_report(None, {A: _report(A, at=T_A), B: failed}, key=C, brand="sigenergy") is None
+    # A report still open without a time hides nothing, and another brand's failure says nothing here.
+    reports = {A: _report(A, at=T_A), B: {**_only(B, hold=WAITING), "updated_at": None}}
+    assert _sources(gate.control_report(None, reports, key=C, brand="sigenergy")) == {A}
+    reports[B] = {**failed, "brand": "huawei"}
+    assert _sources(gate.control_report(None, reports, key=C, brand="sigenergy")) == {A}
+
