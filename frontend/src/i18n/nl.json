@@ -484,6 +484,7 @@
   "entity.detect.inUse": "In gebruik",
   "entity.detect.direct": "Meet fasestroom direct",
   "entity.detect.derived": "Afgeleid uit vermogen en spanning",
+  "entity.detect.singlePhase": "Eenfasig: alleen L1. L2 en L3 hebben geen voeding en worden weggelaten.",
   "entity.detect.signed": "Stroom met teken: grootte wordt gebruikt",
   "entity.detect.inverted": "Teruglevering positief: omgekeerd",
   "entity.detect.gridPower": "Totaal netvermogen gevonden: gebruikt voor laden op zon en hybride laden",

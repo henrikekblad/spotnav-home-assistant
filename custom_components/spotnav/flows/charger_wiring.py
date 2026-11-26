@@ -48,6 +48,10 @@ class ChargerWiringSteps:
     async def _finish_pending_site(self) -> FlowResult:
         raise NotImplementedError
 
+    def _pending_single_phase(self) -> bool:
+        """Whether the site being saved is a single-phase one (`site_form.pending_single_phase`)."""
+        return False
+
     async def _begin_charger_wiring(self, pending: PendingSiteDetails) -> FlowResult:
         """Walk every charger of `pending` through its wiring step, then save."""
         self._pending_site = pending
@@ -71,7 +75,12 @@ class ChargerWiringSteps:
             return await self._finish_pending_site()
         charger_entry_id = self._wiring_queue[0]
         errors: dict[str, str] = {}
-        if user_input is not None and _one_phase(user_input) and dc_charger(self.hass, charger_entry_id):
+        single_phase_site = self._pending_single_phase()
+        if single_phase_site and dc_charger(self.hass, charger_entry_id):
+            # A DC charger is driven only on three phases, which a single-phase site does not have: said here, on
+            # the form and at every submission, so it is never saved into a site that would never write to it.
+            errors["base"] = "dc_charger_single_phase_site"
+        elif user_input is not None and _one_phase(user_input) and dc_charger(self.hass, charger_entry_id):
             # A DC charger is given the power of three phases: on one it would draw three times the current counted.
             errors["phases"] = "dc_charger_three_phase"
         elif user_input is not None:
@@ -98,6 +107,7 @@ class ChargerWiringSteps:
                 charger_entry_id,
                 existing=self._stored_wiring(charger_entry_id),
                 candidates=pending.charger_candidates.get(charger_entry_id),
+                single_phase_site=single_phase_site,
             ),
             errors=errors,
             description_placeholders={"charger": entry.title if entry is not None else charger_entry_id},

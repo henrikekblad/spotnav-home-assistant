@@ -484,6 +484,7 @@
   "entity.detect.inUse": "Käytössä",
   "entity.detect.direct": "Mittaa vaihevirran suoraan",
   "entity.detect.derived": "Johdettu tehosta ja jännitteestä",
+  "entity.detect.singlePhase": "Yksivaiheinen: vain L1. L2 ja L3 ovat ilman syöttöä, eikä niitä oteta mukaan.",
   "entity.detect.signed": "Virralla on etumerkki: luetaan suuruutena",
   "entity.detect.inverted": "Teho vienti positiivinen: käännetään",
   "entity.detect.gridPower": "Verkon kokonaisteho löytyi: käytetään aurinko- ja hybridilatauksessa",

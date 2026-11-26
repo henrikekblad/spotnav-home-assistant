@@ -484,6 +484,7 @@
   "entity.detect.inUse": "I brug",
   "entity.detect.direct": "Måler fasestrømmen direkte",
   "entity.detect.derived": "Udledt af effekt og spænding",
+  "entity.detect.singlePhase": "Enfaset: kun L1. L2 og L3 har ingen forsyning og tages ikke med.",
   "entity.detect.signed": "Strøm med fortegn: læses som sin størrelse",
   "entity.detect.inverted": "Effekt med eksport som positiv: negeres",
   "entity.detect.gridPower": "Nettets samlede effekt fundet: bruges til sol- og hybridopladning",

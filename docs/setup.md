@@ -262,7 +262,8 @@ How it differs from an AC charger:
 - **Three-phase only.** Sigenergy's hybrid inverters with a DC charger are three-phase installations,
   and SpotNav writes the power of three phases. On one phase the same power would draw three times
   the current SpotNav counts, so the site's wiring step does not accept one phase for a DC charger,
-  and a charger wired as one phase is never given a power limit.
+  and a charger wired as one phase is never given a power limit. A single-phase site (its meter
+  measures L1 only) cannot take a DC charger at all: the wiring step says so and does not save it.
 - **Its rating.** The most it is given is its **Rated Charging Power** sensor. When that sensor is
   unavailable, reads 0 or is disabled, SpotNav uses the last rating it read (kept across restarts);
   with none, it never raises the limit above what the charger already carries. Keep the rated and
@@ -450,7 +451,8 @@ and apparent power in VA or kVA; a sensor in another unit is refused.
   entity's state and its recent history and asks you to tick **save anyway** only when it could
   verify nothing.
 - **Phase wiring and measurement entities** asks, for each charger, whether it is three-phase or on
-  one phase, and for a single-phase charger which phase. It also asks, when not already chosen, for
+  one phase, and for a single-phase charger which phase (on a single-phase site both are fixed: one
+  phase, on L1). It also asks, when not already chosen, for
   the per-phase sensors: a current sensor per phase in direct mode, or a power sensor and a voltage
   sensor per phase in derived mode, with optional export power, reactive power, apparent power and
   current. Two tick boxes say how your meter's signs work: **The grid current is signed (export is

@@ -161,6 +161,9 @@ REASON_MISSING = "required_phase_measurement_missing"
 REASON_STALE = "phase_measurement_stale"
 REASON_INVALID = "phase_measurement_invalid"
 REASON_OBSERVING = "observing"
+# A site set up as single-phase (L1 alone) whose charger is measured drawing on more than one phase: the house has
+# phases the site does not watch, so nothing is allocated (`SiteCalculationConfig.phase_conflict`).
+REASON_PHASE_CONFLICT = "single_phase_site_charger_on_several_phases"
 # An "Automatic" single-phase charger that cannot be reckoned on any phase: some phase's headroom is
 # unknown. `calculate_site_capacity` only allocates with every phase known, so it never gives this.
 REASON_UNKNOWN_PHASE = "single_phase_charger_wiring_unknown"
@@ -454,6 +457,10 @@ class SiteCalculationConfig:
     #: The site's phases (`phases_of`): all three, or L1 alone on a single-phase site, whose L2 and L3 are no phase
     #: at all: never read, never missing, their margins `None`, and every charger on L1 (`on_site_phases`).
     phases: tuple[PhaseName, ...] = PHASES
+    #: A single-phase site whose charger is measured drawing on more than one phase: the site's meter does not see
+    #: the phases the charger loads, so its measurement is unusable (`invalid_measurements`,
+    #: `REASON_PHASE_CONFLICT`, no phase's current given) until the site is set up with all three.
+    phase_conflict: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1257,6 +1264,22 @@ def calculate_site_capacity(
             report_ages=report_ages,
             liveness=liveness,
             bases=bases,
+        )
+
+    if config.phase_conflict:
+        # Fails closed as a measurement that cannot be used: no phase's current is given, so every reader of the
+        # result (the regulator's lost measurement, the battery's and the loads' gates) holds as for a lost meter.
+        return _short_circuit(
+            "invalid_measurements",
+            REASON_PHASE_CONFLICT,
+            config,
+            requests,
+            empty_currents,
+            empty_ages,
+            empty_headroom,
+            mode_confidence,
+            report_ages=empty_ages,
+            liveness=empty_liveness,
         )
 
     # Every phase of the site is usable here, so every value is a real float; a phase the site does not have

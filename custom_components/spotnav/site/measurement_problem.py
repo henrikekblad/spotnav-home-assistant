@@ -20,7 +20,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from .site_capacity import PHASES, PhaseName, SiteCapacityResult
+from .site_capacity import PHASES, REASON_PHASE_CONFLICT, PhaseName, SiteCapacityResult
 
 #: The result states that stop a measurement being used.
 UNHEALTHY_STATES: Final = frozenset({"missing_measurements", "invalid_measurements", "stale_measurements"})
@@ -96,7 +96,9 @@ def measurement_problem(
     to the integration that provides it; `negative` are the phases that read a negative current on a
     site not set to read a signed one.
     """
-    if result.state not in UNHEALTHY_STATES:
+    if result.state not in UNHEALTHY_STATES or result.reason == REASON_PHASE_CONFLICT:
+        # A single-phase site whose charger draws on several phases has no phase's sensor to name: its own
+        # Repairs issue says what to do (`SiteCapacityController._sync_phase_conflict_issue`).
         return None
     problems: list[PhaseProblem] = []
     for phase in result.site_phases:

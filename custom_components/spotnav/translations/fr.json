@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien.",
       "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu.",
       "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3.",
+      "dc_charger_single_phase_site": "Le site est monophasé (L1 seulement), et un chargeur DC n'est piloté qu'en triphasé : il ne peut donc pas faire partie de ce site. Fermez cette fenêtre et enregistrez le site sans ce chargeur, ou avec les capteurs du compteur pour L2 et L3.",
       "phases_incomplete": "Pour un raccordement monophasé, laissez L2 et L3 vides ; sinon, renseignez les trois phases."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Indiquez la puissance nominale et la durée de fonctionnement de la charge.",
       "switch_load_floor_pair": "Le capteur de température et la température minimale vont ensemble : indiquez les deux ou aucun.",
       "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3.",
+      "dc_charger_single_phase_site": "Le site est monophasé (L1 seulement), et un chargeur DC n'est piloté qu'en triphasé : il ne peut donc pas faire partie de ce site. Fermez cette fenêtre et enregistrez le site sans ce chargeur, ou avec les capteurs du compteur pour L2 et L3.",
       "phases_incomplete": "Pour un raccordement monophasé, laissez L2 et L3 vides ; sinon, renseignez les trois phases."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "Une borne OCPP est toujours indisponible après le test matériel",
       "description": "SpotNav a rendu **{switches}** indisponible pour le test matériel et n'a pas pu la rendre de nouveau disponible. Activez vous-même cet interrupteur Availability (Paramètres → Appareils et services → OCPP). D'ici là, la borne ne charge pas. Ce message disparaît dès qu'il est activé."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} est configuré en monophasé, mais une borne consomme sur plusieurs phases",
+      "description": "**{site}** est configuré en monophasé (L1 seulement), mais **{charger}** est mesurée en train de consommer sur plus d'une phase. La maison a donc des phases que SpotNav ne surveille pas, et SpotNav a cessé de réguler ce site : ses bornes sont maintenues à leur courant le plus bas, et la batterie domestique et les autres charges ne reçoivent rien du réseau. Si la maison a trois phases : ouvrez les réglages du site dans la carte SpotNav et ajoutez les capteurs du compteur pour L2 et L3. Si elle n'a vraiment qu'une phase : le courant mesuré de la borne est faux sur L2 et L3, corrigez-le dans le câblage de la borne, dans les réglages du site. Ce message disparaît de lui-même une fois que c'est fait."
     }
   },
   "exceptions": {

@@ -484,6 +484,7 @@
   "entity.detect.inUse": "In Verwendung",
   "entity.detect.direct": "Misst den Phasenstrom direkt",
   "entity.detect.derived": "Aus Leistung und Spannung abgeleitet",
+  "entity.detect.singlePhase": "Einphasig: nur L1. L2 und L3 haben keine Versorgung und werden weggelassen.",
   "entity.detect.signed": "Strom mit Vorzeichen: als Betrag gelesen",
   "entity.detect.inverted": "Leistung bei Einspeisung positiv: umgekehrt",
   "entity.detect.gridPower": "Gesamte Netzleistung gefunden: für Solar- und Hybridladen verwendet",

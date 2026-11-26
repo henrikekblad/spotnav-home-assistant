@@ -843,6 +843,11 @@ export function entityEditorBody(
         "mode",
       ),
     );
+    // A meter measured on L1 alone sets the site up with one phase: the offer says so.
+    const measured = meter.entities.filter((entity) => entity.phase !== null);
+    if (measured.length > 0 && measured.every((entity) => entity.phase === "L1")) {
+      card.append(line(translate(language, "entity.detect.singlePhase"), "singlePhase"));
+    }
     if (meter.currentSigned) {
       card.append(line(translate(language, "entity.detect.signed"), "signed"));
     }

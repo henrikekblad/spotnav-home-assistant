@@ -56,15 +56,27 @@ shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
 - **A single-phase supply** needs no setting: give the meter's L1 sensors only and leave L2 and L3
   empty. The site is then one phase: the main fuse is that one phase at its rating (never three times
   it), load balancing, the import target, solar and the battery's grid charge caps all reckon with L1
-  alone, and every charger counts as single-phase on L1 whatever its wiring says. A meter that makes
-  L2 and L3 entities on a single-phase supply (hass-victron on a single-phase GX) is suggested with
-  L1 alone when those phases read nothing or 0 V; a site measured on L2 and L3 whose voltage both
+  alone, and every charger counts as single-phase on L1 whatever its wiring says: the charger's
+  wiring step shows one phase on L1 and nothing else to choose, and a DC charger, which is driven
+  only on three phases, cannot be on such a site. A meter that makes
+  L2 and L3 entities on a single-phase supply is suggested with L1 alone, marked **single-phase: L1
+  only**, when those phases read 0 V (or, for hass-victron on a single-phase GX, read nothing at
+  all); a site measured on L2 and L3 whose voltage both
   read 0 V, with nothing drawn there, also runs on L1 once they have read so for five minutes without
   a break after a start (until then L2 and L3 count as missing). That never happens once L2 or L3 has
   shown a live voltage, or a charger has drawn on more than one phase, since Home Assistant started:
   a meter that reads 0 for a while is not a single-phase supply. A phase that is only unread or
   unknown on a site set up with three phases stays a missing phase: the site never stops watching it
-  by itself.
+  by itself. SpotNav never turns a site set up with three phases into a single-phase one: a site
+  that has L2 and L3 is offered detected meters with all three phases, and only you make it
+  single-phase, by clearing L2 and L3 in the site's settings.
+- **A three-phase house set up with L1 only** is caught when a charger shows it: once a charger of a
+  single-phase site has been measured drawing more than about 1 A on more than one phase for a
+  minute, SpotNav stops regulating the site. Its chargers are held at their lowest current, as when
+  the meter is lost, and the home battery and other loads are given nothing from the grid. A Repairs
+  message names the site and the charger and says what to do: add the meter's sensors for L2 and L3
+  in the site's settings (or, if the house really has one phase, correct the charger's measured
+  current). The message goes away by itself once the site's settings are changed.
 - **Chargers on this site**, and for each charger whether it is three-phase or single-phase, and for
   a single-phase charger its phase: L1, L2, L3 or **Automatic (follows the charger)**, the default.
   Automatic is for a charger whose phase is not fixed, such as one behind an Easee Equalizer, which

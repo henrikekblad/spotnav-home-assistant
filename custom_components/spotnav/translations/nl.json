@@ -325,6 +325,7 @@
       "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
       "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu.",
       "dc_charger_three_phase": "Een DC-lader wordt alleen driefasig aangestuurd: SpotNav schrijft het vermogen van drie fasen, dat op één fase drie keer de getelde stroom zou trekken. Kies 3.",
+      "dc_charger_single_phase_site": "De locatie is eenfasig (alleen L1), en een DC-lader wordt alleen op drie fasen aangestuurd, dus hij kan niet bij deze locatie horen. Sluit dit venster en sla de locatie op zonder deze lader, of met de sensoren van de meter voor L2 en L3.",
       "phases_incomplete": "Laat bij een eenfase-aansluiting L2 en L3 leeg; vul anders alle drie de fasen in."
     }
   },
@@ -529,6 +530,7 @@
       "switch_load_incomplete": "Geef het nominale vermogen en de looptijd van de last op.",
       "switch_load_floor_pair": "De temperatuursensor en de laagste temperatuur horen bij elkaar: geef beide of geen van beide op.",
       "dc_charger_three_phase": "Een DC-lader wordt alleen driefasig aangestuurd: SpotNav schrijft het vermogen van drie fasen, dat op één fase drie keer de getelde stroom zou trekken. Kies 3.",
+      "dc_charger_single_phase_site": "De locatie is eenfasig (alleen L1), en een DC-lader wordt alleen op drie fasen aangestuurd, dus hij kan niet bij deze locatie horen. Sluit dit venster en sla de locatie op zonder deze lader, of met de sensoren van de meter voor L2 en L3.",
       "phases_incomplete": "Laat bij een eenfase-aansluiting L2 en L3 leeg; vul anders alle drie de fasen in."
     }
   },
@@ -980,6 +982,10 @@
     "hardware_test_out_of_service": {
       "title": "Een OCPP-laadpaal is na de hardwaretest nog steeds niet beschikbaar",
       "description": "SpotNav zette **{switches}** voor de hardwaretest op niet beschikbaar en kon hem niet weer beschikbaar maken. Zet die Availability-schakelaar zelf aan (Instellingen → Apparaten & diensten → OCPP). Tot dan laadt de laadpaal niet. Dit bericht verdwijnt zodra hij aan staat."
+    },
+    "single_phase_site_charger_on_several_phases": {
+      "title": "{site} is ingesteld als eenfasig, maar een laadpaal trekt stroom op meerdere fasen",
+      "description": "**{site}** is ingesteld als eenfasig (alleen L1), maar bij **{charger}** wordt stroom op meer dan één fase gemeten. Het huis heeft dan fasen die SpotNav niet bewaakt, dus SpotNav regelt deze locatie niet meer: de laadpalen worden op hun laagste stroom gehouden, en de thuisbatterij en andere verbruikers krijgen niets van het net. Heeft het huis drie fasen: open de instellingen van de locatie in de SpotNav-kaart en voeg de sensoren van de meter voor L2 en L3 toe. Heeft het echt één fase: de gemeten stroom van de laadpaal klopt niet op L2 en L3, corrigeer die in de aansluiting van de laadpaal in de instellingen van de locatie. Deze melding verdwijnt vanzelf zodra dat is gedaan."
     }
   },
   "exceptions": {

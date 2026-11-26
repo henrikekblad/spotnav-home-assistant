@@ -11,6 +11,9 @@ from homeassistant.helpers import selector
 
 from ..api.entity_fields import MAIN_FUSE_MIN_A
 from ..const import (
+    CONF_SITE_CURRENT_SOURCE,
+    CONF_DIRECT_ENTITIES,
+    CONF_DERIVED_ENTITIES,
     DEFAULT_SAFETY_MARGIN_A,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
@@ -28,6 +31,7 @@ from ..const import (
     MEASUREMENT_MODE_DIRECT,
     VOLTAGE_BETWEEN_PHASES_CHOICES,
 )
+from ..core.electric import site_phase_count
 from ..site.measurement_source import source_to_dict
 from ..site.site_detection import MeterCandidate
 from ..site.site_membership import chargers_claimed_by_other_sites
@@ -313,10 +317,13 @@ def charger_wiring_schema(
     *,
     existing: dict[str, Any] | None = None,
     candidates: list[DiscoveryCandidate] | None = None,
+    single_phase_site: bool = False,
 ) -> vol.Schema:
     """One charger's wiring: its phase count, the connected phase of a single-phase one ("Automatic", the
     default, or L1-L3) and, when its device resolves (`charger_device_id`), an optional measured-current
-    source. The keys are fixed
+    source. On a single-phase site (`single_phase_site`) both are fixed, shown with their one choice: 1 phase,
+    on L1, which is how every charger of such a site is run whatever is stored (`parse_charger_wiring`). The keys
+    are fixed
     (`phases`, `phase`, `measured_source`) so each has a translated label; which charger it is, is
     said by the step's description.
 
@@ -329,15 +336,18 @@ def charger_wiring_schema(
     existing = existing or {}
     candidates = candidates or []
     schema_dict: dict[Any, Any] = {
-        vol.Required("phases", default=existing.get("phases", 3)): vol.In([1, 3])
+        vol.Required("phases", default=1 if single_phase_site else existing.get("phases", 3)): vol.In(
+            [1] if single_phase_site else [1, 3]
+        )
     }
     # "Automatic" (no phase stored) is the default: the phase is followed from the charger's measured current.
     # The options are lower case (translation keys must be), the stored phase upper case ("L1").
     stored_phase = existing.get("phase")
-    schema_dict[vol.Optional("phase", default=stored_phase.lower() if stored_phase in PHASES else PHASE_AUTOMATIC)] = (
+    default_phase = stored_phase.lower() if stored_phase in PHASES else PHASE_AUTOMATIC
+    schema_dict[vol.Optional("phase", default="l1" if single_phase_site else default_phase)] = (
         selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[PHASE_AUTOMATIC, *(phase.lower() for phase in PHASES)],
+                options=["l1"] if single_phase_site else [PHASE_AUTOMATIC, *(phase.lower() for phase in PHASES)],
                 translation_key="charger_phase",
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
@@ -511,9 +521,16 @@ def parse_charger_wiring(
     inputs: dict[str, Any],
     candidates: list[DiscoveryCandidate] | None = None,
     manual_source: dict[str, Any] | None = None,
+    *,
+    single_phase_site: bool = False,
 ) -> dict[str, Any]:
     """One charger's stored wiring from its `site_charger_wiring` submission, merged onto `existing` so
     fields the form did not show survive a save.
+
+    On a single-phase site (`single_phase_site`) the form's fixed "1 phase, L1" is not stored: every charger of
+    such a site is run so whatever its wiring says (`planning/first_run.wired_phases`), and the stored wiring is
+    kept (three phases for a charger new to the site) for the day the site is given L2 and L3. A charger that
+    really draws on three phases is then reckoned on all three at once, never as a single-phase one on L1.
 
     `candidates` must be what the form was built from; a `candidate_id` no longer among them is ignored
     rather than stored. `manual_source` is what the manual steps collected (already fully checked); a
@@ -521,11 +538,15 @@ def parse_charger_wiring(
     only an explicit "skip" clears a stored source.
     """
     wiring = dict(existing or {})
-    wiring["phases"] = inputs["phases"]
-    # "Automatic" is stored as no phase, as before there was a choice for it.
-    phase = inputs.get("phase")
-    phase = phase.upper() if isinstance(phase, str) else None
-    wiring["phase"] = phase if phase in PHASES else None
+    if single_phase_site:
+        wiring.setdefault("phases", 3)
+        wiring.setdefault("phase", None)
+    else:
+        wiring["phases"] = inputs["phases"]
+        # "Automatic" is stored as no phase, as before there was a choice for it.
+        phase = inputs.get("phase")
+        phase = phase.upper() if isinstance(phase, str) else None
+        wiring["phase"] = phase if phase in PHASES else None
     choice = inputs.get("measured_source")
     if choice is None:
         return wiring
@@ -555,11 +576,13 @@ def parse_site_details(
     charger_candidates: dict[str, list[DiscoveryCandidate]] | None = None,
     manual_sources: dict[str, dict[str, Any]] | None = None,
     charger_inputs: dict[str, dict[str, Any]] | None = None,
+    single_phase_site: bool = False,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, dict[str, str]]]:
     """The inverse of `site_details_schema`'s field naming plus every charger's wiring, shared by both
     flows. `charger_inputs` holds each charger's `site_charger_wiring` submission (see
     `parse_charger_wiring`) and `manual_sources` what the manual steps collected, both by charger
-    entry id; the wiring merges onto `phase_wiring_defaults`.
+    entry id; the wiring merges onto `phase_wiring_defaults`. `single_phase_site` is whether the site saved is a
+    single-phase one (`pending_single_phase`), whose wiring steps were fixed.
     """
     phase_wiring_defaults = phase_wiring_defaults or {}
     charger_candidates = charger_candidates or {}
@@ -571,14 +594,41 @@ def parse_site_details(
             charger_inputs[charger_entry_id],
             charger_candidates.get(charger_entry_id),
             manual_sources.get(charger_entry_id),
+            single_phase_site=single_phase_site,
         )
         for charger_entry_id in charger_entry_ids
     }
+    direct_entities, derived_entities = parse_site_measurement(details, mode, skip_direct_fields=skip_direct_fields)
+    return phase_wiring, direct_entities, derived_entities
 
+
+def pending_single_phase(pending: PendingSiteDetails, current_source: Any) -> bool:
+    """Whether the site a `site_details` submission saves is a single-phase one (`core.electric.site_phase_count`):
+    its meter measures L1 alone. `current_source` is the site's current source as the save will store it."""
+    direct_entities, derived_entities = parse_site_measurement(
+        pending.details, pending.mode, skip_direct_fields=pending.skip_direct_fields
+    )
+    return (
+        site_phase_count(
+            {
+                CONF_MEASUREMENT_MODE: pending.mode,
+                CONF_DIRECT_ENTITIES: direct_entities,
+                CONF_DERIVED_ENTITIES: derived_entities,
+                CONF_SITE_CURRENT_SOURCE: current_source,
+            }
+        )
+        == 1
+    )
+
+
+def parse_site_measurement(
+    details: dict[str, Any], mode: str, *, skip_direct_fields: bool = False
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """The direct and the derived entities of a `site_details` submission, by phase."""
     direct_entities: dict[str, str] = {}
     derived_entities: dict[str, dict[str, str]] = {}
     if skip_direct_fields:
-        return phase_wiring, direct_entities, derived_entities
+        return direct_entities, derived_entities
     # A phase left empty is no phase: a single-phase supply stores L1 alone (`core.electric.site_phase_count`).
     if mode == MEASUREMENT_MODE_DIRECT:
         direct_entities = {phase: details[f"direct_{phase}"] for phase in PHASES if details.get(f"direct_{phase}")}
@@ -595,4 +645,4 @@ def parse_site_details(
                 if value:
                     entry[sub_key] = value
             derived_entities[phase] = entry
-    return phase_wiring, direct_entities, derived_entities
+    return direct_entities, derived_entities

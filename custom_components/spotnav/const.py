@@ -7,6 +7,8 @@ DOMAIN = "spotnav"
 PRICE_SOURCE_MISSING_ISSUE = "price_source_missing"
 #: A hardware test left an OCPP charger out of service and could not set it back (`site/charger_test_hold.py`).
 HARDWARE_TEST_OUT_OF_SERVICE_ISSUE = "hardware_test_out_of_service"
+# A site set up as single-phase whose charger is measured drawing on more than one phase (one issue per site).
+SINGLE_PHASE_SITE_CONFLICT_ISSUE = "single_phase_site_charger_on_several_phases"
 #: The id prefix of the Repairs notice an earlier version raised for a home battery another system drives (retired:
 #: `battery/runtime.py` and the setup sync delete a left-over one).
 BATTERY_OUTSIDE_CONTROL_ISSUE = "battery_outside_control"

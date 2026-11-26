@@ -760,3 +760,42 @@ def test_a_dc_chargers_regulated_current_is_never_rounded_above_the_licence() ->
     # An AC charger as before: the nearest ampere.
     assert regulated_setpoint(6.6, 6.0) == 7
     assert regulated_setpoint(6.4, 6.0) == 6
+
+
+async def test_the_wiring_step_refuses_a_dc_charger_on_a_single_phase_site(hass: HomeAssistant) -> None:
+    """A DC charger is driven only on three phases: on a single-phase site the step says so and never saves it."""
+    from custom_components.spotnav import texts
+    from custom_components.spotnav.flows.charger_wiring import ChargerWiringSteps
+    from custom_components.spotnav.flows.site_form import PendingSiteDetails
+
+    await texts.async_load(hass)
+    _ids, found = _found(hass)
+    _charger_entry(hass, **{k: v for k, v in detected_config(found).items() if k != CONF_CHARGE_CONTROL})
+    shown: list[dict[str, Any]] = []
+    finished: list[bool] = []
+
+    class Flow(ChargerWiringSteps):
+        def async_show_form(self, **kwargs: Any) -> dict[str, Any]:
+            shown.append(kwargs)
+            return kwargs
+
+        async def _finish_pending_site(self) -> dict[str, Any]:
+            finished.append(True)
+            return {}
+
+        def _pending_single_phase(self) -> bool:
+            return True
+
+    flow = Flow()
+    flow.hass = hass
+    flow._init_charger_wiring()
+    await flow._begin_charger_wiring(
+        PendingSiteDetails(details={"direct_L1": "sensor.l1"}, charger_entry_ids=["evdc"], mode="direct_phase_current",
+                           skip_direct_fields=False, charger_candidates={})
+    )
+    # Said as the form opens, and at every submission: one phase or three, it is never taken.
+    assert shown[-1]["errors"] == {"base": "dc_charger_single_phase_site"}
+    for phases in (1, 3):
+        await flow.async_step_site_charger_wiring({"phases": phases})
+        assert shown[-1]["errors"] == {"base": "dc_charger_single_phase_site"}
+    assert finished == [] and flow._pending_site.charger_inputs == {}

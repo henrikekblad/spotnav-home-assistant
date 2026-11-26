@@ -10,6 +10,7 @@ With the option unset (the default) no charger service is ever called.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import time
@@ -35,6 +36,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import (
     DOMAIN,
+    SINGLE_PHASE_SITE_CONFLICT_ISSUE,
     CONF_CHARGER_PRIORITY,
     DEFAULT_CHARGER_PRIORITY,
     CONF_ACTIVE_CONTROL_ENABLED,
@@ -129,7 +131,14 @@ from ..battery.runtime import BatteryShadow
 from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .meter_cadence import ReportCadence, solar_liveness
-from .site_detection import DEAD_PHASE_BELOW_V, DEAD_PHASE_HOLD_S, DEAD_PHASE_IDLE_A, DEAD_PHASE_IDLE_W, LIVE_PHASE_A
+from .site_detection import (
+    DEAD_PHASE_BELOW_V,
+    DEAD_PHASE_HOLD_S,
+    DEAD_PHASE_IDLE_A,
+    DEAD_PHASE_IDLE_W,
+    LIVE_PHASE_A,
+    PHASE_CONFLICT_HOLD_S,
+)
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
 from .charger_test_hold import ChargerTestHold
@@ -791,6 +800,14 @@ class SiteCapacityController:
         self._dead_phases_since: float | None = None
         self._dead_phases_held = False
         self._other_phase_seen_live = False
+        # A site set up as single-phase whose charger draws on more than one phase (`_single_phase_conflict`): since
+        # when (`_yield_now`) one has read so without a break, the charger it stands for once it has for
+        # `PHASE_CONFLICT_HOLD_S` (it then stands until the site's settings change), the settings it was judged on,
+        # and whether its Repairs issue is raised.
+        self._phase_conflict_since: float | None = None
+        self._phase_conflict_charger: str | None = None
+        self._phase_conflict_config: int | None = None
+        self._phase_conflict_issue_raised = False
         # Each "Automatic" single-phase charger's followed phase (`site/auto_phase.py`), by `_yield_now`.
         self._auto_phases: dict[str, AutoPhaseTracker] = {}
         # Starts on their way, per charger: the amps a start was given, the phases it draws from, and until
@@ -1212,6 +1229,7 @@ class SiteCapacityController:
         looks). The heat control keeps looking until the hardware test is handed back (`_async_hand_back`). The
         chargers' start caps stay until the hand-back has ended (`release_start_caps`)."""
         self._closed = True
+        self._sync_phase_conflict_issue()
         self._cancel_probe_timer()
         for name in ("_history_cancel", "_phase_peaks_cancel", "_timer_cancel", "_state_listener_cancel",
                      "_report_listener_cancel"):
@@ -1619,6 +1637,7 @@ class SiteCapacityController:
             _LOGGER.exception("SpotNav site %s: checking the grid meter's sign failed", self.entry_id)
         self._update_direction_history()
         self._update_measurement_lost()
+        self._sync_phase_conflict_issue()
         previous_decisions = self.regulator_decisions
         self.regulator_decisions = self._compute_regulator_decisions()
         _log_transitions(self.entry_id, previous, self.result)
@@ -5292,7 +5311,7 @@ class SiteCapacityController:
         queues, a start's allowance and its reservation all read the same readings, so the result is reused while
         no reading changed (`_readings_key`) and for at most `CALCULATION_REUSE_S`, over which a reading's age would
         drift."""
-        key = self._readings_key()
+        key = (self._readings_key(), self._single_phase_conflict())
         now = dt_util.utcnow()
         cached = self._calculation
         if (
@@ -5383,6 +5402,7 @@ class SiteCapacityController:
             direct_signed=direct_signed,
             direct_sign_confirmed=self._current_sign.confirmed if direct_signed is not None else (),
             phases=self.site_phases,
+            phase_conflict=self._single_phase_conflict(),
         )
 
     @property
@@ -5426,9 +5446,80 @@ class SiteCapacityController:
             self._dead_phases_held = True
         return self._dead_phases_held
 
+    def _single_phase_conflict(self) -> bool:
+        """Whether the site is set up as single-phase (its meter measures L1 alone, `core.electric.site_phase_count`)
+        while a charger of it is measured drawing on more than one phase: the house then has phases the site does
+        not watch, and a fuse on L2 or L3 could be overloaded unseen. It stands once a charger has read so without a
+        break for `PHASE_CONFLICT_HOLD_S`, and from then until the site's settings change (L2 and L3 added, or the
+        charger's measured current corrected): the site's measurement is unusable meanwhile (`_build_config`), so
+        every charger is held as for a lost meter and nothing else is allocated on the site."""
+        config_id = id(self.config)
+        if self._phase_conflict_config != config_id or site_phase_count(self.config) != 1:
+            self._phase_conflict_config = config_id
+            self._phase_conflict_since = None
+            self._phase_conflict_charger = None
+            if site_phase_count(self.config) != 1:
+                return False
+        if self._phase_conflict_charger is not None:
+            return True
+        charger_entry_id = self._charger_drawing_on_several_phases()
+        if charger_entry_id is None:
+            self._phase_conflict_since = None
+            return False
+        now_s = self._yield_now()
+        if self._phase_conflict_since is None:
+            self._phase_conflict_since = now_s
+        if now_s - self._phase_conflict_since < PHASE_CONFLICT_HOLD_S:
+            return False
+        self._phase_conflict_charger = charger_entry_id
+        _LOGGER.warning(
+            "SpotNav site %s is set up as single-phase (L1 only), but charger %s draws on more than one phase: "
+            "the site's chargers are held and nothing else is allocated until L2 and L3 are added in the site's "
+            "settings",
+            self.entry_id,
+            charger_entry_id,
+        )
+        return True
+
+    def _sync_phase_conflict_issue(self) -> None:
+        """The Repairs issue of `_single_phase_conflict`: raised once while it stands, gone when it no longer does."""
+        from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415 - kept beside its only use
+
+        issue_id = f"{SINGLE_PHASE_SITE_CONFLICT_ISSUE}_{self.entry_id}"
+        charger_entry_id = None if self._closed else self._phase_conflict_charger
+        if charger_entry_id is None:
+            if self._phase_conflict_issue_raised:
+                self._phase_conflict_issue_raised = False
+                with contextlib.suppress(Exception):  # the issue is words only: never in a decision's way
+                    ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        if self._phase_conflict_issue_raised:
+            return
+        site = self.hass.config_entries.async_get_entry(self.entry_id)
+        charger = self.hass.config_entries.async_get_entry(charger_entry_id)
+        self._phase_conflict_issue_raised = True
+        with contextlib.suppress(Exception):  # the issue is words only: never in a decision's way
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=SINGLE_PHASE_SITE_CONFLICT_ISSUE,
+                translation_placeholders={
+                    "site": self.entry_id if site is None else site.title,
+                    "charger": charger_entry_id if charger is None else charger.title,
+                },
+            )
+
     def _charger_on_several_phases(self) -> bool:
         """Whether a charger of the site reads a current (above `LIVE_PHASE_A`, fresh) on more than one of its phases
         now: the supply then has more than one phase, whatever the site's meter reads."""
+        return self._charger_drawing_on_several_phases() is not None
+
+    def _charger_drawing_on_several_phases(self) -> str | None:
+        """The first charger of the site that reads a current (above `LIVE_PHASE_A`, fresh) on more than one of its
+        phases now, or `None`."""
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         phase_wiring: Mapping[str, Any] = self.config.get(CONF_PHASE_WIRING) or {}
         for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
@@ -5449,8 +5540,8 @@ class SiteCapacityController:
                 if ages and min(ages) <= max_age_s and abs(value.value) > LIVE_PHASE_A:
                     drawing += 1
             if drawing > 1:
-                return True
-        return False
+                return str(charger_entry_id)
+        return None
 
     def _other_phases_now(self) -> Literal["dead", "live"] | None:
         """What a derived site's readings say of L2 and L3 now. `dead`: each one's own voltage reads below

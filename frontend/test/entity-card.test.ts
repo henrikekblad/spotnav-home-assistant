@@ -1126,6 +1126,34 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     ]);
   });
 
+  it("says of a detected meter measured on L1 alone that it is single-phase", async () => {
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer: Record<string, unknown>) => {
+        const config = answer["config"] as { site: { detection: { meters: Record<string, unknown>[] } } };
+        const [first, ...rest] = config.site.detection.meters;
+        const entities = (first?.["entities"] as { phase: string | null }[]).filter(
+          (entity) => entity.phase === null || entity.phase === "L1",
+        );
+        const meters = [{ ...first, entities }, ...rest];
+        return {
+          ...answer,
+          config: { ...config, site: { ...config.site, detection: { ...config.site.detection, meters } } },
+        };
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const cards = [...(openDialog(element)?.querySelectorAll<HTMLElement>("[data-detected-meter]") ?? [])];
+    expect(cards.length).toBeGreaterThan(1);
+    expect(cards[0]?.querySelector("[data-detect='singlePhase']")?.textContent).toBe(
+      "Single-phase: L1 only. L2 and L3 have no supply and are left out.",
+    );
+    // A meter on all three phases says nothing of it.
+    expect(cards.slice(1).every((card) => card.querySelector("[data-detect='singlePhase']") === null)).toBe(true);
+  });
+
   it("shows where the site reads the charger's measured current in the dialog of the charger's current", async () => {
     const { element } = await mounted({ get: "get_direct" });
     openSettings(element);
