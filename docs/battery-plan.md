@@ -86,6 +86,9 @@ charged, 0.9 kWh comes back out. SpotNav then learns your battery's own figure, 
 * A counter that falls or jumps faster than the battery could charge (a reset, a wrap) spoils the window it falls in;
   so does a quarter hour that was not measured. Where both the counters and the measured power are known they must
   agree within 15 %, or the window teaches nothing: a counter that counts something else is not believed.
+  Counters that are there but never move (some BMSs' history counters read 0) are taken as stuck once the measured
+  power moved 2 kWh or more in a window and a counter less than 5 % of that; the window is then counted with the
+  measured power, and the diagnostics (`learned` → `round_trip`) show `source: power` and `counters: stuck`.
 * A window's round trip must lie between 60 % and 98 %. The learnt value is the median of the last nine windows that
   agree within 5 points, once three do. The plan follows it slowly: only when it is 2 points or more away, and by at
   most 3 points per window, so one odd window never moves the plan. The learnt size uses it too.

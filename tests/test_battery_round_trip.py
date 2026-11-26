@@ -16,6 +16,7 @@ from custom_components.spotnav.battery.round_trip import (
     SOURCE_COUNTERS,
     SOURCE_METERS,
     RoundTrip,
+    _raw_counts,
 )
 
 T0 = datetime(2026, 11, 1, 0, 0, tzinfo=timezone.utc)
@@ -72,19 +73,30 @@ def _run(
     counter_scale: float = 1.0,
     reset_at: datetime | None = None,
     skip: set[datetime] | None = None,
+    stuck: tuple[float, float] | None = None,
+    soc_step: float | None = None,
+    partial: set[datetime] | None = None,
 ) -> None:
     """Every quarter hour over `days`: the battery runs it, then the learner looks at its end."""
     moment = start
     end = start + timedelta(days=days)
-    learner.observe(moment, battery.soc, _counters(battery, counters, counter_scale), battery.buckets.values())
+
+    def look() -> None:
+        soc = battery.soc if soc_step is None else round(battery.soc / soc_step) * soc_step
+        read = stuck if stuck is not None else _counters(battery, counters, counter_scale)
+        learner.observe(moment, soc, read, battery.buckets.values())
+
+    look()
     while moment < end:
         bucket = battery.quarter(moment)
         moment += BUCKET
         if skip and bucket.start in skip:
             del battery.buckets[bucket.start]
+        if partial and bucket.start in partial:
+            bucket.covered_s = 300.0
         if reset_at is not None and moment == reset_at:
             battery.charged, battery.discharged = 0.0, 0.0
-        learner.observe(moment, battery.soc, _counters(battery, counters, counter_scale), battery.buckets.values())
+        look()
 
 
 def _counters(battery: Battery, counters: bool, scale: float) -> tuple[float | None, float | None]:
@@ -279,3 +291,131 @@ def test_a_value_stored_above_the_cap_is_brought_under_it() -> None:
     learner = RoundTrip.from_dict({"efficiency": 0.97})
     assert learner.efficiency == PLAN_CAP
     assert RoundTrip.from_dict({"efficiency": 0.91}).efficiency == 0.91
+
+
+class Plant(Battery):
+    """A plant whose meters read on the AC side: 78 % AC to AC, a small standby drain while idle (counted as the
+    battery's discharge), and a level shown in whole points."""
+
+    STANDBY_KW = 0.03
+
+    def _action(self, at: datetime) -> float:
+        kw = super()._action(at)
+        return kw if kw or self.soc <= 10.5 else -self.STANDBY_KW
+
+
+def test_counters_stuck_at_zero_learn_from_the_measured_power() -> None:
+    """A BMS whose history counters read 0 (field report: Victron with a Seplos BMS, 78 % AC to AC measured)."""
+    learner = RoundTrip()
+
+    _run(learner, Plant(0.78), days=14, stuck=(0.0, 0.0), soc_step=1.0)
+
+    assert len(learner.windows) >= MIN_WINDOWS
+    assert all(window.source == SOURCE_METERS for window in learner.windows)
+    assert not learner.rejected
+    assert learner.efficiency == pytest.approx(0.78, abs=0.015)
+    view = learner.view()
+    assert view["source"] == "power" and view["counters"] == "stuck"
+
+
+def test_counters_that_never_move_from_a_value_are_stuck_too() -> None:
+    learner = RoundTrip()
+
+    _run(learner, Plant(0.78), days=14, stuck=(1234.5, 1100.0))
+
+    assert learner.windows and all(window.source == SOURCE_METERS for window in learner.windows)
+    assert learner.efficiency == pytest.approx(0.78, abs=0.015)
+    assert learner.counters_stuck
+
+
+def test_one_stuck_counter_falls_back_to_the_measured_power() -> None:
+    learner = RoundTrip()
+    battery = Plant(0.80)
+    moment = T0
+    learner.observe(moment, battery.soc, (battery.charged, 0.0), battery.buckets.values())
+    while moment < T0 + timedelta(days=14):
+        battery.quarter(moment)
+        moment += BUCKET
+        learner.observe(moment, battery.soc, (battery.charged, 0.0), battery.buckets.values())
+
+    assert learner.windows and all(window.source == SOURCE_METERS for window in learner.windows)
+    assert learner.efficiency == pytest.approx(0.80, abs=0.015)
+
+
+def test_working_counters_keep_priority_and_say_so() -> None:
+    learner = RoundTrip()
+
+    _run(learner, Battery(0.84), days=12)
+
+    assert all(window.source == SOURCE_COUNTERS for window in learner.windows)
+    assert not learner.counters_stuck
+    view = learner.view()
+    assert view["source"] == "counters" and view["counters"] == "working"
+    assert RoundTrip().view()["counters"] == "missing" and RoundTrip().view()["source"] is None
+
+
+def test_counters_that_start_counting_again_are_used_again() -> None:
+    learner = RoundTrip()
+    battery = Battery(0.84)
+
+    _run(learner, battery, days=8, stuck=(0.0, 0.0))
+    assert learner.counters_stuck
+    _run(learner, battery, days=8, start=T0 + timedelta(days=8))
+
+    assert learner.windows[-1].source == SOURCE_COUNTERS and not learner.counters_stuck
+    assert learner.efficiency == pytest.approx(0.84, abs=0.01)
+
+
+def test_stuck_counters_with_gaps_in_the_measured_power_teach_nothing_across_them() -> None:
+    """A quarter hour not fully measured, or missing, spoils the window it falls in: no window spans one."""
+    learner = RoundTrip()
+    gaps = {T0 + timedelta(days=day, hours=3) for day in range(14)}
+
+    _run(learner, Plant(0.78), days=14, stuck=(0.0, 0.0), partial=gaps)
+
+    assert learner.windows == []
+    assert learner.efficiency is None
+
+    missing = RoundTrip()
+    _run(missing, Plant(0.78), days=14, stuck=(0.0, 0.0), skip=gaps)
+    assert missing.windows == [] and missing.efficiency is None
+
+
+def test_stuck_counters_keep_the_window_rules() -> None:
+    """Equal level at both ends, enough energy in, a believable value, the slow median."""
+    learner = RoundTrip()
+
+    _run(learner, Plant(0.78), days=14, stuck=(0.0, 0.0), soc_step=1.0)
+
+    assert all(window.charged_kwh >= 20.0 for window in learner.windows)
+    assert all(window.efficiency == pytest.approx(0.78, abs=0.03) for window in learner.windows)
+
+    inverted = RoundTrip()  # the power's sign the wrong way round: out over in is far above any battery's
+    battery = Plant(0.78)
+    moment = T0
+    inverted.observe(moment, battery.soc, (0.0, 0.0), battery.buckets.values())
+    while moment < T0 + timedelta(days=14):
+        bucket = battery.quarter(moment)
+        bucket.battery_kwh = -bucket.battery_kwh
+        moment += BUCKET
+        inverted.observe(moment, battery.soc, (0.0, 0.0), battery.buckets.values())
+    assert inverted.windows == [] and inverted.efficiency is None
+    assert inverted.rejected and all(window.rejected == REJECT_IMPLAUSIBLE for window in inverted.rejected)
+
+
+def test_a_counter_counting_only_part_is_not_taken_as_stuck() -> None:
+    learner = RoundTrip()
+
+    _run(learner, Battery(0.84), days=12, counter_scale=0.6)
+
+    assert not learner.counters_stuck and learner.windows == []
+
+
+def test_the_stuck_flag_survives_a_restart() -> None:
+    learner = RoundTrip()
+    _run(learner, Plant(0.78), days=14, stuck=(0.0, 0.0))
+
+    restored = RoundTrip.from_dict(learner.as_dict())
+
+    assert restored.counters_stuck and restored.as_dict() == learner.as_dict()
+    assert _raw_counts(restored.anchor, restored.anchor) == (0.0, 0.0)  # type: ignore[arg-type]
