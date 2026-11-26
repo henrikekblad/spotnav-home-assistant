@@ -458,6 +458,14 @@ def site_details_unit_errors(
             errors.update({template.format(phase): "phases_incomplete" for phase, has in filled.items() if not has})
     if mode == MEASUREMENT_MODE_DERIVED:
         for phase in ("L2", "L3"):
+            # A phase given any sensor is a phase of the site: without its power it would be dropped, and the site
+            # stored as single-phase with a phase somebody named left unwatched.
+            named = any(
+                details.get(f"derived_{phase}_{sub_key}")
+                for sub_key in ("voltage", *(key for key, _quantity in DERIVED_OPTIONAL_SUBKEYS))
+            )
+            if named and not details.get(f"derived_{phase}_power"):
+                errors[f"derived_{phase}_power"] = "phases_incomplete"
             # A phase given power needs its voltage too (or its own current, which lets the nominal one stand in).
             if details.get(f"derived_{phase}_power") and not (
                 details.get(f"derived_{phase}_voltage") or details.get(f"derived_{phase}_current")

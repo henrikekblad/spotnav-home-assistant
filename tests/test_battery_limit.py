@@ -136,3 +136,19 @@ async def test_the_site_voltage_is_the_one_the_limit_is_figured_at(hass: HomeAss
     found = battery_import_limit(hass, site)
 
     assert found is not None and found.battery_a == pytest.approx(11000 / (math.sqrt(3) * 230))
+
+
+async def test_on_a_single_phase_site_the_whole_limit_is_on_the_one_phase(hass: HomeAssistant) -> None:
+    """5.52 kW is 24 A on one phase at 230 V, which agrees with the site's 24 A; as three-phase power it would read 8 A."""
+    from custom_components.spotnav.const import CONF_DIRECT_ENTITIES, CONF_SITE_CURRENT_SOURCE
+
+    battery, _limit = _sigenergy(hass, "5.52")
+    site = await _site(hass, battery)
+    data = {key: value for key, value in site.data.items() if key != CONF_SITE_CURRENT_SOURCE}
+    data[CONF_DIRECT_ENTITIES] = {"L1": "sensor.only_l1"}
+    hass.config_entries.async_update_entry(site, data=data)
+    await hass.async_block_till_done()
+
+    found = battery_import_limit(hass, site)
+
+    assert found is not None and found.battery_a == pytest.approx(24.0) and not found.differs
