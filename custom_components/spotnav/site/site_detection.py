@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from homeassistant.config_entries import ConfigEntry
@@ -1735,9 +1735,90 @@ def excluded_charger_devices(hass: HomeAssistant, charger_entry_ids: list[str]) 
     return excluded
 
 
+#: A phase voltage below this (V) is no supply on that phase: a single-phase GX still makes L2 and L3 entities.
+DEAD_PHASE_BELOW_V: Final = 50.0
+#: What a phase with no supply may still read (W, A): a meter's noise around nothing.
+DEAD_PHASE_IDLE_W: Final = 50.0
+DEAD_PHASE_IDLE_A: Final = 0.5
+_NO_READING: Final = frozenset({"unavailable", "unknown", ""})
+
+
+def _reading(state: Any) -> float | None:
+    """A state's finite number, or `None`."""
+    if state is None or state.state in _NO_READING:
+        return None
+    try:
+        value = float(state.state)
+    except (TypeError, ValueError):
+        return None
+    return value if value == value and value not in (float("inf"), float("-inf")) else None
+
+
+def _phase_absent(hass: HomeAssistant, entities: Mapping[str, str], voltage: str | None, disabled: frozenset[str]) -> bool:
+    """Whether a meter's phase has no supply behind it: its voltage reads about 0 V, or its entities exist to be read
+    and have a state (none disabled, which has no state until it is enabled, none not loaded yet), one at least reads
+    nothing (unknown, unavailable) and none reads more than about nothing. A current or power of 0 alone is not enough: a three-phase house can idle
+    a phase."""
+    if voltage is not None:
+        volts = _reading(hass.states.get(voltage))
+        if volts is not None and abs(volts) < DEAD_PHASE_BELOW_V:
+            return True
+    ids = [entity_id for entity_id in entities.values() if entity_id]
+    if not ids or any(entity_id in disabled for entity_id in ids):
+        return False
+    states = [hass.states.get(entity_id) for entity_id in ids]
+    if any(state is None for state in states):
+        # Not loaded yet (or gone): says nothing about the phase.
+        return False
+    readings = [_reading(state) for state in states]
+    return any(value is None for value in readings) and all(
+        value is None or (entity_id != voltage and abs(value) <= DEAD_PHASE_IDLE_A)
+        for entity_id, value in zip(ids, readings, strict=True)
+    )
+
+
+def single_phase_candidate(hass: HomeAssistant, candidate: MeterCandidate) -> MeterCandidate:
+    """`candidate` measured on L1 alone when its meter has no supply on L2 and L3 (`_phase_absent`) while L1 reads:
+    a single-phase supply whose integration still makes entities for the other two phases (hass-victron on a
+    single-phase GX). Otherwise `candidate` as it is, so a three-phase meter with one phase unread stays three-phase
+    and its site reports that phase missing."""
+    disabled = frozenset(candidate.disabled_entity_ids)
+    if candidate.derived_entities is not None:
+        by_phase: Mapping[PhaseName, Mapping[str, str]] = candidate.derived_entities
+        primary = "power"
+    elif candidate.direct_entities is not None:
+        by_phase = {phase: {"current": entity_id} for phase, entity_id in candidate.direct_entities.items()}
+        primary = "current"
+    else:
+        return candidate
+    if set(by_phase) != set(PHASES):
+        return candidate
+    l1 = by_phase["L1"].get(primary)
+    if l1 is None or (l1 not in disabled and _reading(hass.states.get(l1)) is None):
+        return candidate
+    l1_voltage = by_phase["L1"].get("voltage")
+    if l1_voltage is not None:
+        # A meter whose own L1 reads no live voltage says nothing about the other phases' (all at 0: not read yet).
+        volts = _reading(hass.states.get(l1_voltage))
+        if volts is None or volts < DEAD_PHASE_BELOW_V:
+            return candidate
+    if not all(
+        _phase_absent(hass, by_phase[phase], by_phase[phase].get("voltage"), disabled) for phase in ("L2", "L3")
+    ):
+        return candidate
+    kept = {entity_id for entity_id in by_phase["L1"].values()}
+    return replace(
+        candidate,
+        direct_entities=None if candidate.direct_entities is None else {"L1": candidate.direct_entities["L1"]},
+        derived_entities=None if candidate.derived_entities is None else {"L1": dict(candidate.derived_entities["L1"])},
+        entities=tuple(entity for entity in candidate.entities if entity.phase in (None, "L1") or entity.entity_id in kept),
+    )
+
+
 def detect_site_from_hass(hass: HomeAssistant, *, excluded_device_ids: Iterable[str] = ()) -> Detection:
     entities, devices = snapshot_registry(hass)
-    return detect_site(entities, devices, excluded_device_ids=excluded_device_ids)
+    detection = detect_site(entities, devices, excluded_device_ids=excluded_device_ids)
+    return replace(detection, meters=tuple(single_phase_candidate(hass, meter) for meter in detection.meters))
 
 
 def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
