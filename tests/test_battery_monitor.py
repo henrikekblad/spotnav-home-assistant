@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from custom_components.spotnav.battery import gate
 from custom_components.spotnav.battery.monitor import (
     GRACE_S,
     READING_GAP_S,
+    PROVE_HOLD_SOC_MIN_PCT,
     PROVE_MIN_KW,
     Capability,
     Command,
@@ -27,8 +29,11 @@ def at(seconds: float) -> datetime:
     return T0 + timedelta(seconds=seconds)
 
 
-def feed(monitor: Monitor, power_kw: float | None, seconds: list[float], *, soc: float = 50.0, cap: Capability = BATTERY):
-    return [monitor.observe(Reading(power_kw, 5.0, soc), cap, at(s)) for s in seconds]
+def feed(
+    monitor: Monitor, power_kw: float | None, seconds: list[float], *, soc: float = 50.0, cap: Capability = BATTERY,
+    grid: float | None = None,
+):
+    return [monitor.observe(Reading(power_kw, 5.0, soc, grid), cap, at(s)) for s in seconds]
 
 
 def after_grace(count: int, start: float = GRACE_S) -> list[float]:
@@ -224,7 +229,7 @@ def test_three_ok_readings_of_a_written_charge_are_told_once_as_proved_and_the_w
     monitor = Monitor()
     monitor.start(Command("charge", T0, 3.0, before_kw=-1.0, written=True))
 
-    events = feed(monitor, 2.8, after_grace(8))
+    events = feed(monitor, 2.8, after_grace(8), grid=3.5)
 
     assert events[:2] == [None, None] and events[3:] == [None] * 5
     proved = events[2]
@@ -239,14 +244,32 @@ def test_three_ok_readings_of_a_written_charge_are_told_once_as_proved_and_the_w
 def test_a_small_charge_or_one_on_a_battery_that_already_charged_proves_nothing() -> None:
     small = Monitor()
     small.start(Command("charge", T0, PROVE_MIN_KW - 0.2, before_kw=-1.0, written=True))
-    assert feed(small, 0.8, after_grace(6)) == [None] * 6
+    assert feed(small, 0.8, after_grace(6), grid=2.0) == [None] * 6
     # The sun charged it before the command: a charge afterwards may be the sun's still.
     sunny = Monitor()
     sunny.start(Command("charge", T0, 3.0, before_kw=1.5, written=True))
-    assert feed(sunny, 3.0, after_grace(6)) == [None] * 6
+    assert feed(sunny, 3.0, after_grace(6), grid=2.0) == [None] * 6
     unknown = Monitor()
     unknown.start(Command("charge", T0, 3.0, before_kw=None, written=True))
-    assert feed(unknown, 3.0, after_grace(6)) == [None] * 6
+    assert feed(unknown, 3.0, after_grace(6), grid=2.0) == [None] * 6
+
+
+def test_a_charge_proves_only_while_the_site_draws_from_the_grid() -> None:
+    # The sun came out after the command: a battery left alone charges from its surplus just so, with nothing
+    # drawn from the grid (or the rest sold). Nor does a grid power that is not read show anything.
+    for grid in (0.0, -1.5, 0.1, None, float("nan")):
+        monitor = Monitor()
+        monitor.start(Command("charge", T0, 3.0, before_kw=-1.0, written=True))
+        assert feed(monitor, 3.0, after_grace(6), grid=grid) == [None] * 6, grid
+    # One reading without an import breaks the run of three.
+    monitor = Monitor()
+    monitor.start(Command("charge", T0, 3.0, before_kw=-1.0, written=True))
+    times = after_grace(6)
+    assert feed(monitor, 3.0, times[:2], grid=3.0) == [None, None]
+    assert feed(monitor, 3.0, times[2:3], grid=0.0) == [None]
+    assert feed(monitor, 3.0, times[3:5], grid=3.0) == [None, None]
+    proved = feed(monitor, 3.0, times[5:6], grid=3.0)[0]
+    assert proved is not None and proved.kind == "proved"
 
 
 def test_a_discharge_proves_when_the_house_needs_at_least_the_least_rate() -> None:
@@ -272,7 +295,9 @@ def test_a_hold_proves_only_against_a_discharge_it_stopped_with_the_house_on_the
         idle.start(Command("hold", T0, before_kw=before, written=True))
         assert _held(idle, after_grace(6)) == [None] * 6, before
     # The sun covers the house, the grid power is unknown, or the battery is at its floor: it would be idle anyway.
-    for grid, soc in ((0.0, 50.0), (-0.3, 50.0), (None, 50.0), (2.0, 4.0)):
+    # Nor below the level the verification starts at: a floor of its own that is not read stops it too.
+    assert PROVE_HOLD_SOC_MIN_PCT == gate.SUITABLE_SOC_PCT[0]
+    for grid, soc in ((0.0, 50.0), (-0.3, 50.0), (None, 50.0), (2.0, 4.0), (2.0, 12.0), (2.0, 29.0)):
         other = Monitor()
         other.start(Command("hold", T0, before_kw=-2.0, written=True))
         assert _held(other, after_grace(6), grid=grid, soc=soc) == [None] * 6, (grid, soc)
@@ -309,19 +334,20 @@ def test_a_dry_run_and_an_export_limit_never_prove() -> None:
     curtail.start(Command("curtail", T0, before_kw=-3.0, written=True))
     assert [curtail.observe(Reading(0.0, 0.0), Capability(), at(s)) for s in after_grace(6)] == [None] * 6
     assert not proves(Command("curtail", T0, before_kw=-3.0, written=True), 0.0, Reading(0.0, 0.0), Capability())
-    assert not proves(Command("charge", T0, 3.0, before_kw=-1.0), 3.0, Reading(3.0, 5.0, 50.0), BATTERY)
+    assert not proves(Command("charge", T0, 3.0, before_kw=-1.0), 3.0, Reading(3.0, 5.0, 50.0, 3.0), BATTERY)
+    assert proves(Command("charge", T0, 3.0, before_kw=-1.0, written=True), 3.0, Reading(3.0, 5.0, 50.0, 3.0), BATTERY)
 
 
 def test_a_restart_never_completes_a_run_of_ok() -> None:
     monitor = Monitor()
     monitor.start(Command("charge", T0, 3.0, before_kw=-1.0, written=True))
     times = after_grace(6)
-    assert feed(monitor, 3.0, times[:2]) == [None, None]
+    assert feed(monitor, 3.0, times[:2], grid=3.0) == [None, None]
 
     restored = Monitor.from_dict(monitor.as_dict())
 
     assert restored.watch is not None and restored.watch.oks == () and not restored.watch.proved
     # Two readings before the restart and two after are no run of three; three after it are.
-    assert feed(restored, 3.0, times[2:4]) == [None, None]
-    proved = feed(restored, 3.0, times[4:5])[0]
+    assert feed(restored, 3.0, times[2:4], grid=3.0) == [None, None]
+    proved = feed(restored, 3.0, times[4:5], grid=3.0)[0]
     assert proved is not None and proved.kind == "proved"

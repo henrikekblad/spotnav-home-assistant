@@ -1597,7 +1597,11 @@ class Executor:
                     inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else self._house_cap(inputs)
                 ),
             )
-            grid = inputs.grid_import_kw if self.state.action == ACTION_HOLD and inputs.measurement_ok else None
+            # A hold is judged on the grid's power too; a grid charge only shown to act with it (`monitor.proves`).
+            grid = (
+                inputs.grid_import_kw
+                if self.state.action in (ACTION_HOLD, ACTION_GRID_CHARGE) and inputs.measurement_ok else None
+            )
             judged = self.monitor.observe(
                 Reading(facts.power_kw, inputs.battery_age_s, facts.soc_pct, grid), capability, now
             )

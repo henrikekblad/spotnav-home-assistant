@@ -215,7 +215,7 @@
         {
          "at": "2026-11-14T02:16:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -223,7 +223,7 @@
         {
          "at": "2026-11-14T02:32:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -231,7 +231,7 @@
         {
          "at": "2026-11-14T02:33:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -891,7 +891,7 @@
         {
          "at": "2026-11-14T02:16:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -899,7 +899,7 @@
         {
          "at": "2026-11-14T02:32:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -907,7 +907,7 @@
         {
          "at": "2026-11-14T02:33:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -1589,7 +1589,7 @@
         {
          "at": "2026-11-14T02:16:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -1597,7 +1597,7 @@
         {
          "at": "2026-11-14T02:32:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"
@@ -1605,7 +1605,7 @@
         {
          "at": "2026-11-14T02:33:20+01:00",
          "expected_kw": 3.0,
-         "grid_kw": null,
+         "grid_kw": 1.0,
          "power_kw": 3.0,
          "soc_pct": 50.0,
          "verdict": "ok"

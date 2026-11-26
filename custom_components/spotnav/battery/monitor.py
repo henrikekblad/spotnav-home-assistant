@@ -41,8 +41,11 @@ and on their own say little: a battery left alone often does what a command asks
 are "ok" **and** could not have read so without the command are told once per command (`MonitorEvent.kind`
 `proved`), so that the shell can count the plan's own command as that mode shown on the plant's firmware
 (`gate.plan_proved`). A charge or discharge: what the battery could deliver is at least `PROVE_MIN_KW`, and for a
-charge the battery was not charging before the command. A hold: the battery was discharging before the command
-(above `FLOOR_KW`, what the verification asks before it judges a hold), it is not near its floor, and the site's
+charge the battery was not charging before the command and the site's grid power is known and shows the site
+drawing from the grid (a battery left alone charges only from a surplus of sun, with nothing drawn: sun that came
+out after the command is not the command acting). A hold: the battery was discharging before the command
+(above `FLOOR_KW`, what the verification asks before it judges a hold), it is not near its floor and at least at
+`PROVE_HOLD_SOC_MIN_PCT` (a floor of the battery's own that is not read stops it too), and the site's
 grid power is known and shows the house drawing from the grid (so there is something the battery would cover if it
 were not held). An export limit never. The run is broken by any reading that is not such a one, and is not kept
 over a restart. A failure is still only counted: it is never written to a report from here.
@@ -106,6 +109,10 @@ PHASE_OVER_GAP_S: Final = 10.0
 #: obeyed (`proves`): an "ok" needs only `PARTIAL_FRACTION` of it, 0.5 kW here, which is clear of an idle battery
 #: (`FLOOR_KW`) and of a meter's noise; it is the size of the verification's own probe (`verify.PROBE_KW`).
 PROVE_MIN_KW: Final = 1.0
+#: The least state of charge (%) at which a hold's "ok" readings show it obeyed (`proves`): the level the
+#: verification asks before it starts (`gate.SUITABLE_SOC_PCT`). Below it a battery may have stopped at a floor of
+#: its own that the facts do not read (`Capability.soc_min_pct` is then 0).
+PROVE_HOLD_SOC_MIN_PCT: Final = 30.0
 
 PhaseVerdict = Literal["ok", "over", "partial", "no_effect"]
 
@@ -175,7 +182,7 @@ class Reading:
     age_s: float | None = None
     soc_pct: float | None = None
     #: The site's grid power (kW, + import), for a hold that stores the sun: `None` when unknown (then the battery's
-    #: own power alone is judged).
+    #: own power alone is judged). For a charge it is read only by `proves`.
     grid_kw: float | None = None
     #: For a curtail: what the battery charges and the site's chargers draw now (kW), where read: an import up to it
     #: is theirs, not a sign of an inverter held at no output (`import_rose`).
@@ -267,16 +274,18 @@ def proves(command: Command, expected_kw: float, reading: Reading, capability: C
     if not command.written:
         return False
     before = command.before_kw
+    soc, grid = reading.soc_pct, reading.grid_kw
+    importing = grid is not None and math.isfinite(grid) and grid > FLOOR_KW
     if command.kind == "charge":
-        return expected_kw >= PROVE_MIN_KW and before is not None and before <= FLOOR_KW
+        # Charging while the site draws from the grid: the sun alone never does that.
+        return expected_kw >= PROVE_MIN_KW and before is not None and before <= FLOOR_KW and importing
     if command.kind == "discharge":
         return expected_kw >= PROVE_MIN_KW
     if command.kind != "hold" or before is None or before >= -FLOOR_KW:
         return False
-    soc, grid = reading.soc_pct, reading.grid_kw
-    if soc is None or soc <= capability.soc_min_pct + DISCHARGE_MARGIN_PCT:
+    if soc is None or soc <= capability.soc_min_pct + DISCHARGE_MARGIN_PCT or soc < PROVE_HOLD_SOC_MIN_PCT:
         return False  # near its floor the battery stops by itself
-    return grid is not None and math.isfinite(grid) and grid > FLOOR_KW
+    return importing
 
 
 def judge_phases(
