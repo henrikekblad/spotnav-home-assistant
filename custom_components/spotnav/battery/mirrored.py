@@ -14,8 +14,14 @@ in place of the unique id: the integrations' entity ids are, by default, the dev
 most the entity's name is its key (`solax_modbus`: `<hub name>_<key>` for both). Each adapter is scored by how many of
 its roles are found with a plausible unit, and by the site's battery power entity matching the brand's own battery
 power row (`site_detection.BATTERY_ROWS`). An adapter counts only when its level (`soc`) is found as a percentage and
-the battery entity reads a power; the best one is taken only when it scores more than every other, else the battery
-stays unknown and the diagnostics say why (`ambiguous:<brands>`).
+the battery entity reads a power.
+
+Only a brand's own keys name the brand. A key that many integrations share (`battery_soc`, `battery_power`,
+`battery_voltage`: `_GENERIC_KEY`) or one that another adapter finds too is the brand's evidence for nothing; such
+keys found SolaX's level under Solinteg's name on a SolaX whose other instance was not on solax_modbus's own keys.
+The brand is the one with the most keys of its own (`specific` in the diagnostics), taken only when it has more than
+every other (else `ambiguous:<brands>`). When no adapter has a key of its own, no brand is named (`generic_keys`):
+the shared keys are still read (the level, the voltage, a counter), under `GENERIC_LABEL`.
 
 What cannot be read this way degrades: a renamed entity on the other instance is not found, an integration whose
 entity names are not its keys is found in part or not at all, and the device's manufacturer and firmware are not
@@ -72,6 +78,16 @@ MATCHED: Final = "matched"
 NO_BRAND_MATCH: Final = "no_brand_match"
 BATTERY_NOT_POWER: Final = "battery_not_power"
 AMBIGUOUS: Final = "ambiguous"
+GENERIC_KEYS: Final = "generic_keys"
+
+#: The label of a mirrored battery whose brand its keys do not tell (`GENERIC_KEYS`).
+GENERIC_LABEL: Final = "Mirrored battery (Remote Home-Assistant)"
+
+#: An object id that ends in a name many battery integrations give their entities: it names no brand.
+_GENERIC_KEY: Final = re.compile(
+    r"(?:^|_)(?:battery_)?(?:soc|state_of_charge|level|power|voltage|current|temperature|charge_power"
+    r"|discharge_power)$|(?:^|_)battery$"
+)
 
 
 def remote_of(unique_id: str) -> str | None:
@@ -170,6 +186,10 @@ class MirrorMatch:
     found: Mapping[str, str] = field(default_factory=dict)
     #: The entities it was found among (the battery's own device's, else the whole set): the ones read.
     pool: tuple[str, ...] = ()
+    #: Each adapter that found the level, by brand: how many of its finds are its own (not shared, not generic).
+    specific: Mapping[str, int] = field(default_factory=dict)
+    #: For `GENERIC_KEYS`: the brandless adapter that reads the shared keys found (`_generic_reader`).
+    reader: Adapter | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -178,6 +198,7 @@ class MirrorMatch:
             "brand": None if self.adapter is None else self.adapter.brand,
             "prefix": self.prefix or None,
             "scores": dict(sorted(self.scores.items(), key=lambda item: (-item[1], item[0]))),
+            "specific": dict(sorted(self.specific.items(), key=lambda item: (-item[1], item[0]))),
             "found": dict(self.found),
         }
 
@@ -190,8 +211,29 @@ def _is_power(battery: EntityFact) -> bool:
 _READ_DOMAINS: Final = frozenset({"sensor", "select", "number", "switch", "binary_sensor"})
 
 
-def _score(battery: EntityFact, battery_key: str, pool: Sequence[EntityFact], prefix: str) -> list[tuple[int, Adapter, dict[str, str]]]:
-    scored: list[tuple[int, Adapter, dict[str, str]]] = []
+@dataclass(frozen=True, slots=True)
+class _Scored:
+    adapter: Adapter
+    found: dict[str, str]
+    #: The brand's own battery power row matches the battery entity's key.
+    row: bool
+
+    @property
+    def has_level(self) -> bool:
+        return "soc" in self.found or any(name.startswith("soc_pack:") for name in self.found)
+
+    @property
+    def score(self) -> int:
+        return len(self.found) + (1 if self.row else 0)
+
+
+def _generic(key: str) -> bool:
+    return _GENERIC_KEY.search(key) is not None
+
+
+def _score(battery: EntityFact, battery_key: str, pool: Sequence[EntityFact], prefix: str) -> list[_Scored]:
+    """Every adapter that finds something in `pool`, with or without the level."""
+    scored: list[_Scored] = []
     for adapter in ADAPTERS:
         if adapter.package is not None:
             # A YAML package is found by its own fixed ids over shared platforms (`adapters.PackageScope`): not here.
@@ -204,11 +246,37 @@ def _score(battery: EntityFact, battery_key: str, pool: Sequence[EntityFact], pr
             entity = find_entity(match, translated, own)
             if entity is not None and _plausible(entity, _ROLE_UNITS.get(name), name):
                 found[name] = entity.entity_id
-        if "soc" not in found and not any(name.startswith("soc_pack:") for name in found):
-            continue
-        score = len(found) + (1 if power_row_inverted(adapter, battery_key) is not None else 0)
-        scored.append((score, adapter, found))
+        row = power_row_inverted(adapter, battery_key) is not None
+        if found or row:
+            scored.append(_Scored(adapter, found, row))
     return scored
+
+
+def _specific(scored: Sequence[_Scored], battery_key: str, keys: Mapping[str, str]) -> dict[str, int]:
+    """Each adapter with the level, by brand: its finds that are its own, an entity no other adapter finds and
+    whose key is not a generic one (`_GENERIC_KEY`), and its power row when no other's matches the key either."""
+    finders: dict[str, int] = {}
+    for item in scored:
+        for entity_id in set(item.found.values()):
+            finders[entity_id] = finders.get(entity_id, 0) + 1
+    rows = sum(1 for item in scored if item.row)
+    out: dict[str, int] = {}
+    for item in scored:
+        if not item.has_level:
+            continue
+        own = {
+            entity_id for entity_id in item.found.values()
+            if finders[entity_id] == 1 and not _generic(keys.get(entity_id, entity_id))
+        }
+        out[item.adapter.brand] = len(own) + (1 if item.row and rows == 1 and not _generic(battery_key) else 0)
+    return out
+
+
+def _generic_reader(item: _Scored) -> Adapter:
+    """A brandless adapter that reads only the facts `item` found by shared keys (the level, the voltage, a
+    counter): no modes, no controls, no plant entities, nothing that is a brand's behaviour."""
+    facts = {role: match for role, match in item.adapter.facts.items() if role in item.found}
+    return Adapter(brand=GENERIC_KEYS, label=GENERIC_LABEL, platforms=item.adapter.platforms[:1], facts=facts)
 
 
 def match_adapter(battery: EntityFact, entities: Sequence[EntityFact], prefix: str = "") -> MirrorMatch:
@@ -221,24 +289,31 @@ def match_adapter(battery: EntityFact, entities: Sequence[EntityFact], prefix: s
     readable = [entity for entity in entities if entity.domain in _READ_DOMAINS]
     stem = _stem(battery_key)
     near = [entity for entity in readable if _stem(mirror_key(entity.entity_id, entity.unique_id, prefix)) == stem]
-    scored: list[tuple[int, Adapter, dict[str, str]]] = []
+    scored: list[_Scored] = []
     pool: Sequence[EntityFact] = near
     if near:
         scored = _score(battery, battery_key, near, prefix)
-    if not scored and len(near) < len(readable):
+    if not any(item.has_level for item in scored) and len(near) < len(readable):
         pool = readable
         scored = _score(battery, battery_key, readable, prefix)
-    if not scored:
+    leveled = sorted((item for item in scored if item.has_level), key=lambda item: (-item.score, item.adapter.brand))
+    if not leveled:
         return MirrorMatch(None, NO_BRAND_MATCH, prefix)
-    scored.sort(key=lambda item: (-item[0], item[1].brand))
-    scores = {adapter.brand: score for score, adapter, _found in scored}
-    best = scored[0][0]
-    top = [adapter.brand for score, adapter, _found in scored if score == best]
+    keys = {entity.entity_id: mirror_key(entity.entity_id, entity.unique_id, prefix) for entity in pool}
+    scores = {item.adapter.brand: item.score for item in leveled}
+    specific = _specific(scored, battery_key, keys)
+    pool_ids = tuple(sorted(entity.entity_id for entity in pool))
+    best = max(specific.values())
+    if best == 0:
+        # Only keys many brands share: the readings are kept, the brand is not named.
+        reader = _generic_reader(leveled[0])
+        found = {role: entity_id for role, entity_id in leveled[0].found.items() if role in reader.facts}
+        return MirrorMatch(None, GENERIC_KEYS, prefix, scores, found, pool_ids, specific, reader)
+    top = sorted(brand for brand, count in specific.items() if count == best)
     if len(top) > 1:
-        return MirrorMatch(None, f"{AMBIGUOUS}:{','.join(sorted(top))}", prefix, scores)
-    return MirrorMatch(
-        scored[0][1], MATCHED, prefix, scores, scored[0][2], tuple(sorted(entity.entity_id for entity in pool)),
-    )
+        return MirrorMatch(None, f"{AMBIGUOUS}:{','.join(top)}", prefix, scores, specific=specific)
+    chosen = next(item for item in leveled if item.adapter.brand == top[0])
+    return MirrorMatch(chosen.adapter, MATCHED, prefix, scores, chosen.found, pool_ids, specific)
 
 
 def mirrored_facts(
@@ -256,6 +331,8 @@ def mirrored_facts(
     match = match or match_adapter(battery, entities, prefix)
     detail = match.as_dict()
     adapter = match.adapter
+    if adapter is None and match.reader is not None:
+        return _generic_facts(battery, entities, match, detail, power_kw, external_planner)
     if adapter is None:
         facts = battery_facts(battery, [], power_kw=power_kw, external_planner=external_planner)
         return replace(facts, read_only=READ_ONLY_MIRRORED, mirror=detail)
@@ -271,13 +348,52 @@ def mirrored_facts(
         detail["power_sign"] = "unknown"
     else:
         detail["power_sign"] = "as_brand" if brand_inverted == power_inverted else "differs_from_brand"
+    _missing(facts, detail)
+    return replace(
+        facts,
+        integration=MIRROR_PLATFORM,
+        read_only=READ_ONLY_MIRRORED,
+        mirror=detail,
+        hold=None,
+        grid_charge=None,
+        preheat=None,
+    )
+
+
+def _missing(facts: BatteryFacts, detail: dict[str, Any]) -> None:
     missing = [role for role in ("soc", "capacity", "rated_charge", "rated_discharge") if role not in facts.sources]
     # The size and the ratings are learnt where they are not read (`learned.py`); the firmware is never mirrored.
     detail["missing"] = missing
     detail["learnt_if_missing"] = [role for role in missing if role != "soc"]
+
+
+def _generic_facts(
+    battery: EntityFact,
+    entities: Sequence[EntityFact],
+    match: MirrorMatch,
+    detail: dict[str, Any],
+    power_kw: float | None,
+    external_planner: str | None,
+) -> BatteryFacts:
+    """A mirrored battery whose keys name no brand (`GENERIC_KEYS`): the shared keys read, no brand, its mode
+    unknown as for a battery SpotNav has no adapter for, read only."""
+    reader = match.reader
+    assert reader is not None
+    platform = reader.platforms[0]
+    own = translate([battery], platform, match.prefix)[0]
+    pool = set(match.found.values())
+    translated = translate((entity for entity in entities if entity.entity_id in pool), platform, match.prefix)
+    read = battery_facts(own, translated, adapter=reader, power_kw=power_kw)
+    unknown = battery_facts(battery, [], power_kw=power_kw, external_planner=external_planner)
+    detail["power_sign"] = "unknown"
+    _missing(read, detail)
     return replace(
-        facts,
+        read,
         integration=MIRROR_PLATFORM,
+        brand=None,
+        label=GENERIC_LABEL,
+        battery_entity_id=battery.entity_id,
+        management=unknown.management,
         read_only=READ_ONLY_MIRRORED,
         mirror=detail,
         hold=None,

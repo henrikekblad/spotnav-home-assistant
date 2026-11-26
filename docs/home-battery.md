@@ -400,9 +400,12 @@ Assistant and reaches this one through [Remote Home-Assistant](https://github.co
 * **How the brand is found.** Remote Home-Assistant keeps the other instance's entity ids (after the entry's
   entity prefix, which SpotNav takes off) but not its unique ids or devices. SpotNav tries each brand it knows on the
   mirrored entities by the brand's own keys in those ids, with the unit each needs (the level in %, the size in Wh or
-  kWh). A brand counts only when the level is found and the battery entity reads a power; the brand that finds the
-  most wins. When two brands find as much, the battery stays unknown, and the diagnostics say which tied
-  (`detected` → battery → `mirror`).
+  kWh). A brand counts only when the level is found and the battery entity reads a power. Only keys of the brand's
+  own name it: names many integrations share (`battery_soc`, `battery_power`, `battery_voltage`) or that another
+  brand finds too count for nothing. The brand with the most keys of its own wins; when two have as many, the battery
+  stays unknown. When none has a key of its own, no brand is named: the battery shows as *Mirrored battery (Remote
+  Home-Assistant)*, with the level and power still read. The diagnostics say which (`detected` → battery → `mirror`:
+  `reason`, `scores`, `specific`).
 * **What you see.** The level, the size and the counters the brand's integration names, read on the other instance.
   A size or a rating that is not mirrored (SolaX Modbus disables its size by default) is learnt from the plan's own
   quarter hours, as for any battery. The firmware is not mirrored.
