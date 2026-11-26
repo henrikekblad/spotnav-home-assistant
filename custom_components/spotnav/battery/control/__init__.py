@@ -89,7 +89,7 @@ import logging
 import math
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -227,42 +227,12 @@ from .const import (
 from .helpers import _accept_applies, _card_refusal, _float, _grid_charge_expiry, _least, _state_of
 from .io import _async_call, _async_service, _error_text, _failure, resolve_follows_max, stored_reads
 from .stored import _orphans, async_hand_back_stored, store_key
+from .trial import ControlNotReachable, Trial, TrialRefused
 
 if TYPE_CHECKING:
     from ...site.site_capacity_controller import SiteCapacityController
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class ControlNotReachable(RuntimeError):
-    """A look or a write was asked for that the site's gate does not allow now."""
-
-
-class TrialRefused(ValueError):
-    """The owner's test action cannot run: `code` says why (a stable code for the service's error)."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
-
-
-@dataclass(frozen=True, slots=True)
-class Trial:
-    """The owner's test action (`spotnav.battery_control_test`): one action through the executor until `until`."""
-
-    action: str
-    rate_kw: float
-    started_at: datetime
-    until: datetime
-    force: bool
-
-    @property
-    def export(self) -> bool:
-        return self.action == ACTION_CURTAIL_EXPORT
-
-    def as_dict(self) -> dict[str, Any]:
-        return {"action": self.action, "rate_kw": self.rate_kw, "started_at": self.started_at.isoformat(),
-                "until": self.until.isoformat(), "force_test": self.force}
 
 
 class BatteryControl:
