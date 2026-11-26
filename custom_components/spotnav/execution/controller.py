@@ -1007,6 +1007,9 @@ class ChargingController:
         # Shut down (`async_shutdown`): a regulator step that still holds this controller (the entry unloaded
         # while the step waited) sends the charger nothing more.
         self._shut_down = False
+        # Set once the charger was handed back at its entry's disable (`retire_record`): nothing saves over the
+        # record the hand-back left.
+        self._record_retired = False
         # The owner as the two owner fields when readers were last told (`_notify`): a decision that changes it after
         # the feed's own `_notify` ran tells them again (`_owner_settled`).
         self._owner_told: tuple[str | None, bool] = (None, False)
@@ -5805,6 +5808,12 @@ class ChargingController:
         async with self._lock:
             await self._shutdown_locked()
 
+    def retire_record(self) -> None:
+        """The charger is handed back at its entry's disable, after this controller's shutdown saved: from now on
+        nothing of this controller is saved (a save still queued, the shutdown run again at the unload's end), so the
+        record the hand-back leaves is what the entry starts from when it is enabled again."""
+        self._record_retired = True
+
     async def _shutdown_locked(self) -> None:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
@@ -6135,6 +6144,8 @@ class ChargingController:
         operation lock: a save that begins later writes later. A session that cannot be stored now drops the record
         rather than keep one older than the rest: a restart then reads no owner (nobody's charge, or the charger's own
         when it charges), so SpotNav undoes nothing it cannot show was its own."""
+        if self._record_retired:
+            return
         signature = self._memory_signature()
         record = self._store_record()
         session = self._session_record()

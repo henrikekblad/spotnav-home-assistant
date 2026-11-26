@@ -88,7 +88,7 @@ from .entity_renames import async_setup_entity_renames
 from .day_export import remove_archive
 from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
-from .execution.charger_handback import async_hand_back_charger
+from .execution.charger_handback import async_forget_handed_back, async_hand_back_charger
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import async_remove_controller_store, ChargingController
 from .execution.min_soc_floor import FloorInputs, MinSocFloor
@@ -153,7 +153,9 @@ from .sessions.store import SessionStore
 from .site.site_join import (
     async_apply_site_join,
     async_leave_sites,
+    async_reload_sites_of,
     backfill_profile_measured_sources,
+    balanced_members,
     prune_missing_members,
 )
 from .battery.control import BatteryControl
@@ -544,6 +546,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await _async_start_identifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
+    # Enabled again: a site that left it alone while it was disabled takes it on again.
+    async_reload_sites_of(hass, entry.entry_id, governed=False)
     # After the join, so the site's wiring and fuse are known to the defaults.
     await async_seed_first_run(hass, entry, controller, data.preview)
     # No electricity price yet: the first one, from Home Assistant's location (`pricing/price_setup.py`).
@@ -943,7 +947,11 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     filled = backfill_profile_measured_sources(hass, entry)
     if filled is not None:
         hass.config_entries.async_update_entry(entry, data=filled)
-    controller = SiteCapacityController(hass, entry.entry_id, dict(entry.data))
+    # A member whose charger entry is disabled was handed back and is left to itself (`balanced_members`).
+    members = list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
+    controller = SiteCapacityController(
+        hass, entry.entry_id, {**entry.data, CONF_CHARGER_ENTRY_IDS: balanced_members(hass, members)}
+    )
     entry.runtime_data = SiteData(controller)
     # The shutdown runs from `async_unload_entry`, awaited in full; these two only clean up a setup that failed
     # (the shutdown runs once, whoever asks). Unbound first (unload callbacks run last first): no member charger's
@@ -1024,6 +1032,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # A disabled site does not come back by itself: as at a removal, a charge its load balancing held back is
             # given back or forgotten, since no regulator resumes it.
             await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
+    elif (
+        unloaded
+        and entry.disabled_by is not None
+        and entry_kind(entry) == ENTRY_TYPE_CHARGER
+        and (data := charger_data(hass, entry.entry_id)) is not None
+    ):
+        # A disabled charger does not come back by itself: it is handed back as at a removal, once its controller
+        # has stopped and saved what the hand-back reads (its `async_on_unload` shutdown then finds nothing left).
+        await data.controller.async_shutdown()
+        data.controller.retire_record()
+        await async_hand_back_charger(hass, entry, why="disabled")
+        # Enabled again, it starts afresh: no stop or balancing pause of before is taken up again.
+        await async_forget_handed_back(hass, entry.entry_id)
+        # Its site leaves it alone while it is disabled.
+        async_reload_sites_of(hass, entry.entry_id, governed=True)
     return unloaded
 
 
