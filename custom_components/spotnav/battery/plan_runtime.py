@@ -1261,7 +1261,15 @@ class BatteryPlanShadow:
         except Exception:  # noqa: BLE001 - prices that cannot be read are no prices
             _LOGGER.debug("prices_after: ignored failure (prices that cannot be read are no prices)", exc_info=True)
             return []
-        return price_slots(((p.start, p.end, p.spot) for p in points), source.fiscal)
+        return price_slots(
+            ((p.start, p.end, p.spot) for p in points), source.fiscal, export=self._export_rates(source)
+        )
+
+    def _export_rates(self, source: Any) -> Any:
+        """The supplier's own export rates for the source's area (`pricing/export_rates.py`), `None` without."""
+        from ..pricing.export_rates import area_export_rates  # noqa: PLC0415
+
+        return None if source is None else area_export_rates(self.hass, source.area_id)
 
     def _prices_after_held(self, day: date) -> bool:
         _start, next_end = self._day_bounds(day + timedelta(days=1))
@@ -1336,12 +1344,15 @@ class BatteryPlanShadow:
         return price_days(self.hass, source, now)
 
     def _prices_key(self, now: datetime) -> Any:
-        """What changes when the prices or the fees do: the source's area and fees, and the documents held."""
+        """What changes when the prices or the fees do: the source's area and fees, the documents held and the
+        supplier's export rates."""
         source = self._price_source()
         documents = self._price_days(source, now)
+        export = self._export_rates(source)
         return (
             None if source is None else (source.area_id, source.revision),
             tuple((doc.day, doc.interval_count, doc.retrieved, doc.published) for doc in documents),
+            None if export is None else hash(export.key),
         )
 
     def buy_slots(self, now: datetime) -> list[PriceSlot]:
@@ -1367,7 +1378,7 @@ class BatteryPlanShadow:
             points = price_points(self._price_days(source, now), currency=source.area.currency, fiscal=fiscal)
         except PlannerInputError as err:
             raise _NoPlan(NO_PRICES) from err
-        prices = price_slots(((p.start, p.end, p.spot) for p in points), fiscal)
+        prices = price_slots(((p.start, p.end, p.spot) for p in points), fiscal, export=self._export_rates(source))
         if not any(price.end > now for price in prices):
             raise _NoPlan(NO_PRICES)
         return source.area_id, prices

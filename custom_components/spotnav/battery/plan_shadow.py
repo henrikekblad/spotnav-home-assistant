@@ -68,6 +68,7 @@ from .. import time_zones
 from ..core.electric import three_phase_kw
 from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
+from ..pricing.export_rates import ExportRates
 from .export_curtail import curtail_slots, curtails, would_save
 from .conversion_loss import ac_kw
 from .facts import BatteryFacts
@@ -261,17 +262,34 @@ class PriceSlot:
 
 
 def price_slots(
-    points: Iterable[tuple[datetime, datetime, float]], fiscal: FiscalChoice, sell_credit: float | None = None
+    points: Iterable[tuple[datetime, datetime, float]],
+    fiscal: FiscalChoice,
+    sell_credit: float | None = None,
+    export: ExportRates | None = None,
 ) -> list[PriceSlot]:
     """`(start, end, spot in major per kWh)` rows as plan prices (`plan.buy_prices`, `plan.sell_prices`), in order.
     Every exported kWh earns the spot price plus what the electricity price says a sold kWh earns beyond it
     (`FiscalChoice.sell_adjustment`: the grid operator's credit for production, Swedish "nätnytta", plus or minus the
-    supplier's terms, as paid out with no VAT); `sell_credit` (minor per kWh) stands in for it where given."""
+    supplier's terms, as paid out with no VAT); `sell_credit` (minor per kWh) stands in for it where given. Where
+    the supplier's own export rates cover a slot ([export], `pricing/export_rates.py`), that rate is what it earns."""
     rows = sorted(points, key=lambda row: row[0])
     buys = buy_prices([row[2] for row in rows], [row[0] for row in rows], fiscal)
     credit = fiscal.sell_adjustment if sell_credit is None else sell_credit
-    sells = sell_prices([row[2] for row in rows], credit)
+    sells = with_export_rates(rows, sell_prices([row[2] for row in rows], credit), export)
     return [PriceSlot(row[0], row[1], buy, sell) for row, buy, sell in zip(rows, buys, sells)]
+
+
+def with_export_rates(
+    rows: Sequence[tuple[datetime, datetime, Any]], sells: Sequence[float], export: ExportRates | None
+) -> list[float]:
+    """[sells] with each slot's export rate in place of spot plus the figure, where [export] covers the slot."""
+    if export is None:
+        return list(sells)
+    out: list[float] = []
+    for row, sell in zip(rows, sells):
+        rate = export.over(row[0], row[1])
+        out.append(sell if rate is None else rate)
+    return out
 
 
 def import_cap_kw(

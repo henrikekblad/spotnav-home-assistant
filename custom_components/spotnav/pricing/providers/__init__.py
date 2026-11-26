@@ -15,13 +15,14 @@ when a day is worth asking for ([schedule_authority]).
   asked like Nord Pool, on the same schedule and the same CET calendar;
 * Spain's PVPC through Home Assistant's own `pvpc_hourly_pricing` integration ([PvpcProvider],
   `providers/pvpc.py`): the prices it already holds, on the Madrid day;
-* Great Britain's Agile rates through the Octopus Energy integration ([OctopusProvider], `providers/octopus.py`):
+* Great Britain's Octopus rates, any import tariff, through the Octopus Energy integration ([OctopusProvider],
+  `providers/octopus.py`):
   the customer's own meter's rates, on the Paris day (23:00 to 23:00 UK time);
 * Zonneplan's dynamic tariff through the Zonneplan integration ([ZonneplanProvider], `providers/zonneplan.py`):
   the all-in prices it already holds, on the Amsterdam day, for the area `NL-ZONNEPLAN` only.
 
 [ProviderRouter] picks one per area ([choose_provider]): the PVPC integration for the PVPC area while one of its
-entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; the
+entries is loaded; the Octopus integration for a GB area while an import meter's rates are there for it; the
 Zonneplan integration for the Zonneplan area while its tariff sensor is there; Nord Pool for an area Nord Pool trades while a `nordpool` config entry is loaded and has its `get_prices_for_date` action (Nord Pool from HACS has the same
 domain and no action, so it does not count); else ENTSO-E for an area the platform
 publishes while a key is set that it has not rejected; else **none**: the area has no source, nothing is asked for,
@@ -86,7 +87,7 @@ FetchOutcome = Literal["fetched", "not_published", "failed"]
 #: * `entsoe_unavailable`: ENTSO-E answered with a server error;
 #: * `entsoe_rejected`: ENTSO-E refused the request otherwise (another status, a bad-request acknowledgement);
 #: * `pvpc_unavailable`: no loaded `pvpc_hourly_pricing` entry, or it holds no prices for a day that is out;
-#: * `octopus_unavailable`: no Agile meter's rates for the area, or they do not reach back to the day's start;
+#: * `octopus_unavailable`: no import meter's rates for the area, or they do not reach back to the day's start;
 #: * `zonneplan_unavailable`: no Zonneplan tariff sensor, no forecast on it yet, or a today it does not hold to the
 #:   day's end;
 #: * `zonneplan_partial_day`: carried by a `not_published` outcome, never recorded as a failure: today's forecast
@@ -255,7 +256,7 @@ def choose_provider(
     zonneplan_serves: bool = False,
 ) -> ProviderKey | None:
     """The rule, per area: the PVPC integration for the PVPC area while one of its entries is loaded; the Octopus
-    integration for a GB area while an Agile meter's rates are there for it; the Zonneplan integration for the
+    integration for a GB area while an import meter's rates are there for it; the Zonneplan integration for the
     Zonneplan area while its tariff sensor is there; Nord Pool for an area it trades while a `nordpool` entry is
     loaded; else ENTSO-E for an area the platform publishes while a key is set that it has not rejected; else none
     (the area has no source). No area is served by more than one of the first four, so their order is only for
@@ -275,7 +276,7 @@ def choose_provider(
 
 class ProviderRouter:
     """Which provider serves an area ([choose_provider]). Listeners hear when that choice may have changed for some
-    area: a `nordpool`, `pvpc_hourly_pricing` or `zonneplan_one` entry loaded or unloaded, an Agile meter or a
+    area: a `nordpool`, `pvpc_hourly_pricing` or `zonneplan_one` entry loaded or unloaded, an import meter or a
     Zonneplan tariff sensor found or gone, the ENTSO-E key set, cleared, accepted or rejected.
     """
 
@@ -409,7 +410,7 @@ class ProviderRouter:
                     _LOGGER.debug("The PVPC through Home Assistant is %s", "in use" if loaded else "not in use")
                     moved = True
             elif domain == OCTOPUS_DOMAIN and self._octopus is not None and self._octopus.refresh():
-                _LOGGER.debug("Agile meters through Octopus Energy: %d", len(self._octopus.meters))
+                _LOGGER.debug("Import meters through Octopus Energy: %d", len(self._octopus.meters))
                 moved = True
             elif domain == ZONNEPLAN_DOMAIN and self._zonneplan is not None and self._zonneplan.refresh():
                 _LOGGER.debug("Zonneplan tariff sensors: %d", len(self._zonneplan.entities))
@@ -434,7 +435,7 @@ class ProviderRouter:
         @callback
         def octopus_changed() -> None:
             if self._octopus is not None and self._octopus.refresh():
-                _LOGGER.debug("Agile meters through Octopus Energy: %d", len(self._octopus.meters))
+                _LOGGER.debug("Import meters through Octopus Energy: %d", len(self._octopus.meters))
                 self._notify()
 
         @callback

@@ -28,7 +28,13 @@ from custom_components.spotnav.pricing.area_catalogue import async_load_bundled
 from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.providers import DayFetch, ProviderRouter
-from custom_components.spotnav.pricing.providers.octopus import agile_region, OctopusProvider, PUBLICATION
+from custom_components.spotnav.pricing.providers.octopus import (
+    export_region,
+    import_region,
+    OctopusProvider,
+    PUBLICATION,
+    PUBLICATION_KNOWN,
+)
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
 from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
@@ -367,31 +373,49 @@ async def test_two_entities_disagreeing_about_a_slot_are_refused(world: World) -
     assert await world.provider.async_fetch_day(AREA, TODAY) == DayFetch("failed", code="provider_refused")
 
 
-async def test_yesterdays_rates_of_another_tariff_are_left_out(world: World) -> None:
-    """The day the customer moved to Agile: yesterday's rates are another tariff's and not read."""
+async def test_yesterdays_rates_of_another_tariff_are_read(world: World) -> None:
+    """The day the customer moved to Agile: yesterday's entity still names the old tariff, and its rates are what
+    the meter was charged then."""
     await world.start()
     await world.publish(TODAY, tariffs={"previous_day_rates": "E-1R-VAR-22-11-01-C"})
-    assert await world.provider.async_fetch_day(AREA, TODAY) == DayFetch("failed", code="octopus_unavailable")
+    fetch = await world.provider.async_fetch_day(AREA, TODAY)
+    assert fetch.outcome == "fetched" and fetch.document["prices"] == relay_file(TODAY)["prices"]
+
+
+async def test_yesterdays_rates_of_another_region_or_an_export_tariff_are_left_out(world: World) -> None:
+    await world.start()
+    for code in ("E-1R-AGILE-24-10-01-A", "E-1R-AGILE-OUTGOING-19-05-13-C"):
+        await world.publish(TODAY, tariffs={"previous_day_rates": code})
+        assert await world.provider.async_fetch_day(AREA, TODAY) == DayFetch("failed", code="octopus_unavailable")
 
 
 # ------------------------------------------------------------------ the meter and its region
 
 
 @pytest.mark.parametrize(
-    ("code", "region"),
+    ("code", "imported", "exported"),
     [
-        ("E-1R-AGILE-24-10-01-C", "C"),
-        ("E-1R-AGILE-FLEX-22-11-25-P", "P"),
-        ("E-1R-AGILE-OUTGOING-19-05-13-C", None),
-        ("E-1R-VAR-22-11-01-C", None),
-        ("E-1R-INTELLI-VAR-22-10-14-C", None),
-        ("E-2R-AGILE-24-10-01-C", None),
-        ("G-1R-AGILE-24-10-01-C", None),
-        (None, None),
+        ("E-1R-AGILE-24-10-01-C", "C", None),
+        ("E-1R-AGILE-FLEX-22-11-25-P", "P", None),
+        ("E-1R-FLUX-IMPORT-23-02-14-C", "C", None),
+        ("E-1R-GO-VAR-22-10-14-C", "C", None),
+        ("E-1R-INTELLI-VAR-22-10-14-C", "C", None),
+        ("E-1R-COSY-22-12-08-H", "H", None),
+        ("E-1R-VAR-22-11-01-C", "C", None),
+        ("E-2R-VAR-22-11-01-C", "C", None),
+        ("E-1R-AGILE-OUTGOING-19-05-13-C", None, "C"),
+        ("E-1R-FLUX-EXPORT-23-02-14-C", None, "C"),
+        ("E-1R-OUTGOING-FIX-12M-19-05-13-A", None, "A"),
+        ("G-1R-VAR-22-11-01-C", None, None),
+        ("E-1R-AGILE-24-10-01-c", None, None),
+        ("AGILE-24-10-01", None, None),
+        (None, None, None),
+        (7, None, None),
     ],
 )
-def test_only_an_agile_import_tariff_names_a_region(code, region) -> None:
-    assert agile_region(code) == region
+def test_an_electricity_tariff_names_its_region_as_import_or_export(code, imported, exported) -> None:
+    assert import_region(code) == imported
+    assert export_region(code) == exported
 
 
 async def test_the_meter_is_found_by_unique_id_whatever_its_entity_id(world: World) -> None:
@@ -402,13 +426,21 @@ async def test_the_meter_is_found_by_unique_id_whatever_its_entity_id(world: Wor
     assert world.provider.serves(AREA) and world.provider.region_mismatch(AREA) is None
 
 
-async def test_an_export_meter_or_another_tariff_serves_nothing(world: World) -> None:
+async def test_an_export_meter_or_gas_serves_nothing(world: World) -> None:
     await world.start()
-    await world.publish(TODAY, tariff="E-1R-VAR-22-11-01-C")
+    await world.publish(TODAY, tariff="G-1R-VAR-22-11-01-C")
     exporter = Meter(world.hass, world.entry, "21E7654321", "1170000000001", export=True)
     await world.publish(TODAY, meter=exporter, tariff="E-1R-AGILE-OUTGOING-19-05-13-C")
     assert world.provider.meters == () and not world.provider.serves(AREA)
+    assert [meter.region for meter in world.provider.export_meters] == ["C"]
     assert world.repository.provider_for(AREA) is None
+
+
+async def test_an_import_tariff_on_an_export_meter_is_no_meter(world: World) -> None:
+    await world.start()
+    exporter = Meter(world.hass, world.entry, "21E7654321", "1170000000001", export=True)
+    await world.publish(TODAY, meter=exporter, tariff=AGILE_C)
+    assert world.provider.meters == () and world.provider.export_meters == ()
 
 
 async def test_another_region_than_the_meters_is_read_from_the_meter(world: World) -> None:
@@ -466,8 +498,8 @@ async def test_the_router_follows_the_meters_rate_entities(world: World) -> None
     await world.publish(TODAY)
     assert heard == [1]
 
-    # The customer leaves Agile.
-    await world.publish(TODAY, tariff="E-1R-VAR-22-11-01-C")
+    # The customer leaves Octopus's electricity (a gas tariff only).
+    await world.publish(TODAY, tariff="G-1R-VAR-22-11-01-C")
     assert world.repository.provider_for(AREA) is None and heard == [1, 1]
 
     await world.publish(TODAY)
@@ -526,7 +558,7 @@ async def test_the_notice_follows_the_meter_and_the_entry(world: World) -> None:
     await world.publish(TODAY)
     assert _notice(world, "GB-C") == ("octopus", None)
     status = world.repository.source_status("GB-C")
-    assert (status.name, status.url) == ("Octopus Energy (Agile)", "https://octopus.energy/smart/agile/")
+    assert (status.name, status.url) == ("Octopus Energy", "https://octopus.energy/")
     # Another region than the meter's: read from the meter, and said.
     assert _notice(world, "GB-A") == ("octopus", {"code": "octopus_region_mismatch", "params": {"region": "C"}})
     world.entry.mock_state(world.hass, ConfigEntryState.SETUP_ERROR)
@@ -538,3 +570,295 @@ async def test_without_the_integration_the_notice_asks_for_it(world: World) -> N
     await world.start(loaded=False)
     await world.hass.config_entries.async_remove(world.entry.entry_id)
     assert _notice(world, "GB-C") == (None, {"code": "add_octopus", "params": {}})
+
+
+# ------------------------------------------------------------------ any tariff: Flux, Go, fixed
+
+FLUX_C = "E-1R-FLUX-IMPORT-23-02-14-C"
+#: Flux's three bands (pounds per kWh): night 02:00-05:00, peak 16:00-19:00, the rest of the day (UK time).
+FLUX_NIGHT, FLUX_DAY, FLUX_PEAK = 0.1753, 0.2922, 0.4091
+
+
+def flux_value(start: datetime) -> float:
+    hour = start.astimezone(ZoneInfo(LONDON)).hour
+    if 2 <= hour < 5:
+        return FLUX_NIGHT
+    if 16 <= hour < 19:
+        return FLUX_PEAK
+    return FLUX_DAY
+
+
+def flux_slots(first: date, last: date) -> dict[datetime, float]:
+    """Flux's half-hours over UK days [first, last], as the integration cuts them."""
+    zone = ZoneInfo(LONDON)
+    moment = datetime.combine(first, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    end = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    slots = {}
+    while moment < end:
+        slots[moment] = flux_value(moment)
+        moment += SLOT
+    return slots
+
+
+def pounds(document: dict[str, Any]) -> list[float]:
+    rate = document["fx"]["GBP"]
+    return [round(price * rate, 4) for price in document["prices"]]
+
+
+async def test_flux_reads_its_three_bands_across_the_paris_day(world: World) -> None:
+    await world.start()
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TOMORROW), world.clock.now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+    assert [meter.product for meter in world.provider.meters] == ["FLUX-IMPORT-23-02-14"]
+
+    fetch = await world.provider.async_fetch_day(AREA, TODAY)
+
+    assert fetch.outcome == "fetched" and fetch.document["res"] == 30
+    values = pounds(fetch.document)
+    assert len(values) == 48 and set(values) == {FLUX_NIGHT, FLUX_DAY, FLUX_PEAK}
+    # The Paris day starts at 23:00 UK: two day-band slots, then 02:00-05:00 UK (slots 6 to 11) at night.
+    assert values[:6] == [FLUX_DAY] * 6 and values[6:12] == [FLUX_NIGHT] * 6 and values[12] == FLUX_DAY
+    # 16:00-19:00 UK is slots 34 to 39.
+    assert values[34:40] == [FLUX_PEAK] * 6 and values[40] == FLUX_DAY
+    assert world.repository.provider_for(AREA) is world.provider
+
+
+async def test_a_tariff_known_ahead_has_tomorrow_in_the_morning(world: World) -> None:
+    """Flux's next day is in the integration's window at any hour: tomorrow is asked for from 01:00 UK."""
+    world.clock.now = datetime(2026, 10, 4, 7, 0, tzinfo=UTC)
+    await world.start()
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TOMORROW), world.clock.now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+
+    assert world.provider.publication == PUBLICATION_KNOWN
+    assert world.repository.area_entry(AREA).publication == PUBLICATION_KNOWN
+    fetch = await world.provider.async_fetch_day(AREA, TOMORROW)
+    assert fetch.outcome == "fetched" and len(fetch.document["prices"]) == 48
+
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+    assert world.manager.area_snapshot(AREA).tomorrow_state == "ready"
+
+
+async def test_an_agile_meter_beside_a_flux_one_keeps_the_afternoon(world: World) -> None:
+    await world.start()
+    await world.publish(TODAY)
+    second = Meter(world.hass, world.entry, "22L0000002", "1900009999999")
+    second.publish(flux_slots(TODAY - timedelta(days=1), TOMORROW), world.clock.now, tariff="E-1R-FLUX-IMPORT-23-02-14-A")
+    await world.hass.async_block_till_done()
+    assert len(world.provider.meters) == 2 and world.provider.publication == PUBLICATION
+
+
+async def test_moving_from_agile_to_flux_reads_flux_from_then_on(world: World) -> None:
+    """The integration fetches the new tariff's rates for its whole window once the tariff changes: the meter is the
+    same, now on Flux, and tomorrow is Flux's."""
+    world.clock.now = datetime(2026, 10, 4, 15, 10, tzinfo=UTC)
+    await world.start()
+    await world.publish(TODAY)
+    assert world.provider.publication == PUBLICATION
+    today = await world.provider.async_fetch_day(AREA, TODAY)
+    assert today.document["prices"] == relay_file(TODAY)["prices"]
+
+    # Mid-day the coordinator sees the Flux agreement; yesterday's entity has not been written again.
+    world.meter.publish(
+        flux_slots(TODAY - timedelta(days=1), TOMORROW),
+        world.clock.now,
+        tariff=FLUX_C,
+        tariffs={"previous_day_rates": AGILE_C},
+    )
+    await world.hass.async_block_till_done()
+    assert [meter.product for meter in world.provider.meters] == ["FLUX-IMPORT-23-02-14"]
+    assert world.provider.publication == PUBLICATION_KNOWN
+    tomorrow = await world.provider.async_fetch_day(AREA, TOMORROW)
+    assert tomorrow.outcome == "fetched" and set(pounds(tomorrow.document)) == {FLUX_NIGHT, FLUX_DAY, FLUX_PEAK}
+
+
+@pytest.mark.parametrize(
+    ("day", "now", "count"),
+    [
+        (date(2026, 10, 25), datetime(2026, 10, 25, 12, 0, tzinfo=UTC), 50),
+        (date(2026, 3, 29), datetime(2026, 3, 29, 12, 0, tzinfo=UTC), 46),
+    ],
+)
+async def test_flux_on_a_clock_change_day_keeps_every_half_hour(world: World, day, now, count: int) -> None:
+    world.clock.now = now
+    await world.start()
+    world.meter.publish(flux_slots(day - timedelta(days=1), day + timedelta(days=1)), now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+
+    fetch = await world.provider.async_fetch_day(AREA, day)
+
+    assert fetch.outcome == "fetched" and len(fetch.document["prices"]) == count
+    parsed = parse_day(fetch.document, area_id=AREA, day=day)
+    assert parsed.interval_count == count and parsed.covers_whole_day()
+    # Six night slots (02:00-05:00 UK) whatever the clock does.
+    assert pounds(fetch.document).count(FLUX_NIGHT) == 6
+
+
+async def test_a_fixed_tariff_is_read_as_its_half_hours(world: World) -> None:
+    await world.start()
+    zone_slots = {start: 0.2486 for start in flux_slots(TODAY - timedelta(days=1), TOMORROW)}
+    world.meter.publish(zone_slots, world.clock.now, tariff="E-1R-VAR-22-11-01-C")
+    await world.hass.async_block_till_done()
+    fetch = await world.provider.async_fetch_day(AREA, TOMORROW)
+    assert fetch.outcome == "fetched" and set(pounds(fetch.document)) == {0.2486}
+
+
+# ------------------------------------------------------------------ the export meter: what a sold kWh earns
+
+FLUX_EXPORT_C = "E-1R-FLUX-EXPORT-23-02-14-C"
+EXPORT_MPAN = "1170000000001"
+
+
+def export_value(start: datetime) -> float:
+    """Flux export pays its own three bands."""
+    return {FLUX_NIGHT: 0.0832, FLUX_DAY: 0.1849, FLUX_PEAK: 0.3075}[flux_value(start)]
+
+
+def export_meter(world: World, serial: str = SERIAL, mpan: str = EXPORT_MPAN) -> Meter:
+    return Meter(world.hass, world.entry, serial, mpan, export=True)
+
+
+async def _flux_with_export(world: World, *, tariff: str = FLUX_EXPORT_C, serial: str = SERIAL) -> Meter:
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TOMORROW), world.clock.now, tariff=FLUX_C)
+    exporter = export_meter(world, serial)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(TODAY - timedelta(days=1), TOMORROW)},
+        world.clock.now,
+        tariff=tariff,
+    )
+    await world.hass.async_block_till_done()
+    return exporter
+
+
+async def test_the_export_meter_on_the_same_smart_meter_gives_each_slot_its_sell_price(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world)
+
+    assert world.provider.export_meter_for(AREA).serial == SERIAL
+    rates = world.repository.export_rates(AREA)
+    assert rates is not None and len(rates.rates) == 3 * 48
+    zone = ZoneInfo(LONDON)
+    night = datetime(2026, 10, 4, 3, 0, tzinfo=zone)
+    peak = datetime(2026, 10, 4, 17, 0, tzinfo=zone)
+    # Pence per kWh, as the sell price is kept (minor units).
+    assert rates.over(night, night + SLOT) == 8.32 and rates.over(peak, peak + SLOT) == 30.75
+    # A quarter-hour inside a half-hour earns that half-hour's rate; an hour across two bands their mean.
+    assert rates.over(night, night + timedelta(minutes=15)) == 8.32
+    edge = datetime(2026, 10, 4, 15, 30, tzinfo=zone)
+    assert rates.over(edge, edge + timedelta(hours=1)) == pytest.approx((18.49 + 30.75) / 2)
+
+
+async def test_agile_outgoing_beside_agile_is_read_and_agile_is_unchanged(world: World) -> None:
+    await world.start()
+    await world.publish(TODAY)
+    exporter = export_meter(world)
+    exporter.publish({start: 0.15 for start in relay_slots(TODAY)}, world.clock.now, tariff="E-1R-AGILE-OUTGOING-19-05-13-C")
+    await world.hass.async_block_till_done()
+    assert (await world.provider.async_fetch_day(AREA, TODAY)).document["prices"] == relay_file(TODAY)["prices"]
+    assert world.provider.publication == PUBLICATION
+    assert set(world.repository.export_rates(AREA).rates.values()) == {15.0}
+
+
+async def test_without_an_export_meter_there_are_no_export_rates(world: World) -> None:
+    await world.start()
+    await world.publish(TODAY)
+    assert world.provider.export_rates(AREA) is None and world.repository.export_rates(AREA) is None
+    # Not a GB area: no provider with export rates.
+    assert world.repository.export_rates("SE4") is None
+
+
+async def test_an_export_meter_elsewhere_is_paired_by_region_only(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world, serial="99X0000009")
+    assert world.provider.export_meter_for(AREA) is not None
+
+    other = export_meter(world, "88X0000008", "1170000000002")
+    other.publish({NOW: 0.1}, world.clock.now, tariff="E-1R-OUTGOING-VAR-24-10-26-A")
+    await world.hass.async_block_till_done()
+    # Two export meters, neither on the import meter's smart meter: the one in its region.
+    assert world.provider.export_meter_for(AREA).region == "C"
+
+
+async def test_an_export_meter_in_another_region_is_not_read(world: World) -> None:
+    await world.start()
+    await _flux_with_export(world, tariff="E-1R-FLUX-EXPORT-23-02-14-A", serial="99X0000009")
+    assert world.provider.export_rates(AREA) is None
+
+
+async def test_unreadable_export_rates_give_none_and_import_is_unaffected(world: World) -> None:
+    await world.start()
+    exporter = await _flux_with_export(world)
+    for entity_id in exporter.entity_ids.values():
+        state = world.hass.states.get(entity_id)
+        world.hass.states.async_set(entity_id, state.state, {**state.attributes, "rates": "garbage"})
+    await world.hass.async_block_till_done()
+    assert world.provider.export_rates(AREA) is None
+    assert (await world.provider.async_fetch_day(AREA, TODAY)).outcome == "fetched"
+
+
+async def test_export_rates_are_remembered_after_the_integration_lets_them_go(world: World) -> None:
+    await world.start()
+    exporter = await _flux_with_export(world)
+    first = world.provider.export_rates(AREA)
+    night = datetime(2026, 10, 3, 3, 0, tzinfo=ZoneInfo(LONDON))
+    assert first.over(night, night + SLOT) == 8.32
+
+    # Two days on the integration holds the 5th to the 7th only; the 3rd is still known, a rate read before.
+    world.clock.now = NOW + timedelta(days=2)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(date(2026, 10, 5), date(2026, 10, 7))},
+        world.clock.now,
+        tariff=FLUX_EXPORT_C,
+    )
+    await world.hass.async_block_till_done()
+    later = world.provider.export_rates(AREA)
+    assert later.over(night, night + SLOT) == 8.32 and len(later.rates) == 5 * 48
+
+    # Past [EXPORT_KEPT], forgotten.
+    world.clock.now = NOW + timedelta(days=60)
+    exporter.publish({}, world.clock.now, tariff=FLUX_EXPORT_C)
+    await world.hass.async_block_till_done()
+    assert world.provider.export_rates(AREA) is None
+
+
+async def test_the_days_record_sells_at_the_export_rate_and_without_one_at_spot(world: World) -> None:
+    """The day record (`day_record.prices_part`) reads what every plan reads: the export rate where it is held."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.day_record import prices_part
+    from custom_components.spotnav.planning.planner import FiscalChoice
+    from custom_components.spotnav.pricing.export_rates import area_export_rates
+    from custom_components.spotnav.runtime import domain_data
+
+    await world.start()
+    exporter = await _flux_with_export(world)
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+    domain_data(world.hass).price_repository = world.repository
+    try:
+        assert area_export_rates(world.hass, AREA) is not None and area_export_rates(world.hass, None) is None
+        source = SimpleNamespace(
+            area_id=AREA,
+            area=world.repository.area_entry(AREA),
+            fiscal=FiscalChoice(sell_adjustment_minor_per_kwh=1.0).validated(),
+        )
+        zone = ZoneInfo(LONDON)
+        start = datetime(2026, 10, 4, 0, 0, tzinfo=zone)
+        part = prices_part(world.hass, source, start, start + timedelta(days=1), TODAY)
+        rows = part["rows"]
+        assert len(rows) == 48
+        # [start, end, spot, buy, sell]: 03:00 UK is a night slot, 17:00 a peak one; sells are the export bands.
+        assert rows[6][4] == 8.32 and rows[34][4] == 30.75
+        assert rows[34][3] == pytest.approx(rows[34][2], abs=0.01)
+
+        # The export meter gone: spot plus the figure, as before.
+        for entity_id in exporter.entity_ids.values():
+            world.hass.states.async_remove(entity_id)
+            er.async_get(world.hass).async_remove(entity_id)
+        await world.hass.async_block_till_done()
+        assert world.provider.export_meters == ()
+        part = prices_part(world.hass, source, start, start + timedelta(days=1), TODAY)
+        assert all(row[4] == pytest.approx(row[2] + 1.0, abs=1e-3) for row in part["rows"])
+    finally:
+        domain_data(world.hass).price_repository = None

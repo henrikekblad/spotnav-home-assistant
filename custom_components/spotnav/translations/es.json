@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Precios de la electricidad",
-        "description": "SpotNav lee tus tarifas Agile de {area} de la integración Octopus Energy, que se instala desde HACS: [Octopus Energy]({link}). La tarifa de tu contador tiene que ser Agile. También puedes hacerlo más tarde; los ajustes de la tarjeta SpotNav te lo recuerdan en Precio de la electricidad."
+        "description": "SpotNav lee tus tarifas de Octopus de {area} de la integración Octopus Energy, que se instala desde HACS: [Octopus Energy]({link}). Vale cualquier tarifa de Octopus (Agile, Flux, Go, fija); con un contador de exportación, sus tarifas son lo que rinde un kWh vendido. También puedes hacerlo más tarde; los ajustes de la tarjeta SpotNav te lo recuerdan en Precio de la electricidad."
       }
     },
     "abort": {

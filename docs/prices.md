@@ -35,7 +35,7 @@ source an area uses follows from what you have set up; there is no setting to ch
 |---|---|---|
 | Sweden, Norway, Denmark, Finland, Estonia, Latvia, Lithuania, Germany/Luxembourg, the Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria | Nord Pool, through Home Assistant's built-in [Nord Pool](https://www.home-assistant.io/integrations/nordpool/) integration | The Nord Pool integration (**Settings → Devices & services → Add integration → Nord Pool**) |
 | Spain – PVPC (regulated) | Red Eléctrica, through Home Assistant's built-in [PVPC](https://www.home-assistant.io/integrations/pvpc_hourly_pricing/) integration | The PVPC integration |
-| Great Britain – Octopus Agile (14 regions) | Your own Agile rates, through the [Octopus Energy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration | The Octopus Energy integration, from HACS, with your Agile meter |
+| Great Britain – Octopus Energy (14 regions) | Your own rates on any Octopus tariff (Agile, Flux, Go, fixed), through the [Octopus Energy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration | The Octopus Energy integration, from HACS, with your meter |
 | Netherlands – Zonneplan | Zonneplan's dynamic tariff, through the [Zonneplan](https://github.com/fsaris/home-assistant-zonneplan-one) integration | The Zonneplan integration, from HACS |
 | Every other area: Switzerland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Greece, Italy (all zones), Spain (day-ahead) and Portugal | The ENTSO-E Transparency Platform | Your own free ENTSO-E key |
 
@@ -56,9 +56,9 @@ source an area uses follows from what you have set up; there is no setting to ch
   **Settings → Electricity price**, or in the electricity price's **Configure**. There is one key for the
   whole installation. It is stored in Home Assistant, never logged and never shown in diagnostics; ENTSO-E
   checks it once when you save it.
-- **PVPC** reads the prices the PVPC integration already holds. **Octopus Agile** reads your meter's rates
-  from the Octopus Energy integration, so they are your own tariff's prices; see
-  [Great Britain](supported.md#great-britain-octopus-agile).
+- **PVPC** reads the prices the PVPC integration already holds. **Octopus Energy** reads your meter's rates
+  from the Octopus Energy integration, whatever the tariff, so they are your own tariff's prices; with an export
+  meter there, its rates are what a sold kWh earns. See [Great Britain](supported.md#great-britain-octopus-energy).
 - **Zonneplan** reads the tariff the Zonneplan integration already holds, for the area
   *Netherlands – Zonneplan*. That tariff already contains Zonneplan's purchase fee, energy tax and VAT, so
   VAT and tax show as *Included in the price* and nothing is added. The area *Netherlands* stays the spot
@@ -111,7 +111,7 @@ Prices for tomorrow are published once a day, at a time that depends on the sour
 |---|---|
 | Nord Pool through Home Assistant | about 12:45 Brussels time |
 | ENTSO-E day-ahead (your key) | about 13:00 Brussels time |
-| Octopus Agile (Great Britain) | about 16:00 UK time |
+| Octopus Energy (Great Britain) | Agile about 16:00 UK time; a tariff known in advance (Flux, Go, fixed) early morning |
 | Zonneplan (Netherlands – Zonneplan) | in the afternoon, after the 13:00 Brussels auction |
 | Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
 
@@ -143,7 +143,7 @@ percentage.
   plan or a charge's cost.
 - **Included in the price.** Where the published price already contains a part of the bill, that
   part is shown as *Included in the price*, checked and locked, and nothing is added for it again.
-  Spain's PVPC includes the network charges (grid fee), so VAT is still added. Great Britain's Agile
+  Spain's PVPC includes the network charges (grid fee), so VAT is still added. Great Britain's Octopus
   price includes VAT, tax and network charges, so nothing is added.
 
 ### A grid fee that is a percentage of spot, or higher in high-load hours
@@ -227,6 +227,8 @@ Settings, below the grid fees. Neither has a suggestion: take them from your con
   figure. A sold kWh earns spot + this figure, and nothing else is added to it. The home battery's plan, the
   house card's sell price, the day's review and the rule that stops exporting when a sold kWh would earn less than
   nothing all use it: with a credit of 5 öre, export stops only when the spot price is below -5 öre.
+  Where the supplier's own export rates are read (an Octopus export meter in Great Britain), a half-hour they
+  cover earns that rate instead, and this figure is not added to it.
 
 For example, with a markup of 4 öre, 36 öre of tax, a grid fee of 16 öre and 25 % VAT, a spot price of 80 öre costs
 (80 + 4 + 36 + 16) × 1.25 = 170 öre; with a sale figure of 5 öre a sold kWh at the same spot price earns 85 öre.

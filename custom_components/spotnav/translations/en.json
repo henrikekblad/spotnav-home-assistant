@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Electricity prices",
-        "description": "SpotNav reads your Agile rates for {area} from the Octopus Energy integration, which is installed through HACS: [Octopus Energy]({link}). Your meter's tariff has to be Agile. You can also do this later; the SpotNav card's settings say so under Electricity price."
+        "description": "SpotNav reads your Octopus rates for {area} from the Octopus Energy integration, which is installed through HACS: [Octopus Energy]({link}). Any Octopus tariff works (Agile, Flux, Go, fixed); with an export meter its rates are what a sold kWh earns. You can also do this later; the SpotNav card's settings say so under Electricity price."
       }
     },
     "abort": {

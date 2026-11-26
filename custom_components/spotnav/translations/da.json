@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Elpriser",
-        "description": "SpotNav henter dine Agile-priser for {area} fra integrationen Octopus Energy, som installeres via HACS: [Octopus Energy]({link}). Målerens tarif skal være Agile. Du kan også gøre det senere; SpotNav-kortets indstillinger minder dig om det under Elpris."
+        "description": "SpotNav henter dine Octopus-priser for {area} fra integrationen Octopus Energy, som installeres via HACS: [Octopus Energy]({link}). Alle Octopus-tariffer virker (Agile, Flux, Go, fast); med en eksportmåler er dens priser det, en solgt kWh giver. Du kan også gøre det senere; SpotNav-kortets indstillinger minder dig om det under Elpris."
       }
     },
     "abort": {

@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Stroomprijzen",
-        "description": "SpotNav leest je Agile-tarieven voor {area} uit de integratie Octopus Energy, die via HACS wordt geïnstalleerd: [Octopus Energy]({link}). Het tarief van je meter moet Agile zijn. Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
+        "description": "SpotNav leest je Octopus-tarieven voor {area} uit de integratie Octopus Energy, die via HACS wordt geïnstalleerd: [Octopus Energy]({link}). Elk Octopus-tarief werkt (Agile, Flux, Go, vast); met een exportmeter zijn diens tarieven wat een verkochte kWh oplevert. Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
       }
     },
     "abort": {

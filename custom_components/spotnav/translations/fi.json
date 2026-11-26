@@ -276,7 +276,7 @@
       },
       "prices_octopus": {
         "title": "Sähkön hinnat",
-        "description": "SpotNav lukee alueen {area} Agile-hintasi Octopus Energy -integraatiosta, joka asennetaan HACSin kautta: [Octopus Energy]({link}). Mittarisi tariffin on oltava Agile. Voit tehdä tämän myös myöhemmin; SpotNav-kortin asetukset muistuttavat siitä kohdassa Sähkön hinta."
+        "description": "SpotNav lukee alueen {area} Octopus-hintasi Octopus Energy -integraatiosta, joka asennetaan HACSin kautta: [Octopus Energy]({link}). Mikä tahansa Octopus-tariffi käy (Agile, Flux, Go, kiinteä); vientimittarin hinnat ovat se, mitä myyty kWh tuottaa. Voit tehdä tämän myös myöhemmin; SpotNav-kortin asetukset muistuttavat siitä kohdassa Sähkön hinta."
       }
     },
     "abort": {

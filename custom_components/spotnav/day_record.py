@@ -234,6 +234,8 @@ def fees_part(fiscal: Any) -> dict[str, Any] | None:
 def prices_part(hass: HomeAssistant, source: Any, start: datetime, end: datetime, day: date) -> dict[str, Any] | None:
     """The day's price intervals (see the module) from the documents held (nothing is fetched); `None` without any."""
     from .battery.plan import buy_prices, sell_prices  # noqa: PLC0415 - the planner imports the runtime
+    from .battery.plan_shadow import with_export_rates  # noqa: PLC0415
+    from .pricing.export_rates import area_export_rates  # noqa: PLC0415
     from .planning.planner import FiscalChoice, PlannerInputError  # noqa: PLC0415
     from .pricing.price_points import price_points  # noqa: PLC0415
     from .runtime import domain_data  # noqa: PLC0415
@@ -260,7 +262,15 @@ def prices_part(hass: HomeAssistant, source: Any, start: datetime, end: datetime
         list(buy_prices(spots, [point.start for point in points], fiscal)) if fiscal else [None] * len(points)
     )
     sells: list[float | None] = (
-        list(sell_prices(spots, fiscal.sell_adjustment)) if fiscal else [None] * len(points)
+        list(
+            with_export_rates(
+                [(point.start, point.end, point.spot) for point in points],
+                sell_prices(spots, fiscal.sell_adjustment),
+                area_export_rates(hass, source.area_id),
+            )
+        )
+        if fiscal
+        else [None] * len(points)
     )
     return {
         "area": source.area_id,
