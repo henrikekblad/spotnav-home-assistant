@@ -6,12 +6,13 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MEASURED_CURRENT_SOURCE, CONF_PHASE_WIRING, DOMAIN
 from ..execution.charger_entities import charger_device_id
 from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..runtime import site_data
 from ..vehicles.discovery import profile_attribute_source
 from .measurement_source import source_from_dict, source_to_dict
 
@@ -80,6 +81,31 @@ def async_leave_sites(hass: HomeAssistant, charger_entry_id: str) -> None:
             continue
         hass.config_entries.async_update_entry(site, data=data)
         hass.async_create_task(hass.config_entries.async_reload(site.entry_id))
+
+
+def balanced_members(hass: HomeAssistant, charger_entry_ids: list[str]) -> list[str]:
+    """The site's members its load balancing governs: all but a charger whose entry is disabled. A disabled charger
+    was handed back as at a removal (`async_unload_entry`) and is left to itself, so the site neither reserves nor
+    regulates for it; it stays listed, with its wiring, and is governed again once its entry is enabled."""
+    disabled = {
+        member
+        for member in charger_entry_ids
+        if (entry := hass.config_entries.async_get_entry(member)) is not None and entry.disabled_by is not None
+    }
+    return [member for member in charger_entry_ids if member not in disabled]
+
+
+def async_reload_sites_of(hass: HomeAssistant, charger_entry_id: str, *, governed: bool) -> None:
+    """Reload every loaded site that lists this charger and whose load balancing does (`governed`) or does not
+    govern it now, so it takes the charger on (enabled again) or leaves it alone (disabled)."""
+    for site in hass.config_entries.async_entries(DOMAIN):
+        if charger_entry_id not in (site.data.get(CONF_CHARGER_ENTRY_IDS) or []):
+            continue
+        data = site_data(hass, site.entry_id)
+        if data is None or site.state is not ConfigEntryState.LOADED:
+            continue
+        if (charger_entry_id in (data.controller.config.get(CONF_CHARGER_ENTRY_IDS) or [])) is governed:
+            hass.async_create_task(hass.config_entries.async_reload(site.entry_id))
 
 
 def prune_missing_members(hass: HomeAssistant, site: ConfigEntry) -> bool:

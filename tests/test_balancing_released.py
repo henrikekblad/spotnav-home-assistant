@@ -9,9 +9,9 @@ import pytest
 from homeassistant.config_entries import ConfigEntryDisabler
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
+from custom_components.spotnav.const import CONF_CHARGER_ENTRY_IDS, MEASUREMENT_MODE_DERIVED
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
-from custom_components.spotnav.runtime import executor_for
+from custom_components.spotnav.runtime import controller_for, executor_for, site_controller_for
 
 from .test_lb_start_credit import _halo, _Halo, _site_a
 
@@ -143,3 +143,40 @@ async def test_disabling_the_site_gives_back_the_charge_its_load_balancing_held(
     await hass.config_entries.async_set_disabled_by(halo.controller.entry_id, ConfigEntryDisabler.USER)
     await hass.async_block_till_done()
     _given_back(halo, starts, drives)
+
+
+async def test_disabling_a_charger_hands_back_the_charge_load_balancing_held_and_its_site_leaves_it_out(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    """A disabled charger is handed back as at a removal: the stop load balancing made is SpotNav's own, so the charger
+    is started again. While it is disabled its site governs it no more; enabled again, the site takes it on again."""
+    halo = await _held_back(hass, monkeypatch, "charger_disabled")
+    site_id = halo.controller.entry_id
+    charger_id = halo.charger.entry_id
+    starts = len(halo.turn_on)
+    await hass.config_entries.async_set_disabled_by(charger_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    assert len(halo.turn_on) == starts + 1, "handed back: started again"
+    site = site_controller_for(hass, site_id)
+    assert site is not None and site is not halo.controller, "the site was set up again"
+    assert charger_id not in site.config[CONF_CHARGER_ENTRY_IDS]
+    assert all(request.charger_entry_id != charger_id for request in site._build_requests())  # noqa: SLF001
+    assert charger_id in hass.config_entries.async_get_entry(site_id).data[CONF_CHARGER_ENTRY_IDS], "still listed"
+
+    await hass.config_entries.async_set_disabled_by(charger_id, None)
+    await hass.async_block_till_done()
+    again = site_controller_for(hass, site_id)
+    assert again is not None and again is not site
+    assert charger_id in again.config[CONF_CHARGER_ENTRY_IDS]
+    assert controller_for(hass, charger_id) is not None
+
+
+async def test_a_reload_of_a_charger_leaves_it_to_its_site(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    halo = await _held_back(hass, monkeypatch, "charger_reload")
+    starts = len(halo.turn_on)
+    assert await hass.config_entries.async_reload(halo.charger.entry_id)
+    await hass.async_block_till_done()
+    assert len(halo.turn_on) == starts, "nothing handed back"
+    assert site_controller_for(hass, halo.controller.entry_id) is halo.controller, "the site was not set up again"
