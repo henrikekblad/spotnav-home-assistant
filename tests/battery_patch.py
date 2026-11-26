@@ -41,6 +41,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
         "control.gate_record",
         "control.life",
         "control.look",
+        "control.per_phase",
         "control.report",
         "control.stored",
     ),
