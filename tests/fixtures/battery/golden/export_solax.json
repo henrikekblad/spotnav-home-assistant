@@ -1,0 +1,4612 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     },
+     "2026-11-15": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     },
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-15T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7d20b741664b3773",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "2f82598c19414d18",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "daily_write_cap"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "daily_write_cap",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa198227723cb556",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af955a7d78df3b69",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "901c8c149dbc1cef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75a1f87b39a4c652",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc07a29b23c7b875",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 1,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "export_limit"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e0e63ef6e6a8a922",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e0e63ef6e6a8a922",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e0e63ef6e6a8a922",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e0e63ef6e6a8a922",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b587d0f15e79f058",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73e4013e59369d26",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "detail": {
+       "at": "2026-11-14T02:04:00+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:02:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:03:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:04:00+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "expected": "0",
+      "kind": "external",
+      "read": "7777",
+      "reason": "export_limit",
+      "why": "changed_before_write"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fbc5b936c39e5f32",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 1,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "not_obeyed:curtail_export:no_effect",
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "not_obeyed:curtail_export:no_effect",
+    "released_at": "2026-11-14T02:33:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "44a1aa9be94ddc44",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0bbc4886289e7cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b72c7f531ecaf68c",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -3.0,
+        "idle": false,
+        "kind": "curtail",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "failure",
+       "outcome": "no_effect",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "power_kw": -3.0,
+         "soc_pct": null,
+         "verdict": "no_effect"
+        }
+       ]
+      },
+      "kind": "monitor",
+      "reason": "no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "hand_back",
+      "reason": "not_obeyed:curtail_export:no_effect"
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "not_obeyed:curtail_export:no_effect",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "689e3ecbf9dfd253",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ae07a8b90630ef9",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "fd9c9b65a7e54d5c",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e14623b292772b5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ae07a8b90630ef9",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "0ef8816fd986017f",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d56eaf284b79829",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 6
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 8,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ae07a8b90630ef9",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "ef47731361faccfe",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c168626113f4ce00",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "92e100aaa4397d00",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "92e100aaa4397d00",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f6393c4de230d739",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c772daab412d99c6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69eb5abc3a57a8d4",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "69eb5abc3a57a8d4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82910910b9c17c70",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3e76c053f0d592e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f354306de12e270c",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f354306de12e270c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f4a2daa9135713cc",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "10dd8526befc3c5f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b925d13b98936d65",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c6b063bb9e60b23",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3ed2de846833c986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "137c5dbcb53a291f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a4c86ba16cb3e595",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e8775c1129f50bcf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8775c1129f50bcf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8775c1129f50bcf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8f3c3bec693bdc19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "523860923f01a47f",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ded0e7ae5edbb35c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {
+     "export_limit": "2026-11-14 02:01:20+01:00"
+    },
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4ae07a8b90630ef9",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "dbde18afc58a92b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbde18afc58a92b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbde18afc58a92b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbde18afc58a92b9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "095d19eaf0bbb097",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "095d19eaf0bbb097",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "095d19eaf0bbb097",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "095d19eaf0bbb097",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d70773cf52b427a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_curtail_export": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "05ad9080b82b1a29",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "af63e0609574bae6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:no_read_back",
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "1335037f148b8709",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1335037f148b8709",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1335037f148b8709",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1335037f148b8709",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1335037f148b8709",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "export_limit",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:no_read_back",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c60e13ce4c6bedf4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:export_limit:service_failed",
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:export_limit:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:export_limit:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:export_limit:service_failed",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca7b42cfd08df634",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "174590759836aa25",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "05ad9080b82b1a29",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7623217375088568",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7623217375088568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7623217375088568",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82f65179ee39f884",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fc7181fe0307f83",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "solax",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "curtail_ended",
+    "released_at": "2026-11-14T02:25:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "dd7264371d7e5a14",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "export_limit",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:export_limit",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7352ae15290318ad",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e1ac2a9ad1477501",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:export_limit"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "curtail_export",
+      "snapshot": {
+       "export_limit": "6000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "export_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9baea66e75e16e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4bdfc81962932483",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "curtail_ended"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "write",
+      "reason": "export_limit",
+      "restore": true,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "export_limit",
+      "number",
+      "number.solax_export_limit",
+      6000.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.solax_export_limit",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "export_limit"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "curtail_ended",
+      "written": [
+       "export_limit"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f2dfd69b2facb484",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

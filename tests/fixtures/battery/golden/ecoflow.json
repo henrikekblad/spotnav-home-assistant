@@ -1,0 +1,9008 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e5f90788fee697d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1f277c8e61dcb6ed",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "ddb0c99afb1b2748",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c4d6d235753f3532",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c512558b7d5c402a",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c512558b7d5c402a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c512558b7d5c402a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c512558b7d5c402a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c512558b7d5c402a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "422b4296cb732e93",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ee45a32108338f47",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a8c84fc77304d986",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:21:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 5,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "dcaa5e69f42fc9ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85305084edefe801",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "66bbf4590a9c2c5d",
+    "events": [
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "kind": "silenced",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [
+     {
+      "at": "2026-11-14T02:16:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1bed6c7767881c6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d32b6183e58dbbec",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ef109324f070ac80",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:19:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "46fef6a9a82aec6f",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46fef6a9a82aec6f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46fef6a9a82aec6f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "46fef6a9a82aec6f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d803f75a8c05ed61",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d803f75a8c05ed61",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b6f99632a2ab5d23",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "36d611ab0fb4068b",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [
+     {
+      "at": "2026-11-14T02:21:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:21:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d3d5c56e7d36737",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry_restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:02:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "dcaa5e69f42fc9ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85305084edefe801",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4e02e2f9ccb88ab9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "silenced",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "db01379bfa81d944",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db01379bfa81d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "db01379bfa81d944",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a9a195ece63f1ed3",
+    "restart": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "b85ab9b63ec28d34",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4bdf6541b1672284",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "kind": "retaken",
+      "reason": "restart"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "091519c0b98c25a2",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f718223aa2e80db9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:modbus_control",
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "modbus_control"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:modbus_control",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab6ca24cca9ce929",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfd41a67a5e0b77b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfd41a67a5e0b77b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fadfbfb478167a6a",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "external",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:modbus_control",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2af5ab5b654d68f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 6,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:04:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 3,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c111bb46322be78d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 1600.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      1600.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "eae8f29211ce9a27",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "1600",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eae8f29211ce9a27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eae8f29211ce9a27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eae8f29211ce9a27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eae8f29211ce9a27",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9099f00372f0e292",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.693
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "438845fb954064de",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "438845fb954064de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "438845fb954064de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "438845fb954064de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "438845fb954064de",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "194e05afde276b11",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ],
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ea2028ad840ca96a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea2028ad840ca96a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea2028ad840ca96a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea2028ad840ca96a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea2028ad840ca96a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "007c650d7a0af8e5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 8,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 5,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "dcaa5e69f42fc9ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85305084edefe801",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3aac57807bb8f7bd",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "battery_mode"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6bbe93f0258d6293",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6bbe93f0258d6293",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a5169d1442300a1b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8cf07f864a85429d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ba70fc7d908793",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "ee09d525610ecd02",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ae2379920ae74501",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ae2379920ae74501",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ae2379920ae74501",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ae2379920ae74501",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5bc7327e908e7c52",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7fecf197e750de",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:19:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2500735e40f0ac3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 15,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 10
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:05:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:06:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:05:10+01:00",
+    "writes_today": 12,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "dcaa5e69f42fc9ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85305084edefe801",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1b542fae9e559f09",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c2d7c799a5fe7ee1",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5672258f0fb266fb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5672258f0fb266fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8f90da104fc93b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "discharge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "discharge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5c70c671dacdb29f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "discharge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c70c671dacdb29f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c70c671dacdb29f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ede3ea12ba7e6d57",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ea92e5568487aa7a",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea92e5568487aa7a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ea92e5568487aa7a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0e23650a2862698d",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "73c60b7fad927e60",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73c60b7fad927e60",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "73c60b7fad927e60",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "30d02b9fed7bf440",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e1a3010b9e913b93",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e1a3010b9e913b93",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e1a3010b9e913b93",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72183a5034bfc61e",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cfb4a1736da8e12a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfb4a1736da8e12a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cfb4a1736da8e12a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a10621de5bf8c60",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b8bb5226bd3a0a7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "89385cca59e41f9c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0aa16a364762f4a2",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e56aa32c0b6801c4",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e56aa32c0b6801c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e56aa32c0b6801c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e56aa32c0b6801c4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fdc4853b039cd1d9",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1a8973679c8d12f0",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "battery_mode",
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "22608aa17f531959",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dccc79275ac1b4e0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "02bdb96bad35d31d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6873f36359ce83f",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": "hold_battery"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6873f36359ce83f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6873f36359ce83f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6873f36359ce83f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5b5216217de18ddf",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5b1d7ba15686842a",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41ab1c7cefe6af5b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "911f65864499426b",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "73903d44b58aec4b",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4cfcb53422d4dcc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e58491b7b2707100",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5e5b757622f81c92",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "dcf31bc348940da6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "modbus_control",
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8aeb49cf89713c36",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 11
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "911f65864499426b",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "52c14636ab51d683",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5e890c847e1ac077",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1a596697e10f5f33",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "29bbb546607524ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "263c279d03ae85cc",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6322216989c2b1ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1b1032100e8c07aa",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "796b0fe39bfad5fe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e03ccaa810f8f75b",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2cb64e722b6403ef",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "636a3509533aa7c1",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "83e1184ffbee0b72",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "edf3bfae149a4390",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "59003b0f1f93f151",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b80a06f7cfa082af",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dd6425518f13c31b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e83f436f3cf9ee6c",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e83f436f3cf9ee6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e83f436f3cf9ee6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e83f436f3cf9ee6c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fa853cbc639b1ab7",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3f6f74d3de25937f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "08e33f58b49c15cb",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "229cafe29aeb9975",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff4e7276752600b0",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff4e7276752600b0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff4e7276752600b0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff4e7276752600b0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f0db4993974f1dbb",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2b264a0786cd5ea9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b264a0786cd5ea9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b264a0786cd5ea9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4c7369ad81ad16e",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "charge_battery",
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "947787edc5af502d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b50949352a956d5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "911f65864499426b",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "478573d3f2cb9738",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "478573d3f2cb9738",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "478573d3f2cb9738",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "478573d3f2cb9738",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e4f5d804ad548d0b",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "battery_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e4f5d804ad548d0b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e4f5d804ad548d0b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e4f5d804ad548d0b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "28d41fe7a9d51a57",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "33a0124b386e8145",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b563299d70881df5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "059429b93acf503d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aac537b51c55eb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_export_discharge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "8da278077d8aa16c",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 2.0,
+      "reason": "export_discharge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "239beca01db6fe4e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "discharge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "discharge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "discharge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b795ef0bb94c153",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ca9f6d2f373881d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4e4b801b76569fa1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "27c168b3496e1178",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2aa7d45a0aff6562",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f82cfab62b917d9b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "dcaa5e69f42fc9ad",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "85305084edefe801",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "hold_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "hold_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "hold_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "834aa18d2f6702b2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "683287d960e2a690",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "98196da5e36d5212",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cd8ec0f04cfb68e8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:modbus_control:no_read_back",
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:modbus_control:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b2ff04e99007eac4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2ff04e99007eac4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2ff04e99007eac4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2ff04e99007eac4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2ff04e99007eac4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "off",
+      "reason": "modbus_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:modbus_control:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:modbus_control:no_read_back",
+      "written": [
+       "modbus_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9eddd01fd9923d3c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:modbus_control:service_failed",
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:modbus_control:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "modbus_control",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:modbus_control:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:modbus_control:service_failed",
+      "written": [
+       "modbus_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5944ae323f0ded19",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [
+     "battery_mode"
+    ],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e1d0dc422dd65f7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a1c30f94eb9a9ec",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f48d8fe3946b53ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "27c168b3496e1178",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2b9e8d6b87ee3f90",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "battery_mode",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "06adebd4439dc4ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "ecoflow",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": "hold_battery",
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": "hold_battery"
+   }
+  },
+  "looks": [
+   {
+    "digest": "b2618b7c6782eae3",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "modbus_control",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:modbus_control",
+      "written": [
+       "modbus_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67545494c600a48b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e2aeba02bf6623f",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {}
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "5acfcabfb4ce9f7e",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.ecoflow_charge_power",
+      3000.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4cf81a9c0e8a678d",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.ecoflow_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": false,
+      "value": "charge_battery"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "charge_battery",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bb578b031ada701e",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "charge_battery",
+      "reason": "battery_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb578b031ada701e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb578b031ada701e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb578b031ada701e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bb578b031ada701e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "48d63489e17d7dda",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "write",
+      "reason": "battery_mode",
+      "restore": true,
+      "value": "automatic"
+     }
+    ],
+    "ops": [
+     [
+      "battery_mode",
+      "select",
+      "select.ecoflow_battery_mode",
+      "automatic",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da7bde46f45a037c",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "select.ecoflow_battery_mode",
+      "kind": "confirmed",
+      "read": "automatic",
+      "reason": "battery_mode"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "write",
+      "reason": "modbus_control",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "modbus_control",
+      "switch",
+      "switch.ecoflow_modbus_control",
+      false,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "switch.ecoflow_modbus_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "modbus_control"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "modbus_control",
+       "charge_power",
+       "battery_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a701f289ec6043a8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

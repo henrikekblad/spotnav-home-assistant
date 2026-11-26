@@ -1,0 +1,9366 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6baaa942aa1bb1da",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3cf308f73590e9cd",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "24c7ff5992c83a1f",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dd8ff0df0a24ffbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "876d7cd5316f20c9",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e2fbb85bdc5a6276",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "181c971237cf4569",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "d924d90da8859b06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0819e78bbf328672",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a648b12893896d35",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a648b12893896d35",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ebdd4eb6459f1e7a",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "047ee9f72f2e9f79",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:charge_power",
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "charge_power"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:charge_power",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fc00ac3f27f36e3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0db9825afcd8c8ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0db9825afcd8c8ae",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20bf3df9fe0444a9",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "external",
+      "read": "7777",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:charge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:charge_power",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3fb17bf3c4c6f58c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3783a111c3d2906f",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ],
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "84541ec55bd007bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "d924d90da8859b06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b14e3280497d67d7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_power"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8dc3280b5a5aa7a6",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8dc3280b5a5aa7a6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "86f7dff87cd7682f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cf641df56a77bab7",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0cc28ffa5f91652a",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0cc28ffa5f91652a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0cc28ffa5f91652a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0cc28ffa5f91652a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0cc28ffa5f91652a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8ae6652b47131f19",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "585c3398793ea41d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_phases": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 28,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:02:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "renewals_today": 7,
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 5,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:03:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "cbc68a5a23dd4338",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "phase_kw": [
+       1.15,
+       1.15,
+       0.46
+      ],
+      "rate_kw": 2.76,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "select.victron_ess_mode",
+      "kind": "write",
+      "reason": "ess_mode",
+      "restore": false,
+      "value": "external_control"
+     }
+    ],
+    "ops": [
+     [
+      "ess_mode",
+      "select",
+      "select.victron_ess_mode",
+      "external_control",
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fcb668cc63f9bb13",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "select.victron_ess_mode",
+      "kind": "confirmed",
+      "read": "external_control",
+      "reason": "ess_mode"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 1450.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      1450.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6a18f30d58e61a06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "1450",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c7e29a5dea64d4f4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9362080c8d0072ed",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 1450.0
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      1450.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a7457a4c4c83e858",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "1450",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1e086a99b823a26f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 1450.0
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      1450.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8482562fbbbe760f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "1450",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d28991a62b9e191a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 1450.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      1450.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b113850d286c1289",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "1450",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2f29ca16d29828f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 1450.0
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      1450.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d1652ae1072f4ed1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "1450",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "94148709bc8ebbcb",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "rate",
+      "phase_kw": [
+       0.46,
+       1.15,
+       0.46
+      ],
+      "rate_kw": 2.07,
+      "reason": "grid_charge",
+      "was_kw": 2.76,
+      "was_phase_kw": [
+       1.15,
+       1.15,
+       0.46
+      ]
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 760.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      760.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e9a9d2168274604a",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "760",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "kind": "rate",
+      "phase_kw": [
+       0.0,
+       1.15,
+       0.46
+      ],
+      "rate_kw": 1.61,
+      "reason": "grid_charge",
+      "was_kw": 2.07,
+      "was_phase_kw": [
+       0.46,
+       1.15,
+       0.46
+      ]
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 300.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      300.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "149765fad27a0da9",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "300",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 300.0
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      300.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5accc14d3bff3496",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "300",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "752d0bbf3e3b0f17",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 300.0
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      300.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "46ed808091799313",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "300",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "971d7a45a17912a1",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "kind": "renew",
+      "reason": "phase_l1_target,phase_l2_target,phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 300.0
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": 1350.0
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": 1460.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number",
+      "number.victron_phase_l1_target",
+      300.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l2_target",
+      "number",
+      "number.victron_phase_l2_target",
+      1350.0,
+      false,
+      "GX"
+     ],
+     [
+      "phase_l3_target",
+      "number",
+      "number.victron_phase_l3_target",
+      1460.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c8501bcdc9d397a9",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.victron_phase_l1_target",
+      "kind": "confirmed",
+      "read": "300",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.victron_phase_l2_target",
+      "kind": "confirmed",
+      "read": "1350",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.victron_phase_l3_target",
+      "kind": "confirmed",
+      "read": "1460",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "577fbd11467905b6",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.victron_ess_mode",
+      "kind": "write",
+      "reason": "ess_mode",
+      "restore": true,
+      "value": "phase_compensation_enabled"
+     }
+    ],
+    "ops": [
+     [
+      "ess_mode",
+      "select",
+      "select.victron_ess_mode",
+      "phase_compensation_enabled",
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.victron_ess_mode",
+      "kind": "confirmed",
+      "read": "phase_compensation_enabled",
+      "reason": "ess_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "ess_mode",
+       "phase_l1_target",
+       "phase_l2_target",
+       "phase_l3_target"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21a3090d24ec502a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 20,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 10
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:05:10+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:06:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:05:10+01:00",
+    "writes_today": 19,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "d924d90da8859b06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d7189e7c2634dfb4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "45236a8c23f30e09",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bf6eedb219e40629",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f6f8438ce0d891be",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b62dccec255fcdb4",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d3f7267215144cc2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 1000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      1000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "62de334b0d58ace2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "1000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "62de334b0d58ace2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6172556b6e0e6ffe",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2f2dddb5e93424b",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "61bfcbbf9dc42286",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61bfcbbf9dc42286",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "58bc3e62cf39fd54",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "20f0cdb72fdbec7f",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0bd1250fade26898",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dbefd22904993588",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7056d596dad89a8d",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "62a2d4db1543bcf9",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "befe5b620f4c5fb8",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "befe5b620f4c5fb8",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2d810f1bec95d2dd",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8126bf8231047a1b",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "65f71c2ca24c9d93",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "65f71c2ca24c9d93",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "75141cd2b8446841",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "12c600129df2998b",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "97e16fbba48861fa",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:05:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bfcf703be42b9248",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:05:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f70b1d0c3f638011",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70b1d0c3f638011",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70b1d0c3f638011",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f70b1d0c3f638011",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21d57c69ffcf10a4",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:06:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power",
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fe9187f7154afc2d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d5d25fc43af85bbc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a27a1682cbd5343e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6898a063f5a5006",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.95,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 6.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 6.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 6.0,
+         "power_kw": 3.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6898a063f5a5006",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6898a063f5a5006",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6898a063f5a5006",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "36d697c4319d5a58",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f8447f8ea1f2fefd",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f2716c5d1eae4c3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc299049e7a54868",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "1711101fde4605b8",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3968ff2fe334beed",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aea3e47a639f09ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "eb1c393b2fdb5779",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "851742c5e9676863",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8920d53869c902c9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c6c3482ddbac9e88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 11
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc299049e7a54868",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "30612c3539c609a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "93ce1140607e83b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca540f23b6ab6525",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8ee95f2a1b09618b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a54d846d667ed8f7",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "3000",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2a7565de20294701",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85e5081796fd1a20",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7f5baffd217b2635",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a95b43d5c03e9755",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "3000",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cfc15cf79ec64342",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d2497c43ea02e5ac",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2a044fe30864180",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0811f40a02286425",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "3000",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d260b3b7778ce370",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5637f78798de05c9",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f47d34282e584bc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f9df2c91151b553",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "3000",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f9df2c91151b553",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f9df2c91151b553",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f9df2c91151b553",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c8cc2ccd550aa4da",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d9f70e126550a729",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2789f18f7222bdca",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "818d02d4f6df2252",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0c0ec24d7a6dea59",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "3000",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0c0ec24d7a6dea59",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0c0ec24d7a6dea59",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0c0ec24d7a6dea59",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "91ad0a8051952313",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57b30128037cbf28",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "57b30128037cbf28",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "57b30128037cbf28",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbefff0dc656ab91",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "6000",
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "046cd5868bc346d2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4a9a8b884ddc2930",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "688c6aca3a134ccd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 3,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cc299049e7a54868",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "8c3e742d63f1c7e9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8c3e742d63f1c7e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c3e742d63f1c7e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8c3e742d63f1c7e9",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "838b3e77fedffd08",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "grid_setpoint",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "838b3e77fedffd08",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "838b3e77fedffd08",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "838b3e77fedffd08",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64251bcbc07a9e52",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "42e27c6cbcd45bd8",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "55e14b0103373dc4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e50b3847601b4554",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41255d604918482c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_export_discharge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "53f2532e074d296d",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 2.0,
+      "reason": "export_discharge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 1000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      1000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "1000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a79b0995f844cf6a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "415264d6385bb23a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fed316b9adea0f9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0f906ffc771bb174",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d33edb08bd54ae7f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "d924d90da8859b06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      0.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "72762b090d842af6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "256f22e02728af1e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number",
+      "number.victron_discharge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_discharge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6a9dcb1c423cc0cd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:charge_power:no_read_back",
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:charge_power:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "5db46996f2c9520b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5db46996f2c9520b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5db46996f2c9520b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5db46996f2c9520b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5db46996f2c9520b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "-1",
+      "reason": "charge_power",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:charge_power:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:charge_power:no_read_back",
+      "written": [
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "037e918322e53c62",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:charge_power:service_failed",
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:charge_power:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "charge_power",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:charge_power:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:charge_power:service_failed",
+      "written": [
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96126115ae9573bb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b61845993aece59a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "33f91324eb4a4e04",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1fed316b9adea0f9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "caf2f8d3aa866798",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "grid_setpoint",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ff6c31c1731f651f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ff6c31c1731f651f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7f4a47f03931fddb",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "15b49bd8017ffa99",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "victron",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": true,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": true,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "2ae3a1450f9dd4b9",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "charge_power",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:charge_power",
+      "written": [
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e2169395cc304f06",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "96653262e98ad50e",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:charge_power"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "-1",
+       "discharge_power": "-1",
+       "ess_mode": "phase_compensation_enabled",
+       "grid_setpoint": "50"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      3000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "be7b99633cc3dc92",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": false,
+      "value": 6000.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      6000.0,
+      false,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "6000",
+      "reason": "grid_setpoint"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da3b1361439005fc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a03af8a5ee816d03",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "write",
+      "reason": "grid_setpoint",
+      "restore": true,
+      "value": 50.0
+     }
+    ],
+    "ops": [
+     [
+      "grid_setpoint",
+      "number",
+      "number.victron_grid_setpoint",
+      50.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4fdd6f95165bfd1b",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.victron_grid_setpoint",
+      "kind": "confirmed",
+      "read": "50",
+      "reason": "grid_setpoint"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": true,
+      "value": -1.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.victron_charge_power",
+      -1.0,
+      true,
+      "GX"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "number.victron_charge_power",
+      "kind": "confirmed",
+      "read": "-1",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_power",
+       "grid_setpoint"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "01d6bb39d2df8c0a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

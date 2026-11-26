@@ -1,0 +1,6171 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     },
+     "2026-11-15": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     },
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "76b7bac5dae92040",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "3cee9c47f014e452",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "daily_write_cap"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "daily_write_cap",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da4ef1f746a2c3fa",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "64777d68ddae730b",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dbd7e16269334aac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ffc66feaa590c9d8",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "67ff85851c1fece2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d23d247225d3c01b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "59a9aefe30f78ecc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "59a9aefe30f78ecc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f5881d681106741b",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b2dca606e753e58d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 1,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:discharge_current",
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "discharge_current"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:discharge_current",
+    "released_at": "2026-11-14T02:05:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85657ce51411edfc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "54b09cb688c124b4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "54b09cb688c124b4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "external",
+      "read": "7777",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:discharge_current",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d24345481b69adb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 4,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "fb37977e95beb509",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_current"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "973af6bd049d2eab",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "973af6bd049d2eab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3a007ed7f30fcfeb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ca66b912d9086cc9",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "8b07ca7a406fd20f",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b07ca7a406fd20f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b07ca7a406fd20f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b07ca7a406fd20f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8b07ca7a406fd20f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97e08926277a4322",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21c8809dbfae3a5c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 6,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:03:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:02:00+01:00",
+    "writes_today": 6,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a240b8b5134456fd",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e3b3c970d55e233f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.deye_charge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f219e0d04491608e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f219e0d04491608e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1c4e0cf6a2ea37b",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "32057fb997fd4eb0",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.deye_charge_current",
+      100.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "dafc2ac5b90f331a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f7ba12e797944b5f",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current",
+       "charge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e01f2fd86d86c40a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "61429628301ad16d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e3652568b6114af",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "faa731cfbf8038f7",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.0,
+        "idle": false,
+        "kind": "hold",
+        "rate_kw": 0.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 0.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": -0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": -0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 0.0,
+         "grid_kw": 1.0,
+         "power_kw": -0.0,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "hold",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "faa731cfbf8038f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "faa731cfbf8038f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "faa731cfbf8038f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1aa1110a06e31e04",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4c0aeecb07adefb7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac11d1bd3e45abf2",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "46dc5b6c92c3146f",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ab7c68ffe753aa01",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac11d1bd3e45abf2",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "bd01850e452bbd40",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bf2fb2b113a81d97",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 6
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T05:56:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 8,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac11d1bd3e45abf2",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "45b61c923d28f6a5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "25561808a1d31af4",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40c076343e70c302",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "40c076343e70c302",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d28dc052b27debf5",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "29f01f613473c2ee",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5be72545a177e716",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5be72545a177e716",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2ecd5f0391d4b79d",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5c6140dc17ed683b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fdf0582b1c95a7d",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2fdf0582b1c95a7d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed4cf42bf41fd678",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3ae00303036e3fa1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ed0389f4f9352ad7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d937611213ea436d",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "15045c2b0296a98d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d041404122bcbcc1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e25761dfb64afac8",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "686196f1dbedc149",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686196f1dbedc149",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "686196f1dbedc149",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "0",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "16e673f8deaa2f7c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9949e323ecdf6f07",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T05:56:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restore_again",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "559769610fbb8761",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {
+     "discharge_current": "2026-11-14 02:01:20+01:00"
+    },
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ac11d1bd3e45abf2",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "c041e8179e58afcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c041e8179e58afcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c041e8179e58afcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c041e8179e58afcc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ebfd5da4444931",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "14ebfd5da4444931",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ebfd5da4444931",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "14ebfd5da4444931",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b1e899d3b2f61048",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "98f6c5d1940bbb4e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.deye_charge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0a8212d214151843",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3b8232cbcdb90fe1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "write",
+      "reason": "charge_current",
+      "restore": true,
+      "value": 100.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_current",
+      "number",
+      "number.deye_charge_current",
+      100.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.deye_charge_current",
+      "kind": "confirmed",
+      "read": "100",
+      "reason": "charge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "charge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e8a0262cff9364",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8d6cc5a9ac6544a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d6e46dc9e64d4b41",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:discharge_current:no_read_back",
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:discharge_current:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "068e8f2eedd8776f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "068e8f2eedd8776f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "068e8f2eedd8776f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "068e8f2eedd8776f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "068e8f2eedd8776f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "120",
+      "reason": "discharge_current",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:discharge_current:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:discharge_current:no_read_back",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6adfad662752d96e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:discharge_current:service_failed",
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:discharge_current:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:discharge_current:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:discharge_current:service_failed",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "977127e15792bc03",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:02:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0edf2b2363d967be",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8d6cc5a9ac6544a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "619f49be34b459b1",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "service_failed"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619f49be34b459b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "619f49be34b459b1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c0f83bf2662edc43",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "202c6e9429ca25ab",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "deye",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "7012637d141c6195",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "discharge_current",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:discharge_current",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a6ccd36042082b22",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eeed1780edabdfac",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_current": "100",
+       "discharge_current": "120"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_current"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b8e5525fb17127f7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0d059aaf8988fd7f",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "write",
+      "reason": "discharge_current",
+      "restore": true,
+      "value": 120.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_current",
+      "number",
+      "number.deye_discharge_current",
+      120.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "number.deye_discharge_current",
+      "kind": "confirmed",
+      "read": "120",
+      "reason": "discharge_current"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "discharge_current"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e02849b47cf03581",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}

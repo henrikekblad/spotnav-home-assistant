@@ -1,0 +1,8224 @@
+{
+ "day_cap": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-15": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-15": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-15",
+    "device_id": null,
+    "entered_at": "2026-11-15T02:02:20+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-15T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-15T02:04:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-15T02:02:20+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "93f2a2d5b62c5f8d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d3df827dbe783d03",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-15T02:02:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "a4feebf195994369",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-15T02:02:30+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "66884eaf6dc4ddac",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-15T02:02:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "400633ce27fbd022",
+    "events": [
+     {
+      "at": "2026-11-15T02:02:50+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "400633ce27fbd022",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "400633ce27fbd022",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "400633ce27fbd022",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "400633ce27fbd022",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "866d15606cd9a293",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-15T02:03:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2e6071ae769a7242",
+    "events": [
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-15T02:03:50+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-15T02:04:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "be372635ed86d23a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "expiry": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:20:50+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "4e06bec24bbb17e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2f837d83f13fcd77",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9a599912ef74c452",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9a599912ef74c452",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "45aba080cf48e3b5",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:20:40+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": true,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:20:50+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "max_discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b4e24c82fb0e1183",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "foreign": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 1,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "changed_outside_spotnav:rs485_control",
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [
+     "rs485_control"
+    ],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "changed_outside_spotnav:rs485_control",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "eb72f442c63b00ea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "efab6be9508d6f88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "efab6be9508d6f88",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4d87cfcf87fc8f57",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "external",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "changed_outside_spotnav:rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "changed_outside_spotnav:rs485_control",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d82e9266237b548c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 7,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 3
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:02:20+01:00",
+    "rate_kw": 0.0,
+    "reason": "fuse_headroom",
+    "released_at": "2026-11-14T02:03:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 4,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0692b8cd73ded465",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 1650.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      1650.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a05a6eb76affaba7",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "1650",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a05a6eb76affaba7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a05a6eb76affaba7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a05a6eb76affaba7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "a05a6eb76affaba7",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3e320d9b6b3b2346",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "kind": "rate",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "was_kw": 1.693
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "97a06d9de33c3836",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97a06d9de33c3836",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97a06d9de33c3836",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97a06d9de33c3836",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "97a06d9de33c3836",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e8ad512328c55000",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ],
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "475f98a07241affe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "fuse_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:18:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:18:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:19:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:18:00+01:00",
+    "writes_today": 3,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "4e06bec24bbb17e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9687ad1ea2f3785b",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "max_discharge_power"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3845a76d0e0583fb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3845a76d0e0583fb",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "fuse_headroom",
+      "written": [
+       "max_discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4161bb6b04b21607",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "41301c35ae64a031",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:18:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b51c582d711a5038",
+    "events": [
+     {
+      "at": "2026-11-14T02:18:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b51c582d711a5038",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b51c582d711a5038",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b51c582d711a5038",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b51c582d711a5038",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8d22e14c0931f681",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:19:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": true,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:19:10+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "max_discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e502d437bf5904c2",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "mode_change": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 19,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 9
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:04:30+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:05:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 5,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:04:30+01:00",
+    "writes_today": 13,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "4e06bec24bbb17e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e7a3aa3e5c940f1e",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "35823c494e43cfc5",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e417bccdc7c76dbb",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3c1867d71507c8c9",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0c2d33d5090f70e2",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "ab776f54cc92ab23",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "8908431cb9fe68bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0fce922243a5bb6f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7d793e29863572c4",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c5d590ba5be37883",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cf8e65c310d93e85",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e1f6e133f58570a7",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "52a4e32c71f28b59",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "discharge_house"
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7dbe689aa3cdb7b7",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "21891ec5af52768d",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "21891ec5af52768d",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d18e99f4c2420565",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:03:20+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "4a18080f128c979b",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4a18080f128c979b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "4a18080f128c979b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24f398c02c3f8940",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d5f85744fe82c6ff",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "bda6e5b5c928d064",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "kind": "change",
+      "rate_kw": 3.0,
+      "reason": "grid_charge"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "fccfc5dcc65b2469",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "57c63460760af531",
+    "events": [
+     {
+      "at": "2026-11-14T02:04:40+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "57c63460760af531",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "57c63460760af531",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "57c63460760af531",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c7cfe8c222d331e5",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": true,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:05:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "max_discharge_power",
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "cbb89826e25e55d1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "renewal": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:34:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "6e344db4b9468fea",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e09a91771ee431",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0e04d2b3b4d6740",
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "detail": {
+       "at": "2026-11-14T02:33:20+01:00",
+       "command": {
+        "at": "2026-11-14T02:00:00+01:00",
+        "before_kw": -2.0,
+        "idle": false,
+        "kind": "charge",
+        "rate_kw": 3.0,
+        "slot_end": null,
+        "written": true
+       },
+       "expected_kw": 3.0,
+       "kind": "proved",
+       "outcome": "ok",
+       "readings": [
+        {
+         "at": "2026-11-14T02:16:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 2.5,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:32:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 2.5,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        },
+        {
+         "at": "2026-11-14T02:33:20+01:00",
+         "expected_kw": 3.0,
+         "grid_kw": 1.0,
+         "power_kw": 2.5,
+         "soc_pct": 50.0,
+         "verdict": "ok"
+        }
+       ]
+      },
+      "kind": "proved",
+      "reason": "grid_charge",
+      "variant": null
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0e04d2b3b4d6740",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0e04d2b3b4d6740",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0e04d2b3b4d6740",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35b550af447b7ac1",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:34:00+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d2c880c326f24835",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:34:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "da21d382ba8753d0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35196e1dba951801",
+    "restart": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "a3e5d24405968529",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "3b1f83cb6e043e67",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f85fb6199ebb7f98",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_in_flight": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:00:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 1,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "233bc4efa98385e0",
+    "restart": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "e6083d8b0620504a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "rs485_control",
+       "charge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9e539b99a93c2638",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_not_taken": {
+  "end": {
+   "ledger": {
+    "claims": {
+     "select.marstek_force_mode": {
+      "adopted": false,
+      "at": "2026-11-14T05:57:50+01:00",
+      "deadline": "2026-11-14T05:58:50+01:00",
+      "diverging_since": null,
+      "entity_id": "select.marstek_force_mode",
+      "given_up": false,
+      "intended": "standby",
+      "last_read": null,
+      "owned": null,
+      "owned_at": null,
+      "step": null,
+      "verdict": "pending"
+     }
+    },
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 12
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": "grid_charge",
+    "blocked": "restore_failed:force_mode",
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": "DEVICE",
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {
+     "force_mode": "select.marstek_force_mode"
+    },
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": "force_mode",
+    "phase": "restoring",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 3.0,
+    "reason": "restore_again",
+    "released_at": "2026-11-14T04:48:10+01:00",
+    "renew": [],
+    "restore_values": {
+     "force_mode": "standby"
+    },
+    "retake": false,
+    "retries": {
+     "force_mode": [
+      1,
+      "2026-11-14T05:57:50+01:00"
+     ]
+    },
+    "sent": [
+     "force_mode"
+    ],
+    "setpoint_writes_today": 2,
+    "settle": {},
+    "settle_misses": 0,
+    "settle_until": null,
+    "snapshot": {
+     "force_mode": "standby"
+    },
+    "snapshot_at": "2026-11-14T02:00:00+01:00",
+    "target": {
+     "force_mode": "standby"
+    },
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": [
+     "force_mode"
+    ],
+    "wrote": {
+     "charge_power": 2500.0,
+     "force_mode": "charge",
+     "rs485_control": true
+    }
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35196e1dba951801",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "3dac4d488bd821c5",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e5ad5f33eb5f7d5a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "10dfc7794fd102de",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9ce94e983f1bc296",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "24f28d35a4d168ae",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1ec59f187417c416",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8382f947292093d0",
+    "events": [
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:08:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "0370e6bb6bf09aff",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "17034d3ce56034f5",
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f9d8ff632b06d04b",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e9f2ac35a9f0767d",
+    "events": [
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:13:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "a15ddfb750ef19ac",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9ea87ea4d3e5ed41",
+    "events": [
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:15:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1d6c3254dbc8c4ba",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "51b066b44b2147d4",
+    "events": [
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:17:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d0bc5b5c90c2c207",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3134ca5a0a5f18fd",
+    "events": [
+     {
+      "at": "2026-11-14T02:20:00+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3134ca5a0a5f18fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3134ca5a0a5f18fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3134ca5a0a5f18fd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b0a93c4d4245a17f",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7e694eaa4a0e97b5",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e4cba5e737603e45",
+    "events": [
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:27:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "93de203b0dd1aebe",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5d43c6efe1b6",
+    "events": [
+     {
+      "at": "2026-11-14T02:29:20+01:00",
+      "kind": "not_taken",
+      "read": "on",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5d43c6efe1b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5d43c6efe1b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "bc0a5d43c6efe1b6",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f560511aacf22405",
+    "events": [
+     {
+      "at": "2026-11-14T03:40:40+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "017e6b8bc5b1d05e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "017e6b8bc5b1d05e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "017e6b8bc5b1d05e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c09dea11c204e0b6",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "kind": "restore_failed",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T04:48:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T04:48:10+01:00",
+      "kind": "restore_failed",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "5c751d0bbf2f33cf",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "0ab9c0b1a2cdda88",
+    "events": [
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "kind": "hand_back",
+      "reason": "restore_again"
+     },
+     {
+      "at": "2026-11-14T05:56:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c956163ed6fd0cb1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c956163ed6fd0cb1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c956163ed6fd0cb1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c956163ed6fd0cb1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c956163ed6fd0cb1",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31a616b52a58ae42",
+    "events": [
+     {
+      "at": "2026-11-14T05:57:20+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31a616b52a58ae42",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "31a616b52a58ae42",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "59afc613f2a6c76a",
+    "events": [
+     {
+      "at": "2026-11-14T05:57:50+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   }
+  ]
+ },
+ "restart_unread": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "restart",
+    "released_at": "2026-11-14T02:06:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "35196e1dba951801",
+    "restart": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "restart"
+     }
+    ]
+   },
+   {
+    "digest": "e1ca9eafbfd37559",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "e1ca9eafbfd37559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e1ca9eafbfd37559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e1ca9eafbfd37559",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "60ace0a03e90916c",
+    "events": [
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "force_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:05:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "60ace0a03e90916c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "60ace0a03e90916c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "60ace0a03e90916c",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:06:00+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "restart",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c5e2ef22a2252efd",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_discharge_house": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {},
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 0,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     }
+    ],
+    "ops": [],
+    "persist_first": true
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "e37e3b2fa76182bc",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": []
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "82669744edefe577",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_grid_charge": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:40+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85aa166a0a91757d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "f1e2edeab3a44dff",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "7480be93581260b3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "start_hold": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 2,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:01:30+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "4e06bec24bbb17e4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      0.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "max_discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "20444cb69249a79a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "ef9b79ac152b974c",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "write",
+      "reason": "max_discharge_power",
+      "restore": true,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "max_discharge_power",
+      "number",
+      "number.marstek_max_discharge_power",
+      2500.0,
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "number.marstek_max_discharge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "max_discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "max_discharge_power"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "1993f759ee65451f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_drops": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 0,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:rs485_control:no_read_back",
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:rs485_control:no_read_back",
+    "released_at": "2026-11-14T02:01:00+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "aaba203f35e5d34e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaba203f35e5d34e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaba203f35e5d34e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaba203f35e5d34e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "aaba203f35e5d34e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "not_taken",
+      "read": "off",
+      "reason": "rs485_control",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:rs485_control:no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:rs485_control:no_read_back",
+      "written": [
+       "rs485_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "f235720ffe8a295a",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {}
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": "write_not_taken:rs485_control:service_failed",
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "blocked",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 0.0,
+    "reason": "write_not_taken:rs485_control:service_failed",
+    "released_at": "2026-11-14T02:00:10+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 0,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "rs485_control",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "write_not_taken:rs485_control:service_failed"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "write_not_taken:rs485_control:service_failed",
+      "written": [
+       "rs485_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8841c554daa941f0",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_raises_on_hand_back": {
+  "end": {
+   "ledger": {
+    "claims": {
+     "switch.marstek_rs485_control": {
+      "adopted": false,
+      "at": "2026-11-14T02:01:30+01:00",
+      "deadline": "2026-11-14T02:02:30+01:00",
+      "diverging_since": null,
+      "entity_id": "switch.marstek_rs485_control",
+      "given_up": false,
+      "intended": "off",
+      "last_read": "off",
+      "owned": "off",
+      "owned_at": "2026-11-14T02:01:40+01:00",
+      "step": null,
+      "verdict": "owned"
+     }
+    },
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 4,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 1
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 1
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": "grid_charge",
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": "DEVICE",
+    "entered_at": "2026-11-14T02:00:00+01:00",
+    "entities": {
+     "charge_power": "number.marstek_charge_power",
+     "force_mode": "select.marstek_force_mode",
+     "max_discharge_power": "number.marstek_max_discharge_power",
+     "rs485_control": "switch.marstek_rs485_control"
+    },
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "restoring",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:00:00+01:00",
+    "rate_kw": 3.0,
+    "reason": "plan_self_consume",
+    "released_at": null,
+    "renew": [],
+    "restore_values": {
+     "force_mode": "standby",
+     "max_discharge_power": 2500.0,
+     "rs485_control": "off"
+    },
+    "retake": false,
+    "retries": {
+     "force_mode": [
+      2,
+      "2026-11-14T02:04:00+01:00"
+     ]
+    },
+    "sent": [
+     "force_mode",
+     "rs485_control"
+    ],
+    "setpoint_writes_today": 2,
+    "settle": {},
+    "settle_misses": 0,
+    "settle_until": null,
+    "snapshot": {
+     "force_mode": "standby",
+     "max_discharge_power": "2500",
+     "rs485_control": "off"
+    },
+    "snapshot_at": "2026-11-14T02:00:00+01:00",
+    "target": {
+     "force_mode": "standby",
+     "max_discharge_power": 2500.0,
+     "rs485_control": "off"
+    },
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:00:00+01:00",
+    "writes_today": 1,
+    "written": [
+     "rs485_control",
+     "charge_power",
+     "force_mode"
+    ],
+    "wrote": {
+     "charge_power": 2500.0,
+     "force_mode": "charge",
+     "rs485_control": true
+    }
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "fe285bfcb7cfa794",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "7a9e4db1c559be44",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "56b47a6ac4fc4074",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "85aa166a0a91757d",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "1c0eeaaf66902ee3",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "not_taken",
+      "reason": "force_mode",
+      "why": "service_failed"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d0019d8b441a3f81",
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "d0019d8b441a3f81",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "8396ec57231ff8ea",
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "2b3c4e89e8d24927",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b3c4e89e8d24927",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b3c4e89e8d24927",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b3c4e89e8d24927",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "2b3c4e89e8d24927",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "613bee2d77ee497e",
+    "events": [
+     {
+      "at": "2026-11-14T02:03:00+01:00",
+      "kind": "not_taken",
+      "read": "charge",
+      "reason": "force_mode",
+      "why": "no_read_back"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "613bee2d77ee497e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "613bee2d77ee497e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "613bee2d77ee497e",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ },
+ "write_times_out": {
+  "end": {
+   "ledger": {
+    "claims": {},
+    "counters": {
+     "2026-11-14": {
+      "confirmed": 5,
+      "external": 0,
+      "shadow_external": 0,
+      "unconfirmed": 0
+     }
+    }
+   },
+   "monitor": {
+    "counters": {
+     "2026-11-14": {
+      "no_effect": 0,
+      "partial": 0,
+      "writes": 2
+     }
+    },
+    "watch": null
+   },
+   "state": {
+    "action": null,
+    "blocked": null,
+    "brand": "marstek",
+    "covered_at": null,
+    "day": "2026-11-14",
+    "device_id": null,
+    "entered_at": "2026-11-14T02:23:40+01:00",
+    "entities": {},
+    "given_up": [],
+    "in_flight": [],
+    "management_unknown_since": null,
+    "peak_low_since": null,
+    "pending": null,
+    "phase": "idle",
+    "phase_kw": null,
+    "phased": false,
+    "rate_changed_at": "2026-11-14T02:23:40+01:00",
+    "rate_kw": 0.0,
+    "reason": "plan_self_consume",
+    "released_at": "2026-11-14T02:25:20+01:00",
+    "renew": [],
+    "restore_values": {},
+    "retake": false,
+    "retries": {},
+    "sent": [],
+    "setpoint_writes_today": 2,
+    "snapshot": {},
+    "snapshot_at": null,
+    "target": {},
+    "unrestored": [],
+    "unsure": [],
+    "variant": null,
+    "watchdog_at": "2026-11-14T02:23:40+01:00",
+    "writes_today": 2,
+    "written": []
+   },
+   "unstored": {
+    "command_wait_since": null,
+    "diverged": [],
+    "expired": [],
+    "phased": false,
+    "renewal_owned": {},
+    "restore_wait_since": {},
+    "silenced": false,
+    "surplus_raised_at": null,
+    "variant": null
+   }
+  },
+  "looks": [
+   {
+    "digest": "90ce7404e3207ba4",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "not_taken",
+      "reason": "rs485_control",
+      "why": "call_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "kind": "hand_back",
+      "reason": "call_timeout:rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "clean": false,
+      "kind": "handed_back",
+      "reason": "call_timeout:rs485_control",
+      "written": [
+       "rs485_control"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "b7700c2fb4551319",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "c3c3302fc39b4a82",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "unblocked",
+      "reason": "call_timeout:rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "force_mode": "standby",
+       "max_discharge_power": "2500",
+       "rs485_control": "off"
+      }
+     },
+     {
+      "at": "2026-11-14T02:23:40+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      true,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "digest": "eba0a0922ffec1c7",
+    "events": [
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:23:50+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "write",
+      "reason": "charge_power",
+      "restore": false,
+      "value": 2500.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_power",
+      "number",
+      "number.marstek_charge_power",
+      2500.0,
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "c4cec5f9533e2fb2",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "number.marstek_charge_power",
+      "kind": "confirmed",
+      "read": "2500",
+      "reason": "charge_power"
+     },
+     {
+      "at": "2026-11-14T02:24:00+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": false,
+      "value": "charge"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "charge",
+      false,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "467ab762790ee5d3",
+    "events": [
+     {
+      "at": "2026-11-14T02:24:10+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "charge",
+      "reason": "force_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "467ab762790ee5d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "467ab762790ee5d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "467ab762790ee5d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "467ab762790ee5d3",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "3174774034173311",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:25:00+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "write",
+      "reason": "force_mode",
+      "restore": true,
+      "value": "standby"
+     }
+    ],
+    "ops": [
+     [
+      "force_mode",
+      "select",
+      "select.marstek_force_mode",
+      "standby",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "d5b4aebc6a47ca1e",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "select.marstek_force_mode",
+      "kind": "confirmed",
+      "read": "standby",
+      "reason": "force_mode"
+     },
+     {
+      "at": "2026-11-14T02:25:10+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "write",
+      "reason": "rs485_control",
+      "restore": true,
+      "value": "off"
+     }
+    ],
+    "ops": [
+     [
+      "rs485_control",
+      "switch",
+      "switch.marstek_rs485_control",
+      "off",
+      true,
+      "DEVICE"
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "entity_id": "switch.marstek_rs485_control",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "rs485_control"
+     },
+     {
+      "at": "2026-11-14T02:25:20+01:00",
+      "clean": true,
+      "kind": "handed_back",
+      "reason": "plan_self_consume",
+      "written": [
+       "rs485_control",
+       "charge_power",
+       "force_mode"
+      ]
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "digest": "9288b8536f0f544f",
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ]
+ }
+}
