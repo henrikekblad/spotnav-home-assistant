@@ -31,7 +31,7 @@ from custom_components.spotnav.site.site_capacity import (
     SiteCalculationConfig,
     calculate_site_capacity,
 )
-from custom_components.spotnav.site.site_detection import MeterCandidate, single_phase_candidate
+from custom_components.spotnav.site.site_detection import DEAD_PHASE_HOLD_S, MeterCandidate, single_phase_candidate
 
 from .helpers import make_site_entry, set_current_sensor
 from .messages import field, get_message, register, update_entity_config_message
@@ -239,25 +239,93 @@ async def test_detection_reads_a_gx_without_l2_and_l3_supply_as_single_phase(has
     assert one.derived_entities is not None and set(one.derived_entities) == set(PHASES)
 
 
-async def test_a_derived_site_whose_l2_and_l3_read_0_v_runs_on_l1(hass: HomeAssistant) -> None:
-    """Configured with all three phases, a GX whose L2 and L3 have no supply (0 V, nothing drawn) is a single-phase
-    site and is not refused for them; an unknown L2 alone is no such evidence and keeps the site unusable."""
-    derived = {
-        phase: {"power": f"sensor.gx_{phase.lower()}_power", "voltage": f"sensor.gx_{phase.lower()}_voltage"}
-        for phase in PHASES
-    }
-    for phase, volts, watts in (("l1", "231", "2300"), ("l2", "0", "0"), ("l3", "0", "0")):
+def _gx_states(hass: HomeAssistant, readings: dict[str, tuple[str, str]]) -> None:
+    for phase, (volts, watts) in readings.items():
         hass.states.async_set(f"sensor.gx_{phase}_power", watts, {"unit_of_measurement": "W"})
         hass.states.async_set(f"sensor.gx_{phase}_voltage", volts, {"unit_of_measurement": "V"})
-    entry = make_site_entry(
-        hass, entry_id="gx", main_fuse_a=100.0, measurement_mode=MEASUREMENT_MODE_DERIVED, derived_entities=derived
+
+
+_GX_DERIVED = {
+    phase: {"power": f"sensor.gx_{phase.lower()}_power", "voltage": f"sensor.gx_{phase.lower()}_voltage"}
+    for phase in PHASES
+}
+_GX_DEAD = {"l1": ("231", "2300"), "l2": ("0", "0"), "l3": ("0", "0")}
+
+
+async def _gx_site(hass: HomeAssistant, readings: dict[str, tuple[str, str]], **entry: object):
+    _gx_states(hass, readings)
+    site_entry = make_site_entry(
+        hass, entry_id="gx", main_fuse_a=100.0, measurement_mode=MEASUREMENT_MODE_DERIVED,
+        derived_entities=_GX_DERIVED, **entry,
     )
-    assert await hass.config_entries.async_setup(entry.entry_id)
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()
-    site = controller_of(hass, entry.entry_id)
+    site = controller_of(hass, site_entry.entry_id)
+    clock = {"now": 1000.0}
+    site._yield_now = lambda: clock["now"]  # noqa: SLF001
+    site._dead_phases_since = None  # noqa: SLF001 - the hold starts on the test's clock
+    return site, clock
+
+
+async def test_a_derived_site_whose_l2_and_l3_read_0_v_runs_on_l1_after_the_hold(hass: HomeAssistant) -> None:
+    """Configured with all three phases, a GX whose L2 and L3 have no supply (0 V, nothing drawn) is a single-phase
+    site once they have read so without a break for the hold; until then, and with an unknown L2, the site keeps its
+    three phases and is unusable for the ones it cannot read."""
+    site, clock = await _gx_site(hass, _GX_DEAD)
+    assert site.site_phases == PHASES
+    assert site.result.state != "observing"
+
+    clock["now"] += DEAD_PHASE_HOLD_S - 1
+    assert site.site_phases == PHASES
+    clock["now"] += 2
     assert site.site_phases == SINGLE_PHASE
+    _gx_states(hass, _GX_DEAD)
+    await hass.async_block_till_done()
+    site._recompute(schedule_apply=False)  # noqa: SLF001
     assert site.result.state == "observing"
     assert site.result.measured_margin_a["L2"] is None
 
+    # Unknown is no evidence: three phases while it lasts, and L1 alone at once when the 0 V is read again.
     hass.states.async_set("sensor.gx_l2_voltage", "unknown", {"unit_of_measurement": "V"})
+    assert site.site_phases == PHASES
+    hass.states.async_set("sensor.gx_l2_voltage", "0", {"unit_of_measurement": "V"})
+    assert site.site_phases == SINGLE_PHASE
+
+
+async def test_a_three_phase_meter_reading_0_for_a_moment_stays_three_phase(hass: HomeAssistant) -> None:
+    """A three-phase meter whose L2 and L3 read 0 V and 0 W for a while (a failed poll written as 0) never makes the
+    site single-phase: a break in the evidence starts the hold again, and a phase once seen live stays a phase."""
+    site, clock = await _gx_site(hass, _GX_DEAD)
+    clock["now"] += DEAD_PHASE_HOLD_S - 1
+    assert site.site_phases == PHASES
+    # The meter comes back before the hold is over: the phases are live.
+    _gx_states(hass, {"l2": ("229", "400"), "l3": ("230", "0")})
+    assert site.site_phases == PHASES
+    # It reads 0 again, for however long: the site had three phases and has them still.
+    _gx_states(hass, _GX_DEAD)
+    clock["now"] += 10 * DEAD_PHASE_HOLD_S
+    assert site.site_phases == PHASES
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site.result.state != "observing"
+
+
+async def test_a_charger_drawing_on_several_phases_keeps_the_site_three_phase(hass: HomeAssistant) -> None:
+    """A charger that reads a current on more than one phase shows the supply has them, whatever the meter reads."""
+    source = {
+        "kind": "separate_entities",
+        "entity_ids": {phase: f"sensor.car_{phase.lower()}" for phase in PHASES},
+    }
+    site, clock = await _gx_site(
+        hass, _GX_DEAD, charger_entry_ids=["car"],
+        phase_wiring={"car": {"phases": 3, "phase": None, "measured_current_source": source}},
+    )
+    assert site.site_phases == PHASES  # the hold starts
+    for phase in ("l1", "l2", "l3"):
+        set_current_sensor(hass, f"sensor.car_{phase}", 10)
+    clock["now"] += DEAD_PHASE_HOLD_S + 1
+    assert site.site_phases == PHASES
+    assert site._other_phase_seen_live is True  # noqa: SLF001
+    for phase in ("l2", "l3"):
+        set_current_sensor(hass, f"sensor.car_{phase}", 0)
+    clock["now"] += DEAD_PHASE_HOLD_S + 1
     assert site.site_phases == PHASES

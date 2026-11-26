@@ -1792,6 +1792,11 @@ DEAD_PHASE_BELOW_V: Final = 50.0
 #: What a phase with no supply may still read (W, A): a meter's noise around nothing.
 DEAD_PHASE_IDLE_W: Final = 50.0
 DEAD_PHASE_IDLE_A: Final = 0.5
+#: How long (s) a site set up with three phases must read no supply on L2 and L3 without a break before it runs on L1
+#: (`SiteCapacityController._dead_other_phases`): longer than a meter's restart, a failed poll or a default value lasts.
+DEAD_PHASE_HOLD_S: Final = 300.0
+#: A charger's current on a phase above this (A) is the car drawing there, not the sensor's noise.
+LIVE_PHASE_A: Final = 1.0
 _NO_READING: Final = frozenset({"unavailable", "unknown", ""})
 
 

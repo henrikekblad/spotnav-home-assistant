@@ -129,7 +129,7 @@ from ..battery.runtime import BatteryShadow
 from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .meter_cadence import ReportCadence, solar_liveness
-from .site_detection import DEAD_PHASE_BELOW_V, DEAD_PHASE_IDLE_A, DEAD_PHASE_IDLE_W
+from .site_detection import DEAD_PHASE_BELOW_V, DEAD_PHASE_HOLD_S, DEAD_PHASE_IDLE_A, DEAD_PHASE_IDLE_W, LIVE_PHASE_A
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
 from .charger_test_hold import ChargerTestHold
@@ -785,6 +785,12 @@ class SiteCapacityController:
         # Clock for `YieldObservation.now`, in seconds. Monotonic so a wall-clock step cannot freeze
         # the stepper; replaceable in tests.
         self._yield_now: Callable[[], float] = time.monotonic
+        # A derived site's L2 and L3 read as having no supply (`_dead_other_phases`): since when (`_yield_now`
+        # seconds) they have read so without a break, whether they have done so for `DEAD_PHASE_HOLD_S` once, and
+        # whether either was ever seen live since the start (then the site stays three-phase until a restart).
+        self._dead_phases_since: float | None = None
+        self._dead_phases_held = False
+        self._other_phase_seen_live = False
         # Each "Automatic" single-phase charger's followed phase (`site/auto_phase.py`), by `_yield_now`.
         self._auto_phases: dict[str, AutoPhaseTracker] = {}
         # Starts on their way, per charger: the amps a start was given, the phases it draws from, and until
@@ -5389,13 +5395,71 @@ class SiteCapacityController:
         return PHASES
 
     def _dead_other_phases(self) -> bool:
-        """Whether a derived site's L2 and L3 both have no supply now while L1 has: each one's own voltage reads below
-        `DEAD_PHASE_BELOW_V` and its power (and current, where read) about nothing, fresh, and L1's voltage reads above
-        it. An integration that makes all three phases' entities on a single-phase supply (hass-victron on a
-        single-phase GX). A phase whose readings are missing or unknown is no such evidence: on a three-phase meter
-        that is a phase unread, which the site reports and never leaves unwatched."""
-        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+        """Whether a derived site's L2 and L3 are taken to have no supply while L1 has (an integration that makes all
+        three phases' entities on a single-phase supply: hass-victron on a single-phase GX), so the site runs on L1.
+
+        The readings now must say so (`_other_phases_now`), and must have said so without a break for
+        `DEAD_PHASE_HOLD_S` (at least twice the site's maximum age) once since the start: a three-phase meter that
+        reads 0 on L2 and L3 for a moment (a restart with L1 read first, a failed poll written as 0, a template's
+        default) is still a three-phase site, whose phases are then missing and never left unwatched. After that
+        the evidence counts at once whenever it is read again. It never counts once L2 or L3 was seen live since
+        the start (its voltage read, or a charger drawing on more than one phase): a supply that had three phases
+        has them still, whatever its meter reads now."""
+        now_s = self._yield_now()
+        evidence = self._other_phases_now()
+        if evidence == "live" or self._charger_on_several_phases():
+            self._other_phase_seen_live = True
+        if self._other_phase_seen_live:
+            self._dead_phases_since = None
+            self._dead_phases_held = False
             return False
+        if evidence != "dead":
+            if not self._dead_phases_held:
+                self._dead_phases_since = None
+            return False
+        if self._dead_phases_held:
+            return True
+        if self._dead_phases_since is None:
+            self._dead_phases_since = now_s
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        if now_s - self._dead_phases_since >= max(DEAD_PHASE_HOLD_S, 2.0 * max_age_s):
+            self._dead_phases_held = True
+        return self._dead_phases_held
+
+    def _charger_on_several_phases(self) -> bool:
+        """Whether a charger of the site reads a current (above `LIVE_PHASE_A`, fresh) on more than one of its phases
+        now: the supply then has more than one phase, whatever the site's meter reads."""
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        phase_wiring: Mapping[str, Any] = self.config.get(CONF_PHASE_WIRING) or {}
+        for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+            wiring = phase_wiring.get(charger_entry_id) or {}
+            source = source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE))
+            if source is None or source.kind == "power":
+                # A power is spread over three phases by reckoning: it says nothing of the phases drawn on.
+                continue
+            measured = self._read_charger_measured_current(wiring)
+            if measured is None:
+                continue
+            drawing = 0
+            for phase in PHASES:
+                value = measured.get(phase)
+                if value is None or value.value is None or value.problem is not None:
+                    continue
+                ages = [age for age in (value.age_s, value.report_age_s) if age is not None]
+                if ages and min(ages) <= max_age_s and abs(value.value) > LIVE_PHASE_A:
+                    drawing += 1
+            if drawing > 1:
+                return True
+        return False
+
+    def _other_phases_now(self) -> Literal["dead", "live"] | None:
+        """What a derived site's readings say of L2 and L3 now. `dead`: each one's own voltage reads below
+        `DEAD_PHASE_BELOW_V` and its power (and current, where read) about nothing, fresh, and L1's voltage reads
+        above it. `live`: the voltage of one of them reads at or above it, fresh. `None`: neither (a phase whose
+        readings are missing or unknown is no evidence: on a three-phase meter that is a phase unread, which the
+        site reports and never leaves unwatched)."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+            return None
         entities: Mapping[str, Any] = self.config.get(CONF_DERIVED_ENTITIES) or {}
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
 
@@ -5422,21 +5486,23 @@ class SiteCapacityController:
                 age_s = min(age_s, (dt_util.utcnow() - reported).total_seconds())
             return value if math.isfinite(value) and age_s <= max_age_s else None
 
+        others = {phase: reading((entities.get(phase) or {}).get("voltage")) for phase in ("L2", "L3")}
+        if any(volts is not None and abs(volts) >= DEAD_PHASE_BELOW_V for volts in others.values()):
+            return "live"
         l1_volts = reading((entities.get("L1") or {}).get("voltage"))
         if l1_volts is None or l1_volts < DEAD_PHASE_BELOW_V:
-            return False
+            return None
         for phase in ("L2", "L3"):
             phase_entities = entities.get(phase) or {}
-            volts = reading(phase_entities.get("voltage"))
-            if volts is None or abs(volts) >= DEAD_PHASE_BELOW_V:
-                return False
+            if others[phase] is None:
+                return None
             for key, idle in (("power", DEAD_PHASE_IDLE_W), ("current", DEAD_PHASE_IDLE_A)):
                 if not phase_entities.get(key):
                     continue
                 value = reading(phase_entities.get(key), key)
                 if value is None or abs(value) > idle:
-                    return False
-        return True
+                    return None
+        return "dead"
 
     def _read_battery_estimate(self) -> BatteryYieldEstimate | None:
         """Optional diagnostic home-battery input (`site/site_capacity.py`); `None` when neither a
