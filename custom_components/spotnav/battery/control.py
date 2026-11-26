@@ -41,6 +41,17 @@ The order on every path:
   older pass to run on (`carry_after`). Never carried: another brand's
   report, one passed on a key this release holds back (`commands.blocked`), a hold passed in a variant the recipe
   dropped, a report older than a failed one.
+* **The plan's own commands show steps on the key** (`_credit_plan`, `gate.plan_proved`): while control runs the
+  plan, a command it wrote on the key now (`key_since`) that the executor's monitor saw act (the event `proved`,
+  `monitor.proves`) counts as that mode passed in the key's own report, and a hand-back of what the plan wrote on the
+  key that left every control as found (the event `handed_back` with `clean`) as the hand-back passed. The rows say
+  `via: plan`. Only the plan's own: nothing a test action, the routine or a hardware test wrote, nothing in shadow,
+  never a failure, never the export limit, a charge per phase or an expiry; a hold only in the variant control runs
+  on, a grid charge not where it is allowed only per phase. What the routine still has to check a week
+  (`gate.PLAN_PROOF_DEADLINE_S`) after the key was first read is checked ahead of the plan (`_plan_aside`): at a moment that
+  suits the routine by every rule but the idle executor (`gate.suitable_ahead`) the plan stands aside for at most
+  `ASIDE_S`, the battery is handed back, and the routine starts as it does when the plan is idle. A moment that
+  does not come leaves the plan running; control never stops for the deadline.
 * **Sigenergy's AI mode** (owner 2026-11-16): taken over only with `battery_control_ai_takeover_ack`; whenever
   control stops running after such a takeover (turned off, back to shadow only, a failed check, a firmware change,
   the acknowledgement withdrawn) a note asks the person to set AI mode again in the app (the hand-back leaves the
@@ -145,7 +156,7 @@ from .export_shell import ExportShell
 from .facts import BatteryFacts
 from .mirrored import NEED_MIRRORED_READ_ONLY, READ_ONLY_MIRRORED
 from .ledger import Ledger
-from .monitor import Capability, Monitor
+from .monitor import Capability, Command, Monitor
 from .outside_control import RESERVE_MARGIN_PCT
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -225,6 +236,13 @@ PER_PHASE_GAIN_KW: Final = 0.5
 HA_DOWN_OFFER_GAIN_KW: Final = 1.0
 #: The note shown after control is turned off on a plant taken over from AI mode.
 NOTE_AI_MODE_BACK: Final = "ai_mode_back"
+
+#: The mode of the report each action of the plan's shows when its command was seen to act (`_credit_plan`). A sale
+#: is left out: the routine's step is the discharge to the house, and a sale may write another control.
+_PLAN_PROVES: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge_house"}
+#: How long the plan stands aside for a check past its deadline to start (s, `_plan_aside`): the hand-back and the
+#: battery taking up the house again take well under a minute; the routine then runs its own length.
+ASIDE_S: Final = 300.0
 
 #: `(action, battery kW magnitude, slot end)` of the running slot, or `None`.
 PlanSource = Callable[[datetime], tuple[str, float, datetime | None] | None]
@@ -544,6 +562,15 @@ class BatteryControl:
         #: had forgotten by turning control on again (`_transitions`), a person's failed hardware test
         #: (`_keep_hardware_verdict`). No report passed before it is carried onto another key (`control_report`).
         self.carry_after: str | None = None
+        #: When each firmware key was first read here (ISO, by key; the newest `MAX_REPORTS`): a command of the
+        #: plan's counts for a key only when written after that, and what the plan has not shown
+        #: `gate.PLAN_PROOF_DEADLINE_S` later is checked ahead of it (`_plan_aside`).
+        self.key_since: dict[str, str] = {}
+        #: The key the plan last wrote something on that it still holds (`_credit_plan`); not kept over a restart.
+        self._plan_wrote: str | None = None
+        #: Until when the plan stands aside for a check past its deadline, and when it last began to (`_plan_aside`).
+        self._aside_until: datetime | None = None
+        self._aside_at: datetime | None = None
         #: The brands gated after running (`commands.GATED_AFTER_RUNNING`) this plant was looked at for
         #: grandfathering (`_grandfather_running`), granted or not: each is decided once and never again.
         self.grandfather_checked: list[str] = []
@@ -756,6 +783,10 @@ class BatteryControl:
         )
         carry_after = data.get("carry_after")
         self.carry_after = carry_after if isinstance(carry_after, str) else None
+        since = data.get("key_since")
+        self.key_since = {
+            key: at for key, at in since.items() if isinstance(key, str) and isinstance(at, str)
+        } if isinstance(since, dict) else {}
         checked = data.get("grandfather_checked")
         self.grandfather_checked = (
             [brand for brand in checked if isinstance(brand, str)] if isinstance(checked, list) else []
@@ -1331,6 +1362,7 @@ class BatteryControl:
         self._grandfather_running()
         self._void_blocked_passes()
         options = self.options()
+        self._note_key(now)
         await self._async_read_sources(now)
         self._transitions(options, now)
         self._preheat_look(now, options)
@@ -1352,6 +1384,7 @@ class BatteryControl:
                 self._end_verification(now)
             await self._async_release(now, "ai_takeover_withdrawn")
         elif trial is not None and not trial.export:
+            self._plan_wrote = None  # what is held is no longer the plan's alone
             await self._async_battery_step(now, self._trial_slot(now, trial, options), allowed=True)
         elif self.verification is not None and not self.verification.done:
             if options.writes or (self._hw_run and options.enabled):
@@ -1364,8 +1397,11 @@ class BatteryControl:
         else:
             state = self.state(options)
             if state == "on":
-                await self._async_battery_step(now, self._control_slot(now, options), allowed=True)
+                aside = self._plan_aside(now, options)
+                slot = None if aside else self._control_slot(now, options)
+                self._credit_plan(await self._async_battery_step(now, slot, allowed=True), now)
             else:
+                self._plan_wrote = None
                 await self._async_release(now, "shadow_only" if state == "shadow_only" else f"control_{state}")
             if options.writes and trial is None:
                 await self._async_maybe_verify(now, options)
@@ -1449,6 +1485,134 @@ class BatteryControl:
             self.notes = [note for note in self.notes if note.get("code") != NOTE_AI_MODE_BACK]
             self.took_from_ai = False
 
+    # ---- the plan's own commands as the check of a new key
+
+    def _note_key(self, now: datetime) -> None:
+        """Remember when the firmware key read now was first read (`key_since`)."""
+        key = self.firmware_key()
+        if not gate.firmware_known(key) or key in self.key_since:
+            return
+        kept = sorted({**self.key_since, key: now.isoformat()}.items(), key=lambda item: item[1])
+        self.key_since = dict(kept[-MAX_REPORTS:])
+
+    def _key_since(self) -> datetime | None:
+        return gate.parse_time(self.key_since.get(self.firmware_key()))
+
+    def _credit_plan(self, result: StepResult | None, now: datetime) -> None:
+        """Count what a step of the plan's showed for the report of the key now (see the module). Called only for a
+        step control made for the plan: never for the routine's, a hardware test's or a test action's."""
+        executor = self.executor
+        key = self.firmware_key()
+        since = self._key_since()
+        if result is None or executor is None or since is None or not gate.firmware_known(key):
+            self._plan_wrote = None
+            return
+        for event in result.events:
+            kind = event.get("kind")
+            row: dict[str, Any] | None = None
+            mode = variant = None
+            if kind == "proved":
+                detail = event.get("detail") if isinstance(event.get("detail"), Mapping) else {}
+                command = Command.from_dict(detail.get("command"))
+                mode = _PLAN_PROVES.get(str(event.get("reason")))
+                if mode is None or command is None or not command.written or command.at < since:
+                    continue  # a dry run, or a command written before this key was read
+                report = self.control_report()
+                if mode == "charge" and gate.charge_by_phases(report):
+                    continue  # the balanced charge says nothing where a charge is allowed only per phase
+                if mode == "hold" and executor.control.variant_names():
+                    variant = event.get("variant")
+                    if not isinstance(variant, str) or variant != self.hold_variant():
+                        continue  # not the hold control runs on
+                row = {
+                    "action": event.get("reason"), "rate_kw": command.rate_kw, "before_kw": command.before_kw,
+                    "commanded_at": command.at.isoformat(), "expected_kw": detail.get("expected_kw"),
+                    "readings": [dict(item) for item in detail.get("readings") or () if isinstance(item, Mapping)],
+                }
+            elif kind == "handed_back":
+                if event.get("clean") is True and self._plan_wrote == key:
+                    mode = gate.MODE_NORMAL
+                    row = {"action": ACTION_SELF_CONSUME, "written": list(event.get("written") or ()),
+                           "reason": event.get("reason")}
+                self._plan_wrote = None
+            elif kind == "restore_failed":
+                self._plan_wrote = None
+            if mode is None or row is None:
+                continue
+            proved = gate.plan_proved(
+                self.reports.get(key) if isinstance(self.reports.get(key), dict) else None, mode, key=key,
+                brand=executor.control.brand, firmware=self.facts.firmware, now=now, variant=variant, detail=row,
+            )
+            if proved is not None:
+                self._keep_report(key, proved)
+                self._log([{"at": now.isoformat(), "kind": "plan_proved", "reason": mode, "key": key}])
+                _LOGGER.info("SpotNav battery control: the plan's own command showed %s on %s", mode, key)
+        if any(not op.restore for op in result.ops):
+            self._plan_wrote = key
+
+    def _deadline_due(self, now: datetime) -> bool:
+        """Whether the key now has had its week (`gate.deadline_passed`) and the routine still has a mode control
+        needs to check on it: one of its own (`gate.needs_run`) or the capability per phase. An expiry is no reason
+        (it only lifts a cap, and waits for the plan to be idle as before)."""
+        if not self.firmware_known() or not gate.deadline_passed(self._key_since(), now):
+            return False
+        report = self.report()
+        return gate.needs_run(report, self._supported_modes()) or self._per_phase_due(report)
+
+    def _plan_aside(self, now: datetime, options: gate.Options) -> bool:
+        """Whether the plan stands aside at this look for a check past its deadline (see the module). It begins to
+        only at a moment `gate.suitable_ahead` takes, at most once per `gate.RETRY_GAP_S` and that long after the
+        routine's last run, and ends after `ASIDE_S` (the routine, once started, runs in the plan's place by
+        itself). While it stands aside the plan's slot is none, so the executor hands the battery back."""
+        executor = self.executor
+        if executor is None or not options.writes or self.trial is not None or not self._deadline_due(now):
+            self._aside_until = None
+            return False
+        if self._aside_until is not None:
+            if now < self._aside_until:
+                return True
+            self._aside_until = None
+            self._log([{"at": now.isoformat(), "kind": "plan_aside_ended", "reason": self.waiting_for or "moment"}])
+            return False
+        if executor.state.phase != "active":
+            # Idle: the plan leaves the battery alone and the routine starts as ever. Handing back or blocked:
+            # nothing of the plan's to step aside.
+            return False
+        last = gate.parse_time((self.report() or {}).get("last_run_at"))
+        for at in (last, self._aside_at):
+            if at is not None and (now - at).total_seconds() < gate.RETRY_GAP_S:
+                return False
+        # The plant reads as taken because the plan holds it (`preview` sees SpotNav's own Remote EMS): no blocker
+        # here. Once handed back, the routine's own start reads it afresh (`gate.suitable`).
+        moment = replace(self._moment(now, executor), blocker=None)
+        if gate.suitable_ahead(moment) is not None:
+            return False
+        self._aside_at = now
+        self._aside_until = now + timedelta(seconds=ASIDE_S)
+        self._log([{"at": now.isoformat(), "kind": "plan_aside", "reason": self.firmware_key()}])
+        _LOGGER.info("SpotNav battery control: the plan stands aside for the check of %s", self.firmware_key())
+        return True
+
+    def _plan_proof_block(self) -> dict[str, Any] | None:
+        """For diagnostics: since when the key now is read, what the plan's own commands have shown on it and
+        whether the routine now goes ahead of the plan."""
+        try:
+            since = self._key_since()
+            now = dt_util.now()
+            return {
+                "key_since": dict(self.key_since),
+                "shown_by_plan": list(gate.plan_shown(self.report())),
+                "deadline_at": None if since is None else (
+                    since + timedelta(seconds=gate.PLAN_PROOF_DEADLINE_S)
+                ).isoformat(),
+                "ahead_of_plan": self._deadline_due(now),
+                "aside_until": None if self._aside_until is None else self._aside_until.isoformat(),
+                "aside_at": None if self._aside_at is None else self._aside_at.isoformat(),
+            }
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("plan_proof_block: ignored failure (diagnostics must never fail on one block)", exc_info=True)
+            return None
+
     def _add_note(self, code: str, now: datetime) -> None:
         if not any(note.get("code") == code for note in self.notes):
             self.notes.append({"code": code, "at": now.isoformat()})
@@ -1456,6 +1620,7 @@ class BatteryControl:
     async def _async_release(self, now: datetime, reason: str) -> None:
         """Hand back whatever the battery's executor holds (only restores are written)."""
         executor = self.executor
+        self._plan_wrote = None
         if executor is None or (executor.state.phase in ("idle", "blocked") and not executor.state.holds_snapshot):
             return
         await self._async_step(executor, self._hand_back_inputs(now, executor, reason), allowed=False)
@@ -1802,6 +1967,8 @@ class BatteryControl:
         if expiry is not None:
             # Tried only after a hold that passed in this same run.
             modes = (*modes, *(() if "hold" in modes else ("hold",)), gate.MODE_EXPIRY)
+        self._plan_wrote = None
+        self._aside_until = None
         self.verification = Verification(
             executor, now, firmware=self.facts.firmware, modes=modes, tried=gate.variants_tried(previous),
             expiry=None if expiry is None else expiry[0], expiry_phased=expiry is not None and expiry[1] is not None,
@@ -2052,6 +2219,7 @@ class BatteryControl:
             car_charging=bool(chargers),
             blocker=seen.blocker,
             executor_idle=executor.state.phase == "idle" and not executor.state.holds_snapshot,
+            house_deficit_kw=inputs.house_deficit_kw,
         )
 
     # ---- a person's hardware test
@@ -2117,6 +2285,7 @@ class BatteryControl:
                 charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=deadman,
             )
             self._hw_run = True
+            self._plan_wrote = None
             self._verify_key = None
             self.hardware_report = None
             self._log([{"at": now.isoformat(), "kind": "hardware_test_started", "reason": self.firmware_key()}])
@@ -3719,6 +3888,7 @@ class BatteryControl:
             "gate": {"key": self._key, "enabled_seen": self._enabled_seen, "took_from_ai": self.took_from_ai,
                      "notes": [dict(note) for note in self.notes], "hardware_brands": list(self.hardware_brands),
                      "hardware_failed": list(self.hardware_failed), "carry_after": self.carry_after,
+                     "key_since": dict(self.key_since),
                      "grandfather_checked": list(self.grandfather_checked),
                      "tester": None if self.tester is None else dict(self.tester),
                      "control_codes": {brand: dict(code) for brand, code in self.control_codes.items()}},
@@ -4008,6 +4178,8 @@ class BatteryControl:
             "carried_from": self._carried_block(),
             # When the plant last failed a check that left no failed report: nothing older is carried.
             "carry_after": self.carry_after,
+            # What the plan's own commands showed on the key now, and its deadline (`_credit_plan`, `_plan_aside`).
+            "plan_proof": self._plan_proof_block(),
             "log": list(self.log),
             "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
