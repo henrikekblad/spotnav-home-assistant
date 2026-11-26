@@ -261,7 +261,7 @@
         },
         "field": "direct_L2",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -284,7 +284,7 @@
         },
         "field": "direct_L3",
         "kind": "entity",
-        "required": true,
+        "required": false,
         "scope": "site",
         "writable": true
       },

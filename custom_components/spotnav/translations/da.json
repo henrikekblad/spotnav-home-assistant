@@ -103,7 +103,7 @@
       },
       "site_details": {
         "title": "Måleentiteter",
-        "description": "Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen.{charger_hint}",
+        "description": "Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen. Ved enfaset tilslutning udfylder du kun L1.{charger_hint}",
         "data": {
           "direct_L1": "Netstrøm L1",
           "direct_L2": "Netstrøm L2",
@@ -324,7 +324,8 @@
       "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
       "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
       "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu.",
-      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3."
+      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3.",
+      "phases_incomplete": "Ved enfaset tilslutning lader du L2 og L3 stå tomme; ellers udfylder du alle tre faser."
     }
   },
   "options": {
@@ -404,7 +405,7 @@
       },
       "site_details": {
         "title": "Måleentiteter",
-        "description": "{reason}Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen.",
+        "description": "{reason}Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen. Ved enfaset tilslutning udfylder du kun L1.",
         "data": {
           "direct_L1": "Netstrøm L1",
           "direct_L2": "Netstrøm L2",
@@ -527,7 +528,8 @@
       "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu.",
       "switch_load_incomplete": "Angiv belastningens mærkeeffekt og driftstid.",
       "switch_load_floor_pair": "Temperaturføleren og den laveste temperatur hører sammen: angiv begge eller ingen.",
-      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3."
+      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3.",
+      "phases_incomplete": "Ved enfaset tilslutning lader du L2 og L3 stå tomme; ellers udfylder du alle tre faser."
     }
   },
   "selector": {

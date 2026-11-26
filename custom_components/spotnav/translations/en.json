@@ -103,7 +103,7 @@
       },
       "site_details": {
         "title": "Measurement entities",
-        "description": "Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.{charger_hint}",
+        "description": "Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time. On a single-phase supply, fill in L1 only.{charger_hint}",
         "data": {
           "direct_L1": "L1 grid current",
           "direct_L2": "L2 grid current",
@@ -324,7 +324,8 @@
       "fee_value_required": "Enter your own figure, or choose the suggestion.",
       "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
       "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
-      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3."
+      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3.",
+      "phases_incomplete": "For a single-phase supply leave L2 and L3 empty; otherwise fill in all three phases."
     }
   },
   "options": {
@@ -404,7 +405,7 @@
       },
       "site_details": {
         "title": "Measurement entities",
-        "description": "{reason}Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.",
+        "description": "{reason}Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time. On a single-phase supply, fill in L1 only.",
         "data": {
           "direct_L1": "L1 grid current",
           "direct_L2": "L2 grid current",
@@ -527,7 +528,8 @@
       "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
       "switch_load_incomplete": "Give the load's rated power and its runtime.",
       "switch_load_floor_pair": "The temperature sensor and the lowest temperature go together: give both or neither.",
-      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3."
+      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3.",
+      "phases_incomplete": "For a single-phase supply leave L2 and L3 empty; otherwise fill in all three phases."
     }
   },
   "selector": {

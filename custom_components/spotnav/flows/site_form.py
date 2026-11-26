@@ -387,7 +387,8 @@ def site_details_schema(
 
     `skip_direct_fields` omits the direct-mode L1/L2/L3 pickers when the site's current was already
     resolved as a single generic source or "skip". Each charger's own wiring is a step of its own
-    (`charger_wiring_schema`).
+    (`charger_wiring_schema`). L1's sensors are required; L2's and L3's may stay empty, for a single-phase supply
+    (`core.electric.site_phase_count`), which `site_details_unit_errors` holds to L1 alone or all three.
     """
     direct_defaults = direct_defaults or {}
     derived_defaults = derived_defaults or {}
@@ -397,9 +398,10 @@ def site_details_schema(
         if mode == MEASUREMENT_MODE_DIRECT:
             for phase in PHASES:
                 key = f"direct_{phase}"
-                field_marker: Any = vol.Required(key, default=direct_defaults[phase]) if direct_defaults.get(
+                marker: Any = vol.Required if phase == "L1" else vol.Optional
+                field_marker: Any = marker(key, default=direct_defaults[phase]) if direct_defaults.get(
                     phase
-                ) else vol.Required(key)
+                ) else marker(key)
                 schema_dict[field_marker] = sensor_picker
         elif mode == MEASUREMENT_MODE_DERIVED:
             for phase in PHASES:
@@ -411,10 +413,12 @@ def site_details_schema(
                         # voltage stands in, so the field may stay empty.
                         schema_dict[vol.Optional(key)] = sensor_picker
                         continue
+                    # L2 and L3 may stay empty: a single-phase supply has only L1.
+                    marker = vol.Required if phase == "L1" else vol.Optional
                     field_marker = (
-                        vol.Required(key, default=existing_phase[sub_key])
+                        marker(key, default=existing_phase[sub_key])
                         if existing_phase.get(sub_key)
-                        else vol.Required(key)
+                        else marker(key)
                     )
                     schema_dict[field_marker] = sensor_picker
                 for sub_key, _quantity in DERIVED_OPTIONAL_SUBKEYS:
@@ -441,10 +445,24 @@ def site_details_unit_errors(
     hass, details: dict[str, Any], mode: str, *, skip_direct_fields: bool
 ) -> dict[str, str]:
     """Field -> error code for every picked site sensor whose unit is not the quantity's: current in A or
-    mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA.
-    Empty when the submission is fine (or has no entity fields)."""
+    mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA; and
+    `phases_incomplete` on an empty L2 or L3 sensor while the other phase has one: a site is measured on L1
+    alone (a single-phase supply) or on all three. Empty when the submission is fine (or has no entity fields)."""
     if skip_direct_fields:
         return {}
+    errors: dict[str, str] = {}
+    required = {MEASUREMENT_MODE_DIRECT: ("direct_{}",), MEASUREMENT_MODE_DERIVED: ("derived_{}_power",)}.get(mode, ())
+    for template in required:
+        filled = {phase: bool(details.get(template.format(phase))) for phase in ("L2", "L3")}
+        if any(filled.values()) and not all(filled.values()):
+            errors.update({template.format(phase): "phases_incomplete" for phase, has in filled.items() if not has})
+    if mode == MEASUREMENT_MODE_DERIVED:
+        for phase in ("L2", "L3"):
+            # A phase given power needs its voltage too (or its own current, which lets the nominal one stand in).
+            if details.get(f"derived_{phase}_power") and not (
+                details.get(f"derived_{phase}_voltage") or details.get(f"derived_{phase}_current")
+            ):
+                errors[f"derived_{phase}_voltage"] = "phases_incomplete"
     checks: list[tuple[str, str]] = []
     if mode == MEASUREMENT_MODE_DIRECT:
         checks = [(f"direct_{phase}", "current") for phase in PHASES]
@@ -452,7 +470,6 @@ def site_details_unit_errors(
         for phase in PHASES:
             checks += [(f"derived_{phase}_power", "power"), (f"derived_{phase}_voltage", "voltage")]
             checks += [(f"derived_{phase}_{sub_key}", quantity) for sub_key, quantity in DERIVED_OPTIONAL_SUBKEYS]
-    errors: dict[str, str] = {}
     for key, quantity in checks:
         code = unit_error(hass, details.get(key), quantity)
         if code is not None:
@@ -554,11 +571,14 @@ def parse_site_details(
     derived_entities: dict[str, dict[str, str]] = {}
     if skip_direct_fields:
         return phase_wiring, direct_entities, derived_entities
+    # A phase left empty is no phase: a single-phase supply stores L1 alone (`core.electric.site_phase_count`).
     if mode == MEASUREMENT_MODE_DIRECT:
-        direct_entities = {phase: details[f"direct_{phase}"] for phase in PHASES}
+        direct_entities = {phase: details[f"direct_{phase}"] for phase in PHASES if details.get(f"direct_{phase}")}
     elif mode == MEASUREMENT_MODE_DERIVED:
         derived_entities = {}
         for phase in PHASES:
+            if not details.get(f"derived_{phase}_power"):
+                continue
             entry = {"power": details[f"derived_{phase}_power"]}
             if details.get(f"derived_{phase}_voltage"):
                 entry["voltage"] = details[f"derived_{phase}_voltage"]

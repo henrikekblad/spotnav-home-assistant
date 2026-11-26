@@ -416,12 +416,16 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
             # Cleared: the export half goes with it (validation refused an export alone).
             updated.pop(CONF_GRID_POWER_SOURCE, None)
     if any(direct_field(phase) in changes for phase in PHASES):
-        # Entities named for the phases replace a stored current source (validation required all three).
+        # Entities named for the phases replace a stored current source (validation required L1, or all three). A
+        # phase cleared is no phase: a single-phase supply stores L1 alone (`core.electric.site_phase_count`).
         replaced = stored_site_current_source(entry) is not None
         direct = {} if replaced else dict(entry.data.get(CONF_DIRECT_ENTITIES) or {})
         for phase in PHASES:
             if direct_field(phase) in changes:
-                direct[phase] = changes[direct_field(phase)]
+                if changes[direct_field(phase)]:
+                    direct[phase] = changes[direct_field(phase)]
+                else:
+                    direct.pop(phase, None)
         updated[CONF_DIRECT_ENTITIES] = direct
         if replaced:
             updated.pop(CONF_SITE_CURRENT_SOURCE, None)
@@ -437,7 +441,8 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
                         # An optional source cleared: drop the key, so the fuse check falls back
                         # to the next basis rather than reading an empty id.
                         derived.setdefault(phase, {}).pop(sub, None)
-        updated[CONF_DERIVED_ENTITIES] = derived
+        # A phase with nothing left is no phase (a single-phase supply's L2 and L3).
+        updated[CONF_DERIVED_ENTITIES] = {phase: values for phase, values in derived.items() if values}
     if updated == dict(entry.data):
         return False
     hass.config_entries.async_update_entry(entry, data=updated)
