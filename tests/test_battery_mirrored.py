@@ -172,6 +172,91 @@ def test_only_keys_many_brands_share_name_no_brand_but_the_readings_are_kept() -
     assert facts.as_dict()["label"] == GENERIC_LABEL
 
 
+_FIELD_SHARED = (
+    ("sensor.grid_solax1_battery_power", "0", "W", "power"),
+    ("sensor.grid_solax1_battery_soc", "50", "%", "battery"),
+    ("sensor.grid_solax1_battery_voltage", "52.0", "V", "voltage"),
+)
+
+
+def test_a_generic_mirrored_battery_reads_its_size_and_ratings_by_common_names() -> None:
+    """The field case: the size in kWh, the charge and discharge currents in A times the battery voltage."""
+    entities = _rows(
+        *_FIELD_SHARED,
+        ("sensor.grid_solax1_battery_install_capacity", "10.2", "kWh", "energy_storage"),
+        ("sensor.grid_solax1_max_charge_current", "50", "A", "current"),
+        ("sensor.grid_solax1_max_discharge_current", "60", "A", "current"),
+    )
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_")
+
+    assert facts.brand is None and facts.label == GENERIC_LABEL and facts.control_brand is None
+    assert facts.capacity_kwh == pytest.approx(10.2)
+    assert facts.rated_charge_kw == pytest.approx(2.6) and facts.rated_discharge_kw == pytest.approx(3.12)
+    assert facts.sources["capacity"] == "sensor.grid_solax1_battery_install_capacity"
+    assert facts.sources["rated_charge"] == "sensor.grid_solax1_max_charge_current x sensor.grid_solax1_battery_voltage"
+    assert facts.bms_charge_kw is None
+    assert facts.mirror is not None and facts.mirror["reason"] == GENERIC_KEYS
+    assert facts.mirror["generic_roles"] == ["capacity", "charge_current", "discharge_current"]
+    assert set(facts.mirror["specific"].values()) == {0}, "common names are no brand's evidence"
+    assert facts.mirror["missing"] == [] and facts.mirror["learnt_if_missing"] == []
+
+
+def test_a_generic_size_in_wh_and_in_ah_and_ratings_in_watts() -> None:
+    in_wh = _rows(
+        *_FIELD_SHARED,
+        ("sensor.grid_solax1_battery_system_installed_capacity", "11520", "Wh", "energy_storage"),
+        ("sensor.grid_solax1_max_charge_power", "5000", "W", "power"),
+        ("sensor.grid_solax1_max_discharge_power", "6", "kW", "power"),
+    )
+    in_ah = _rows(*_FIELD_SHARED, ("sensor.grid_solax1_battery_installed_capacity", "200", "Ah", None))
+
+    wh = mirrored_facts(in_wh[0], in_wh, prefix="grid_")
+    ah = mirrored_facts(in_ah[0], in_ah, prefix="grid_")
+
+    assert wh.capacity_kwh == pytest.approx(11.52)
+    assert wh.rated_charge_kw == pytest.approx(5.0) and wh.rated_discharge_kw == pytest.approx(6.0)
+    assert ah.capacity_kwh == pytest.approx(10.4) and "capacity_from_ah" in ah.estimates
+    assert ah.sources["capacity"] == "sensor.grid_solax1_battery_installed_capacity x sensor.grid_solax1_battery_voltage"
+
+
+def test_a_battery_capacity_in_percent_is_never_the_size() -> None:
+    """solax_modbus's `battery_capacity` is its level."""
+    entities = _rows(*_FIELD_SHARED, ("sensor.grid_solax1_battery_capacity", "62", "%", "battery"))
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_")
+
+    assert facts.capacity_kwh is None and "capacity" not in facts.sources
+    assert facts.mirror is not None and "capacity" in facts.mirror["learnt_if_missing"]
+
+
+@pytest.mark.parametrize(("capacity", "current"), [("unavailable", "unavailable"), ("0", "0"), ("90000", "5000")])
+def test_an_unreadable_or_absurd_generic_size_or_rating_is_learnt(capacity: str, current: str) -> None:
+    entities = _rows(
+        *_FIELD_SHARED,
+        ("sensor.grid_solax1_battery_install_capacity", capacity, "kWh", "energy_storage"),
+        ("sensor.grid_solax1_max_charge_current", current, "A", "current"),
+        ("sensor.grid_solax1_max_discharge_current", current, "A", "current"),
+    )
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_")
+
+    assert facts.capacity_kwh is None and facts.rated_charge_kw is None and facts.rated_discharge_kw is None
+    assert not {"capacity", "rated_charge", "rated_discharge"} & set(facts.sources)
+    assert facts.estimates == ()
+    assert facts.mirror is not None
+    assert facts.mirror["learnt_if_missing"] == ["capacity", "rated_charge", "rated_discharge"]
+
+
+def test_common_names_on_another_device_s_stem_are_not_read() -> None:
+    entities = _rows(*_FIELD_SHARED, ("sensor.grid_garage_battery_install_capacity", "5", "kWh", "energy_storage"))
+
+    facts = mirrored_facts(entities[0], entities, prefix="grid_")
+
+    assert facts.capacity_kwh is None
+    assert facts.mirror is not None and facts.mirror["generic_roles"] == []
+
+
 def test_a_shared_level_and_power_alone_name_no_brand_and_the_level_is_read() -> None:
     entities = _rows(
         ("sensor.grid_inverter_battery_power", "100", "W", "power"),

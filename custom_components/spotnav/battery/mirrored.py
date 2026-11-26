@@ -21,7 +21,11 @@ Only a brand's own keys name the brand. A key that many integrations share (`bat
 keys found SolaX's level under Solinteg's name on a SolaX whose other instance was not on solax_modbus's own keys.
 The brand is the one with the most keys of its own (`specific` in the diagnostics), taken only when it has more than
 every other (else `ambiguous:<brands>`). When no adapter has a key of its own, no brand is named (`generic_keys`):
-the shared keys are still read (the level, the voltage, a counter), under `GENERIC_LABEL`.
+the shared keys are still read (the level, the voltage, a counter), under `GENERIC_LABEL`. Such a battery's size
+and ratings are then also looked for by names many integrations give them (`_GENERIC_ROLES`, on the battery's own stem
+only, by unit): read after the brand is decided, they are never a brand's evidence. A size in Ah and currents in A are
+turned into kWh and kW by the voltage read, as for Victron and SolaX (`facts.battery_facts`); a value that reads
+nothing, 0 or beyond `_SANE` is left to be learnt.
 
 What cannot be read this way degrades: a renamed entity on the other instance is not found, an integration whose
 entity names are not its keys is found in part or not at all, and the device's manufacturer and firmware are not
@@ -44,7 +48,7 @@ from typing import Any, Final
 
 from ..site.site_detection import BATTERY_ROWS
 from .adapters import ADAPTERS, Adapter, Match
-from .facts import BatteryFacts, EntityFact, battery_facts, find_entity
+from .facts import EST_CAPACITY_FROM_AH, EST_RATED_FROM_CURRENT, BatteryFacts, EntityFact, battery_facts, find_entity
 
 #: The integration's domain, the platform of every entity it mirrors.
 MIRROR_PLATFORM: Final = "remote_homeassistant"
@@ -88,6 +92,49 @@ _GENERIC_KEY: Final = re.compile(
     r"(?:^|_)(?:battery_)?(?:soc|state_of_charge|level|power|voltage|current|temperature|charge_power"
     r"|discharge_power)$|(?:^|_)battery$"
 )
+
+
+#: A generic mirrored battery's size and ratings by names many integrations give them, each role's keys in order of
+#: preference with the units it is read in (a unit is required). `battery_capacity` is a size only in energy units:
+#: in solax_modbus it is the level (%). solax_modbus's `battery_charge_max_current` is a person's setting that
+#: defaults to 20 A and says nothing of the battery, so it is not read.
+_CAPACITY_KEYS: Final = (
+    "battery_install_capacity", "battery_system_installed_capacity", "battery_installed_capacity",
+    "battery_capacity_kwh", "battery_rated_capacity", "battery_nominal_capacity", "battery_total_capacity",
+    "battery_capacity",
+)
+_GENERIC_ROLES: Final[Mapping[str, tuple[tuple[str, ...], frozenset[str]]]] = {
+    "capacity": (_CAPACITY_KEYS, _ENERGY_UNITS),
+    "capacity_ah": (("battery_capacity_ah", *_CAPACITY_KEYS), frozenset({"Ah"})),
+    "rated_charge": (
+        ("battery_max_charge_power", "max_charge_power", "battery_max_charging_power", "max_charging_power",
+         "battery_rated_charge_power", "rated_charge_power"),
+        _POWER_UNITS,
+    ),
+    "rated_discharge": (
+        ("battery_max_discharge_power", "max_discharge_power", "battery_max_discharging_power",
+         "max_discharging_power", "battery_rated_discharge_power", "rated_discharge_power"),
+        _POWER_UNITS,
+    ),
+    "charge_current": (
+        ("battery_max_charge_current", "max_charge_current", "bms_charge_max_current", "bms_max_charge_current",
+         "battery_max_charging_current", "max_charging_current", "battery_charge_current_limit"),
+        frozenset({"A"}),
+    ),
+    "discharge_current": (
+        ("battery_max_discharge_current", "max_discharge_current", "bms_discharge_max_current",
+         "bms_max_discharge_current", "battery_max_discharging_current", "max_discharging_current",
+         "battery_discharge_current_limit"),
+        frozenset({"A"}),
+    ),
+    "voltage": (("battery_voltage", "bms_battery_voltage", "battery_voltage_charge", "battery_1_voltage_charge"),
+                frozenset({"V"})),
+}
+_GENERIC_DOMAINS: Final = ("sensor", "number")
+#: The range a generic size (kWh) and rating (kW) is taken in; beyond it the reading is something else, and learnt.
+_SANE: Final[Mapping[str, tuple[float, float]]] = {
+    "capacity": (0.5, 500.0), "rated_charge": (0.1, 100.0), "rated_discharge": (0.1, 100.0),
+}
 
 
 def remote_of(unique_id: str) -> str | None:
@@ -190,6 +237,8 @@ class MirrorMatch:
     specific: Mapping[str, int] = field(default_factory=dict)
     #: For `GENERIC_KEYS`: the brandless adapter that reads the shared keys found (`_generic_reader`).
     reader: Adapter | None = None
+    #: For `GENERIC_KEYS`: the size and rating roles found by common names (`_GENERIC_ROLES`), not by any adapter.
+    generic_roles: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -200,7 +249,7 @@ class MirrorMatch:
             "scores": dict(sorted(self.scores.items(), key=lambda item: (-item[1], item[0]))),
             "specific": dict(sorted(self.specific.items(), key=lambda item: (-item[1], item[0]))),
             "found": dict(self.found),
-        }
+        } | ({"generic_roles": list(self.generic_roles)} if self.reason == GENERIC_KEYS else {})
 
 
 def _is_power(battery: EntityFact) -> bool:
@@ -272,10 +321,40 @@ def _specific(scored: Sequence[_Scored], battery_key: str, keys: Mapping[str, st
     return out
 
 
-def _generic_reader(item: _Scored) -> Adapter:
+def _generic_roles(
+    battery_key: str, pool: Sequence[EntityFact], prefix: str, taken: Mapping[str, str]
+) -> dict[str, tuple[str, str]]:
+    """The size and rating roles `taken` lacks, found among the entities of the battery's stem by the common names of
+    `_GENERIC_ROLES` and their unit: by role, the entity id and the remote's key. Units only, never the value (a
+    match is kept while the set's shape is; the value is checked each time it is read)."""
+    stem = _stem(battery_key)
+    keyed: dict[str, EntityFact] = {}
+    for entity in pool:
+        key = mirror_key(entity.entity_id, entity.unique_id, prefix)
+        if entity.domain in _GENERIC_DOMAINS and _stem(key) == stem:
+            keyed[key] = entity
+    out: dict[str, tuple[str, str]] = {}
+    for role, (names, units) in _GENERIC_ROLES.items():
+        if role in taken:
+            continue
+        for name in names:
+            hit = next(
+                (key for key, entity in sorted(keyed.items()) if key.endswith(f"_{name}") and entity.unit in units),
+                None,
+            )
+            if hit is not None:
+                out[role] = (keyed[hit].entity_id, hit)
+                break
+    return out
+
+
+def _generic_reader(item: _Scored, extra: Mapping[str, tuple[str, str]]) -> Adapter:
     """A brandless adapter that reads only the facts `item` found by shared keys (the level, the voltage, a
-    counter): no modes, no controls, no plant entities, nothing that is a brand's behaviour."""
-    facts = {role: match for role, match in item.adapter.facts.items() if role in item.found}
+    counter) and the size and ratings found by common names (`extra`, `_generic_roles`): no modes, no controls, no
+    plant entities, nothing that is a brand's behaviour."""
+    facts: dict[Any, Match] = {role: match for role, match in item.adapter.facts.items() if role in item.found}
+    for role, (_entity_id, key) in extra.items():
+        facts[role] = Match(_GENERIC_DOMAINS, re.compile(rf"^{re.escape(key)}$"))
     return Adapter(brand=GENERIC_KEYS, label=GENERIC_LABEL, platforms=item.adapter.platforms[:1], facts=facts)
 
 
@@ -306,9 +385,13 @@ def match_adapter(battery: EntityFact, entities: Sequence[EntityFact], prefix: s
     best = max(specific.values())
     if best == 0:
         # Only keys many brands share: the readings are kept, the brand is not named.
-        reader = _generic_reader(leveled[0])
-        found = {role: entity_id for role, entity_id in leveled[0].found.items() if role in reader.facts}
-        return MirrorMatch(None, GENERIC_KEYS, prefix, scores, found, pool_ids, specific, reader)
+        found = {role: entity_id for role, entity_id in leveled[0].found.items() if role in leveled[0].adapter.facts}
+        extra = _generic_roles(battery_key, readable, prefix, found)
+        reader = _generic_reader(leveled[0], extra)
+        found |= {role: entity_id for role, (entity_id, _key) in extra.items()}
+        return MirrorMatch(
+            None, GENERIC_KEYS, prefix, scores, found, pool_ids, specific, reader, tuple(sorted(extra)),
+        )
     top = sorted(brand for brand, count in specific.items() if count == best)
     if len(top) > 1:
         return MirrorMatch(None, f"{AMBIGUOUS}:{','.join(top)}", prefix, scores, specific=specific)
@@ -383,7 +466,7 @@ def _generic_facts(
     own = translate([battery], platform, match.prefix)[0]
     pool = set(match.found.values())
     translated = translate((entity for entity in entities if entity.entity_id in pool), platform, match.prefix)
-    read = battery_facts(own, translated, adapter=reader, power_kw=power_kw)
+    read = _sane(battery_facts(own, translated, adapter=reader, power_kw=power_kw))
     unknown = battery_facts(battery, [], power_kw=power_kw, external_planner=external_planner)
     detail["power_sign"] = "unknown"
     _missing(read, detail)
@@ -392,6 +475,8 @@ def _generic_facts(
         integration=MIRROR_PLATFORM,
         brand=None,
         label=GENERIC_LABEL,
+        # A generic charge current may be a setting, not the BMS' present limit; and nothing here is controlled.
+        bms_charge_kw=None,
         battery_entity_id=battery.entity_id,
         management=unknown.management,
         read_only=READ_ONLY_MIRRORED,
@@ -400,3 +485,28 @@ def _generic_facts(
         grid_charge=None,
         preheat=None,
     )
+
+
+def _sane(facts: BatteryFacts) -> BatteryFacts:
+    """A generic size or rating that reads nothing (0 included) or beyond `_SANE` dropped, with its source and
+    estimate, so it is named missing and learnt instead."""
+    changes: dict[str, Any] = {}
+    sources = dict(facts.sources)
+    for role, field_name in (
+        ("capacity", "capacity_kwh"), ("rated_charge", "rated_charge_kw"), ("rated_discharge", "rated_discharge_kw"),
+    ):
+        value = getattr(facts, field_name)
+        low, high = _SANE[role]
+        if value is None or not low <= value <= high:
+            if value is not None:
+                changes[field_name] = None
+            sources.pop(role, None)
+    if not changes and sources == facts.sources:
+        return facts
+    derived = [source for role, source in sources.items() if role in ("rated_charge", "rated_discharge") and " x " in source]
+    estimates = tuple(
+        estimate for estimate in facts.estimates
+        if not (estimate == EST_CAPACITY_FROM_AH and "capacity" not in sources)
+        and not (estimate == EST_RATED_FROM_CURRENT and not derived)
+    )
+    return replace(facts, sources=sources, estimates=estimates, **changes)
