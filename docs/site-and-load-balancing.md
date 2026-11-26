@@ -59,8 +59,12 @@ shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
   alone, and every charger counts as single-phase on L1 whatever its wiring says. A meter that makes
   L2 and L3 entities on a single-phase supply (hass-victron on a single-phase GX) is suggested with
   L1 alone when those phases read nothing or 0 V; a site measured on L2 and L3 whose voltage both
-  read 0 V, with nothing drawn there, also runs on L1. A phase that is only unread or unknown on a
-  site set up with three phases stays a missing phase: the site never stops watching it by itself.
+  read 0 V, with nothing drawn there, also runs on L1 once they have read so for five minutes without
+  a break after a start (until then L2 and L3 count as missing). That never happens once L2 or L3 has
+  shown a live voltage, or a charger has drawn on more than one phase, since Home Assistant started:
+  a meter that reads 0 for a while is not a single-phase supply. A phase that is only unread or
+  unknown on a site set up with three phases stays a missing phase: the site never stops watching it
+  by itself.
 - **Chargers on this site**, and for each charger whether it is three-phase or single-phase, and for
   a single-phase charger its phase: L1, L2, L3 or **Automatic (follows the charger)**, the default.
   Automatic is for a charger whose phase is not fixed, such as one behind an Easee Equalizer, which
