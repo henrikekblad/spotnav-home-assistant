@@ -38,6 +38,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "blocked": ("control.gate_record", "control.report",),
     "control_for": (
         "control.core",
+        "control.expiry",
         "control.gate_record",
         "control.hardware_run",
         "control.life",
