@@ -268,7 +268,10 @@ class VerifyDriver:
 
     def _moment(self, now: datetime, executor: Executor) -> gate.Moment:
         inputs = self.inputs(now, executor.control, slot=(ACTION_HOLD, 0.0, None))
-        seen = preview(executor.control, inputs)
+        # What a fresh executor would refuse a start for. Not asked while this path's own executor runs an action:
+        # a fresh one reads SpotNav's own command as someone else's (`remote_ems_already_on`, `self_managed:...`),
+        # and the running one hands back by its own rules the look the plant stops being SpotNav's.
+        blocker = None if executor.state.phase == "active" else preview(executor.control, inputs).blocker
         chargers, _car_kw = self.site.battery_shadow.grid_charging()
         return gate.Moment(
             soc_pct=inputs.facts.soc_pct,
@@ -277,7 +280,7 @@ class VerifyDriver:
             measurement_ok=inputs.measurement_ok,
             headroom_a=inputs.headroom_a,
             car_charging=bool(chargers),
-            blocker=seen.blocker,
+            blocker=blocker,
             executor_idle=executor.state.phase == "idle" and not executor.state.holds_snapshot,
             house_deficit_kw=inputs.house_deficit_kw,
         )

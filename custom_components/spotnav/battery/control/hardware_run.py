@@ -4,6 +4,7 @@ times one, its progress and its stop."""
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import replace
 from datetime import datetime
 from typing import Any
@@ -12,11 +13,18 @@ from homeassistant.util import dt as dt_util
 
 from .. import gate
 from ..commands import GATED_AFTER_RUNNING, BrandControl, Expiry, control_for
-from ..plan_model import ACTION_HOLD
-from ..verify import TEST_CHARGE_SOC_MAX_PCT, quick_for, Verification, expiry_long, expiry_max_s
-from .const import NEED_TESTER_SIGNUP, _TEST_IGNORES
+from ..executor import Executor, start_rate
+from ..plan_model import ACTION_GRID_CHARGE, ACTION_HOLD
+from ..verify import (
+    TEST_CHARGE_KW, TEST_CHARGE_SOC_MAX_PCT, quick_for, Verification, expiry_long, expiry_max_s,
+)
+from .const import NEED_TESTER_SIGNUP, NO_ROOM_FOR_CHARGE, _TEST_IGNORES
+from .helpers import _least
 
 _LOGGER = logging.getLogger(__package__)  # the shell's one logger, whichever of its modules logs
+
+#: How far under the rate asked a start of the test's charge still counts as all of it (kW: the executor rounds).
+_RATE_SLACK_KW = 0.01
 
 
 class HardwareRun:
@@ -28,13 +36,57 @@ class HardwareRun:
         """Why the battery part of a hardware test should wait now, `None` when the moment suits every step: the
         routine's own rule (`gate.suitable`: a fresh reading, the battery between `SUITABLE_SOC_PCT` and covering the
         house, so a hold and a discharge can be judged and a charge seen; no car charging; the fuse with room; the
-        plant SpotNav's to take). The test waits for such a moment by itself: nothing is asked of the person."""
+        plant SpotNav's to take), and room under the fuse for the charge step where the test needs one
+        (`_test_charge_wait`: `NO_ROOM_FOR_CHARGE`). The test waits for such a moment by itself: nothing is asked of
+        the person."""
         executor = self._executor()
         if executor is None:
             return "no_battery_control"
         # The test takes the plant over from control itself (`async_hardware_test_start`): a running executor is no
-        # reason to wait.
-        return gate.suitable(replace(self._moment(now, executor), executor_idle=True))
+        # reason to wait, and its own command on the plant is no one else's (`_moment`).
+        why = gate.suitable(replace(self._moment(now, executor), executor_idle=True))
+        return why if why is not None else self._test_charge_wait(now, executor)
+
+    def _test_charge_wait(self, now: datetime, executor: Executor) -> str | None:
+        """`NO_ROOM_FOR_CHARGE` while the test's grid charge would not fit under the fuse if it started now, `None`
+        when it would or the test does not need it here. The executor's own fuse rule for a start (`start_rate`), for
+        the brand's balanced charge at the rate the charge step asks for (`TEST_CHARGE_KW`, within the battery's
+        rating, its charge power entity, its BMS and the HA-down cap, as `_async_verify` bounds it): the headroom is
+        measured while the battery covers the house, and that cover, which ends with the charge, is counted out of it
+        as the executor counts it (`Executor._change_cover_a`). The whole rate must fit: a start the executor refuses
+        (`aborted:fuse_headroom`) leaves the test `incomplete` whatever the plant does, and a charge it lowers far
+        under the rate asked is judged against that rate (`verify.Verification._read`: `partial`, a failure of a
+        plant that did as told). So the test waits for the house to use less instead.
+
+        Never a wait where the step is not the moment's to decide: a recipe without a grid charge
+        (`_supported_modes`), a BMS that takes nothing now, an HA-down cap that leaves no balanced charge (the test
+        then tries a charge per phase, or says `not_judgeable:grid_charge_cap`; the cap is reckoned again in the test,
+        with the chargers its hold keeps stopped), a fixed charge over that cap (not applicable), and every refusal
+        that is not the fuse's (`gate.MOMENT_ABORTS`), which the test itself reports."""
+        if "charge" not in self._supported_modes():
+            return None
+        control = executor.control.with_phases(False)
+        inputs = self.inputs(now, control, slot=None)
+        bms_kw = self._bms_charge_kw(control)
+        asked = _least(
+            _least(TEST_CHARGE_KW, _least(inputs.facts.max_charge_kw, self._charge_entity_max_kw(control))), bms_kw
+        ) or TEST_CHARGE_KW
+        cap = self._grid_charge_cap_kw(now, self.options())
+        if bms_kw is not None:
+            cap = bms_kw if cap is None else min(cap, bms_kw)
+        if cap is not None:
+            fixed = self._fixed_charge_kw()
+            if cap < gate.MIN_RATE_KW or (fixed is not None and math.isfinite(fixed) and fixed > cap):
+                return None
+            asked = min(asked, cap)
+        rate, why = start_rate(control, replace(
+            inputs, action=ACTION_GRID_CHARGE, rate_kw=asked, slot_end=None, phase_caps_kw=None, phase_probe_kw=None,
+        ))
+        if why is None:
+            # A plant that charges at its own power starts at that or not at all.
+            fits = control.fixed_charge or rate >= asked - _RATE_SLACK_KW
+            return None if fits else NO_ROOM_FOR_CHARGE
+        return NO_ROOM_FOR_CHARGE if why in gate.MOMENT_ABORTS else None
 
     def hardware_test_refusal(self) -> str | None:
         """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the

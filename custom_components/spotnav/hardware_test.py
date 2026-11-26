@@ -4,8 +4,10 @@ Started by an administrator pressing Start, at most once a day per site (`ONCE_A
 SpotNav update or a changed plant firmware (`gate.firmware_key`; `allowance`). **Nothing else is asked of the person.**
 Where the site has a battery part, the test waits for a moment that suits every battery step by itself
 (`BatteryControl.hardware_test_moment`, the verification routine's own rule: the house drawing more than the sun
-gives, so the battery covers it; its level between `gate.SUITABLE_SOC_PCT`; no car charging; the fuse with room) for
-at most `WAIT_MAX`, and the card says when it is likely to run (`state` `waiting`, `next_at`). A run where a battery
+gives, so the battery covers it; its level between `gate.SUITABLE_SOC_PCT`; no car charging; the fuse with room, also
+for all of the test's grid charge once the battery stops covering the house) for
+at most `WAIT_MAX`, and the card says when it is likely to run (`state` `waiting`, `next_at`), or that it waits for
+the house to use less power (`waiting_for`, `SAID_WAITS`). A run where a battery
 step could not be judged (and none failed) runs again by itself at the next such moment, up to `MAX_RETRIES` times.
 A brand's **first** pass on the plant (the battery's recipe waits for a person's hardware test,
 `BatteryControl.hardware_test_due` `hardware_test_first`: never run on this plant) runs only in waking hours
@@ -116,8 +118,12 @@ BLOCKED_WAITING: Final = "waiting"
 BLOCKED_RUN_ELSEWHERE: Final = "battery_run_elsewhere"
 _RUN_ELSEWHERE: Final = ("needs:outside_control", "needs:self_managed")
 #: How long a pressed test waits for a moment that suits its battery steps before it gives up (no prompt: the
-#: record says `no_suitable_moment`).
+#: record says `no_suitable_moment`, or the wait's own reason where it is one of `SAID_WAITS`).
 WAIT_MAX: Final = timedelta(days=3)
+#: The reasons to wait (`waiting["why"]`) the card says in words (`view`'s `waiting_for`) and a wait that never
+#: ended records as its own reason: the house uses too much for the test's grid charge to fit under the fuse
+#: (`battery.control.NO_ROOM_FOR_CHARGE`). Every other reason is a moment that comes by itself in a day.
+SAID_WAITS: Final = frozenset({"charge_no_room"})
 #: How often a waiting test looks at the site (s).
 WAIT_POLL_S: Final = 60.0
 #: How many times a run with a battery step that could not be judged runs again by itself.
@@ -548,7 +554,10 @@ class HardwareTest:
             return
         if until is None or now >= until or "battery" not in parts:
             self.waiting, self._wait_touched = None, True
-            self._give_up(now, "no_suitable_moment" if "battery" in parts else str(parts.get("battery") or "absent"))
+            # The wait's own reason where it names what never came (`SAID_WAITS`: no room for the grid charge).
+            last = waiting.get("why")
+            none_came = last if last in SAID_WAITS else "no_suitable_moment"
+            self._give_up(now, none_came if "battery" in parts else str(parts.get("battery") or "absent"))
             return
         if parts["battery"] is not None and parts["battery"].startswith(_RUN_ELSEWHERE):
             # Something else took the battery over while the test waited: it gives up rather than start in a gap of
@@ -997,6 +1006,8 @@ class HardwareTest:
                 "result": None if record is None else record.get("result"),
                 "steps": [] if record is None else list(record.get("steps") or []),
                 "missing": _missing_view(record), "sent_ref": None,
+                # What the wait is for now, where the card says it in words (`SAID_WAITS`); else `None`.
+                "waiting_for": why if (why := self.waiting.get("why")) in SAID_WAITS else None,
             }
         return {
             "state": "idle" if record is None else "done",

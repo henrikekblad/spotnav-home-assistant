@@ -880,6 +880,7 @@
   "test.waiting.at": "Se lance de lui-même, probablement vers {time}. Rien n'est nécessaire de votre part.",
   "test.waiting.soon": "Se lance de lui-même dès que le moment convient. Rien n'est nécessaire de votre part.",
   "test.waiting.retry": "Certaines étapes n'ont pas pu être jugées : le test les relance de lui-même.",
+  "test.waiting.chargeNoRoom": "En attente que la maison consomme moins, pour que la petite charge depuis le réseau tienne sous le fusible.",
   "test.error": "Le test n'a pas pu démarrer.",
   "test.blocked.onceADay": "Le prochain test pourra tourner {time}.",
   "test.blocked.later": "Le test ne peut pas tourner pour le moment.",

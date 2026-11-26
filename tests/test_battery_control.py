@@ -632,6 +632,32 @@ async def test_the_export_limit_is_zero_below_a_zero_sell_price_and_back_after_w
     assert hass.states.get(DISCHARGE).state == "23.04" and hass.states.get(SWITCH).state == "off"
 
 
+async def test_a_stored_export_control_read_past_the_registry_keeps_its_device_as_a_battery_control_does(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    # A registry lookup that finds nothing (right after a restart, say): both instances read the entities they
+    # stored, each with the device the instance took them on, which a write by a device's service needs.
+    site, controller, _plant_calls = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _started(hass, site, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
+    now = await _looks(control, dt_util.now(), 6)
+    battery, export = control.executor, control.export_executor
+    assert battery.state.phase == "active" and export.state.phase == "active"
+    assert export.state.entities == {"export_limit": EXPORT}
+    assert battery.state.device_id is not None and export.state.device_id == battery.state.device_id
+    battery_patch.patch(
+        monkeypatch, "read_export_facts", lambda _hass, _config: (control.facts, {}, export.control)
+    )
+    battery_patch.patch(monkeypatch, "read_role_reads", lambda _hass, _config, _control: {})
+    seen = control.export_inputs(now, export.control).reads
+    assert set(seen) == {"export_limit"}
+    assert seen["export_limit"].entity_id == EXPORT and seen["export_limit"].state == "0"
+    assert seen["export_limit"].device_id == export.state.device_id
+    own = control._reads(battery.control)
+    assert set(own) == set(battery.state.entities) and own
+    assert {read.device_id for read in own.values()} == {battery.state.device_id}
+
+
 async def test_the_export_limit_is_taken_beside_spotnav_s_own_battery_control_and_kept_through_its_hand_back(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

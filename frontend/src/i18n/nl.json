@@ -880,6 +880,7 @@
   "test.waiting.at": "Draait vanzelf, waarschijnlijk vanaf ongeveer {time}. Er is niets van u nodig.",
   "test.waiting.soon": "Draait vanzelf zodra het moment past. Er is niets van u nodig.",
   "test.waiting.retry": "Sommige stappen konden niet worden beoordeeld: de test voert ze vanzelf opnieuw uit.",
+  "test.waiting.chargeNoRoom": "Wacht tot het huis minder stroom gebruikt, zodat de kleine lading van het net onder de zekering past.",
   "test.error": "De test kon niet starten.",
   "test.blocked.onceADay": "De volgende test kan {time} draaien.",
   "test.blocked.later": "De test kan nu niet draaien.",

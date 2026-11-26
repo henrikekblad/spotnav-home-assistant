@@ -289,7 +289,7 @@ from .fuse import (
 )
 from .helpers import _blocking, _event, _without, _writes_today
 from .management import management_problem, taken_over
-from .preview import Preview, preview
+from .preview import Preview, preview, start_rate
 from .reads import role_reads
 from .state import ExecInputs, ExecState, Op, RoleRead, StepResult
 from .values import _NEVER_SET, _rating, _restore_value, _rises, _tolerance, _unset, restore_order
@@ -383,6 +383,7 @@ __all__ = [
     "management_problem",
     "phase_charge_kw",
     "preview",
+    "start_rate",
     "restore_order",
     "role_reads",
     "taken_over",

@@ -13,11 +13,20 @@ firmware before (Sigenergy SPC116/SPC117).
 
 Outcomes per mode: `obeyed` (every reading as asked), `ignored` (every reading as if nothing was written),
 `partial`, `not_judgeable:<why>` (the battery could not show it now: nothing to stop, nearly full, nearly empty, no
-rating, stale readings), `aborted:<why>` (the executor handed the battery back for a reason of its own: a write not
+rating for a discharge, stale readings), `aborted:<why>` (the executor handed the battery back for a reason of its own: a write not
 taken, the fuse, a stale reading, a management change; the routine then stops, but for an abort for the moment's
 circumstances normal still judges that hand-back; the hardware test goes on after one for the fuse's room alone)
 or, for normal, `restored` (only after this run wrote something;
 `not_judgeable:nothing_written` otherwise).
+
+**A battery with no rating read.** Some integrations state no rated power (EcoFlow, Marstek, Kostal, Ferroamp,
+Tesla, Deye: `BatteryFacts.max_charge_kw` is `None`). The charge step is then judged against the rate it commanded
+(`TEST_CHARGE_KW`, within what the charge power entity and the BMS take): a rating only ever lowers what a charge
+is expected to reach, so without one the step asks for all of the small charge it commanded, never less than a
+plant with a rating read is asked for. Left unjudged (`not_judgeable:rating_unknown`, as the control-failure monitor
+leaves a live charge, whose rate is the plan's and may be far over the battery's) the step a hardware test's pass
+needs could never be shown on such a plant. The discharge to the house stays unjudged without a rating: what it is
+asked for is the house's own load, which may be far over what the battery can give, and the pass does not need it.
 
 **Hold variants** (`commands.HoldVariant`; no shipping brand has more than one since Sigenergy's hold became `pv_first`
 only, 2026-11-23): hold is tried with the
@@ -154,7 +163,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Final, Literal
 
@@ -891,6 +900,9 @@ class Verification:
                 capability.rated_charge_kw, capability.rated_discharge_kw, capability.soc_min_pct,
                 capability.soc_max_pct, sample.house_deficit_kw,
             )
+            if kind == "charge" and cap.rated_charge_kw is None:
+                # No rating read: judged against the rate commanded (see the module).
+                cap = replace(cap, rated_charge_kw=command.rate_kw)
             full = self.charge_soc_max_pct if kind == "charge" else CHARGE_TAPER_SOC_PCT
             expected, why = deliverable_kw(command, cap, sample.soc_pct, full_soc_pct=full)
         if why is not None:

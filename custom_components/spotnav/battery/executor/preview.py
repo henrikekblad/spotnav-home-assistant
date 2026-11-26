@@ -57,3 +57,13 @@ def preview(
         if name in back and name in written
     )
     return Preview(None, state.rate_kw, tuple(writes), restores, dict(state.snapshot), dict(state.restore_values))
+
+
+def start_rate(control: BrandControl, inputs: ExecInputs) -> tuple[float, str | None]:
+    """The rate the fuse rules alone would start `inputs.action` at now (kW: `inputs.rate_kw`, lowered to a grid
+    charge's live room with the battery's cover now counted out, `Executor._aim` from a fresh state), and why they
+    would refuse it (`fuse_headroom` and the like; the rate is then 0). Who manages the plant, its controls and the
+    day's caps are not asked (`preview` asks them): for a question put while this path's own executor has the plant,
+    whose own command a fresh executor would read as someone else's."""
+    rate, _phases, why = Executor(control)._aim(inputs, True)
+    return rate, why

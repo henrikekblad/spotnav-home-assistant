@@ -4,16 +4,19 @@ a report per firmware string."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 
-from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SOLAREDGE_CONTROL
+from custom_components.spotnav.battery.commands import CONTROLS, SIGENERGY_CONTROL, SOLAREDGE_CONTROL, BrandControl
 from custom_components.spotnav.battery.executor import Executor
-from custom_components.spotnav.battery.gate import merge_report, mode_verdict, modes_to_run, needs_run
+from custom_components.spotnav.battery.gate import (
+    hardware_test_passed, merge_report, mode_verdict, modes_to_run, needs_run,
+)
 from custom_components.spotnav.battery.plan_model import ACTION_EXPORT_DISCHARGE, ACTION_GRID_CHARGE
-from custom_components.spotnav.battery.monitor import Capability
+from custom_components.spotnav.battery.monitor import Capability, Command, deliverable_kw
 from custom_components.spotnav.battery.verify import (
     MAX_REPORTS,
+    TEST_CHARGE_KW,
     TEST_CHARGE_SOC_MAX_PCT,
     Sample,
     Timing,
@@ -24,10 +27,13 @@ from custom_components.spotnav.battery.verify import (
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
 
 
+_RATED = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
+
+
 def _verify(
     executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0,
     modes: tuple[str, ...] | None = None, headroom: Callable[[str | None], float] = lambda _mode: 20.0,
-    quick: bool = False,
+    quick: bool = False, capability: Capability = _RATED,
 ) -> Verification:
     now = T0
     verification = Verification(
@@ -37,11 +43,10 @@ def _verify(
     )
     failed: tuple[str, ...] = ()
     timed_out: tuple[str, ...] = ()
-    capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     for _ in range(looks):
         power = battery.power_kw(battery.action, battery.rate_kw)
         sample = Sample(power, 5.0, battery.soc_pct, house_kw)
-        action, rate = verification.command(now, sample, 10.0)
+        action, rate = verification.command(now, sample, capability.rated_charge_kw)
         current = verification.current
         result = executor.step(inputs(
             battery, now, action, rate, failed=failed, house_deficit_kw=house_kw,
@@ -122,6 +127,64 @@ def test_a_mode_the_battery_cannot_show_now_is_not_judgeable() -> None:
     assert outcomes["hold"] == "not_judgeable:battery_not_discharging"
     assert outcomes["charge"] == "obeyed" and outcomes["normal"] == "restored"
     assert battery.states == SOLAREDGE_STATES
+
+
+@dataclass
+class _Weak(FakeBattery):
+    """A battery that charges at a share of what it is told."""
+
+    share: float = 1.0
+
+    def power_kw(self, action: str | None, rate_kw: float) -> float:
+        power = super().power_kw(action, rate_kw)
+        return power * self.share if action == "grid_charge" and self.obeys else power
+
+
+def test_a_charge_on_a_battery_with_no_rating_read_is_judged_against_the_rate_commanded() -> None:
+    # EcoFlow, Marstek, Kostal: the integration states no rated power. Left unjudged, the charge a hardware test's
+    # pass needs could never be shown on such a plant.
+    unrated = Capability()
+    for quick in (False, True):
+        battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+        verification = _verify(Executor(SIGENERGY_CONTROL), battery, quick=quick, capability=unrated)
+        outcomes = _outcomes(verification)
+        assert outcomes["hold"] == "obeyed" and outcomes["charge"] == "obeyed" and outcomes["normal"] == "restored"
+        charge = verification.report()["modes"]["charge"]
+        assert charge["rate_kw"] == TEST_CHARGE_KW == 2.0
+        assert {row["expected_kw"] for row in charge["readings"]} == {2.0}
+        # The discharge is asked for the house's own load, which says nothing of what the battery can give.
+        assert outcomes["discharge_house"] == "not_judgeable:rating_unknown"
+        if quick:
+            assert hardware_test_passed(verification.report())
+    # Never easier than with a rating read: under half the rate commanded is no pass, nothing at all is ignored.
+    for share, outcome in ((0.6, "obeyed"), (0.4, "partial"), (0.05, "ignored")):
+        battery = _Weak(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), share=share)
+        verification = _verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), capability=unrated)
+        assert _outcomes(verification)["charge"] == outcome, share
+        rated = _Weak(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), share=share)
+        assert _outcomes(_verify(Executor(SIGENERGY_CONTROL), rated, modes=("charge",)))["charge"] == outcome, share
+    # A rating read under the rate still lowers what is asked, as before.
+    low = Capability(rated_charge_kw=1.0, rated_discharge_kw=1.0)
+    battery = _Weak(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), share=0.6)
+    verification = _verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), capability=low)
+    assert verification.report()["modes"]["charge"]["rate_kw"] == 1.0
+    assert _outcomes(verification)["charge"] == "obeyed"
+    # The control-failure monitor still leaves a live charge unjudged without a rating: its rate is the plan's.
+    assert deliverable_kw(Command("charge", T0, rate_kw=8.0, written=True), unrated, 50.0) == (None, "rating_unknown")
+
+
+def test_the_recipes_whose_integration_states_no_rating_are_the_ones_named() -> None:
+    def rated(control: BrandControl) -> bool:
+        facts = control.adapter.facts
+        return "rated_charge" in facts or {"charge_current", "voltage"} <= set(facts)
+
+    unrated = {control.brand for control in CONTROLS if not rated(control)}
+    assert unrated == {"ecoflow", "marstek", "kostal", "ferroamp", "tesla", "deye"}
+    # Those whose first hardware test needs the charge step shown (Deye's recipe has no grid charge).
+    assert {
+        control.brand for control in CONTROLS
+        if control.brand in unrated and control.hardware_test_first and "charge" in supported_modes(control)
+    } == {"ecoflow", "marstek", "kostal", "ferroamp", "tesla"}
 
 
 def test_a_later_run_tries_only_the_modes_left_and_always_ends_with_the_hand_back_check() -> None:

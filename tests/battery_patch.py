@@ -56,6 +56,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "plant_entity_id": ("control.import_limit", "control.verify_driver"),
     "read_export_facts": ("control.exec_inputs", "control.life", "control.stored"),
     "read_plant_entity": ("control.caps", "control.import_limit"),
+    "read_role_reads": ("control.exec_inputs", "control.look", "control.per_phase", "control.status", "control.stored"),
     "recipe_field_tested": ("control.report",),
 }
 

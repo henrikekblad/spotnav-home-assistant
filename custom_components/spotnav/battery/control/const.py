@@ -104,6 +104,9 @@ NEED_CONTROL_CODE: Final = "control_code"
 #: The checklist's step (and the hardware test's refusal) where such a recipe was never tested on this plant and the
 #: person has not signed up as a tester for the brand (`battery/tester.py`): signing up unlocks the hardware test.
 NEED_TESTER_SIGNUP: Final = "tester_signup"
+#: Why a pressed hardware test waits (`BatteryControl.hardware_test_moment`) while everything else suits: its grid
+#: charge would be refused for the fuse if it started now (the house uses too much once the battery stops covering it).
+NO_ROOM_FOR_CHARGE: Final = "charge_no_room"
 #: The checklist's step where this SpotNav release holds the brand's recipe back on the plant's firmware or the
 #: recipe's revision (`commands.blocked`): shadow only, whatever was passed.
 NEED_RECIPE_BLOCKED: Final = "recipe_blocked"
