@@ -613,6 +613,13 @@ class Executor(ExpiryProbe, HandBack, Ordering):
     # --- observing ---
 
     def _observe(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        events = self._observe_failed_calls(inputs)
+        events += self._observe_claims(inputs)
+        events += self._judge_effect(inputs)
+        return events
+
+    def _observe_failed_calls(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """The last look's writes whose service call failed or was given up on: not taken."""
         now = inputs.now
         events: list[dict[str, Any]] = []
         for role_name in inputs.failed:
@@ -628,6 +635,13 @@ class Executor(ExpiryProbe, HandBack, Ordering):
                     events += self._silent_not_taken(now, role_name, why)
                 else:
                     events += self._not_taken(now, role_name, why)
+        return events
+
+    def _observe_claims(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """Each role SpotNav has a claim on, read against it: someone else's command, a command that lapsed, the
+        expiry test's fallback, and the ledger's verdict (confirmed, not read back, changed outside)."""
+        now = inputs.now
+        events: list[dict[str, Any]] = []
         for role in self.control.roles:
             entity_id = self.state.entities.get(role.name)
             claim = None if entity_id is None else self.ledger.claim(entity_id)
@@ -720,6 +734,13 @@ class Executor(ExpiryProbe, HandBack, Ordering):
                     events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
                 events += self._gave_up(now, role.name, entity_id, event.read)
+        return events
+
+    def _judge_effect(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """What the running command does, judged on the plant: the export limit on the grid's power, a charge per
+        phase on its phases, anything else by the monitor."""
+        now = inputs.now
+        events: list[dict[str, Any]] = []
         if self.state.phase == "active" and self._export:
             # The export limit is judged on the site's grid power: the export must stop.
             grid = inputs.grid_import_kw
