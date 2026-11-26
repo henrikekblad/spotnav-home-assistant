@@ -125,6 +125,18 @@ diagnostics show both beside the round trip (`sun_round_trip_efficiency`, `disch
 separate inverter beside the hybrid gets their surplus priced as if it came over the DC bus too (about 8 % too
 cheap); the review counts it the same way. A kWh still stored when a plan or a day ends is valued at the buy price
 times the AC round trip, a little below what giving it back is worth, so neither leans on a battery left full.
+
+**Energy left at the end is never worth more than putting it back.** The plan ends where the prices end, usually at
+midnight, and what is still stored then has to be given a value. It is the lesser of two: what the energy gives back
+later (the plan's median buy price times the round trip), and what a refill costs. The refill is read from the last
+three days of prices up to the plan's end, the hours that have already passed included: each day's cheapest hours,
+as many as fill the battery, and of those days the dearest one, plus the wear of the charge and the charging loss. On
+a tariff with the same cheap window every night (Octopus Flux, a night rate) that is the window's price, so the plan
+does not hold a full battery through the day and buy at the day rate for energy the next night puts back for less. On
+spot prices the cheap hours differ from day to day and the dearest of three days is seldom below the first figure, so
+little changes there. At least two whole days of prices must be held before a refill is counted on. The night's review
+and its perfect plan value the energy left at midnight by the same rule, on the next day, the reviewed day and the one
+before. There is no setting for it.
 The same loss turns the battery's power to the AC side wherever SpotNav counts the house as the grid less the cars
 and the battery: the house load forecast, the night's review and the perfect plan (see the house card's *Share of
 perfect*). The diagnostics show it under `battery.plan.learned.conversion` (`power_dc`, `source`: `learned`,

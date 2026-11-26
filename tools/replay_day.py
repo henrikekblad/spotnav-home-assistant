@@ -324,9 +324,10 @@ def facit(record: dict[str, Any]) -> dict[str, Any]:
     following = day + timedelta(days=2)
     next_end = datetime(following.year, following.month, following.day, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
     table = [shadow.PriceSlot(first, last, float(buy), 0.0) for first, last, buy, _sell in _price_table(record) if buy is not None]
-    value = hindsight.end_value_next_day(table, end, next_end, battery)
-    basis = hindsight.BASIS_NEXT_DAY if value is not None else hindsight.BASIS_DAY
     currency = (record.get("prices") or {}).get("currency") or (record.get("settings") or {}).get("currency")
+    wear = model.wear_minor_per_kwh(currency) or model.DEFAULT_CYCLE_COST
+    value = hindsight.end_value_next_day(table, end, next_end, battery, wear)
+    basis = hindsight.BASIS_NEXT_DAY if value is not None else hindsight.BASIS_DAY
     made = hindsight.facit_day(
         usable,
         battery,
@@ -334,7 +335,7 @@ def facit(record: dict[str, Any]) -> dict[str, Any]:
         actual_cost=review.actual.cost,
         actual_end_soc_pct=review.actual.end_soc_pct,
         mode=review.mode,
-        wear=model.wear_minor_per_kwh(currency) or model.DEFAULT_CYCLE_COST,
+        wear=wear,
         end_value=review.end_value if value is None else value,
         basis=basis,
         no_battery_cost=no_battery_cost(usable),

@@ -368,7 +368,8 @@ class PlanRequest:
     """Everything one plan needs.
 
     `end_value` is what a kWh still stored at the horizon is worth, in minor per kWh; `None` takes the median buy
-    price of the horizon times the round trip (`plan.default_end_value`). `cycle_cost` is the wear per kWh through
+    price of the horizon times the round trip, at most what a refill costs (`plan.default_end_value`), which reads
+    `earlier_prices`: the buy prices before the horizon as `(start, end, buy)`, the last days' at most. `cycle_cost` is the wear per kWh through
     the battery. `allow_export_discharge` lets the plan sell from the battery; off by default. `export_hurdle`
     (minor per kWh) is weighed against every kWh the battery sells: the spread gate's margin (`BatteryMode`).
     `export_reserve` (the gate's house first): a sale never takes the battery below what the house's deficit needs
@@ -389,6 +390,7 @@ class PlanRequest:
     charge_shares: tuple[float, ...] = DEFAULT_CHARGE_SHARES
     peak_now_kw: float | None = None
     peak_steps: int = DEFAULT_PEAK_STEPS
+    earlier_prices: tuple[tuple[datetime, datetime, float], ...] = ()
 
     def validate(self) -> None:
         if not self.slots:

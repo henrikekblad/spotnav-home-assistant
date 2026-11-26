@@ -238,6 +238,45 @@ async def test_it_plans_again_on_new_prices_and_a_forecast_refresh_and_not_in_be
     assert (plan.runs, plan.trigger) == (3, TRIGGER_PRICES)
 
 
+async def test_the_days_before_say_what_a_refill_costs_at_the_plans_end(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same cheap window every day: the plan reads the days before it (`_prices_before`) and values the energy
+    left at its end at what the window puts back for, the wear of the charge included; without them, at the median."""
+    _site_entry, controller = await _site(hass)
+    now = dt_util.now()
+    first = bucket_start(now)
+
+    def day(offset: int) -> list[PriceSlot]:
+        start = first + timedelta(days=offset)
+        return [PriceSlot(start + BUCKET * i, start + BUCKET * (i + 1), 10.0 if 8 <= i < 24 else 60.0, 30.0) for i in range(96)]
+
+    before: list[PriceSlot] = []
+    monkeypatch.setattr(BatteryPlanShadow, "_prices_before", lambda self, now: list(before))
+    _give_prices(monkeypatch, day(0))
+    _house_forecast(controller, now)
+    shadow, plan = controller.battery_shadow, controller.battery_shadow.plan
+    shadow.tick(now)
+    await hass.async_block_till_done()
+    alone = plan.view["end_value"]
+    round_trip = alone / 60.0
+    assert 0.8 < round_trip < 1.0
+
+    before.extend([*day(-2), *day(-1)])
+    _give_prices(monkeypatch, day(0), key=2)
+    shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    assert plan.runs == 2
+    # Balanced counts twice the wear (SEK: 15 öre each way); the charge's share of the round trip's loss.
+    assert plan.view["end_value"] == pytest.approx((10.0 + 30.0) / round_trip**0.5, rel=0.03)
+    assert plan.view["end_value"] < alone
+    # The pure helper: the days before, then the passed part of the prices read, the running one cut at the start.
+    cut = first + timedelta(minutes=5)
+    earlier = plan_runtime.earlier_prices(day(0), day(-1), cut)
+    assert len(earlier) == 97 and earlier[0] == (day(-1)[0].start, day(-1)[0].end, 60.0)
+    assert earlier[-1] == (first, cut, 60.0)
+
+
 def _plant_states(hass: HomeAssistant, unavailable: bool, saved: dict[str, Any]) -> None:
     """Every entity of the plant `unavailable` (its Modbus link silent), or back as it was."""
     for state in hass.states.async_all():

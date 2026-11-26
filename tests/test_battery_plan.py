@@ -153,9 +153,132 @@ def test_end_value_decides_how_full_the_horizon_ends() -> None:
 
 
 def test_default_end_value_is_the_median_buy_price_times_the_round_trip() -> None:
+    # Four hours of prices: no day whose cheap hours say what a refill costs.
     slots = _slots([10, 20, 30, 1000])
     assert default_end_value(slots, BATTERY) == pytest.approx(25 * 0.9)
     assert plan_battery(_request(slots)).end_value == pytest.approx(25 * 0.9)
+
+
+# ----------------------------------------------------------------- the end value: what a refill costs
+
+
+def _flux(hour: int) -> float:
+    """A tariff with the same cheap window every night (pence): 02-05 cheap, 16-19 dear, a flat day rate."""
+    hour %= 24
+    return 17.3 if 2 <= hour < 5 else 34.4 if 16 <= hour < 19 else 25.78
+
+
+def _earlier(buy: list[float]) -> tuple[tuple[datetime, datetime, float], ...]:
+    """Hourly prices up to T0, the last one ending there."""
+    first = T0 - timedelta(hours=len(buy))
+    return tuple((first + timedelta(hours=i), first + timedelta(hours=i + 1), price) for i, price in enumerate(buy))
+
+
+def test_a_cheap_window_every_night_holds_the_end_value_at_what_a_refill_costs() -> None:
+    day = _slots([_flux(hour) for hour in range(24)])
+    before = _earlier([_flux(hour) for hour in range(24)])
+    refill = 17.3 / BATTERY.charge_efficiency
+    # The day rate times the round trip (23.2) is more than putting the energy back in the window costs (18.2).
+    assert refill < 25.78 * 0.9
+    assert default_end_value(day, BATTERY, earlier=before) == pytest.approx(refill)
+    # The wear of the charge is part of what a refill costs.
+    worn = (17.3 + 2.4) / BATTERY.charge_efficiency
+    assert default_end_value(day, BATTERY, 2.4, before) == pytest.approx(worn)
+    assert plan_battery(_request(day, cycle_cost=2.4, earlier_prices=before)).end_value == pytest.approx(worn)
+    # One day's cheap hours are no refill to count on: the median stands, as it does without the days before.
+    assert default_end_value(day, BATTERY) == pytest.approx(25.78 * 0.9)
+    # A horizon from 10:00 holds no cheap window: the hours of the day that have passed say what it costs.
+    rest = day[10:]
+    assert default_end_value(rest, BATTERY) == pytest.approx(25.78 * 0.9)
+    passed = (*before, *((slot.start, slot.end, slot.buy) for slot in day[:10]))
+    assert default_end_value(rest, BATTERY, earlier=passed) == pytest.approx(refill)
+    assert plan_battery(_request(rest, earlier_prices=passed, cycle_cost=0)).end_value == pytest.approx(refill)
+    # Midway through a price slot: the running slot's passed part counts with the rest, so the day is whole.
+    half = (replace_start(day[10]), *day[11:])
+    cut = (*passed, (day[10].start, half[0].start, day[10].buy))
+    assert default_end_value(half, BATTERY, earlier=cut) == pytest.approx(refill)
+
+
+def replace_start(slot: PlanSlot) -> PlanSlot:
+    return PlanSlot(
+        start=slot.start + timedelta(minutes=30), end=slot.end, buy=slot.buy, sell=slot.sell, house_kw=slot.house_kw,
+        solar_kw=slot.solar_kw, car_kw=slot.car_kw,
+    )
+
+
+def test_the_refill_counted_on_is_the_dearest_of_the_last_days() -> None:
+    day = _slots([_flux(hour) for hour in range(24)])
+    # Cheap hours that differ from day to day (spot prices): yesterday's night was no cheaper than the day rate.
+    spot = _earlier([_flux(hour) for hour in range(24)] + [25.78] * 24)
+    assert default_end_value(day, BATTERY, earlier=spot) == pytest.approx(25.78 * 0.9)
+    # The same window three days running: the window's price.
+    tariff = _earlier([_flux(hour) for hour in range(48)])
+    assert default_end_value(day, BATTERY, earlier=tariff) == pytest.approx(17.3 / BATTERY.charge_efficiency)
+    # Days older than the three are not read, nor is a part of a day.
+    old = _earlier([25.78] * 24 + [_flux(hour) for hour in range(48)])
+    assert default_end_value(day, BATTERY, earlier=old) == pytest.approx(17.3 / BATTERY.charge_efficiency)
+    part = _earlier([25.78] * 12 + [_flux(hour) for hour in range(24)])
+    assert default_end_value(day, BATTERY, earlier=part) == pytest.approx(17.3 / BATTERY.charge_efficiency)
+    # A refill for nothing or less is worth nothing, never less; a negative median stays the lesser of the two.
+    free = _slots([-5.0] * 4 + [30.0] * 20)
+    assert default_end_value(free, BATTERY, earlier=_earlier([-5.0] * 4 + [30.0] * 20)) == 0.0
+    assert default_end_value(_slots([-5.0] * 24), BATTERY, earlier=_earlier([-5.0] * 24)) == pytest.approx(-5.0 * 0.9)
+
+
+def _flux_day(with_earlier: bool) -> tuple[float, float, float]:
+    """A winter day on the tariff, planned again every hour to midnight in Balanced, from an empty battery: the kWh
+    bought at the day rate, the level at midnight (%) and the day's cost."""
+    from custom_components.spotnav.battery.plan import plan_mode
+    from custom_components.spotnav.battery.plan_model import MODE_BALANCED, MODE_DEFS
+
+    def house(hour: int) -> float:
+        return 0.25 if hour < 6 else 0.6 if 17 <= hour < 22 else 0.35
+
+    day = _slots([_flux(hour) for hour in range(24)], sell=[5.0] * 24, house=[house(hour) for hour in range(24)])
+    before = _earlier([_flux(hour) for hour in range(48)])
+    soc = BATTERY.min_soc_pct
+    day_rate = cost = 0.0
+    for hour in range(24):
+        passed = tuple((slot.start, slot.end, slot.buy) for slot in day[:hour])
+        request = _request(day[hour:], soc_now_pct=soc, earlier_prices=(*before, *passed) if with_earlier else ())
+        first = plan_mode(request, MODE_DEFS[MODE_BALANCED], 1.2, sell_margin=10.0).plan.decisions[0]
+        soc, cost = first.soc_end_pct, cost + first.cost
+        if day[hour].buy == 25.78:
+            day_rate += max(0.0, first.grid_kw)
+    return day_rate, soc, cost
+
+
+def test_a_cheap_window_every_night_is_not_held_through_the_day() -> None:
+    """The field case: a full battery was held all day and the house bought at the day rate, for energy left at
+    midnight that the next night's window would have put back for less."""
+    held_kwh, held_soc, held_cost = _flux_day(with_earlier=False)
+    kwh, soc, cost = _flux_day(with_earlier=True)
+    # Without the days before, a horizon after 05:00 shows no cheap window: the old value, the old way.
+    assert held_kwh > 5 and held_soc > 70
+    # With them the battery carries the house through the day and meets the next window empty.
+    assert kwh < 2 and soc < 25
+    # Cheaper even before the energy left is counted, and still when it is, at the window's price.
+    left = (held_soc - soc) / 100 * BATTERY.usable_kwh * 17.3 / BATTERY.charge_efficiency
+    assert cost < held_cost - left - 20
+
+
+def test_energy_is_still_carried_over_when_tomorrow_is_dear() -> None:
+    # Today on the tariff, tomorrow dear throughout (no cheap window ahead): from 13:00, with the days before.
+    buy = [_flux(hour) for hour in range(13, 24)] + [60.0 + 10 * (hour % 3) for hour in range(24)]
+    slots = _slots(buy, house=1.0)
+    before = _earlier([_flux(hour) for hour in range(-11, 13)])
+    result = plan_battery(_request(slots, soc_now_pct=100, earlier_prices=before, cycle_cost=1.2))
+    # The dearest of the days sets the refill: tomorrow has none below 60, so the median stands.
+    assert result.end_value == pytest.approx(default_end_value(slots, BATTERY))
+    assert result.end_value > 2 * 17.3
+    # The battery is not emptied on today's day rate: it enters the dear day full, and gives all it has there.
+    midnight = result.plan.decisions[10]
+    assert midnight.soc_end_pct > 90
+    assert result.plan.end_soc_pct == pytest.approx(BATTERY.min_soc_pct, abs=0.5)
+    # And a horizon that ends on dear hours with dear days behind it keeps what it has (the median, as before).
+    dear = _slots([40.0] * 20 + [30.0] * 4)
+    kept = plan_battery(_request(dear, soc_now_pct=80, earlier_prices=_earlier([40.0] * 48), cycle_cost=0))
+    assert kept.end_value == pytest.approx(40 * 0.9)
 
 
 def test_savings_count_the_energy_each_run_leaves() -> None:

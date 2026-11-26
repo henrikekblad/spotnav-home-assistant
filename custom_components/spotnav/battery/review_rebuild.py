@@ -118,7 +118,7 @@ def rebuilt_review(
     if not MIN_COVER_SHARE * review.covered <= len(quarters) <= MAX_COVER_SHARE * review.covered:
         return None
     nothing = no_battery_cost(quarters)
-    value = end_value_next_day(prices_after, end, next_end, battery)
+    value = end_value_next_day(prices_after, end, next_end, battery, wear)
     kwargs = {} if sell_margin is None else {"sell_margin": sell_margin}
     stored = review.facit
     made = facit_day(
