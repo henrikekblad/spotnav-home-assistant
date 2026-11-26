@@ -9,7 +9,8 @@ change that back. Only what SpotNav itself did is undone, and only with what Spo
 (`entry.disabled_by` set), once its controller has shut down: a disabled entry does not come back by itself, so it is
 handed back exactly as at a removal. Its record then keeps only what is not a stop or a charge
 (`async_forget_handed_back`), so the entry, enabled again, starts afresh, and its site leaves it out of load balancing
-while it is disabled. Any other unload (a restart, a reload, a changed option) never comes here, since the entry comes
+while it is disabled. Deleted while still disabled, it is not handed back a second time (`HANDED_BACK_STORE_KEY`): a
+current or a stop set since the disable is the person's own. Any other unload (a restart, a reload, a changed option) never comes here, since the entry comes
 back and takes the charger on as it left it. What is known comes from the charger's controller record
 (`spotnav.<entry_id>`), which the unload saved.
 
@@ -54,6 +55,11 @@ from .ownership_state import OWN_STOP_STORE_KEY, own_stop_from_record, person_pa
 
 _LOGGER = logging.getLogger(__name__)
 
+#: In the controller record a disabled charger's hand-back leaves (`async_forget_handed_back`): the charger was given
+#: back then. Read only at the removal of an entry that is still disabled; the controller's own saves never write it,
+#: so it is gone once the entry is enabled and drives the charger again.
+HANDED_BACK_STORE_KEY = "handed_back"
+
 
 async def _async_saved_record(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     """The charger's controller record, or `None` when there is none or it cannot be read."""
@@ -90,6 +96,15 @@ async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry, *, wh
     left: list[str] = []
     try:
         saved = await _async_saved_record(hass, entry_id)
+        if (
+            why == "removed"
+            and entry.disabled_by is not None
+            and saved is not None
+            and saved.get(HANDED_BACK_STORE_KEY) is True
+        ):
+            # Handed back when it was disabled and not driven since: what the charger reads now is the person's.
+            _LOGGER.info("SpotNav charger %s: already handed back when it was disabled, so nothing is written", label)
+            return []
         target, _source = ocpp_target_of(hass, config)
         adapter = build_adapter(hass, config, ocpp_target=lambda: target, energy_entity_id=None)
         adapter.restore_memory(None if saved is None else saved.get("adapter_memory"))
@@ -170,6 +185,7 @@ async def async_forget_handed_back(hass: HomeAssistant, entry_id: str) -> None:
             if key in saved
         }
         kept[OWN_STOP_STORE_KEY] = False
+        kept[HANDED_BACK_STORE_KEY] = True
         await store.async_save(kept)
     except Exception:  # noqa: BLE001 - the disable goes on; the next start reads the record as it was
         _LOGGER.warning("SpotNav charger %s disabled: its record could not be cleared", entry_id, exc_info=True)
