@@ -7,12 +7,36 @@ section: Settings
 
 # Site and load balancing
 
-For anyone with more than one charger, or a charger that must stay within the main fuse: how to add a site, what it measures and how load balancing acts.
-
 A **site** (*your home* in the setup) is the second kind of SpotNav entry. It represents one electrical connection,
 typically your main fuse, shared by one or more SpotNav chargers. It is what makes the house card,
 the home battery, the heating, load balancing, [solar charging and hybrid](strategies.md) possible. A charger can belong to only
 one site.
+
+## In short
+
+- **What it does for you.** A site is your home's connection to the grid, behind the main fuse. It gives you the
+  house card, the home battery, the heating, charging from the sun, and load balancing: SpotNav lowers or pauses a
+  charger so the house stays under the main fuse.
+- **What you need.** Your main fuse rating and a grid meter in Home Assistant that reads each phase (a current per
+  phase, or power and voltage per phase). For solar charging and an import target, also the grid's total power with a
+  direction.
+- **What to do.** Add **Your home** in the SpotNav integration, confirm the meter SpotNav finds, and include your
+  chargers. A new site only calculates. Turn on **Load balancing** when SpotNav should act on the chargers.
+- **Best effort.** Load balancing is not a protective device. Your main fuse is still what protects the house.
+
+| Setting | Where | Default | What it does |
+| --- | --- | --- | --- |
+| Main fuse (A) | Site dialog, or the card's site section | Entered by you | The limit on every phase. Never guessed from measured load. |
+| Safety margin (A) | Beside the main fuse | 1 A | Kept free below the fuse. |
+| Load balancing | The site's **Configure**, or the card (administrators) | Off | Lowers a charger's current, or pauses it, to keep every phase under the fuse less the margin. See [Active load balancing](#active-load-balancing). |
+| Car may take the home battery's share | The site's settings | Off | For a home battery that holds the grid at its setpoint: the car may step into the battery's share when the battery gives way. |
+| Priority | The cards' settings, the site's section | House heat, the cars, the spa, ... | Who gets energy first and gives way last. See [The priority list](#the-priority-list). |
+| Import target (kW) | The card's settings, beside the main fuse | Off | Holds the chargers so each clock hour's mean import stays under it. See [Demand charge and import target](#demand-charge-and-import-target). |
+| Total grid power | The site editor | Found where the integration has it | Needed for solar and the import target on a site that measures phase currents. See [Total grid power](#total-grid-power). |
+| Home battery power, solar forecast sources | The site | Optional | Used by solar and hybrid charging. See [Solar and forecast settings](#solar-and-forecast-settings). |
+
+The long rule lists (how each charger's phase and current are read, every rule of active load balancing, every rule
+of the import target's hold, meter detection and signs) are on [Load balancing in detail](load-balancing-details.md).
 
 ## Add a site
 
@@ -32,59 +56,14 @@ shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
 - **Chargers on this site**, and for each charger whether it is three-phase or single-phase, and for
   a single-phase charger its phase: L1, L2, L3 or **Automatic (follows the charger)**, the default.
   Automatic is for a charger whose phase is not fixed, such as one behind an Easee Equalizer, which
-  moves a one-phase charge to another phase from one session to the next:
-  - While the charger draws, its own measured current shows the phase: every phase reads, fresh, and
-    exactly one carries 1 A or more, which the site's reading of that phase bears out (at least the
-    charger's draw, less 2 A). Load balancing reckons it on that phase and follows it when it moves. A
-    new phase counts once it has held for 10 s, and a reading in transition (two phases drawing) keeps
-    the phase it had for at most that long.
-  - Otherwise (idle, before a start, no measured current set, a stale or missing reading, a source that
-    reads one phase only, or a reading the site does not bear out) it is reckoned on the phase with the
-    least headroom, drawing the largest current any phase of its own reads: never on a guess.
-  - The site's diagnostics show, per charger, the phase it is reckoned on and how that was decided
-    (`charger_phase`: `chosen`, `measured` or `worst_case`). Only when some phase's headroom is unknown
-    can it not be reckoned at all (`single_phase_charger_wiring_unknown`); the site then proposes
-    nothing for any charger anyway.
+  moves a one-phase charge to another phase from one session to the next. How SpotNav finds the phase of an Automatic charger: see
+  [Charger wiring and measured current](load-balancing-details.md#charger-wiring-and-measured-current).
 - Optionally, each charger's own **measured current** (its per-phase sensors). Never use a
   commanded current here: a car can draw less than its setpoint, and crediting a setpoint would
   overstate how much of the site's load is the charger's.
-  - **Easee** reports the charger's input terminals, not phases, as the attributes
-    `state_inCurrentT2` to `state_inCurrentT5` of its **Current** sensor (disabled by default in
-    the Easee integration: enable it). On a TN network (400 V between phases) T3, T4 and T5 are
-    L1, L2 and L3 and T2 is the neutral; on an IT network (230 V between phases) there is no
-    neutral and T2, T3 and T4 are L1, L2 and L3. SpotNav fills this in when a charger joins a
-    site, and for a charger already in a site the next time the site starts (once, logged),
-    when the wiring has no source; a source you chose, or removed on purpose, is never changed.
-    A one-phase charger on a chosen phase is read from T3 only (TN); an Automatic one from T3, T4
-    and T5, which show the phase it charges on. The charger's dialog shows the source the site
-    reads, read-only.
-  - **A charger whose integration has its own current sensors** (Peblar's *Current phase 1–3*, and
-    likewise Zaptec, go-e, NRGkick, Charge Amps, Lektrico, Tesla Wall Connector, NexBlue and
-    Easee's *Current*) is offered them in the card's site editor (**Site, Change site entities**,
-    under *Found in Home Assistant*) while its wiring reads no measured current, also when the
-    integration ships them disabled, as Peblar does. **Use** enables the ones the integration
-    disabled and sets them in the charger's wiring; nothing changes before. A sensor you disabled
-    yourself is never enabled, and the charger is then offered nothing. While the wiring reads no
-    current, the status line and the charger's dialog name these sensors.
-  - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
-    and solar runs that charger blind, at the minimum current only. It starts (reason
-    `unmeasured_start`, after `unmeasured_arming`) when the spare power without the car (export, plus
-    a charging battery under car first) has covered the start minimum for the solar start delay, no
-    other charger on the site is about to start or started less than a minute ago, and the fuse caps
-    allow it. A running charge is held at the minimum current while there is export or about zero
-    import (100 W per phase; a battery discharging into the car counts as import), and stopped once
-    import beyond that has lasted the solar stop delay; the reason is `charger_measurement_missing`.
-    The status says the charger's own current is not set (`solar_charger_current_missing`).
-- On a direct site whose phase measurement is incomplete (a phase with no value, such as an inverter's
-  sensor in standby), solar still runs on the total grid power. A phase that reads keeps its own fuse
-  headroom; a phase that cannot be read caps the charger at what it draws there now, or the minimum
-  current if that is more, even while the total exports: the total is netted over the phases, and a
-  three-phase inverter's export says nothing about one phase's import. Current never rises on a phase
-  that cannot be read.
-- An Automatic single-phase charger is reckoned by solar on the phase its measured current shows it
-  on, as above. While that is not known it is reckoned on a stand-in phase: the total grid power does
-  not depend on the phase, the fuse cap is the lowest of all three phases' caps, and its draw the
-  largest phase its measured current reads.
+  Easee's terminals, chargers with their own current sensors and a charger without any measured current are
+  described in [Charger wiring and measured current](load-balancing-details.md#charger-wiring-and-measured-current),
+  with how solar runs on an incomplete phase measurement.
 
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and
@@ -152,259 +131,23 @@ By default the site only calculates. Turn on **Load balancing** (the site's **Co
 card by an administrator) to let SpotNav lower a charger's current to keep the site under its fuse.
 It is best effort and is not a protective device. Turning it off gives back any current it had lowered.
 
-- A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
-  *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
-  is written, so the charger does not dither. Both are fixed; they are not settings.
-- **An import overload is always lowered.** When a phase imports more than the limit, the lowering
-  goes out in the same pass, as a lower current (a pause when the room left is below the charger's
-  minimum) or, if the charger cannot take it in time, a safety stop. Nothing that is not about safety holds it back: not the damper, not yield stepping's settle
-  time or holds, not the step guard below, not the band of a battery that holds the grid at the fuse,
-  not a resume or a battery probe about to start, not a meter that reports too seldom and not a charger
-  that more than one site claims (less current is safe whoever owns it). What still decides: the fresh
-  readings must still show the overload and its direction (never a lowering on export; where the direction
-  cannot be known, an overload by the measured current, see below), a battery probe already running judges and stops the car itself, and a charger that is
-  already at or below the lower current is not written again. The one exception is a home battery whose
-  yield is verified on this site (see yield stepping below): up to the yield ceiling, yield stepping
-  judges that overload as before.
-- **A lost measurement steps the car to its minimum.** While the site's measurement is stale, missing or
-  unusable, load balancing decides nothing and writes nothing on it: the site's status says **Measurement
-  stale** or **Measurement missing**. Once the measurement has been lost for 60 seconds on a phase a charger
-  may draw on (on top of the maximum measurement age, so a stale reading counts after some three minutes
-  and an unavailable one after one), every charger load balancing governs that draws above its minimum
-  current is set to that minimum, at once and through the charger's usual write. It is not paused or
-  stopped (a meter that is silent does not show an overload), nothing is started, and a charger load
-  balancing does not govern is not touched. The card says "The site's meter has no fresh reading: load
-  balancing holds the car at its minimum of 6 A until it is back." A reading that is merely unchanged
-  while Home Assistant keeps hearing from the sensor is not a lost one. When the measurement is back the
-  regulator works as before from its next pass, and raises the car by its usual damped steps, never
-  straight back to the old current. Like any other decision, this one waits while a meter reports too
-  seldom or a charger is claimed by more than one site. The site's diagnostics count the times it
-  happened, with the last (`measurement_lost`).
-- **A step up stops one amp short of the room there is**, so the car settles one step below the
-  limit (the fuse less the site's safety margin, which may be 0) instead of landing on it and being
-  cut. A charger's own current is read far less often than the site meter (OCPP: about once a
-  minute), so right after a change the site already shows the new current while the charger still
-  reports the old one. A lowering on such a reading is held while no phase is over the limit; a
-  phase a little over it (up to 2 A) takes off only what it is over and one amp more, from what the
-  charger was set to. One site reading gives at most one cut, and a level that went over right after
-  a step is not tried again for ten minutes. A phase more than 2 A over the limit is cut at once on
-  the charger's own reading, as before. An import overload is never held by these rules; it may only
-  take off less than the regulator asked when the step it overshot is still in flight.
-- A start never gives the car more than the site has room for now, and a start on its way holds its
-  share of that room until the charger draws it (at most two minutes): two chargers starting in the
-  same moment share the margin instead of both taking all of it. A charger whose own current cannot be
-  read holds its whole share for those two minutes even if the car draws less, which may keep another
-  start lower for that long: counting a start twice is the safe side. A charger that fails or is slow
-  to answer (a cloud service) does not keep the others from being lowered: each charger's command runs
-  on its own, one at a time per charger, and a lower current decided meanwhile goes out as soon as the
-  one on its way returns. A stop waits for a current change already on its way, so the change cannot
-  undo it.
-- **Every other current SpotNav writes is held to the same room and told to load balancing**: the
-  current an Easee is sent again after its status blips or a car is plugged in, an OCPP session limit
-  written once the session exists, and the sun's own current. Such a write goes out at no more than
-  the site has room for now (never below the charger's minimum, since writing nothing would leave the
-  charger on the limit it cleared), and load balancing takes it as what the charger is at, so the
-  next overload lowers it from there. As a last line, an overload is also measured against the
-  charger's own current when a fresh reading shows it a step above what was written: a charger that
-  dropped its limit by itself is lowered all the same.
-- **Right after a start** a charger's own current often reads nothing for a while (OCPP meter values
-  come every so often) while the site meter already shows the car. For up to 90 seconds after a start
-  (SpotNav's own, or the charger seen charging), and only while the charger's own reading still shows
-  it drawing nothing, the car is credited with what the site's current rose by since the start, never
-  more than the charger was given. So the car is not taken for house load and paused by its own start.
-  The site's current itself is never changed: a phase over the fuse with the credit applied is still
-  lowered, or paused, at once. The credit only keeps a charger from being paused or lowered by its own
-  start; it never raises a charger: a decision that would go more than one amp above what is credited
-  is taken on the charger's own reading instead (a rise that may be the house's is not the car's).
-  Chargers started together share one rise: each start, in the order they went out, is credited only
-  with what the other chargers' readings and earlier credits do not already account for. What another
-  start may take is still judged on the chargers' own readings. Once the charger's own reading shows
-  the car, it counts alone. A start the charger has not answered yet asks for its current, not for
-  nothing. The credit is in the decision log (`start_credit_a`) and the site's diagnostics.
-- **A charge load balancing paused** (no room for the car's minimum current) is started again once
-  every phase it uses has room for the minimum and one amp more for the dwell time (60 s), while the
-  charge is still wanted: the plan's window is open, the sun's charge or a person's Start. It goes on as
-  the charge it was (a plan's charge stays the plan's). The log says a pause once, as information
-  ("pausing the charge; load balancing leaves less than the charger's minimum current"), however many
-  passes of the regulator or a failed battery probe ask for it before the charger is seen off; a safety
-  stop (a lower current the charger would not take) stays a warning. A stopped charger is not paused again, so the
-  charge it holds back is not forgotten. A person's Stop, the window's end or a new plan with no window
-  open ends it, also while the charger has not yet answered the pause: a pause repeated then holds back
-  nothing. At most two resumes go out in ten minutes; one more due in them waits 15 minutes, so a load
-  that comes and goes does not cycle the relays (the charger is paused at most three times in ten
-  minutes, as Peblar allows). The site sensor and the diagnostics show it (`balancing_resume`). A
-  stopped charger's own current is not needed for it: an OCPP charger sends no meter values while it
-  is stopped, so its reading grows old, but a stopped charger draws nothing. Inside the plan's window
-  the status says so: "Paused – the house is using the whole fuse; trying again at 04:30" (or "when
-  there is room" when no time is set, and "the home battery charges from the grid and fills the main
-  fuse" when that is why).
-- **A start while the home battery charges from the grid** (yield stepping on, *car first*, a *home
-  battery power* sensor that charges at 300 W or more, or rose by that much in the last minute) gives
-  the car its minimum current, not the whole request, and so does the regulator's first word on a
-  start whose car does not draw yet; yield stepping raises it on what the battery gives up.
-- **One reading lowers the car once.** A pass on a site reading taken before the regulator's last write
-  does not credit the car with that write's lower current, so the same excess does not lower the car
-  again on every pass; the next reading that is still over lowers it again at once.
-- A stop already sent is not sent again by another path for the same decision (a re-arm right after
-  the last window's end, the regulator's next pass) for 15 seconds, unless the charger reports charging
-  again or SpotNav starts it meanwhile: a charger that has ended the transaction rejects a second stop.
-  A safety stop for the fuse and a person's Stop always go out. A stop under a person's Stop that sent
-  nothing for this reason does not count toward giving up on a charger that ignores the Stop.
-- A person's, the plan's or a top-off's charge that load balancing stopped for safety (the current could
-  not be lowered in time) is started again when there is room, as a paused charge is (margin and dwell),
-  no sooner than five minutes after that stop, and only within the same plug-in; the plan's charge only
-  while its window is open. Each further safety stop in the same plug-in doubles the wait (10, then 20,
-  at most 30 minutes), so a load that keeps coming back cannot cycle the charger every few minutes; an
-  unplug starts again from five. Neither the resume nor the battery probe tries within the wait. The
-  wait is not kept across a restart of Home Assistant.
-- It requires a site with usable measurement and a charger SpotNav can command: one whose
-  current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
-  with a current number or service, see [supported hardware](supported.md)), or one it can only
-  switch on and off (below). A charger whose
-  current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
-  fuse needs less than its setting. It is refused while a charger belongs to more than one site, and
-  held while a meter it reads reports too seldom; an import overload is still lowered then.
-- **It needs to know which way each phase flows** (import or export) to lower a car that is not over the fuse:
-  lowering a car lowers the import, which on a phase that nets to export raises the current instead, so such a
-  lowering is only allowed where the phase is known to import. A *derived* site knows this from its signed power on
-  every phase. A *direct* site knows it only when its currents carry a sign (*The grid current is signed*) **and**
-  it has the meter's **total grid power**: the sign is trusted on a phase only after that phase has agreed with the
-  total on three readings in a row where the answer is clear (the total and the phase outside ±500 W, every phase
-  outside it on the total's side, and the phases adding up to the total). Not every meter counts export as
-  negative, so the sign is checked rather than assumed; a reading against the total withdraws it again, and after a
-  restart it is checked again (on a solar site, where the phases often point different ways in the daytime, that
-  can take until a reading where they agree, such as the evening). A charger on one chosen phase, or an *Automatic*
-  one followed to its phase, needs that phase; a three-phase charger, or an Automatic one not yet followed, needs
-  all three.
-- **Without a direction, load balancing works on the measured current alone** (`phase_direction_unknown` in the
-  diagnostics), whoever started the charge (a plan, a person, the sun, a guest, the minimum level). A phase the
-  charger draws on that goes over the limit by its measured current lowers it at once to the room that leaves (a
-  pause below its minimum; a charger that can only be switched is paused), and a charge below what was asked for
-  is raised again within the room the measured current leaves on every phase it draws on
-  (`increase_within_room_on_current_magnitude_direction_unknown`): a raise of d on a phase reading |I| gives at
-  most |I| + d whichever way the phase flows, so a step kept within `limit − |I|` cannot overload the fuse. The
-  raise never goes above what the plan, the person or the sun asked for, takes the same dwell, deadband and step
-  margin as any raise (a cycling load such as an oven lowers the car at once and raises it once the load has stayed
-  off), shares the room between chargers as raises do elsewhere, and is held while a meter reports too seldom.
-  A charger read seldom (a cloud) is reckoned at no more than was last written to it until its reading catches up,
-  so neither a raise nor a changed setting gives a lowered car its old current back on a stale reading. Every start
-  and every current SpotNav writes is held to that room as on any site, and a charge paused so is started again as
-  any balancing pause is. What this cannot do is lower a car on a phase that exports (a phase over the limit by
-  export, which the car's draw was reducing, cannot be told from import: it is lowered on too) and count export as
-  room; a phase known to export (a signed site once confirmed) is never lowered on, one known to import still is.
-  A direct site without both *The grid current is signed* and the total grid power never knows the direction: the
-  load-balancing row in the card's settings then says what to set (the reason `site_direction_unknown` in the
-  site's state and diagnostics). If the site editor lists your meter under *Found in Home Assistant*, **Use** sets
-  it up; nothing changes until you press it. Who writes the current is settled when a charge starts and kept until
-  it ends (the charger stops or the car is unplugged): a charge that started before its phases were confirmed stays
-  the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active load balancing keeps it
-  if the confirmation is withdrawn meanwhile; both are then on the rules above (lowered on an overload by the
-  measured current, raised within the room it leaves, never above what the writer asked) until the confirmation is
-  back or the charge ends. Room the sun's write gave its charger, or a raise active control gave one of its own, is
-  not given to the other writer until the charger draws it (at most two minutes). On a direct site a raise is judged
-  on the measured current as it is (export on a phase is not counted as room), and a lowering also stays within the
-  room the phase has, since a current with a sign does not tell how much of it is active power.
-- **Yield-verified stepping** (**Car may take the home battery's share** in the site's settings, off by
-  default) is for sites with a load that gives way when the car
-  draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
-  step by whether it moves the site current, within a hard ceiling. Until the battery's yield is
-  verified on the site, the ceiling is the main fuse itself: no step takes a phase above the fuse on a
-  battery that has not shown it gives way, and an import overload is lowered at once. The exceptions are
-  the probes that find out: a step into the battery's share (below, at most 2.5 A over the limit) and the
-  probe of a paused charge, each taken back unless the battery gives way. Verified
-  means the battery probe below succeeded, or a step was confirmed and the battery's own charge fell by
-  what the car took; a failed step (its backoff) or the end of the car's draw forgets it. With the battery
-  verified, the *yield ceiling* holds (1.15 times the fuse, fixed: below the 1.25 times a gG fuse carries
-  for an hour), and an import overload below it is yield stepping's to judge.
-  - **A home battery that charges from the grid and gives way.** With a *home battery power*
-    sensor and *Car or home battery first* set to *car first* (the default), SpotNav also checks that the battery's
-    own charge falls when the car takes more. Once that is verified the car may climb in larger
-    steps (up to 3 A, never more than the battery's charge per phase, and 1 A near the plan's
-    current), the damper's dwell does not hold such a step, and the card says why the car is below
-    its plan: "The home battery charges from the grid and shares the main fuse: the car gets 11 A."
-    With *battery first*, or a battery that does not give way, nothing is credited and the steps
-    stay at 2 A.
-  - **A battery that holds the grid at the fuse.** Only with *car first* and yield stepping on. While
-    the battery charges at least as hard as the car's minimum current would draw and every phase
-    reads no more than 0.5 A above the limit (the fuse less the safety margin), the grid sitting at
-    the limit is the battery's own regulation, and a pause or a lowering that is not an import
-    overload is not carried out for it (`held_battery_at_limit` in the decision log). An import
-    overload in the band is held the same way while the battery charges at least what the cut would free (below);
-    a reading above that
-    band, a stale measurement or a sustained excess is handled exactly as before. When load balancing has paused
-    the car for want of headroom and the battery is charging from the grid, SpotNav starts the car
-    at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
-    if shorter): if every phase is back within the band the battery gave way and the car goes on
-    from there; if not, the car is stopped again and no new probe is tried for 10 minutes, then 15
-    minutes each time, for as long as the charge is wanted (the plan's window open, a person's Start).
-    A grid held a few tenths over the fuse within the band is no reason to skip the probe: that is the
-    battery's own regulation. A car that has visibly started but does not yet draw its minimum when the window
-    ends (the charger's status has turned to charging since the start, or its own current has begun
-    to rise) is waited for up to 90 seconds from the start, as long as a start is credited: cars ramp
-    up over tens of seconds and OCPP meter values lag. A status that already said charging when the
-    probe started (even after a moment of being unavailable), or a reading the charger simply has not
-    sent again, is no such sign. That wait
-    holds only while every phase stays within the band; a reading above it ends the probe at once. A
-    car that shows nothing by the end of the window is stopped then, as before. A probe is never started against a
-    real overload, and it ends at once on a stale or missing measurement or a phase far above what
-    the car's minimum can explain. A charge a person stopped is never restarted this way. A car
-    that refuses two probes in a row in the plan's charge (each ends as `car_not_drawing`, the charger's
-    own current at most 1 A all along, never rising, its status never charging and its connector at
-    `SuspendedEV` at the end; at most 30 minutes apart, in one plug-in) has ended the charge by itself,
-    exactly as if the plan's own five-minute watch had seen it ([target level](target-soc.md)): the plan
-    waits for the car's level, and no probe, no resume of the paused charge and no planned period starts
-    the car again until that wait ends. One probe looks at the car for half a minute, which a car waking
-    from sleep may need whole, hence two. A probe that fails because the battery did not yield, a missing
-    reading, or a charger that holds the car back itself (`SuspendedEVSE`) says nothing about the car.
-    (On 14 October a full car was started at the minimum every 10 to 15 minutes for over an hour while
-    the home battery charged from the grid.) The outcome is in the site's diagnostics under
-    `battery_probe` (with `car_refusals`, the refusals in a row) and in the decision log (`probe_started`,
-    `probe_extended`, `probe_succeeded`, `probe_failed`, `probe_car_ended`).
-    A running car that such a battery would have lowered or paused for an import overload within the band (or a
-    grid read at exactly the fuse) keeps its current, as long as the battery charges, on a fresh reading, at least as
-    hard as the cut would free (all of the car's minimum for a pause): `held_battery_at_limit` in the decision log.
-    This verifies nothing by itself, but the car is not held there for good: a step into the battery's share (below)
-    finds out whether the battery gives way, and the car climbs back to its plan if it does. An overload
-    above the band is lowered at once, as before, and the car is held from where that leaves it; a request lowered
-    below the car's current is always followed. For the resume and the probe a stopped charger's own current read before
-    its pause, or not reported for longer than the site's maximum age, counts as nothing drawn: an OCPP
-    charger sends no meter values while stopped and keeps showing the car's last draw. (On 1 November a
-    Sigenergy battery held a 20 A fuse at 20.0-20.1 A from 03:15 and grew to 12.5 kW as the car was lowered
-    to its minimum and paused; the HALO kept showing 6 A, and the paused charge was not resumed when the
-    battery stopped at 04:07. Now the car is lowered once, from 16 to 14 A for the 21.6 A at the battery's
-    start, and is stepped back to 16 A into the share of the battery, which gives way. On 8 November, before
-    that step was allowed on a battery not yet verified, the car stayed at 9 A all evening under a battery
-    charging 6.7 kW at 20.07 A.)
-  - **A running car below its plan while the battery fills the fuse.** Only with *car first* and yield
-    stepping on. While the car draws what it was given and the battery charges from the grid by at
-    least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
-    fresh reading), the car is not lowered for the grid sitting at the limit, and it is stepped up
-    2 A into the battery's share even though the fuse has no headroom left. Such a step may take a
-    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the yield
-    ceiling), also while the battery's yield is not yet verified: this step is what verifies it. A step
-    that would go further is not tried. It is then measured like any other yield
-    step: if the battery's charge falls by what the car took, the grid stays put and the car goes
-    on, one step at a time (each sized to stay within the 2.5 A, and paced by the settle time) up to
-    its plan. If the grid carries the step instead, or a phase goes past the 2.5 A, or the charger's
-    own reading has not shown the step within 90 seconds, the car goes straight back to where it was
-    and no step is tried for 10 minutes, then 20, 40 and at most an hour. Anything above the
-    allowance is still cut at once. The card keeps saying that the battery shares the fuse, with the
-    current the car has now. (On 17 October a car sat at 7 A all night against a plan of 16 A while
-    the battery charged at 7.3 kW from a 20 A fuse held at 20.0-20.5 A. With the grid above the fuse
-    and the battery not yet verified, the car now keeps its 7 A within the band; it climbs once a battery
-    probe or a confirmed step has verified the battery.)
-  - **A short overload is not a reset.** While yield stepping is verified, one sample above the
-    ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
-    sample in a row, a larger excess, or two such samples within two minutes still stops at the
-    safe level, and the measured per-phase current stays the fuse protection throughout.
-- **Decision log.** Every change the regulator makes or holds (time, from and to amps, the reason,
-  the limiting phase, the battery power and the measured currents) is kept in a bounded list per
-  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics. What solar and
-  hybrid decide is beside it, per charger, as `solar_decision_log`. The debug bundle keeps both per
-  charger plug-in instead, also across restarts (`sessions`, see
-  [Diagnostics and troubleshooting](troubleshooting.md)).
-- Reading a measurement that has not changed is told apart from a dead link before the reading
-  is treated as stale.
+What it does, in short:
+
+- **An overload is lowered at once**: a lower current, a pause when the room left is below the charger's minimum,
+  or a safety stop if the charger cannot take it in time.
+- **Other changes are damped** (2 A deadband, 60 s dwell), so the charger does not dither. A step up stops one amp
+  short of the room there is, and a start never gives the car more than the site has room for now.
+- **A lost meter reading steps the car to its minimum** until the reading is back.
+- **A paused charge starts again** once every phase it uses has room for its minimum and one amp more for 60 s, while
+  the charge is still wanted. At most two resumes go out in ten minutes.
+- **It needs to know which way each phase flows** (import or export) to lower a car that is not over the fuse.
+  Without that it works on the measured current alone, and the card says what to set.
+- **Car may take the home battery's share** (off by default) lets the car step into a home battery's share of the
+  fuse once the battery is seen to give way.
+- **Every change is logged** in the site's diagnostics (`regulator_decision_log`).
+
+Every rule in full: [The rules active load balancing follows](load-balancing-details.md#the-rules-active-load-balancing-follows).
+
 
 ### Chargers that can only be switched on and off
 
@@ -624,144 +367,26 @@ statistics of the grid power yet) the Power view asks again at most once a day w
 
 ### Holding the chargers under the import target
 
-While a site has an import target and load balancing (active control) is on, each recompute works out what the
-site's chargers may still draw this clock hour, and load balancing gives each charger the smaller of that and what
-the main fuse allows. The fuse's rules come first and are never loosened: the target only ever lowers a charger, an
-overload's lowering is never changed by it, and a lowering for the target never goes so far that a phase the
-charger draws on would turn from import to export (so the current the fuse carries can only fall).
+While a site has an import target and load balancing is on, SpotNav holds the chargers so the clock hour's mean
+import stays under the target, less a small margin (the larger of 0.1 kW and 2 %). The main fuse's rules always
+come first and are never loosened.
 
-- **The month's peak lifts the target, for the running hour.** Where the electricity price has a
-  [demand charge](prices.md#a-demand-charge), the hour running now may reach a level the month has already paid
-  for: its hold is lifted to the month's free level, the lowest of what each part that counts the running hour
-  leaves free (a highest-hour part's peak this month; a top-3 or top-5 part's third or fifth highest day, or today's
-  own peak while today is among them; with fewer days than that, today's own peak or nothing). Each hour is counted
-  at its floor for this, its import over the whole hour with any minutes without a reading counted as none, so never
-  above what the operator billed. Never below the target as set. An
-  hour no part counts keeps the target, a new month starts from it, and an incomplete hour never sets a peak.
-  Example: a 6.0 kW target, and a sauna evening made the day part's peak 7.0 kW: for the rest of the month day hours
-  are held under 7.0 kW (less the margin below, 6.86 kW). Only the running hour's hold is lifted: a plan, and the later hours of the departure's check,
-  count on the target as set (a later hour may be counted by no part, a new day or a new month). The fuse is
-  untouched. The status names both (*Held to 8 A to keep this hour under 7.0 kW, the month's peak (import target
-  6.0 kW)*), as do the house-alone lines and the notice, the line under the target in Settings, and the Power
-  view's line of the month's peak. An hour read from Home Assistant's statistics lifts it only when it is
-  [complete](#earlier-months-from-home-assistants-statistics). No setting. **A power-level subscriber** (Göteborg's
-  tidsindelad level, which must never be exceeded) should leave the demand charge's parts out, or set them so they
-  never free more than the level, or the month's peak lifts the hold above it.
-- **A small margin.** SpotNav keeps a small margin below the target, the larger of 0.1 kW and 2 %, for a meter that
-  reads differently from the operator's and the hour's last minutes: a 6.0 kW target holds the hour under 5.88 kW.
-  It is taken once, from the level the hour is held to (the target, or the month's peak that lifts it), never below
-  nothing. Plans and the departure's check count on the target less it too, so they agree with what the hold allows.
-  What you are shown stays your own numbers (the 6.0 kW target, the month's peak); the diagnostics show both.
-- **The hour's budget.** The target (less its margin) times one hour, less what was imported so far this hour, is what the rest of
-  the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
-  its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
-  draw. In the hour's last minute the time left counts as a minute, and the fuse's own ceiling bounds the result.
-  A few minutes without a reading count at the hour's own mean. While a charger that was just started (or
-  resumed) still reads below its minimum, its draw the meter or a battery already shows is not counted as the
-  house's: the house counts at most its typical load then, so a start is not held for its own draw.
-- **Several chargers** share it in the site's order (down the [priority list](#the-priority-list)). Each
-  is held to the whole amps that still fit. A switch-only charger runs only while its whole switched power fits.
-- **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
-  the target with it at its minimum for the rest of the hour, it is paused until the next clock hour and given back
-  then, as any load-balancing pause is (with the resume's margin and dwell). It is paused at most once per hour: it
-  stays paused to the hour's end even when the house uses less again, from the moment the pause goes out (whenever
-  the charger reports itself off). A pause decided for a moment (a kettle) and taken back before the dwell let it
-  out pauses nothing.
-- **Raises** come at the next hour, or when the budget allows them, through the same deadband and dwell as every
-  write. A lowering to a current is written at once (no deadband: an amp kept back would be drawn to the hour's
-  end), and a raise that only gives back the target's own lowering within the hour passes the deadband too (it still
-  waits for the dwell), so a wobbling house does not ratchet the car down. In the hour's last ten minutes a charger the target held is raised no further than it held it (the budget
-  left is spread over too little time to be worth a raise the next hour takes back); a charger the target did not
-  hold is the fuse's and the budget's as at any other time.
-- **Chargers that take a new current only every few minutes** (Zaptec: every 15; one that takes it every 90
-  seconds or more often is held as any other) are held by energy. Until its next write the charger keeps drawing
-  what it is set to, so a lowering is made deep enough that this wait and then the lower current still end the hour
-  under the target. Where no current at or above the minimum can do that (late in the hour, or the house takes too
-  much at once), the charge is paused instead, to the hour's end as any target pause: a pause is a command the
-  charger takes within seconds, not a current. A wait that ends in the hour's last minute and carries only a few
-  watt-hours too many pauses nothing; the margin takes it. From one interval and a minute before the hour's end (16
-  minutes for Zaptec) such a charger, once the target has held it this hour, is kept where it is set (never below
-  its minimum), so no raise reaches into the next hour. In such hours the car may get a little less than with a charger that takes a new current at once. The
-  diagnostics show each charger's wait for its next write (`write_wait_s`) and, for such a pause, `slow_charger`.
-- **The house alone over the target.** When the house by itself ends the hour above the target, SpotNav pauses its
-  chargers and holds back nothing else; the status says that the house alone is above the target, never that the
-  hour stays under it.
-- **The car's minimum level comes first.** Below the car's [minimum level](target-soc.md) SpotNav charges at once,
-  and that charge is never held by the target. A minimum level at or above the plan's target makes the whole charge
-  a minimum-level charge: none of it is held.
-- **Above it the target holds, even past a departure.** When the plan cannot be ready by its departure under the
-  target (what it still needs, against what the target leaves the car by then beside the house's typical load: its
-  mean over the last 24 measured hours and the hour so far, so a kettle's half minute changes nothing; decided again
-  on every recompute, with half a kWh of margin either way), what happens is the plan's own choice, *If the car
-  cannot be ready in time* in the card's Plan dialog (shown while the site has a target):
-  - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
-    told once per departure, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh
-    short* (where the month's peak lifts the hour: *under the month's peak of 7.5 kW (import target 6.0 kW)*),
-    with buttons for this departure only, *Take what fits (≈ 12 kWh)*, *Later departure (17:00)* and *Allow the peak
-    (≈ 12 kW, ≈ 105 kr)* (the price where a demand charge prices the peak). *Later departure* is the earliest whole
-    hour after the departure by which all of it fits under the same ceiling, looked for up to the end of the prices
-    held (no button where none does); pressing it moves this departure alone there and the plan is made again for it,
-    while the daily departure, its weekdays and the calendar stay as set. It ends at that departure, at the unplug, or
-    when another departure is set. A car plugged in later in the day is told at the plug-in. Never at night: one that
-    arises between 22:00 and 07:00 is told at 07:00 if it still stands and its departure is later, else never. Taken
-    off the phones once it fits again or a choice is made (on the phone, in the card or in the app). No answer: the
-    target holds. The card's "does not fit" line says the same, with the same choices (*Later departure* without a
-    time opens the departure's editor).
-  - **Release the import target**: the departure wins by itself; once holding would miss it the target is set aside for that
-    charge until its departure, as *Release the import target for this charge* does, and the plan counts on the car's own power.
-  - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
-- **Release the import target for this charge** (from the notification, the card or the app) sets the target aside for that charge until its
-  departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A charge
-  without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged, the
-  car ends the charge by itself (full, or at its limit), or the first noon at least six hours after the press
-  (pressed at 11:59, the next day's), whichever comes first: a release always ends by then, also on a charger that cannot
-  tell whether a car is plugged in. A Start pressed after a release keeps it: the plan the Start drops no longer
-  ends it, and it lasts until the car is unplugged as above. The
-  card offers it beside every line where the target holds or pauses a charge, and asks first, since a press can
-  cost the month: *Release the import target? The car then charges at full power until it is unplugged, or until the
-  departure at 07:00. The month's peak may reach up to 11 kW, against 6.0 kW today.* (up to: the house's typical
-  load and the charge's full power, rounded; today: the month's level the target holds to). The phone's button is
-  one press, as it answers a question already asked. A phone's
-  button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
-  new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
-  held back; once the target's notice comes down and the plan still cannot be met for reasons of its own, that
-  notice is told. The status says *The import target is set aside by
-  you until 07:00*, or *until the car is unplugged or the charge is done, by noon at the latest*.
-- **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
-  target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
-  the held charge needs and says honestly what it can deliver by the departure (see
-  [Planning strategies](strategies.md)). Not for a plan set to *Release the import target*, nor for a charger the hold
-  cannot act on (no current of its own to judge a lowering on, or a phase that cannot be judged).
-- **A person's Start obeys the target** as a plan's charge does: held, or paused to the hour's end, and shown so,
-  with *Release the import target for this charge* the only way past it. No phone is told just because a Start is held. A
-  person's Stop is untouched. Only the car's minimum level is never held (above), and the sun's charge is left
-  alone: it counts toward the hour but is never held. A held charge the fuse paused counts at what it resumes at.
-- **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
-  *battery first* a home battery's discharge counts as import too (the car is not to be paid for by the battery);
-  under *car first* only the grid counts. A lowering never turns a phase the car draws on from import to export,
-  so with the grid held at about nothing it could not lower the car at all; under *battery first*, with the battery
-  read live and discharging, lowering the car by up to the battery's discharge only lowers that discharge, so the
-  car may come down that much further (spread evenly over its phases, and shared among the chargers the target
-  lowers at the same time). That extra drop is never more than the smallest fuse margin over the car's phases, so
-  a battery that does not follow the car down (a fixed setpoint, a single-phase battery beside a three-phase car)
-  cannot export past the fuse. Any drop beyond that still keeps every phase an import, and with the battery not
-  read live nothing changes. A charger lowered only part of the way is marked `floor_limited` in the diagnostics,
-  and a plan for it does not count on the hold's power.
-- **Yield stepping and the battery probe** never step a charger above what the target leaves it, and no probe or
-  resume starts a charge the target holds back.
-- **Not applied** (nothing held for the target, and the fuse rules as always) while load balancing is off, the
-  site cannot measure the hour (a direct site without its total grid power), the meter has no live reading, the
-  hour has more than ten minutes without one, or under *battery first* the battery cannot be read. After a restart
-  the hour kept by the tracker decides again; the minutes the restart took count as missing. Should the target's own
-  code fail, the fuse's decisions go out as they are and nothing is held for it.
-- **Shown.** The charger's status says *Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW)*, *Paused until
-  15:00 to keep this hour under 6.0 kW* (or, where the house alone is above the target, *Paused until 15:00 – the
-  house alone is above the 6.0 kW import target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
-  target – 4 kWh short* with *Release the import target for this charge*, or that the target is set aside until 07:00. The site's
-  load-balancing limit names the cause `import_target` only where the target's budget holds the charger. The site's
-  diagnostics carry an `import_target` block: the hour's budget or why it is not applied, the level held to (`effective`: the lifted level, the month's free level and whether every part counts the hour), what it does to each
-  charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the
-  departures at risk and those set aside, and its recent holds, pauses and releases.
+- **The month's peak lifts the target** for the running hour, where a [demand charge](prices.md#a-demand-charge)
+  already paid for that level.
+- **Several chargers** share what the hour has left, down the [priority list](#the-priority-list). A charger is never
+  held below its minimum current: it is paused to the end of the hour instead.
+- **The car's minimum level comes first**: below it SpotNav charges at once and the target never holds it. The sun's
+  charge is never held either.
+- **When the car cannot be ready by its departure** under the target, the plan's *If the car cannot be ready in
+  time* decides: **Ask** (the default: your phone is told, with *Take what fits*, *Later departure* and *Allow the
+  peak*), **Release the import target** or **Keep the import target**. *Release the import target for this charge*
+  in the card, the app or the notice sets it aside for that charge.
+- **Plans count on the target**: a plan buys the quarter hours the held charge needs.
+- **Not applied** while load balancing is off or the site cannot measure the hour.
+
+Every rule, with the status lines and the diagnostics:
+[Holding the chargers under the import target](load-balancing-details.md#holding-the-chargers-under-the-import-target).
+
 
 ### The shed order under the ceiling
 
@@ -827,18 +452,8 @@ Below the lowest temperature it runs at any price; the fuse always comes first.
 
 ## Meter detection, signs and estimated current
 
-SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:
-
-* `site_current_signed`: the meter reports export as a negative current; the fuse carries |I|, so the magnitude is read. Without the flag a negative current is invalid. On a direct site with the total grid power, the sign also gives each phase its direction for active load balancing once checked against the total (see [Active load balancing](#active-load-balancing)).
-* `grid_power_inverted` / `battery_power_inverted`: export-positive grid power (the per-phase power of a derived site and the total grid power) and discharge-positive battery power are negated.
-* Import and export reported as two entities (`power` and `power_export`, or a battery's charge and discharge) are combined as import minus export; a missing half makes the value missing, never zero.
-
-**A sign set the wrong way round.** A meter that reports export as negative, read with *The sensor shows export as positive* ticked (or the other way round), turns export into import: solar finds no surplus and load balancing reads the house the wrong way. SpotNav checks the setting against what it does to the grid itself. Whenever a charger whose own draw is measured (its measured-current source, its own current sensors or its smart plug's power) starts, stops or changes by at least about 1.4 kW (6 A on one phase), the site's import must move the same way by about as much. A step counts only when the readings are fresh on both sides, the home battery (if one is set) and the other chargers stayed still meanwhile, and the grid moved by between half and twice the charger's change. After three steps that moved the grid the other way, with none among the last five that moved it the same way, the card's *Get started* list says the grid meter's sign looks reversed, with a button for administrators that turns that one option over; a log line says so too. The same is checked for a direct site's signed phase currents (*Grid current is signed*). SpotNav never changes the setting by itself. The warning clears after three steps that move the grid the right way, or as soon as the setting is changed; the count is kept across restarts and is in the site's diagnostics (`grid_sign`).
-
-Derived mode needs only signed active power and voltage per phase. The current is, in order: the meter's own current (as |I|), S / U from apparent power, sqrt(P^2 + Q^2) / U from reactive power, else `|P| / (U x 0.9)`, which is marked **estimated** in the site state and the card. The estimate is never below the real current for a power factor of 0.9 or better and understates it below that. A configured source that is unavailable never falls back to a cruder one.
-
-**Derived without phase voltages.** A phase that has its own current sensor needs no voltage sensor: the site's nominal phase voltage (*Voltage between phases* divided by the square root of 3, 230 V on a 400 V network) stands in, always fresh. The meter's own current is still the fuse's |I| and the power still gives the direction; the voltage is only the number derived mode needs beside them. A phase without a current sensor still needs its voltage. The site editor offers this setup for a meter that has per-phase power and current but no complete set of phase voltages (the delta meter of Home Assistant's core SolarEdge Modbus has none, and a wye meter ships them disabled), ranked above the meter's direct candidate and below one with voltages. *Found in Home Assistant* lists it, **Use** applies it, and the debug file's `detection` section shows what was offered.
-
-**What the card says when the direction is unknown.** On a direct site that cannot tell import from export, the load-balancing row names what helps for the site's own meter: *use the meter's per-phase power* when detection has a derived candidate for it (the dashboard's `active_control.direction_hint` is `use_power`, and **Use** on the meter applies it), nothing about signing the current when the meter is known to report its current as a size (`magnitude`), and the general advice (the sign and the total grid power) otherwise (`null`). SolarEdge's meters report the current as a size, positive on import and on export, so they are only given the direction by their power.
-
-The card warns when a source's integration updates more slowly than the maximum measurement age (naming the integration option that lowers it where known), and when a device with its own load balancing (Easee Equalizer, Zaptec Sense, Ferroamp ACE, ONEp1) is present.
+SpotNav looks for your grid meter and home battery in Home Assistant and offers them in the site editor and the
+setup; nothing is applied until you confirm. It knows each integration's sign conventions, checks a sign set the
+wrong way round against the chargers' own steps (the card's *Get started* list then offers to turn it over), and
+marks a current worked out from power as **estimated**. In full:
+[Meter detection, signs and estimated current](load-balancing-details.md#meter-detection-signs-and-estimated-current).
