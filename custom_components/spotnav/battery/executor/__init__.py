@@ -316,6 +316,7 @@ from .handback import HandBack
 from .helpers import _blocking, _event, _without, _writes_today
 from .management import management_problem, taken_over
 from .ordering import Ordering
+from .peak_cover import PeakCover
 from .reads import role_reads
 from .renewal import Renewal
 from .state import ExecInputs, ExecState, Op, RoleRead, StepResult
@@ -420,7 +421,7 @@ __all__ = [
 # --- helpers -------------------------------------------------------------------------------------------------------
 
 
-class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal):
+class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal, PeakCover):
     """One battery's write path: the brand's control, the ledger and the monitor, and the state."""
 
     def __init__(
@@ -1545,10 +1546,6 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal):
 
     # --- the peak cover ---
 
-    def _covering(self, state: ExecState, name: str) -> bool:
-        """Whether `name` is a write of a lifted hold (never held back: the battery must cover the peak)."""
-        return state.covered_at is not None and name in self.control.peak_first.get(state.action or "", ())
-
     def _capped(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
         """Whether the day's write cap holds this write back (a restore, a peak cover and a watchdog renewal never
         are)."""
@@ -1558,49 +1555,6 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal):
             # A setpoint written to 0 stops something: never held back.
             return self._setpoints_spent() and state.target.get(name) != 0.0
         return _writes_today(state, inputs) >= self._daily_cap
-
-    def _cover(self, inputs: ExecInputs) -> list[dict[str, Any]]:
-        """Under a hold: lift it when the headroom falls under `PEAK_COVER_A`, hand back in full when it does not
-        recover within `PEAK_RECOVER_S`, hold again after `PEAK_REHOLD_S` when the start rule allows it."""
-        state = self.state
-        now = inputs.now
-        # What the plant may import by itself now comes off the room the peak cover reads.
-        headroom = None if inputs.headroom_a is None else inputs.headroom_a - _own_import_a(inputs)
-        first = self.control.peak_first.get(ACTION_HOLD, ())
-        if self.control.slow or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
-            return []
-        if state.covered_at is None:
-            if headroom >= PEAK_COVER_A:
-                return []
-            target = dict(state.target)
-            for name in first:
-                value = self._normal_value(name)
-                if value is not None and name in target:
-                    target[name] = value
-            # The battery is meant to discharge now: the hold's monitor would read that as a hold not taken.
-            self.monitor.stop(now)
-            self.state = replace(
-                state, target=target, covered_at=now, peak_low_since=now,
-                sent=tuple(name for name in state.sent if name not in first),
-            )
-            return [_event(now, "peak_cover", ACTION_HOLD, headroom_a=round(headroom, 2), roles=list(first))]
-        if headroom < PEAK_COVER_A:
-            since = state.peak_low_since or now
-            if (now - since).total_seconds() >= PEAK_RECOVER_S:
-                return self._begin_restore(now, "fuse_headroom")
-            if state.peak_low_since is None:
-                self.state = replace(state, peak_low_since=since)
-            return []
-        if state.peak_low_since is not None:
-            self.state = state = replace(state, peak_low_since=None)
-        if (now - state.covered_at).total_seconds() >= PEAK_REHOLD_S and hold_headroom_ok(inputs):
-            self.state = replace(
-                state, target=self._wanted(ACTION_HOLD, 0.0, state.restore_values), covered_at=None,
-                sent=tuple(name for name in state.sent if name not in first),
-            )
-            self._watch(inputs, ACTION_HOLD, 0.0)
-            return [_event(now, "peak_rehold", ACTION_HOLD, headroom_a=round(headroom, 2))]
-        return []
 
     # --- writing ---
 
