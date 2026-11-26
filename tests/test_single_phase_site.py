@@ -186,6 +186,19 @@ async def test_config_flow_saves_a_single_phase_site_with_l1_only(hass: HomeAssi
     assert site_phase_count(result["data"]) == 1
 
 
+async def test_a_derived_phase_named_without_its_power_is_refused_not_dropped(hass: HomeAssistant) -> None:
+    """L2 given a voltage but no power is not a single-phase supply: the form refuses it instead of storing L1 alone."""
+    from custom_components.spotnav.flows.site_form import site_details_unit_errors  # noqa: PLC0415
+
+    hass.states.async_set("sensor.l2_v", "230", {"unit_of_measurement": "V"})
+    l1: dict = {}
+    errors = site_details_unit_errors(
+        hass, {**l1, "derived_L2_voltage": "sensor.l2_v"}, MEASUREMENT_MODE_DERIVED, skip_direct_fields=False
+    )
+    assert errors.get("derived_L2_power") == "phases_incomplete"
+    assert site_details_unit_errors(hass, l1, MEASUREMENT_MODE_DERIVED, skip_direct_fields=False) == {}
+
+
 async def test_api_update_entity_config_accepts_a_single_phase_site(hass: HomeAssistant, hass_ws_client) -> None:
     charger, site = await setup_charger_and_site(hass)
     assert site is not None
