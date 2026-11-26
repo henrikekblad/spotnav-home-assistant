@@ -85,7 +85,8 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal, PeakCover, Judg
         #: integration renews, stopped by a write); not stored: a restart ends the test.
         self.silenced = False
         self._absent: frozenset[str] = frozenset()
-        #: When a hold's surplus follow last raised its limit (`_follow_surplus`); not stored.
+        #: When a hold's surplus follow last raised its limit (`_follow_surplus`); not stored, and cleared on entering,
+        #: on a change of action and on a hand-back, like the per-phase raise (`ExecState.phase_raised_at`).
         self._surplus_raised_at: datetime | None = None
 
     def _sense(self, inputs: ExecInputs) -> None:
@@ -292,6 +293,8 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal, PeakCover, Judg
             phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
         )
         self._watch(inputs, action, rate)
+        # A new holding follows the surplus by its own raises, never held back by an earlier one's.
+        self._surplus_raised_at = None
         detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
         events = [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
         # A value found that is handed back as something else (`Role.restored_below`): said in the change log.
@@ -352,6 +355,7 @@ class Executor(ExpiryProbe, HandBack, Ordering, Claims, Renewal, PeakCover, Judg
             )
             self._release_unset()
             self._watch(inputs, action, rate)
+            self._surplus_raised_at = None
             detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
             return [_event(now, "change", action, rate_kw=rate, **detail)]
         if phases is not None and state.phase_kw is not None:

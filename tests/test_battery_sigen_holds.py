@@ -719,10 +719,11 @@ class SunPlant(FakeBattery):
         return self.house_kw + self.charge_kw() - self.pv_kw
 
 
-def _sun(executor: Executor, plant: SunPlant, start, looks: int, *, cap: float = math.inf, **overrides):
+def _sun(executor: Executor, plant: SunPlant, start, looks: int, *, cap: float = math.inf, action: str = "hold",
+         **overrides):
     now, results, failed = start, [], ()
     for _ in range(looks):
-        look = inputs(plant, now, "hold", power_kw=plant.charge_kw(), grid_import_kw=plant.grid_kw(),
+        look = inputs(plant, now, action, power_kw=plant.charge_kw(), grid_import_kw=plant.grid_kw(),
                       hold_charge_cap_kw=cap, failed=failed, **overrides)
         result = executor.step(look)
         results.append(result)
@@ -791,6 +792,21 @@ def test_a_raise_waits_for_the_gap_after_the_last_raise() -> None:
     second = datetime.fromisoformat(events(results, "surplus")[0]["at"])
     assert SIGENERGY_HOLD_SURPLUS.raise_gap_s == 60.0
     assert (second - first).total_seconds() >= SIGENERGY_HOLD_SURPLUS.raise_gap_s > (now - first).total_seconds()
+
+
+def test_a_hold_after_a_change_of_action_raises_at_once_never_held_back_by_the_last_hold_s_raise() -> None:
+    executor = Executor(SURPLUS_CONTROL)
+    plant = SunPlant(SURPLUS_CONTROL, dict(SIGENERGY_STATES), pv_kw=4.0)
+    now, results = T0, []
+    while not events(results, "surplus"):
+        now, results = _sun(executor, plant, now, 1)
+    raised = datetime.fromisoformat(events(results, "surplus")[-1]["at"])
+    # A short grid charge, then a hold again within the raise gap of the first hold's raise.
+    now, _results = _sun(executor, plant, now, 1, action="grid_charge", rate_kw=2.0)
+    assert executor.state.action == "grid_charge"
+    now, results = _sun(executor, plant, now, 3)
+    assert executor.state.action == "hold" and (now - raised).total_seconds() < SIGENERGY_HOLD_SURPLUS.raise_gap_s
+    assert _limits(results)[-1] == 3.0, "the new hold follows the surplus as soon as its own writes are in"
 
 
 def test_the_follow_never_leaves_more_than_the_ha_down_cap_standing() -> None:
