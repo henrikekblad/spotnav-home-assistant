@@ -15,6 +15,13 @@ meters show it.
   (`plan_shadow.Bucket.battery_kwh`, + charging). Counters are preferred: they count every second. A counter that falls
   or climbs faster than the battery could charge (`_jumped`: a reset, a wrap, a replaced battery) spoils the windows
   it falls in; a quarter hour that was not fully measured, or missing, spoils them for the measured power.
+* **Counters that do not count.** Some integrations show the counters but they never move (a BMS whose history
+  counters read 0, for one). Where a window's measured power moved at least `DEAD_MIN_KWH` one way and the matching
+  counter moved less than `DEAD_SHARE` of it, the counters are taken as stuck (`counters_stuck`) and the window is
+  counted with the measured power instead; counters that move again are used again. A counter that counts only part
+  falls under the guard below, not here. The measured power is the battery's as read (`adapters`), the counters' side:
+  on a DC-side reading the inverter's standby is the battery's discharge here, and the inverter's loss and standby
+  (`conversion_loss.py`) are applied once, by the plan (see the cap).
 * **A guard.** Where both are known, they must agree within `AGREE_SHARE` on what went in and on what came out. A
   counter that counts something else (the panels' energy on one side of a hybrid and not on the other, the grid's
   share only) teaches nothing: the window is thrown away (`counters_disagree`).
@@ -80,9 +87,15 @@ FALLBACK_MAX_KW: Final = 100.0
 COUNTER_SLACK: Final = 1.5
 #: A counter's fall that is only a reading's rounding (kWh).
 COUNTER_ROUNDING: Final = 0.05
+#: Counters are stuck where the measured power moved at least this much (kWh) one way in a window and the matching
+#: counter less than this share of it.
+DEAD_MIN_KWH: Final = 2.0
+DEAD_SHARE: Final = 0.05
 
 SOURCE_COUNTERS: Final = "counters"
 SOURCE_METERS: Final = "meters"
+#: What the diagnostics call each source.
+SOURCE_NAMES: Final = {SOURCE_COUNTERS: "counters", SOURCE_METERS: "power"}
 REJECT_DISAGREE: Final = "counters_disagree"
 REJECT_IMPLAUSIBLE: Final = "implausible"
 
@@ -216,6 +229,8 @@ class RoundTrip:
     counters_last: tuple[datetime, float, float] | None = None
     #: The highest value the plan's round trip takes (`PLAN_CAP`, or `DC_CAP`: see the module).
     cap: float = PLAN_CAP
+    #: Whether the last window found the counters stuck (see the module).
+    counters_stuck: bool = False
 
     # ---- the answers
 
@@ -308,11 +323,19 @@ class RoundTrip:
         return self._counted(anchor, point) is not None or self._metered(anchor)
 
     def _counted(self, start: Point, end: Point) -> tuple[float, float] | None:
-        if start.charged is None or start.discharged is None or end.charged is None or end.discharged is None:
+        counted = _raw_counts(start, end)
+        if counted is None or (self.counter_break is not None and self.counter_break > start.at):
             return None
-        if self.counter_break is not None and self.counter_break > start.at:
+        if self._stuck(start, end, counted):
             return None
-        return end.charged - start.charged, end.discharged - start.discharged
+        return counted
+
+    def _stuck(self, start: Point, end: Point, counted: tuple[float, float]) -> bool:
+        """Whether the counters stood still while the measured power moved (see the module)."""
+        if not self._metered(start):
+            return False
+        metered = end.meter_in - start.meter_in, end.meter_out - start.meter_out
+        return any(m >= DEAD_MIN_KWH and c < DEAD_SHARE * m for c, m in zip(counted, metered))
 
     def _metered(self, start: Point) -> bool:
         """Whether every quarter hour since `start` was fully measured."""
@@ -345,6 +368,9 @@ class RoundTrip:
     def _close(self, start: Point, end: Point) -> bool:
         counted = self._counted(start, end)
         metered = None if not self._metered(start) else (end.meter_in - start.meter_in, end.meter_out - start.meter_out)
+        raw = _raw_counts(start, end)
+        if raw is not None and (self.counter_break is None or self.counter_break <= start.at):
+            self.counters_stuck = self._stuck(start, end, raw)
         if counted is not None:
             charged, discharged = counted
             source = SOURCE_COUNTERS
@@ -398,6 +424,7 @@ class RoundTrip:
             if self.counters_last is None
             else [self.counters_last[0].isoformat(), self.counters_last[1], self.counters_last[2]],
             "cap": self.cap,
+            "counters_stuck": self.counters_stuck,
         }
 
     def view(self) -> dict[str, Any]:
@@ -412,6 +439,9 @@ class RoundTrip:
             "windows": [window.as_dict() for window in self.windows],
             "rejected": [window.as_dict() for window in self.rejected],
             "open_since": None if self.anchor is None else self.anchor.at.isoformat(),
+            # What the last window was counted with (`counters` or `power`), and how the counters fare.
+            "source": SOURCE_NAMES[self.windows[-1].source] if self.windows else None,
+            "counters": "missing" if self.counters_last is None else "stuck" if self.counters_stuck else "working",
         }
 
     def series(self) -> list[dict[str, Any]]:
@@ -455,6 +485,7 @@ class RoundTrip:
             counter_break=_moment(raw.get("counter_break")),
             counters_last=counters_last,
             cap=cap,
+            counters_stuck=raw.get("counters_stuck") is True,
         )
 
 
@@ -470,6 +501,13 @@ def _moment(raw: Any) -> datetime | None:
 
 def _quarter(at: datetime) -> datetime:
     return at.replace(minute=at.minute - at.minute % 15, second=0, microsecond=0)
+
+
+def _raw_counts(start: Point, end: Point) -> tuple[float, float] | None:
+    """What the counters say went in and out between two points, where both points have them."""
+    if start.charged is None or start.discharged is None or end.charged is None or end.discharged is None:
+        return None
+    return end.charged - start.charged, end.discharged - start.discharged
 
 
 def _jumped(delta: float, limit: float) -> bool:
