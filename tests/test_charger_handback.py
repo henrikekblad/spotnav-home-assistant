@@ -1,7 +1,8 @@
 """A charger whose SpotNav entry is deleted for good is handed back as SpotNav found it, as far as SpotNav knows
 (`execution/charger_handback.py`): the current it carried before SpotNav first wrote one, when that was read, and a
 stop of SpotNav's own undone. A person's stop, a stop outside SpotNav and an unknown current are left as they are.
-An unload or a reload hands nothing back, and a write that fails is logged and does not hold the removal up."""
+A disabled entry is handed back exactly so, and starts afresh when it is enabled again. Any other unload or a reload
+hands nothing back, and a write that fails is logged and does not hold the removal up."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import logging
 from typing import Any
 
 import pytest
+from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
@@ -67,6 +69,16 @@ class Charger:
         self.turn_on.clear()
         self.turn_off.clear()
         self.set_value.clear()
+
+    async def disable(self) -> None:
+        self.forget_calls()
+        assert await self.hass.config_entries.async_set_disabled_by(self.entry.entry_id, ConfigEntryDisabler.USER) is True
+        await self.hass.async_block_till_done()
+
+    async def enable(self) -> None:
+        self.forget_calls()
+        assert await self.hass.config_entries.async_set_disabled_by(self.entry.entry_id, None)
+        await self.hass.async_block_till_done()
 
     async def remove(self) -> None:
         self.forget_calls()
@@ -382,3 +394,61 @@ async def test_a_hand_back_that_fails_never_holds_the_removal_up(
         await charger.remove()
     assert "its charger could not be handed back" in caplog.text
     assert charger.turn_on == [] and charger.values == []
+
+
+# ---------------------------------------------------------------------------------------------- the disable
+
+
+@pytest.mark.parametrize("stop", [_plan_window_ends, _solar_stands_down, _balancing_pauses, _strategy_changes])
+async def test_disabling_the_charger_hands_it_back_as_a_removal_does(hass: HomeAssistant, stop: Any) -> None:
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await stop(charger)
+    assert hass.states.get(SWITCH).state == "off"
+    await charger.disable()
+    assert charger.entry.state is ConfigEntryState.NOT_LOADED
+    assert [call.data["entity_id"] for call in charger.turn_on] == [SWITCH]
+    assert charger.values == [10]
+    assert charger.turn_off == []
+
+
+async def test_disabling_leaves_a_persons_stop_as_a_removal_does(hass: HomeAssistant) -> None:
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await executor_for(hass, ENTRY).async_manual_stop()
+    await hass.async_block_till_done()
+    await charger.disable()
+    assert charger.turn_on == []
+    assert charger.values == [10], "the current is still given back"
+
+
+async def test_a_disabled_charger_enabled_again_starts_afresh(hass: HomeAssistant, hass_storage: Any) -> None:
+    """No stop of before is taken up again: the record keeps the current before SpotNav, not the stop or the plan."""
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await _plan_window_ends(charger)
+    await charger.disable()
+    record = hass_storage[f"{DOMAIN}.{ENTRY}"]["data"]
+    assert record["spotnav_stopped"] is False
+    assert "charge_session" not in record and "plan" not in record
+    assert record["pre_spotnav_current"] == {"recorded": True, "amps": 10}
+    hass.states.async_set(SWITCH, "on")  # the charger charges by itself, as it does without SpotNav
+    await charger.enable()
+    assert charger.entry.state is ConfigEntryState.LOADED
+    assert charger.controller._own_stop is False  # noqa: SLF001
+    assert charger.controller.plan is None
+    assert charger.turn_off == [] and charger.values == []
+    # Removed later, nothing is undone that is not SpotNav's; the current already reads what it had before.
+    await charger.remove()
+    assert charger.turn_on == [] and charger.values == []
+
+
+async def test_a_reload_hands_nothing_back_and_keeps_the_stop(hass: HomeAssistant) -> None:
+    charger = await _charger(hass, amps="10")
+    await _spotnav_charges(charger, 14)
+    await _plan_window_ends(charger)
+    charger.forget_calls()
+    assert await hass.config_entries.async_reload(charger.entry.entry_id)
+    await hass.async_block_till_done()
+    assert charger.turn_on == [] and charger.values == []
+    assert charger.controller._own_stop is True  # noqa: SLF001

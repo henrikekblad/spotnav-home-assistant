@@ -1,13 +1,17 @@
-"""Hand a charger back when its SpotNav entry is deleted for good.
+"""Hand a charger back when its SpotNav entry is deleted for good or disabled.
 
-Someone who removes SpotNav expects the charger to be as SpotNav found it. SpotNav may have left it stopped (a plan
-waiting for a cheap hour, the sun gone, a balancing pause, a target reached) or set to another current (solar, load
-balancing, the person's charging current), and with SpotNav gone nothing would ever change that back. Only what
-SpotNav itself did is undone, and only with what SpotNav knows; nothing is guessed.
+Someone who removes SpotNav, or disables one charger's entry, expects the charger to be as SpotNav found it. SpotNav
+may have left it stopped (a plan waiting for a cheap hour, the sun gone, a balancing pause, a target reached) or set to
+another current (solar, load balancing, the person's charging current), and with SpotNav gone nothing would ever
+change that back. Only what SpotNav itself did is undone, and only with what SpotNav knows; nothing is guessed.
 
-Only `async_remove_entry` calls this, and Home Assistant calls that only when an entry is deleted: an unload (a
-restart, a reload, a disabled entry) never comes here, since the entry comes back and takes the charger on as it
-left it. What is known comes from the charger's controller record (`spotnav.<entry_id>`), which the unload saved.
+`async_remove_entry` calls this when an entry is deleted, and `async_unload_entry` when a charger's entry is disabled
+(`entry.disabled_by` set), once its controller has shut down: a disabled entry does not come back by itself, so it is
+handed back exactly as at a removal. Its record then keeps only what is not a stop or a charge
+(`async_forget_handed_back`), so the entry, enabled again, starts afresh, and its site leaves it out of load balancing
+while it is disabled. Any other unload (a restart, a reload, a changed option) never comes here, since the entry comes
+back and takes the charger on as it left it. What is known comes from the charger's controller record
+(`spotnav.<entry_id>`), which the unload saved.
 
 What is done, once, through the same paths SpotNav drove the charger with (`chargers/adapter.py`):
 
@@ -28,7 +32,7 @@ What is done, once, through the same paths SpotNav drove the charger with (`char
   someone or something else, is left as it is. A control that cannot tell (button pairs) is left alone, since
   pressing Start would start a charge rather than allow one.
 
-Each step that fails is logged and the removal goes on; what was done, or why nothing was, is logged at info.
+Each step that fails is logged and the removal or disable goes on; what was done, or why nothing was, is logged at info.
 Nothing here touches another charger: a site whose load balancing still governs others keeps doing so. A charger
 another SpotNav entry still drives (the same physical charger set up twice) is left to that entry.
 """
@@ -46,7 +50,7 @@ from ..const import CONF_CHARGE_CONTROL, DOMAIN
 from ..vehicles.duplicate_chargers import duplicates_of
 from .chargers.adapter import build_adapter, PRE_SPOTNAV_CURRENT_STORE_KEY, PreSpotnavCurrent
 from .chargers.base import ASSIGN_ASSIGNED, ASSIGN_UNCHANGED, ASSIGN_UNCONFIRMED, WRITE_HANDBACK
-from .ownership_state import own_stop_from_record, person_paused_in_record
+from .ownership_state import OWN_STOP_STORE_KEY, own_stop_from_record, person_paused_in_record
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,20 +68,23 @@ async def _async_saved_record(hass: HomeAssistant, entry_id: str) -> dict[str, A
     return saved if isinstance(saved, dict) and saved else None
 
 
-async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
-    """Give the charger of a deleted entry back as SpotNav found it, as far as SpotNav knows. See the module docstring.
+async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry, *, why: str = "removed") -> list[str]:
+    """Give the charger of a deleted or disabled entry back as SpotNav found it, as far as SpotNav knows; `why`
+    (`removed`, `disabled`) is for the log. See the module docstring.
 
     Returns what was done (`started`, `current <n> A`), for the log and the tests. Never raises.
     """
     from .controller import ocpp_target_of
 
     entry_id = entry.entry_id
+    # The charger as the log names it: its id and why it is handed back.
+    label = f"{entry_id} {why}"
     config = dict(entry.data)
     if not config.get(CONF_CHARGE_CONTROL):
         return []
     if duplicates_of(hass, entry):
         # Another SpotNav entry drives the same charger and goes on doing so: it is not ours to hand back.
-        _LOGGER.info("SpotNav charger %s removed: another SpotNav entry still drives its charger", entry_id)
+        _LOGGER.info("SpotNav charger %s: another SpotNav entry still drives its charger", label)
         return []
     done: list[str] = []
     left: list[str] = []
@@ -91,7 +98,7 @@ async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry) -> li
             None if saved is None else saved.get(PRE_SPOTNAV_CURRENT_STORE_KEY), record_exists=saved is not None
         )
     except Exception:  # noqa: BLE001 - the removal goes on whatever happens here
-        _LOGGER.warning("SpotNav charger %s removed: its charger could not be handed back", entry_id, exc_info=True)
+        _LOGGER.warning("SpotNav charger %s: its charger could not be handed back", label, exc_info=True)
         return done
     before = pre.amps if pre.recorded else None
 
@@ -110,14 +117,14 @@ async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry) -> li
                 done.append("started")
             else:
                 _LOGGER.warning(
-                    "SpotNav charger %s removed: SpotNav had stopped the charger and could not turn it back on "
+                    "SpotNav charger %s: SpotNav had stopped the charger and could not turn it back on "
                     "(its control is unavailable)",
-                    entry_id,
+                    label,
                 )
         except Exception:  # noqa: BLE001 - logged; the current is still handed back
             _LOGGER.warning(
-                "SpotNav charger %s removed: SpotNav had stopped the charger and could not turn it back on",
-                entry_id,
+                "SpotNav charger %s: SpotNav had stopped the charger and could not turn it back on",
+                label,
                 exc_info=True,
             )
 
@@ -125,30 +132,54 @@ async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry) -> li
         if before is None:
             left.append("the current it had before SpotNav is not known, so its current is left as it is")
         else:
-            await _async_restore_current(adapter, entry_id, before, done, left)
+            await _async_restore_current(adapter, label, before, done, left)
 
-    # Nothing is left to read back for: the entry is gone.
+    # Nothing is left to read back for: the entry is gone or disabled.
     adapter.cancel_pending_reads()
     if done:
         _LOGGER.info(
-            "SpotNav charger %s removed: handed the charger back (%s)%s",
-            entry_id,
+            "SpotNav charger %s: handed the charger back (%s)%s",
+            label,
             ", ".join(done),
             f"; {'; '.join(left)}" if left else "",
         )
     else:
         _LOGGER.info(
-            "SpotNav charger %s removed: nothing was handed back%s",
-            entry_id,
+            "SpotNav charger %s: nothing was handed back%s",
+            label,
             f" ({'; '.join(left)})" if left else "",
         )
     return done
 
 
+async def async_forget_handed_back(hass: HomeAssistant, entry_id: str) -> None:
+    """After a disabled charger was handed back: its controller record keeps only what is not a stop or a charge (the
+    current before SpotNav, the phases SpotNav switched to and the switched current it learned), so the entry, enabled
+    again, starts afresh, as a new one would, and takes up no stop, pause or plan of before. Never raises."""
+    from .controller import STORE_VERSION, SWITCHED_CURRENT_STORE_KEY
+    from .phase_switching import STORE_KEY as PHASE_SWITCHING_STORE_KEY
+
+    store = Store[dict[str, Any]](hass, STORE_VERSION, f"{DOMAIN}.{entry_id}")
+    try:
+        saved = await _async_saved_record(hass, entry_id)
+        if saved is None:
+            return
+        kept: dict[str, Any] = {
+            key: saved[key]
+            for key in (PRE_SPOTNAV_CURRENT_STORE_KEY, PHASE_SWITCHING_STORE_KEY, SWITCHED_CURRENT_STORE_KEY)
+            if key in saved
+        }
+        kept[OWN_STOP_STORE_KEY] = False
+        await store.async_save(kept)
+    except Exception:  # noqa: BLE001 - the disable goes on; the next start reads the record as it was
+        _LOGGER.warning("SpotNav charger %s disabled: its record could not be cleared", entry_id, exc_info=True)
+
+
 async def _async_restore_current(
-    adapter: Any, entry_id: str, before: int, done: list[str], left: list[str]
+    adapter: Any, label: str, before: int, done: list[str], left: list[str]
 ) -> None:
-    """Write `before` once through the current path, unless the charger already reads it. Never raises."""
+    """Write `before` once through the current path, unless the charger already reads it. Never raises. `label` names
+    the charger in the log."""
     try:
         present = await adapter.current.async_present_a()
     except Exception:  # noqa: BLE001 - an unreadable current is written all the same
@@ -161,8 +192,8 @@ async def _async_restore_current(
         outcome = await adapter.async_set_current(before, reason=WRITE_HANDBACK)
     except Exception:  # noqa: BLE001 - logged; the removal goes on
         _LOGGER.warning(
-            "SpotNav charger %s removed: the charger's current could not be set back to %s A",
-            entry_id,
+            "SpotNav charger %s: the charger's current could not be set back to %s A",
+            label,
             before,
             exc_info=True,
         )
@@ -173,8 +204,8 @@ async def _async_restore_current(
         left.append(f"its current already reads {before} A, as before SpotNav")
     else:
         _LOGGER.warning(
-            "SpotNav charger %s removed: the charger's current was not set back to %s A (%s)",
-            entry_id,
+            "SpotNav charger %s: the charger's current was not set back to %s A (%s)",
+            label,
             before,
             outcome,
         )

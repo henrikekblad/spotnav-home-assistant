@@ -113,9 +113,10 @@ What SpotNav hands back, and when:
   load balancing held back is started again while it is still wanted. After a reload or a restart, load balancing
   resumes it by its own rules. Its safety stop is resumed by load balancing itself, 5 minutes after the first stop
   of a plug-in, twice as long after each further one, at most 30 minutes.
-- **Removing a charger from SpotNav.** The charger is started again only if the stop was SpotNav's own and its
-  control still reads off. A stop by you, the charger's app or anything else stays. The current the charger had
-  before SpotNav first set one is written back, where SpotNav knows it. Nothing else is changed.
-- **Disabling or reloading a charger, and restarting Home Assistant.** The charger is left as it is, and SpotNav
-  takes it up again where it left off when it comes back. A charger you disable for good keeps a stop of SpotNav's:
-  remove it from SpotNav instead, or start it in the charger's own app.
+- **Removing or disabling a charger in SpotNav.** The charger is started again only if the stop was SpotNav's own
+  and its control still reads off: waiting for a cheap hour, held by load balancing, the sun gone, a target
+  reached. A stop by you, the charger's app or anything else stays. The current the charger had before SpotNav first
+  set one is written back, where SpotNav knows it. Nothing else is changed. While a charger is disabled, load
+  balancing leaves it out; enabled again, SpotNav takes it on afresh, with your settings, as a new charger.
+- **Reloading a charger, and restarting Home Assistant.** The charger is left as it is, and SpotNav takes it up
+  again where it left off when it comes back.
