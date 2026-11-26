@@ -24,12 +24,15 @@ from custom_components.spotnav.battery import control as control_module
 from custom_components.spotnav.battery.adapters import SOLIS, adapter_for
 from custom_components.spotnav.battery.commands import (
     CONTROLS,
+    ACTION_GRID_CHARGE,
     NORMAL,
+    SIGENERGY_CONTROL,
     SOLIS_CONTROL,
     SOLIS_RC_STOP,
     control_for,
     field_tested,
     hardware_test_first,
+    plant_phases,
     reading,
     service_call,
     table,
@@ -38,12 +41,15 @@ from custom_components.spotnav.battery.control import BatteryControl
 from custom_components.spotnav.battery.executor import (
     LAPSES_A_DAY,
     REARM_S,
+    ExecInputs,
     ExecState,
     Executor,
     Ledger,
     Monitor,
     RoleRead,
     StepResult,
+    cover_a,
+    grid_charge_cap_kw,
     preview,
 )
 from custom_components.spotnav.battery.facts import Management
@@ -375,6 +381,8 @@ def test_untested_on_a_plant_it_is_bounded_by_its_bms_and_its_setpoints() -> Non
     assert control.bms_charge_limit and control.charge_power_bound is None
     assert [c.brand for c in CONTROLS if c.bms_charge_limit] == ["solis"]
     assert control.grid_charge_phases == 1 and control.phase_control is None and control.import_limit is None
+    # Three phases only from the inverter's own type (`test_a_three_phase_solis_is_read_from_the_inverters_own_type`).
+    assert control.output_type is not None and control.balanced_output
     assert control.write_cap("setpoint") == 500
     assert {role.name: role.write_class for role in control.roles} == {
         "rc_force": "setpoint", "charge_power": "setpoint", "discharge_power": "setpoint", "rc_timeout": "setpoint",
@@ -675,7 +683,7 @@ def test_the_bms_charge_limit_is_read_live_and_never_learnt() -> None:
 
 def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: float = 1.8,
               headroom_a: float = 20.0, deadman: bool = True,
-              house_at: Any = None, headroom_of: Any = None, charge_phases: int = 3,
+              house_at: Any = None, headroom_of: Any = None, charge_phases: int = 3, output_balanced: bool = False,
               before_look: Any = None) -> tuple[Any, list[StepResult], datetime]:
     """The hardware test's battery part (`Timing.quick`, `stop_on_fail`) as `BatteryControl.async_hardware_test_start`
     builds it, with the dead-man step `_hardware_test_deadman` names right after the hold, on the fake's own clock.
@@ -709,6 +717,7 @@ def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: 
         result = executor.step(inputs(
             plant, now, action, rate, power_kw=power, house_deficit_kw=house_kw, headroom_a=headroom_a,
             grid_import_kw=max(grid, 0.0), expiry_probe=verification.expiry_probe(), charge_phases=charge_phases,
+            output_balanced=output_balanced,
         ))
         results.append(result)
         for op in result.ops:
@@ -937,20 +946,111 @@ def test_the_inverters_own_top_up_counts_against_a_grid_charge_only_near_its_for
 # --- the first tester's run (3.0.0b6, a 25 A fuse, the house at about 4.7 kW) ----------------------------------------
 
 
-def _field_house(executor: Executor, plant: Hybrid, **kwargs: Any) -> tuple[Any, list[StepResult], datetime]:
+#: The inverter's own type as `solis_modbus` words it (`helpers.decode_inverter_model`, v4.5.0).
+S6_EH3P_TYPE = "S6 3-Phase HV Hybrid (12-20kW)(Protocol 3)"
+S6_EH1P_TYPE = "1-Phase HV Hybrid Inverter (S6)(Protocol 3)"
+
+
+def _field_house(executor: Executor, plant: Hybrid, *, model: str | None = None,
+                 **kwargs: Any) -> tuple[Any, list[StepResult], datetime]:
     """The tester's site as the test met it: the battery covers a 4.7 kW house, so the grid reads about 0 and the
-    worst phase has 24 A left under the 25 A fuse; the charge lands on one phase (`grid_charge_phases` 1)."""
+    worst phase has 24 A left under the 25 A fuse. `model`: what the inverter's own type reads (`None`: unread, the
+    charge and the cover all counted on one phase, `grid_charge_phases` 1)."""
     plant.house_kw = 4.7
     return _test_run(
-        plant, executor, house_kw=4.7, charge_phases=SOLIS_CONTROL.grid_charge_phases,
+        plant, executor, house_kw=4.7, charge_phases=plant_phases(SOLIS_CONTROL, model),
+        output_balanced=SOLIS_CONTROL.balanced_output,
         headroom_of=lambda grid_kw: 24.0 - grid_kw * 1000.0 / (3 * 230.94), **kwargs,
     )
+
+
+def test_a_three_phase_solis_is_read_from_the_inverters_own_type() -> None:
+    for state, phases in (
+        (S6_EH3P_TYPE, 3), ("S6 3-Phase HV Hybrid (5-10kW)(Protocol 2)", 3), ("3-Phase LV Hybrid Inverter(Protocol 1)", 3),
+        (S6_EH1P_TYPE, 1), ("1-Phase LV Hybrid Inverter(Protocol 2)", 1), ("1-Phase LV Hybrid Inverter (S6)(Protocol 2)", 1),
+        # Not determined: the one-phase rule.
+        ("Unknown Model(Protocol 3)", 1), ("No definition(Protocol 0)", 1), ("5-15kWh All-in-One Hybrid(Protocol 1)", 1),
+        ("13-Phase", 1), ("1-Phase or 3-Phase", 1), ("", 1), (None, 1),
+    ):
+        assert plant_phases(SOLIS_CONTROL, state) == phases, state
+    # Sigenergy's enum is read as before, and is not a Solis type.
+    assert plant_phases(SIGENERGY_CONTROL, "L_N") == 1 and plant_phases(SIGENERGY_CONTROL, "l1_l2_l3_n") == 3
+    assert plant_phases(SIGENERGY_CONTROL, None) == 3 and plant_phases(SOLIS_CONTROL, "l1_l2_l3_n") == 1
+
+
+def test_the_shell_reads_the_phases_from_the_model_definition_sensor(monkeypatch: pytest.MonkeyPatch) -> None:
+    states: dict[str, str | None] = {}
+
+    def read(_hass: Any, _config: Any, match: Any) -> str | None:
+        if match is not None and match.matches("sensor", "solis_modbus_1234_solis_modbus_inverter_model_definition"):
+            return states.get("model")
+        return None
+
+    monkeypatch.setattr(control_module, "read_plant_entity", read)
+    control = BatteryControl.__new__(BatteryControl)
+    control.hass = None  # type: ignore[assignment]
+    control.site = SimpleNamespace(config={})  # type: ignore[assignment]
+    assert control._plant_phases(SOLIS_CONTROL) == 1  # the sensor missing, disabled or unread
+    states["model"] = S6_EH1P_TYPE
+    assert control._plant_phases(SOLIS_CONTROL) == 1
+    states["model"] = "Unknown Model(Protocol 3)"
+    assert control._plant_phases(SOLIS_CONTROL) == 1
+    states["model"] = S6_EH3P_TYPE
+    assert control._plant_phases(SOLIS_CONTROL) == 3
+
+
+def test_the_field_site_counted_balanced_has_room_for_the_test_charge() -> None:
+    """A 25 A fuse, the worst phase 24 A under it while the battery covers a 4.7 kW house (grid about 0)."""
+    _executor, plant = _plant(bms_kw=10.0)
+
+    def look(model: str | None) -> ExecInputs:
+        return inputs(
+            plant, T0, ACTION_GRID_CHARGE, 2.0, power_kw=-4.7, headroom_a=24.0, grid_import_kw=0.0,
+            charge_phases=plant_phases(SOLIS_CONTROL, model), output_balanced=SOLIS_CONTROL.balanced_output,
+        )
+
+    def cap(model: str | None) -> float:
+        seen = look(model)
+        room = grid_charge_cap_kw(seen, 0.0, covered_a=cover_a(seen))
+        assert room is not None
+        return room
+
+    # Three-phase: the cover comes back a third on each phase (6.8 A), 24 - 6.8 - 2 = 15.2 A on three phases.
+    assert cover_a(look(S6_EH3P_TYPE)) == pytest.approx(4700 / 3 / 230.94, abs=0.01)
+    assert cap(S6_EH3P_TYPE) == pytest.approx(10.5, abs=0.1) and cap(S6_EH3P_TYPE) >= 2.0
+    # Single-phase or not determined: all 20.4 A back on one phase, 1.6 A left on that one phase.
+    for model in (S6_EH1P_TYPE, "Unknown Model(Protocol 3)", None):
+        assert cover_a(look(model)) == pytest.approx(4700 / 230.94, abs=0.01)
+        assert cap(model) == pytest.approx(0.38, abs=0.02), model
+    # The fuse rule still holds per phase for the balanced plant: with 8 A left on the worst phase nothing fits.
+    tight = replace(look(S6_EH3P_TYPE), headroom_a=8.0)
+    assert grid_charge_cap_kw(tight, 0.0, covered_a=cover_a(tight)) == pytest.approx(-0.55, abs=0.05)
+
+
+def test_the_hardware_test_charge_starts_on_the_field_site_once_it_reads_three_phase() -> None:
+    executor, plant = _plant(bms_kw=10.0)
+    verification, results, _end = _field_house(executor, plant, model=S6_EH3P_TYPE)
+    assert _outcomes(verification)["charge"] == "obeyed", _outcomes(verification)
+    assert not events(results, "not_started")
+    assert max(plant.charged) > 0.0
+    report = verification.report()
+    assert gate.hardware_test_missing(report, deadman_required=True) == ()
+    assert gate.hardware_test_passed(report, deadman_required=True)
+    assert plant.reg[43135] == 0 and executor.state.phase == "idle"
+
+
+def test_a_single_phase_solis_on_the_field_site_still_has_no_room_for_the_test_charge() -> None:
+    executor, plant = _plant(bms_kw=10.0)
+    verification, results, _end = _field_house(executor, plant, model=S6_EH1P_TYPE)
+    assert _outcomes(verification)["charge"] == "aborted:fuse_headroom"
+    assert max(plant.charged) == 0.0
 
 
 def test_a_charge_with_no_room_under_the_fuse_leaves_the_test_incomplete_and_the_other_steps_still_run() -> None:
     executor, plant = _plant(bms_kw=10.0)
     verification, results, _end = _field_house(executor, plant)
-    # The charge never started: once the battery stops covering 4.7 kW (20.4 A, all counted on one phase) the 24 A
+    # The inverter's type unread, so one phase. The charge never started: once the battery stops covering 4.7 kW
+    # (20.4 A, all counted on one phase) the 24 A
     # left keep 2 A of margin and leave 1.6 A, 0.38 kW on one phase, under the least charge of 0.5 kW.
     assert _outcomes(verification) == {
         "hold": "obeyed", "expiry": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed",

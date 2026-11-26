@@ -432,6 +432,9 @@ class ExecInputs:
     #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
     #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
     charge_phases: int = 3
+    #: The plant puts out the same on each of its phases (`BrandControl.balanced_output`): on three phases
+    #: (`charge_phases`) what its discharge covers comes back a third on each when it stops (`cover_a`).
+    output_balanced: bool = False
     volts_between_phases: float = TN_VOLTS_BETWEEN_PHASES
     #: The site's grid import now (kW, + import), `None` when unknown.
     grid_import_kw: float | None = None
@@ -996,16 +999,17 @@ def phase_charge_kw(
 def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
     """What the battery's discharge now may give the most loaded phase (A): what comes back on it once the battery
     stops covering. All of it on one phase (kW·1000 / the phase voltage): a SigenStor covers each phase on its own,
-    and the battery's power per phase is not known. A running sale (`sale`) on a plant that spreads its power evenly
-    over three phases (`ExecInputs.charge_phases`) gives each phase a third, unless the plant's own power per phase
-    (`ExecInputs.plant_phase_kw`) shows more on one: that phase's output is then counted, at most the discharge (the
+    and the battery's power per phase is not known. A running sale (`sale`), or any discharge of a plant that puts
+    out the same on each phase (`ExecInputs.output_balanced`: a three-phase Solis), on a plant that spreads its power
+    evenly over three phases (`ExecInputs.charge_phases`) gives each phase a third, unless the plant's own power per
+    phase (`ExecInputs.plant_phase_kw`) shows more on one: that phase's output is then counted, at most the discharge (the
     sun's share of it is counted too, so the figure is never under the truth). 0 when the battery does not
     discharge."""
     power = inputs.facts.power_kw
     if power is None or not math.isfinite(power) or power >= 0 or inputs.volts_between_phases <= 0:
         return 0.0
     kw = -power
-    if sale and inputs.charge_phases >= 3:
+    if (sale or inputs.output_balanced) and inputs.charge_phases >= 3:
         share = kw / 3.0
         plant = inputs.plant_phase_kw
         if plant is not None and _finite3(plant):

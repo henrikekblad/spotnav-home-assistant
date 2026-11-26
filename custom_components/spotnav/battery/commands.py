@@ -427,7 +427,15 @@ The entity keys, options and services below were checked against each integratio
   (`near_reserve_only`). A power set from outside under SpotNav's own force (the same kind, another power) is left
   standing, nothing written, and stopped by SpotNav only for the fuse (`executor`'s `altered`); after a restart a
   hand-back waits for a reading of the force first (`_command_unread`). Remote Dispatch (44100) and SolisCloud's strategy are not read.
-  How a three-phase unit spreads a grid charge is not stated: `grid_charge_phases` 1. Nothing is known of flash wear
+  **Phases** (owner decision 2026-11-26): a three-phase hybrid is counted as balanced, its grid charge and its
+  discharge a third on each phase (`balanced_output`; a tester's S6-EH3P 15 kW put out the same on each phase within
+  90 W while it covered a 4.7 kW house). Three-phase is read from the inverter itself, never from the model picked
+  in the integration's setup (its `RHI-*` is declared three-phase for single-phase units too): the sensor "Inverter
+  model definition" (`solis_modbus_inverter_model_definition`, register 35000's low byte as text,
+  `helpers.py` `decode_inverter_model` lines 136-176 and `sensors/solis_derived_sensor.py` lines 205-209, v4.5.0
+  `f92ead8`, read 2026-11-26), e.g. "S6 3-Phase HV Hybrid (12-20kW)(Protocol 3)". "3-Phase" in it: three phases;
+  "1-Phase", a code the integration does not know ("Unknown Model"), or the sensor missing, disabled or unread: all
+  on one phase (`grid_charge_phases` 1, `_solis_phases`). Nothing is known of flash wear
   on the RC registers: setpoints the maker states nothing about (500 a day; renewals bounded on their own).
 * **Kostal Plenticore** (plus G1-G3, BI, MP G3; `KOSTAL_CONTROL`; **never run on a plant**), HACS
   `kostal_modbus_control`, mbuhansen/kostal_plenticore_battery_control 4.3.0 (`3bd84ac`, read 2026-11-25;
@@ -1075,6 +1083,13 @@ class BrandControl:
     #: read by `OUTPUT_TYPE_PHASES`) overrides it when the plant shows it.
     grid_charge_phases: int = 1
     output_type: Match | None = None
+    #: How the `output_type` entity's state reads as phases, where it is not Sigenergy's enum (`OUTPUT_TYPE_PHASES`);
+    #: `None` from it (a state it does not know) is the recipe's `grid_charge_phases` (`plant_phases`).
+    output_phases: Callable[[str], int | None] | None = None
+    #: A three-phase plant of this brand puts out the same on each phase (it balances the sum at the meter, not
+    #: each phase's own load): what its discharge covers comes back a third on each phase when it stops
+    #: (`executor.cover_a`). `False` (a SigenStor covers each phase on its own): all of it may be on one phase.
+    balanced_output: bool = False
     #: The plant's own grid import limit (kW): while it reads at most the fuse, and the person's on-site test showed
     #: it acts (`battery_control_import_limit_acts`), it bounds a grid charge with Home Assistant down.
     import_limit: Match | None = None
@@ -1765,6 +1780,19 @@ SIGENERGY_CONTROL: Final = BrandControl(
 
 #: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.
 OUTPUT_TYPE_PHASES: Final[Mapping[str, int]] = {"l_n": 1, "l1_l2_n": 2, "l1_l2_l3": 3, "l1_l2_l3_n": 3}
+
+
+def plant_phases(control: BrandControl, state: str | None) -> int:
+    """The phases a plant spreads a grid charge over, from its `output_type` entity's `state`: the recipe's own
+    reading of it (`output_phases`) or Sigenergy's enum; the recipe's `grid_charge_phases` when it reads nothing or
+    nothing known."""
+    if not state:
+        return control.grid_charge_phases
+    if control.output_phases is not None:
+        read = control.output_phases(str(state))
+    else:
+        read = OUTPUT_TYPE_PHASES.get(str(state).lower())
+    return control.grid_charge_phases if read is None else read
 
 # The normal state has no wanted value for these: the switch goes off, the select to MSC (only while it can).
 # The targets per phase go back to 0 (only a phased control has their entities).
@@ -2626,6 +2654,17 @@ def _solis(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
     return build
 
 
+_SOLIS_PHASES_IN_TYPE: Final = re.compile(r"(?<![0-9a-z])([13])-phase(?![0-9a-z])")
+
+
+def _solis_phases(state: str) -> int | None:
+    """The phases in the inverter's own type as `solis_modbus` words it ("S6 3-Phase HV Hybrid (12-20kW)(Protocol
+    3)", "1-Phase LV Hybrid Inverter(Protocol 2)"); `None` for a text that names none ("Unknown Model", "No
+    definition", "5-15kWh All-in-One Hybrid") or more than one."""
+    found = set(_SOLIS_PHASES_IN_TYPE.findall(state.lower()))
+    return int(found.pop()) if len(found) == 1 else None
+
+
 SOLIS_CONTROL: Final = BrandControl(
     brand="solis",
     adapter=SOLIS,
@@ -2672,8 +2711,12 @@ SOLIS_CONTROL: Final = BrandControl(
         trigger="below_reserve", reserve=_key("solis_modbus_inverter_force_charge_soc", "number", "sensor"),
         why="the inverter's own force charge below its Force Charge SOC (unverified)", near_reserve_only=True,
     ),
-    # How a three-phase S6-EH3P spreads a grid charge is not stated: the whole charge on one phase.
+    # A three-phase hybrid is counted as balanced over its phases, charge and discharge alike (owner decision
+    # 2026-11-26; see the module); three-phase only when the inverter's own type says so, else all on one phase.
     grid_charge_phases=1,
+    output_type=_key("solis_modbus_inverter_model_definition"),
+    output_phases=_solis_phases,
+    balanced_output=True,
     write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
     bms_charge_limit=True,
     hardware_test_first=True,
