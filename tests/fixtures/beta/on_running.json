@@ -14,6 +14,7 @@
   "test": {
     "blocked": "running",
     "finished_at": null,
+    "missing": [],
     "next_at": null,
     "result": null,
     "sent_ref": null,

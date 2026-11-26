@@ -17,7 +17,8 @@ match (never the key).
 `ssh ubuntu@netbird` with `sudo -n`, as the support workflow does (or a local copy with `--report`), checks that it
 is a tester's report for a brand that takes a code, and prints the person's e-mail address on top, the code, and the
 e-mail text for the brand (`tools/battery_code_mails/<brand>.<lang>.md`, `{code}` filled in). Only for a
-`battery_test_result` whose test passed (and whose gate recorded the pass); `--force` issues for another report.
+`battery_test_result` whose test passed (and whose gate recorded the pass); an `incomplete` test (nothing failed, but
+a step the brand needs was not shown) is refused with those steps named; `--force` issues for another report.
 Read the test's log before running it: the code is the developer's approval of that test result.
 
 `welcome SN-XXXX` answers a sign-up (`battery_tester`) the same way, without a code: the reporter's address on top
@@ -134,7 +135,36 @@ def tester_facts(meta: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]
         "language": battery.get("language"),
         "result": (battery.get("test") or {}).get("result") if isinstance(battery.get("test"), dict) else None,
         "gate_passed": (battery.get("test") or {}).get("gate_passed") if isinstance(battery.get("test"), dict) else None,
+        "missing": (battery.get("test") or {}).get("missing") if isinstance(battery.get("test"), dict) else None,
     }
+
+
+def missing_text(facts: dict[str, Any]) -> str:
+    """The steps a test left unshown (`test.missing`: `[{step, reason}]`), as `charge (fuse_headroom), deadman`."""
+    rows = facts.get("missing") if isinstance(facts.get("missing"), list) else []
+    return ", ".join(
+        f"{row['step']} ({row['reason']})" if row.get("reason") else str(row["step"])
+        for row in rows if isinstance(row, dict) and row.get("step")
+    )
+
+
+def refusal(facts: dict[str, Any]) -> str | None:
+    """Why no code is issued for this report, `None` when it is a tester's passed hardware test whose gate recorded
+    the pass. An `incomplete` test names the steps still to be shown."""
+    if facts["kind"] != CODE_KIND:
+        return f"not a hardware test's result (kind {facts['kind']!r})"
+    result = facts["result"]
+    if result == "incomplete":
+        steps = missing_text(facts)
+        return "the hardware test is incomplete: nothing failed, but " + (
+            f"these steps still have to be shown: {steps}" if steps else "not every step the brand needs was shown"
+        ) + "; the tester runs it again"
+    if result != "passed":
+        return f"not a passed hardware test (result {result!r})"
+    if facts.get("gate_passed") is False:
+        # A report from before the result said `incomplete`: `passed` by its steps, yet the gate took no pass.
+        return "the test says passed but its gate recorded no pass (gate_passed false): a step the brand needs was not shown"
+    return None
 
 
 #: The line in a mail template between the instructions after a sign-up and the mail with the code.
@@ -153,13 +183,11 @@ def mail_text(brand: str, language: str, code: str | None) -> str:
 
 
 def issue(codes: Any, private: Any, facts: dict[str, Any], today: date, *, force: bool = False) -> str:
-    """The code for a tester's passed test. Refused for any other report (a sign-up, a failed or partial test, one
-    whose gate recorded no pass) unless `force`: the code is the approval of a test result that was read."""
-    passed = facts["kind"] == CODE_KIND and facts["result"] == "passed" and facts.get("gate_passed") is not False
-    if not passed and not force:
-        raise SystemExit(
-            f"not a passed hardware test (kind {facts['kind']!r}, result {facts['result']!r}); --force to issue anyway"
-        )
+    """The code for a tester's passed test. Refused for any other report (a sign-up, a failed, partial or incomplete
+    test, one whose gate recorded no pass; `refusal` says which) unless `force`: the code is the approval of a test result that was read."""
+    why = refusal(facts)
+    if why is not None and not force:
+        raise SystemExit(f"{why}; --force to issue anyway")
     if facts["brand"] not in GATED_BRANDS:
         raise SystemExit(f"brand {facts['brand']!r} takes no code")
     if not isinstance(facts["install"], str) or not isinstance(facts["firmware_key"], str):

@@ -675,9 +675,12 @@ def test_the_bms_charge_limit_is_read_live_and_never_learnt() -> None:
 
 def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: float = 1.8,
               headroom_a: float = 20.0, deadman: bool = True,
-              house_at: Any = None) -> tuple[Any, list[StepResult], datetime]:
+              house_at: Any = None, headroom_of: Any = None, charge_phases: int = 3,
+              before_look: Any = None) -> tuple[Any, list[StepResult], datetime]:
     """The hardware test's battery part (`Timing.quick`, `stop_on_fail`) as `BatteryControl.async_hardware_test_start`
-    builds it, with the dead-man step `_hardware_test_deadman` names, on the fake's own clock."""
+    builds it, with the dead-man step `_hardware_test_deadman` names right after the hold, on the fake's own clock.
+    `headroom_of`: the least headroom on a phase from the site's import now (kW); `before_look`: called with the
+    verification and the time before each look."""
     from custom_components.spotnav.battery.monitor import Capability  # noqa: PLC0415
     from custom_components.spotnav.battery.verify import (  # noqa: PLC0415
         TEST_CHARGE_SOC_MAX_PCT, Sample, Timing, Verification,
@@ -687,20 +690,25 @@ def _test_run(plant: Hybrid, executor: Executor, *, looks: int = 400, house_kw: 
     verification = Verification(
         executor, T0, firmware="59", modes=(*gate.BATTERY_MODES, *((gate.MODE_EXPIRY,) if expiry else ())),
         timing=Timing.quick(), stop_on_fail=True, charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=expiry,
+        expiry_first=expiry is not None,
     )
     capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     now = T0
     results: list[StepResult] = []
     for _ in range(looks):
+        if before_look is not None:
+            before_look(verification, now)
         if house_at is not None:
             house_kw = plant.house_kw = house_at(now)
         power = plant.at(now).power_kw()
         grid = house_kw + power
+        if headroom_of is not None:
+            headroom_a = headroom_of(max(grid, 0.0))
         sample = Sample(power, 5.0, plant.soc_pct, house_kw, grid_kw=grid, headroom_a=headroom_a)
         action, rate = verification.command(now, sample, 10.0)
         result = executor.step(inputs(
             plant, now, action, rate, power_kw=power, house_deficit_kw=house_kw, headroom_a=headroom_a,
-            grid_import_kw=max(grid, 0.0), expiry_probe=verification.expiry_probe(),
+            grid_import_kw=max(grid, 0.0), expiry_probe=verification.expiry_probe(), charge_phases=charge_phases,
         ))
         results.append(result)
         for op in result.ops:
@@ -723,9 +731,14 @@ def test_the_hardware_test_times_the_five_minute_timeout_from_a_renewal() -> Non
     executor, plant = _plant(bms_kw=10.0)
     verification, results, end = _test_run(plant, executor)
     assert _outcomes(verification) == {
-        "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "expiry": "obeyed", "normal": "restored",
+        "hold": "obeyed", "expiry": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored",
     }
+    # The dead-man is timed on the hold right after it passed, before anything is charged.
+    assert list(_outcomes(verification)) == ["hold", "expiry", "charge", "discharge_house", "normal"]
     row = verification.report()["modes"]["expiry"]
+    timed_at = datetime.fromisoformat(row["commanded_at"])
+    assert timed_at < datetime.fromisoformat(verification.report()["modes"]["charge"]["commanded_at"])
+    assert not any(amount > 0 for amount in plant.charged[: int((timed_at - T0) / TICK)]), "nothing charged before it"
     # Timed from the renewal it waited for: the fake reverts five minutes after it, seen at the next look.
     assert row["window_s"] == 300.0 and 290.0 < row["fallback_s"] <= 370.0
     assert not events(results, "diverged") and not events(results, "external")
@@ -919,3 +932,95 @@ def test_the_inverters_own_top_up_counts_against_a_grid_charge_only_near_its_for
         amps = control._own_import_a(SOLIS_CONTROL)
         assert (amps > 0) is counted, soc
     assert SOLIS_CONTROL.autonomous_import is not None and SOLIS_CONTROL.autonomous_import.near_reserve_only
+
+
+# --- the first tester's run (3.0.0b6, a 25 A fuse, the house at about 4.7 kW) ----------------------------------------
+
+
+def _field_house(executor: Executor, plant: Hybrid, **kwargs: Any) -> tuple[Any, list[StepResult], datetime]:
+    """The tester's site as the test met it: the battery covers a 4.7 kW house, so the grid reads about 0 and the
+    worst phase has 24 A left under the 25 A fuse; the charge lands on one phase (`grid_charge_phases` 1)."""
+    plant.house_kw = 4.7
+    return _test_run(
+        plant, executor, house_kw=4.7, charge_phases=SOLIS_CONTROL.grid_charge_phases,
+        headroom_of=lambda grid_kw: 24.0 - grid_kw * 1000.0 / (3 * 230.94), **kwargs,
+    )
+
+
+def test_a_charge_with_no_room_under_the_fuse_leaves_the_test_incomplete_and_the_other_steps_still_run() -> None:
+    executor, plant = _plant(bms_kw=10.0)
+    verification, results, _end = _field_house(executor, plant)
+    # The charge never started: once the battery stops covering 4.7 kW (20.4 A, all counted on one phase) the 24 A
+    # left keep 2 A of margin and leave 1.6 A, 0.38 kW on one phase, under the least charge of 0.5 kW.
+    assert _outcomes(verification) == {
+        "hold": "obeyed", "expiry": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed",
+        "normal": "restored",
+    }
+    assert [e["reason"] for e in events(results, "not_started")] == ["fuse_headroom"]
+    assert max(plant.charged) == 0.0, "no charge was ever commanded"
+    report = verification.report()
+    assert gate.hardware_test_missing(report, deadman_required=True) == (("charge", "aborted:fuse_headroom"),)
+    assert not gate.hardware_test_passed(report, deadman_required=True)
+    assert plant.reg[43135] == 0 and executor.state.phase == "idle"
+
+
+def test_a_step_aborted_for_a_fault_still_skips_the_rest_of_the_test() -> None:
+    # The site's measurement goes stale as the dead-man step starts: nothing more is commanded, normal hands back.
+    executor, plant = _plant(bms_kw=10.0)
+    from custom_components.spotnav.battery.verify import Sample, Timing, Verification  # noqa: PLC0415
+    from custom_components.spotnav.battery.monitor import Capability  # noqa: PLC0415
+
+    verification = Verification(
+        executor, T0, firmware="59", modes=(*gate.BATTERY_MODES, gate.MODE_EXPIRY), timing=Timing.quick(),
+        stop_on_fail=True, expiry=SOLIS_CONTROL.expiry, expiry_first=True,
+    )
+    now = T0
+    for _ in range(200):
+        power = plant.at(now).power_kw()
+        current = verification.current
+        stale = current is not None and current.mode == "expiry"
+        sample = Sample(power, 5.0, plant.soc_pct, 1.8, grid_kw=1.8 + power, headroom_a=20.0)
+        action, rate = verification.command(now, sample, 10.0)
+        result = executor.step(inputs(
+            plant, now, action, rate, power_kw=power, house_deficit_kw=1.8, grid_import_kw=max(1.8 + power, 0.0),
+            measurement_ok=not stale, expiry_probe=verification.expiry_probe(),
+        ))
+        for op in result.ops:
+            plant.apply(op)
+        verification.after(now, result, sample, Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0))
+        now += TICK
+        if verification.done:
+            break
+    outcomes = _outcomes(verification)
+    assert outcomes["hold"] == "obeyed" and outcomes["expiry"] == "aborted:stale_data"
+    assert outcomes["charge"] == outcomes["discharge_house"] == "skipped"
+    assert not gate.moment_abort(outcomes["expiry"]) and gate.moment_abort("aborted:fuse_headroom")
+    assert gate.moment_abort("aborted:headroom_too_small") and not gate.moment_abort("aborted:write_not_taken:rc_force")
+    assert not gate.moment_abort("not_judgeable:fuse_headroom") and not gate.moment_abort(None)
+
+
+def test_the_dead_man_step_waits_for_the_battery_to_cover_the_house_again_after_the_hold() -> None:
+    # A battery slow to take the house up again after the hold's hand-back: the step waits (the executor's own
+    # re-arm is as long) and is then timed, instead of finding nothing to stop.
+    executor, plant = _plant(bms_kw=10.0)
+    slow: dict[str, Any] = {}
+
+    def lag(verification: Any, now: datetime) -> None:
+        current = verification.current
+        if current is not None and current.mode == "expiry" and current.commanded_at is None:
+            slow.setdefault("since", now)
+            plant.house_kw = 0.0 if (now - slow["since"]).total_seconds() < 60 else 1.8
+        elif "since" in slow:
+            plant.house_kw = 1.8
+
+    verification, _results, _end = _test_run(plant, executor, before_look=lag)
+    assert slow and _outcomes(verification)["expiry"] == "obeyed"
+    assert gate.hardware_test_passed(verification.report(), deadman_required=True)
+
+
+def test_no_recipes_balanced_charge_cap_rests_on_an_expiry_the_hardware_test_times() -> None:
+    # The dead-man's place before the charge lifts no cap: only a fallback within the minute, measured twice by the
+    # routine, ever stands in for the HA-down cap, and no recipe's own expiry is one (Solis's is five minutes).
+    for control in CONTROLS:
+        base = control.with_phases(False)
+        assert not gate.expiry_lifts(base.expiry, measured=True, slow=base.slow, fixed_charge=base.fixed_charge)

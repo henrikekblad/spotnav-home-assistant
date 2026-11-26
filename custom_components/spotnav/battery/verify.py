@@ -15,7 +15,8 @@ Outcomes per mode: `obeyed` (every reading as asked), `ignored` (every reading a
 `partial`, `not_judgeable:<why>` (the battery could not show it now: nothing to stop, nearly full, nearly empty, no
 rating, stale readings), `aborted:<why>` (the executor handed the battery back for a reason of its own: a write not
 taken, the fuse, a stale reading, a management change; the routine then stops, but for an abort for the moment's
-circumstances normal still judges that hand-back) or, for normal, `restored` (only after this run wrote something;
+circumstances normal still judges that hand-back; the hardware test goes on after one for the fuse's room alone)
+or, for normal, `restored` (only after this run wrote something;
 `not_judgeable:nothing_written` otherwise).
 
 **Hold variants** (`commands.HoldVariant`; no shipping brand has more than one since Sigenergy's hold became `pv_first`
@@ -121,9 +122,22 @@ through the executor's export instance) and `normal` (handed back). Its sample's
 
 **The hardware test** (`Timing.quick`, `stop_on_fail`; `control.BatteryControl.async_hardware_test`): the same
 modes through the same executor, started by a person and bounded to minutes: a shorter settle and fewer, closer
-readings, the hold's first variant that has not failed only, and the first mode that does not pass (an outcome
-other than `obeyed` or `not_judgeable:*`) skips the rest but normal, the hand-back's check. Its report is the
-test's own: it never counts towards the routine's per firmware (`gate.merge_report`).
+readings, the hold's first variant that has not failed only, and the first mode that fails or is aborted for a
+fault (an outcome other than `obeyed`, `not_judgeable:*`, `not_applicable:*` or an abort for the room under the fuse
+at that moment, `gate.MOMENT_ABORTS`) skips the rest but normal, the hand-back's check. A step with no room under
+the fuse now (`aborted:fuse_headroom`, `aborted:headroom_too_small`: the executor refused its start or handed it
+back near the fuse) says nothing of the plant, so the steps after it still run once the executor has handed back,
+each under the same fuse rules; what it leaves unshown keeps the test from passing
+(`gate.hardware_test_missing`). Its report is the test's own: it never counts towards the routine's per firmware
+(`gate.merge_report`).
+
+Where the test times the plant's dead-man (`expiry_first`), that step comes right after the hold it rests on and
+before the charge: hold, expiry, charge, discharge, normal. The dead-man of a recipe never run on the plant is then
+seen to end a hold, which only stops the battery, before the first grid charge is commanded, and its timing does
+not hang on what the charge step finds under the fuse. Its command is taken only after the executor's re-arm, and
+it waits that long (`EXPIRY_DISCHARGE_WAIT_S`) for the battery to cover the house again after the hold's hand-back.
+No cap is lifted by it within the run: a balanced charge's HA-down cap rests on no recipe's expiry today
+(`gate.expiry_lifts` takes only a fallback within `gate.SILENCE_FALLBACK_MAX_S`, measured in two separate runs).
 
 Its charge step is tried up to `TEST_CHARGE_SOC_MAX_PCT` (98 %) of charge (`Verification.charge_soc_max_pct`), not
 only up to `CHARGE_TAPER_SOC_PCT` (90 %) as everywhere else: a battery that sits near full most days would otherwise
@@ -156,6 +170,7 @@ from .gate import (
     SILENCE_FALLBACK_MAX_S,
     expiry_mode,
     mode_verdict,
+    moment_abort,
 )
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
@@ -191,6 +206,11 @@ VARIANT_RETRY: Final = ("ignored", "aborted:no_effect")
 #: The next variant is commanded only once the battery discharges again after the hand-back (a hold is judged against
 #: the discharge it stops), waiting at most this long (s); otherwise hold is left pending for a later run.
 VARIANT_WAIT_S: Final = 300.0
+
+#: Where the mode `expiry` follows the hold directly (`Verification.expiry_first`): how long it waits for the battery
+#: to discharge again after that hold's hand-back before it is left `not_judgeable:battery_not_discharging` (s). The
+#: executor takes no new command before its own re-arm, so the wait costs the test nothing.
+EXPIRY_DISCHARGE_WAIT_S: Final = REARM_S
 
 #: The per-phase probe: the discharge commanded on one phase (kW), how long it settles (s), how far apart its
 #: readings are (s), how far the plant's power on the probed phase may be from the target and on the others from 0
@@ -418,7 +438,7 @@ class Verification:
         modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
         timing: Timing | None = None, stop_on_fail: bool = False, charge_soc_max_pct: float = CHARGE_TAPER_SOC_PCT,
         expiry: Expiry | None = None, expiry_phased: bool = False, phase_mapped: bool = False,
-        expiry_phase: int = 0,
+        expiry_phase: int = 0, expiry_first: bool = False,
     ) -> None:
         self.executor = executor
         #: The mode `expiry`: the expiry it tries, whether it is the phase spec's (tried on the per-phase probe's
@@ -443,6 +463,8 @@ class Verification:
         #: being taken back after the outcome (the discharge to the house, the integration's own state again) before
         #: the hand-back; `None` otherwise.
         self.expiry_retake_since: datetime | None = None
+        #: The hardware test's order (see the module): the mode `expiry` right after the hold, before the charge.
+        self.expiry_first = expiry_first
         self.timing = timing or Timing()
         #: Up to which state of charge the mode `charge` is tried (`TEST_CHARGE_SOC_MAX_PCT` for the hardware test; see
         #: the module). From `CHARGE_TAPER_SOC_PCT` on, a step taken short is `not_judgeable:battery_full`.
@@ -468,6 +490,8 @@ class Verification:
             if (modes is None and name not in _NAMED_ONLY) or (modes is not None and name in modes)
             or action == ACTION_SELF_CONSUME
         ]
+        if expiry_first and any(name == MODE_EXPIRY for name, _action in wanted):
+            wanted = sorted(wanted, key=lambda item: {"hold": 0, MODE_EXPIRY: 1}.get(item[0], 2))
         #: Modes whose action the recipe does not have (a limits-only recipe has no grid charge): never commanded,
         #: reported `skipped` (`report`), and left out of the routine's next runs (`gate.modes_to_run`'s `supported`).
         self.unsupported: tuple[tuple[str, str], ...] = tuple(
@@ -526,7 +550,7 @@ class Verification:
         if result is None or self.stage == "hand_back":
             return ACTION_SELF_CONSUME, 0.0
         if result.commanded_at is None and result.mode == MODE_EXPIRY:
-            refusal = self._expiry_refusal(sample)
+            refusal = self._expiry_refusal(now, sample)
             if refusal is not None:
                 if refusal != "wait":
                     result.outcome = f"not_judgeable:{refusal}"
@@ -568,7 +592,7 @@ class Verification:
                 result.rate_kw = min(self.charge_kw, rated_charge_kw) if rated_charge_kw else self.charge_kw
         return result.action, result.rate_kw
 
-    def _expiry_refusal(self, sample: Sample) -> str | None:
+    def _expiry_refusal(self, now: datetime, sample: Sample) -> str | None:
         """Before the mode `expiry` commands anything (see the module): why it cannot be tried now (a `not_judgeable`
         reason, or `wait` while the executor still holds something), `None` once it is set up. Its hold is the one
         that passed in this run, with that run's variant; on a phased control the probe's discharge on L1 once
@@ -588,6 +612,9 @@ class Verification:
                 return "wait"
             # A hold shows its expiry only against a discharge it stops.
             if sample.power_kw is None or sample.power_kw > -FLOOR_KW:
+                if self.expiry_first and (now - self.stage_at).total_seconds() < EXPIRY_DISCHARGE_WAIT_S:
+                    # Right after the hold's hand-back the battery has not taken the house up again yet.
+                    return "wait"
                 return "battery_not_discharging"
             return None
         per_phase = next((row for row in self.results if row.mode == MODE_PER_PHASE), None)
@@ -1329,6 +1356,11 @@ class Verification:
                 # Handed back (the executor's own hand-back, or the routine's normal), then the next variant.
                 self._enter(now, "hand_back")
                 return
+        if self.stop_on_fail and result is not None and result.action != ACTION_SELF_CONSUME and moment_abort(outcome):
+            # The hardware test: this step had no room under the fuse now, which says nothing of the plant. The
+            # executor hands back by itself (or never started); the next mode follows once it has (`_next`).
+            self._enter(now, "hand_back")
+            return
         # The executor hands the battery back by itself; no further mode is commanded. An abort for the moment's
         # circumstances (`gate.mode_verdict` pending: the fuse, a stale reading) still lets normal judge that
         # hand-back; one that shows the plant does not do as told ends the run.
@@ -1350,7 +1382,8 @@ class Verification:
             if self.executor.use_phases(self.phased_before):
                 self.phased_before = None
         if self.stop_on_fail and result is not None and result.action != ACTION_SELF_CONSUME and not _passes(result):
-            # The hardware test: the first mode that did not pass skips the rest; normal judges the hand-back.
+            # The hardware test: the first mode that failed or was aborted for a fault skips the rest; normal judges
+            # the hand-back.
             normal = len(self.results) - 1
             for later in self.results[self.index + 1:normal]:
                 later.outcome = "skipped"
@@ -1401,10 +1434,11 @@ def phase_charge_step(caps_kw: Phases, volts_between_phases: float) -> tuple[int
 
 
 def _passes(result: ModeResult) -> bool:
-    """Whether a mode's outcome lets the hardware test go on: obeyed, not judgeable at this moment, or not applicable
-    on this plant (`Verification.not_applicable`)."""
+    """Whether a mode's outcome lets the hardware test go on: obeyed, not judgeable at this moment, not applicable
+    on this plant (`Verification.not_applicable`), or aborted only for the room under the fuse at that moment
+    (`gate.MOMENT_ABORTS`)."""
     outcome = result.outcome or ""
-    return outcome == "obeyed" or outcome.startswith(("not_judgeable:", "not_applicable:"))
+    return outcome == "obeyed" or outcome.startswith(("not_judgeable:", "not_applicable:")) or moment_abort(outcome)
 
 
 def _near_full(sample: Sample) -> bool:

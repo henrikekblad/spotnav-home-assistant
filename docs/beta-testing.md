@@ -91,6 +91,9 @@ back, at most a minute after the test's own time limit.
 
 It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
 skipped. The result is then **partial**, or **skipped** when nothing ran, and such a test does not use up the day.
+For a battery brand whose control waits for the hardware test, a test where nothing failed but a step the brand needs
+was not shown (no room under the fuse for the small grid charge, say) is **not complete**: the card names those
+steps, the rest of the steps still ran, and it does not use up the day either.
 When a part is there but none can run just now (starting, busy, or waiting for an acknowledgement), the dialog says
 the test cannot run right now, rather than asking you to turn control on.
 

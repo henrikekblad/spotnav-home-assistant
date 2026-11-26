@@ -232,8 +232,12 @@ def test_shadow_only_is_off_by_default_only_for_a_field_tested_recipe_or_a_beta_
 class _FakeBattery:
     """Steps through the four modes, one each time the runner reads the progress."""
 
-    def __init__(self, outcomes: dict[str, str] | None = None, refusal: str | None = None, slow: bool = False) -> None:
+    def __init__(self, outcomes: dict[str, str] | None = None, refusal: str | None = None, slow: bool = False,
+                 needs: tuple[str, ...] | None = None) -> None:
         self.refusal = refusal
+        #: The modes the plant's recipe waits for before control may start (`BatteryControl.hardware_test_missing`);
+        #: `None`: a plant whose control waits for no test.
+        self.needs = needs
         self.outcomes = outcomes or {"hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed",
                                      "normal": "restored"}
         self.done: dict[str, str] = {}
@@ -272,21 +276,35 @@ class _FakeBattery:
     def _report(self) -> dict[str, Any]:
         return {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in self.done.items()}}
 
+    def hardware_test_missing(self, report: Any) -> list[dict[str, Any]] | None:
+        if self.needs is None:
+            return None
+        modes = (report or {}).get("modes") or {}
+        return [
+            {"mode": mode, "outcome": (modes.get(mode) or {}).get("outcome")} for mode in self.needs
+            if (modes.get(mode) or {}).get("outcome") not in ("obeyed", "restored")
+        ]
+
     def hardware_test_progress(self) -> dict[str, Any]:
+        order = tuple(mode for mode in ("hold", "expiry", "charge", "discharge_house", "normal") if mode in self.outcomes)
         if self.running and not self.slow:
-            for mode in ("hold", "charge", "discharge_house", "normal"):
+            for mode in order:
                 if mode not in self.done:
                     self.done[mode] = self.outcomes[mode]
-                    if self.outcomes[mode] not in ("obeyed", "restored"):
-                        for later in ("charge", "discharge_house"):
+                    # A step with no room under the fuse now, or not judgeable now, ends nothing; any other that did
+                    # not pass skips the rest.
+                    if self.outcomes[mode] not in ("obeyed", "restored", "aborted:fuse_headroom") and not (
+                        self.outcomes[mode].startswith("not_judgeable:")
+                    ):
+                        for later in order[1:-1]:
                             self.done.setdefault(later, "skipped")
                         self.done["normal"] = "restored"
                     break
             else:
                 self.running = False
-            if len(self.done) == 4:
+            if len(self.done) == len(order):
                 self.running = False
-        current = next((mode for mode in ("hold", "charge", "discharge_house", "normal") if mode not in self.done), None)
+        current = next((mode for mode in order if mode not in self.done), None)
         return {"running": self.running, "mode": current, "stage": "read", "report": self._report(),
                 "holding": self.running, "firmware_key": self.firmware_key()}
 
@@ -388,6 +406,107 @@ async def test_a_partial_or_skipped_test_leaves_the_day_s_slot(hass: HomeAssista
     assert await runner.async_start() is None, "the battery ready again: the test runs again the same day"
     await _finished(runner)
     assert runner.view()["result"] == "passed" and runner.view()["blocked"] == "once_a_day"
+
+
+_FIELD: dict[str, str] = {"hold": "obeyed", "expiry": "obeyed", "charge": "aborted:fuse_headroom",
+                          "discharge_house": "obeyed", "normal": "restored"}
+_SOLIS_NEEDS = ("hold", "expiry", "charge", "normal")
+
+
+def test_a_test_that_did_not_show_what_the_gate_waits_for_is_incomplete_never_passed() -> None:
+    steps = [{"part": "battery", "step": "hold", "status": "passed", "reason": None},
+             {"part": "battery", "step": "charge", "status": "aborted", "reason": "fuse_headroom"},
+             {"part": "battery", "step": "hand_back", "status": "passed", "reason": None}]
+    missing = hardware_test.battery_missing([{"mode": "charge", "outcome": "aborted:fuse_headroom"},
+                                             {"mode": "expiry:L1", "outcome": None},
+                                             {"mode": "expiry:L2", "outcome": "not_judgeable:house_changed"}], steps)
+    assert missing == [{"step": "charge", "reason": "fuse_headroom"}, {"step": "deadman", "reason": None}]
+    assert result_of(steps) == "passed", "by its steps alone, as for a plant whose control waits for no test"
+    assert result_of(steps, missing) == "incomplete" and result_of(steps, []) == "passed"
+    failed = [*steps, {"part": "battery", "step": "discharge", "status": "failed", "reason": None}]
+    assert result_of(failed, missing) == "failed", "a step that really failed stays failed"
+    assert "incomplete" in hardware_test.NOT_COUNTED
+
+
+async def test_the_first_testers_run_is_incomplete_names_the_charge_and_leaves_the_day_s_slot(
+    hass: HomeAssistant,
+) -> None:
+    """Solis, 3.0.0b6: the hold passed, the charge had no room under the fuse. The result said `passed` while the
+    gate took no pass. Now the steps after the charge still run and the result says what is missing."""
+    battery = _FakeBattery(dict(_FIELD), needs=_SOLIS_NEEDS)
+    runner = await _runner(hass, battery, _FakeHeat(refusal="no_battery_control"))
+    assert await runner.async_start() is None
+    await _finished(runner)
+    view = runner.view()
+    assert view["state"] == "done" and view["result"] == "incomplete"
+    assert [(step["step"], step["status"], step["reason"]) for step in view["steps"]] == [
+        ("hold", "passed", None), ("deadman", "passed", None), ("charge", "aborted", "fuse_headroom"),
+        ("discharge", "passed", None), ("hand_back", "passed", None),
+    ]
+    assert view["missing"] == [{"step": "charge", "reason": "fuse_headroom"}]
+    assert runner.record is not None and runner.record["missing"] == view["missing"]
+    # It may be run again the same day (when the house draws less), and nothing runs again by itself.
+    assert view["blocked"] is None and runner.waiting is None and battery.started == 1
+    battery.outcomes["charge"] = "obeyed"
+    assert await runner.async_start() is None
+    await _finished(runner)
+    assert runner.view()["result"] == "passed" and runner.view()["missing"] == []
+    assert runner.view()["blocked"] == "once_a_day"
+
+
+async def test_the_run_as_3_0_0b6_left_it_names_the_charge_and_the_dead_man(hass: HomeAssistant) -> None:
+    # As the report read then: the charge aborted for the fuse, the discharge and the dead-man skipped after it.
+    modes = {"hold": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "skipped", "expiry": "skipped",
+             "normal": "restored"}
+    report = {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in modes.items()}}
+    runner = await _runner(hass, _FakeBattery(needs=_SOLIS_NEEDS), _FakeHeat(refusal="no_battery_control"))
+    steps = hardware_test.battery_steps(report, None, False)
+    missing = runner._battery_missing(report, steps)  # noqa: SLF001
+    assert missing == [{"step": "deadman", "reason": None}, {"step": "charge", "reason": "fuse_headroom"}]
+    assert result_of(steps, missing) == "incomplete" and result_of(steps) == "passed"
+
+
+async def test_a_plant_whose_control_waits_for_no_test_keeps_its_result_by_the_steps(hass: HomeAssistant) -> None:
+    runner = await _runner(hass, _FakeBattery(dict(_FIELD)), _FakeHeat(refusal="no_battery_control"))
+    assert await runner.async_start() is None
+    await _finished(runner)
+    view = runner.view()
+    assert view["result"] == "passed" and view["missing"] == [] and view["blocked"] == "once_a_day"
+    assert runner.record is not None and runner.record["missing"] is None
+
+
+async def test_a_stopped_test_of_a_gated_plant_is_incomplete(hass: HomeAssistant) -> None:
+    battery = _FakeBattery(slow=True, needs=("hold", "charge", "normal"))
+    runner = await _runner(hass, battery, _FakeHeat(refusal="no_battery_control"))
+    assert await runner.async_start() is None
+    await asyncio.sleep(0)
+    await runner.async_stop("stopped")
+    view = runner.view()
+    assert view["result"] == "incomplete"
+    assert view["missing"] == [{"step": step, "reason": "stopped"} for step in ("hold", "charge", "hand_back")]
+
+
+async def test_a_kept_passed_test_the_gate_never_took_reads_incomplete_once_the_battery_can_say(
+    hass: HomeAssistant, hass_storage,
+) -> None:
+    now = dt_util.now()
+    modes = {"hold": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "skipped", "expiry": "skipped",
+             "normal": "restored"}
+    report = {"modes": {mode: {"mode": mode, "outcome": outcome} for mode, outcome in modes.items()}}
+    hass_storage[hardware_test.store_key("site_1")] = {"version": 1, "key": hardware_test.store_key("site_1"), "data": {
+        "last": {"at": now.isoformat(), "version": "3.0.0", "firmware_key": None},
+        "record": {"started_at": now.isoformat(), "finished_at": now.isoformat(), "result": "passed",
+                   "steps": hardware_test.battery_steps(report, None, False), "battery": report},
+        "sent_ref": "SN-MT8Q"}}
+    battery = _FakeBattery()
+    runner = await _runner(hass, battery, _FakeHeat(refusal="no_battery_control"))
+    # The battery control cannot say yet (not gated, or still starting): the kept result stands.
+    assert runner.view()["result"] == "passed" and runner.view()["missing"] == []
+    battery.needs = _SOLIS_NEEDS
+    view = runner.view()
+    assert view["result"] == "incomplete" and view["sent_ref"] == "SN-MT8Q"
+    assert view["missing"] == [{"step": "deadman", "reason": None}, {"step": "charge", "reason": "fuse_headroom"}]
+    assert view["blocked"] is None, "it may be run again the same day"
 
 
 async def test_a_kept_test_from_before_is_judged_again_at_the_load(hass: HomeAssistant, hass_storage) -> None:
@@ -916,6 +1035,11 @@ async def test_the_card_s_fixtures(hass: HomeAssistant, freezer, monkeypatch: py
     assert await partial.async_start() is None
     await _finished(partial)
     _write_or_compare("on_done_partial.json", _answer(beta, partial))
+    incomplete = await _runner(hass, _FakeBattery(dict(_FIELD) | {"expiry": "not_judgeable:house_changed"},
+                                                  needs=_SOLIS_NEEDS), _FakeHeat(refusal="no_battery_control"))
+    assert await incomplete.async_start() is None
+    await _finished(incomplete)
+    _write_or_compare("on_done_incomplete.json", _answer(beta, incomplete))
     freezer.move_to("2026-12-04T03:00:00+01:00")
     _write_or_compare("ended.json", _answer(beta, None))
     await beta.async_stop()

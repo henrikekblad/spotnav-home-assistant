@@ -187,6 +187,29 @@ def test_control_refuses_a_report_that_is_not_a_passed_test_or_a_brand_without_c
         tool.issue(codes, _key(), tool.tester_facts(meta, report), date(2026, 11, 25))
 
 
+def test_control_says_an_incomplete_test_is_incomplete_and_which_steps_are_missing(tmp_path: Path) -> None:
+    tool = _tool()
+    meta, report = tool.read_local(_report(tmp_path, brand="solis"))
+    missing = [{"step": "charge", "reason": "fuse_headroom"}, {"step": "deadman", "reason": None}]
+    facts = tool.tester_facts(meta, report) | {"result": "incomplete", "gate_passed": False, "missing": missing}
+    with pytest.raises(SystemExit) as refused:
+        tool.issue(codes, _key(), facts, date(2026, 11, 26))
+    text = str(refused.value)
+    assert "incomplete" in text and "charge (fuse_headroom), deadman" in text and "nothing failed" in text
+    assert "not a passed" not in text
+    # The steps are read from the report's own `battery.test.missing`.
+    report["battery"]["test"] |= {"result": "incomplete", "gate_passed": False, "missing": missing}
+    assert tool.tester_facts(meta, report)["missing"] == missing
+    assert tool.refusal(tool.tester_facts(meta, report)) == text.removesuffix("; --force to issue anyway")
+    # A report from before the result was made honest: passed by its steps, no pass recorded by the gate.
+    old = tool.tester_facts(meta, report) | {"result": "passed", "gate_passed": False, "missing": None}
+    assert "gate recorded no pass" in tool.refusal(old)
+    assert tool.refusal(old | {"gate_passed": True}) is None and tool.refusal(old | {"gate_passed": None}) is None
+    assert "result 'failed'" in tool.refusal(old | {"result": "failed"})
+    assert "kind 'battery_tester'" in tool.refusal(old | {"kind": "battery_tester"})
+    assert codes.verify(tool.issue(codes, _key(), facts, date(2026, 11, 26), force=True), _public(_key()))
+
+
 def test_the_tools_brands_are_the_gated_recipes() -> None:
     from custom_components.spotnav.battery import commands  # noqa: PLC0415
 

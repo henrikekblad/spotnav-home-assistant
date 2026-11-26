@@ -186,6 +186,17 @@ FAILING_ABORTS: Final = (
     "write_not_taken", "no_effect", "changed_outside_spotnav", "restore_failed", "command_timeout", "not_obeyed",
     "control_not_found", "control_disabled", "action_not_supported", "no_restore_value",
 )
+#: Abort reasons that say only that this one step had no room under the fuse at this moment: the executor refused its
+#: start (`headroom_too_small`, or `fuse_headroom` where the rate left for it was under `MIN_RATE_KW`), or handed it back
+#: with the fuse near. The plant took every write so far, its readings are fresh and it is still SpotNav's to command,
+#: so a person's hardware test goes on with its other steps (`verify.Verification`, `stop_on_fail`), each started under
+#: the executor's own fuse rules again. Every other abort still ends it: a write not taken or a plant that did not do
+#: as told (`FAILING_ABORTS`), a management change or another writer, stale or missing readings (`stale_data`,
+#: `headroom_unknown`, `no_grid_reading`, `house_unknown`, `phase_load_unknown`, `off_grid`), a write budget used up,
+#: a setting of the person's that forbids the action, and a charge seen in the expiry's silence: after any of those
+#: the next step would be commanded on a plant whose state is not known. The sun and the battery's level are never an
+#: abort: they are `not_judgeable:*`, which already lets the test go on.
+MOMENT_ABORTS: Final = ("fuse_headroom", "headroom_too_small")
 #: Runs of the routine without a decision before it gives up (each run writes to the plant).
 MAX_ATTEMPTS: Final = 5
 #: The least time between two runs (s).
@@ -354,6 +365,44 @@ def _step_status(outcome: Any) -> str:
     return {"pass": "passed", "fail": "failed"}.get(mode_verdict(outcome), "open")
 
 
+def moment_abort(outcome: Any) -> bool:
+    """Whether a mode's outcome is an abort for the room under the fuse at that moment only (`MOMENT_ABORTS`)."""
+    return isinstance(outcome, str) and outcome.startswith("aborted:") and (
+        outcome.removeprefix("aborted:") in MOMENT_ABORTS
+    )
+
+
+def hardware_test_missing(
+    report: Mapping[str, Any] | None, supported: Iterable[str] | None = None, *, deadman_required: bool = False,
+) -> tuple[tuple[str, str | None], ...]:
+    """What a person's hardware test (its verification's report) has not shown of what `hardware_test_passed` asks,
+    as `(mode, outcome)` in the report's order; empty when the test passed. A mode the pass needs that the report has
+    no row for (the dead-man of a recipe with `deadman_required`) has the outcome `None`."""
+    modes = _modes(report) if isinstance(report, Mapping) else {}
+    outcomes = {name: (row or {}).get("outcome") for name, row in modes.items()}
+    status = {name: _step_status(outcome) for name, outcome in outcomes.items()}
+    must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
+    if outcomes.get("charge") == NOT_APPLICABLE_FIXED_CHARGE:
+        # A fixed charge that does not fit under the fuse cap here: the one step that may stay unrun.
+        must.discard("charge")
+    missing: list[str] = []
+    for name, value in status.items():
+        if name.split(":", 1)[0] == MODE_EXPIRY:
+            # A recipe whose every action is a command that stands until it expires (`BrandControl.deadman_must_pass`):
+            # its dead-man must have been timed, not merely tried; a step not judgeable is run again later.
+            allowed = ("passed",) if deadman_required else ("passed", "not_judgeable")
+        elif name in must:
+            allowed = ("passed",)
+        else:
+            allowed = ("passed", "not_judgeable", "skipped")
+        if value not in allowed:
+            missing.append(name)
+    missing += [name for name in ("hold", "charge", MODE_NORMAL) if name in must and name not in status]
+    if deadman_required and not any(name.split(":", 1)[0] == MODE_EXPIRY for name in status):
+        missing.append(MODE_EXPIRY)
+    return tuple((name, outcomes.get(name)) for name in missing)
+
+
 def hardware_test_passed(
     report: Mapping[str, Any] | None, supported: Iterable[str] | None = None, *, deadman_required: bool = False,
 ) -> bool:
@@ -363,25 +412,12 @@ def hardware_test_passed(
     an action for, `verify.supported_modes`; `None`: all), else skipped, or not applicable where the plant's own
     charge power does not fit under the cap (`NOT_APPLICABLE_FIXED_CHARGE`); the dead-man step (`expiry`, or
     `expiry:<phase>` per phase, where the test times one) passed or could not be judged (`deadman_required`: passed, and
-    there); every other step passed, could not be judged or was skipped. A step stopped or still open is no pass."""
+    there); every other step passed, could not be judged or was skipped. A step stopped or still open is no pass.
+    What is not shown is named by `hardware_test_missing`: the test's own result says `incomplete` then, never
+    `passed` (`hardware_test.result_of`)."""
     if not isinstance(report, Mapping):
         return False
-    modes = _modes(report)
-    status = {name: _step_status((row or {}).get("outcome")) for name, row in modes.items()}
-    must = {"hold", MODE_NORMAL} | ({"charge"} if supported is None or "charge" in set(supported) else set())
-    if (modes.get("charge") or {}).get("outcome") == NOT_APPLICABLE_FIXED_CHARGE:
-        # A fixed charge that does not fit under the fuse cap here: the one step that may stay unrun.
-        must.discard("charge")
-    if any(status.get(name) != "passed" for name in must):
-        return False
-    deadman = [value for name, value in status.items() if name.split(":", 1)[0] == MODE_EXPIRY]
-    if any(value not in ("passed", "not_judgeable") for value in deadman):
-        return False
-    if deadman_required and (not deadman or any(value != "passed" for value in deadman)):
-        # A recipe whose every action is a command that stands until it expires (`BrandControl.deadman_must_pass`):
-        # its dead-man must have been timed, not merely tried; a step not judgeable is run again later.
-        return False
-    return all(value in ("passed", "not_judgeable", "skipped") for value in status.values())
+    return not hardware_test_missing(report, supported, deadman_required=deadman_required)
 
 
 def _mode(config: Mapping[str, Any]) -> str:

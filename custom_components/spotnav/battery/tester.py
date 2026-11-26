@@ -269,8 +269,11 @@ async def async_send_result(hass: HomeAssistant, runner: HardwareTest) -> Report
     block = battery_block(hass, control) | {
         "test": {"result": record.get("result"), "started_at": record.get("started_at"),
                  "finished_at": record.get("finished_at"), "stopped": record.get("stopped"),
-                 # What the gate recorded: the brand's pass on this plant (the result above is the whole test's).
-                 "gate_passed": control.gated_brand() in control.hardware_brands},
+                 # What the gate recorded: the brand's pass on this plant (the result above is the whole test's,
+                 # `incomplete` when this test did not show everything the gate waits for: `missing` names the
+                 # steps and why).
+                 "gate_passed": control.gated_brand() in control.hardware_brands,
+                 "missing": [dict(row) for row in record.get("missing") or () if isinstance(row, Mapping)]},
     }
     extra = {
         "record": record,

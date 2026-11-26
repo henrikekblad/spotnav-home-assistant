@@ -468,6 +468,7 @@ def _test_run(ocean: PowerOcean, executor: Executor, *, looks: int = 150, house_
     verification = Verification(
         executor, T0, firmware="V5.1.37.13", modes=(*gate.BATTERY_MODES, gate.MODE_EXPIRY), timing=Timing.quick(),
         stop_on_fail=True, charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT, expiry=ECOFLOW_CONTROL.expiry,
+        expiry_first=True,
     )
     capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     now = T0
@@ -563,7 +564,12 @@ def test_the_dead_man_step_turns_modbus_control_off_alone_and_times_the_inverter
     # The dead-man step's writes: the hold (the switch on, Hold Battery), the silence (the switch off alone: the mode
     # is never written while it is unavailable), the plant taken back (the switch on: the integration sends
     # Automatic) and the hand-back (the switch off).
-    assert written(results)[-5:] == [
+    # It comes right after the hold, before the charge.
+    assert list(outcomes) == ["hold", "expiry", "charge", "discharge_house", "normal"]
+    first, last = (
+        int((datetime.fromisoformat(report["modes"][mode]["commanded_at"]) - T0) / TICK) for mode in ("expiry", "charge")
+    )
+    assert written(results[first:last]) == [
         ("modbus_control", True), ("battery_mode", "hold_battery"), ("modbus_control", False),
         ("modbus_control", True), ("modbus_control", False),
     ]
@@ -584,16 +590,16 @@ def test_a_firmware_without_the_dead_man_fails_the_step_and_is_still_taken_back(
     assert ocean.command[0] == "automatic" and ocean.states["modbus_control"] == "off"
 
 
-def test_the_card_shows_the_dead_man_step_before_the_hand_back_only_where_it_runs() -> None:
+def test_the_card_shows_the_dead_man_step_after_the_hold_only_where_it_runs() -> None:
     from custom_components.spotnav.hardware_test import DEADMAN_STEP, battery_steps  # noqa: PLC0415
 
     plain = {"modes": {"hold": {"outcome": "obeyed"}, "normal": {"outcome": "restored"}}}
     assert [row["step"] for row in battery_steps(plain, None, False)] == ["hold", "charge", "discharge", "hand_back"]
     timed = {"modes": {**plain["modes"], "expiry": {"outcome": "obeyed"}}}
     rows = battery_steps(timed, "expiry", True)
-    assert [row["step"] for row in rows] == ["hold", "charge", "discharge", DEADMAN_STEP[0], "hand_back"]
-    assert rows[3]["status"] == "passed"
-    assert battery_steps({"modes": {"expiry": {"outcome": None}}}, "expiry", True)[3]["status"] == "running"
+    assert [row["step"] for row in rows] == ["hold", DEADMAN_STEP[0], "charge", "discharge", "hand_back"]
+    assert rows[1]["status"] == "passed"
+    assert battery_steps({"modes": {"expiry": {"outcome": None}}}, "expiry", True)[1]["status"] == "running"
 
 
 def test_shadow_only_shows_what_it_would_write_and_hand_back_and_writes_nothing() -> None:

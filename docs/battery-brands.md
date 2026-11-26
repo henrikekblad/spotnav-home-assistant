@@ -361,18 +361,21 @@ Press Start: the test waits by itself for a moment with the house using more tha
 for the first pass, with a phone notice and a Stop button while it writes) and runs, in about twenty minutes:
 
 1. **Hold:** the force charge at 0 W; the battery must stop covering the house.
-2. **Small grid charge:** about 1 kW under the fuse cap and within the BMS's limit; the battery must charge.
-3. **Discharge to the house:** back to Self-Use; the battery must cover the house.
-4. **Stops by itself:** the hold again, renewed once after two minutes, then left alone while the test times how long
+2. **Stops by itself:** the hold again, renewed once after two minutes, then left alone while the test times how long
    the inverter keeps it before it covers the house by itself, judged by the force's own switches turning off (the
    house may change meanwhile; the battery's power is the cross-check). About five minutes after the renewal passes;
    sooner (the renewal did not restart the timer), much later or never fails, and the battery is stopped either way. On
    Solis this step must **pass**: if it could not be judged (the house's load moved, say), the test runs again later
-   by itself and does not count as passed.
+   by itself and does not count as passed. It comes before the grid charge, so the inverter's own timeout is seen
+   to end a hold before anything is charged.
+3. **Small grid charge:** about 1 kW under the fuse cap and within the BMS's limit; the battery must charge.
+4. **Discharge to the house:** back to Self-Use; the battery must cover the house.
 5. **Hand back:** the force stopped, both powers at 0, the timeout as found.
 
 It aborts and hands back near the fuse, if the battery charges from the grid while it waits, or when anything is
-written by someone else.
+written by someone else. A step that only had no room under the fuse at that moment (a grid charge while the house
+draws a lot) does not end the test: the steps after it still run. The result is then **not complete**, not passed:
+the card names the steps still to be shown, and the test can be run again the same day, when the house draws less.
 
 **If something goes wrong, restore by hand:** in Home Assistant set *RC Force Charge/Discharge* to *None*, *RC Force
 Battery Charge Power* and *RC Force Battery Discharge Power* to 0 and *RC Timeout* to your value (5 minutes by

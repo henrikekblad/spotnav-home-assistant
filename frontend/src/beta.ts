@@ -31,14 +31,18 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export type BetaState = { on: boolean; startedAt: string | null; endsAt: string | null; ended: boolean; email: string | null };
 export type TestStep = { part: string; step: string; status: string; reason: string | null };
+/** A battery step the result `incomplete` still waits for, and why it was not shown (the step's own reason). */
+export type MissingStep = { step: string; reason: string | null };
 export type TestState = {
   state: "idle" | "waiting" | "running" | "done";
   blocked: string | null;
   nextAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  result: "passed" | "partial" | "skipped" | "failed" | null;
+  result: "passed" | "partial" | "skipped" | "failed" | "incomplete" | null;
   steps: TestStep[];
+  /** For `incomplete`: what the battery's recipe still waits for before control may start; else empty. */
+  missing: MissingStep[];
   sentRef: string | null;
 };
 export type BetaAnswer = {
@@ -62,15 +66,20 @@ const ANSWER_KEYS = ["api_version", "ok", "error", "beta", "test", "ref", "retry
 const BETA_KEYS = ["on", "started_at", "ends_at", "ended", "email"];
 const TEST_KEYS = ["state", "blocked", "next_at", "started_at", "finished_at", "result", "steps", "sent_ref"];
 const STEP_KEYS = ["part", "step", "status", "reason"];
+// `missing` came with the result `incomplete`: an answer without it has none.
+const TEST_OPTIONAL_KEYS = ["missing"];
+const MISSING_KEYS = ["step", "reason"];
 const TEST_STATES = ["idle", "waiting", "running", "done"];
-const RESULTS = ["passed", "partial", "skipped", "failed"];
+const RESULTS = ["passed", "partial", "skipped", "failed", "incomplete"];
 
-function record(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
+function record(
+  value: unknown, keys: readonly string[], optional: readonly string[] = [],
+): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
   const object = value as Record<string, unknown>;
-  if (!hasAllKeys(object, keys) || hasUnknownKeys(object, keys)) {
+  if (!hasAllKeys(object, keys) || hasUnknownKeys(object, [...keys, ...optional])) {
     return null;
   }
   return object;
@@ -101,11 +110,19 @@ function decodeStep(value: unknown): TestStep | null {
   return { part: raw.part, step: raw.step, status: raw.status, reason: raw.reason };
 }
 
+function decodeMissing(value: unknown): MissingStep | null {
+  const raw = record(value, MISSING_KEYS);
+  if (raw === null || !text(raw.step) || !textOrNull(raw.reason)) {
+    return null;
+  }
+  return { step: raw.step, reason: raw.reason };
+}
+
 function decodeTest(value: unknown): TestState | null | undefined {
   if (value === null) {
     return null;
   }
-  const raw = record(value, TEST_KEYS);
+  const raw = record(value, TEST_KEYS, TEST_OPTIONAL_KEYS);
   if (
     raw === null || !text(raw.state) || !TEST_STATES.includes(raw.state) || !textOrNull(raw.blocked)
     || !textOrNull(raw.next_at) || !textOrNull(raw.started_at) || !textOrNull(raw.finished_at)
@@ -118,6 +135,14 @@ function decodeTest(value: unknown): TestState | null | undefined {
   if (steps.some((step) => step === null)) {
     return undefined;
   }
+  const missingRaw = raw.missing ?? [];
+  if (!Array.isArray(missingRaw)) {
+    return undefined;
+  }
+  const missing = missingRaw.map(decodeMissing);
+  if (missing.some((step) => step === null)) {
+    return undefined;
+  }
   return {
     state: raw.state as TestState["state"],
     blocked: raw.blocked,
@@ -126,6 +151,7 @@ function decodeTest(value: unknown): TestState | null | undefined {
     finishedAt: raw.finished_at,
     result: raw.result as TestState["result"],
     steps: steps as TestStep[],
+    missing: missing as MissingStep[],
     sentRef: raw.sent_ref,
   };
 }
@@ -173,7 +199,45 @@ const RESULT_LABELS: Record<NonNullable<TestState["result"]>, TranslationKey> = 
   partial: "test.result.partial",
   skipped: "test.result.skipped",
   failed: "test.result.failed",
+  // Said by `resultText`, with the steps still to be shown; this is the sentence without them.
+  incomplete: "test.result.partial",
 };
+
+/** The battery steps as named inside the sentence that says what is still to be shown. */
+const MISSING_LABELS: Record<string, TranslationKey> = {
+  hold: "test.missing.hold",
+  charge: "test.missing.charge",
+  discharge: "test.missing.discharge",
+  deadman: "test.missing.deadman",
+  hand_back: "test.missing.handBack",
+};
+
+/** Reasons that say a step had no room under the fuse when the test ran: a quieter house shows it. */
+const NO_ROOM_REASONS = ["fuse_headroom", "headroom_too_small", "grid_charge_cap", "no_phase_room"];
+
+/**
+ * A finished test's result in plain words. `incomplete` (nothing failed, but the battery's recipe still waits for
+ * steps before control may start) names those steps and says what to do: run it again, when the house uses less
+ * power where a step had no room under the fuse.
+ */
+export function resultText(language: Language, test: TestState): string {
+  if (test.result === null) {
+    return "";
+  }
+  if (test.result !== "incomplete" || test.missing.length === 0) {
+    return translate(language, RESULT_LABELS[test.result]);
+  }
+  const names = test.missing.map((row) => {
+    const label = MISSING_LABELS[row.step];
+    return label === undefined ? row.step : translate(language, label);
+  });
+  const steps = new Intl.ListFormat(language, { style: "long", type: "conjunction" }).format(names);
+  const noRoom = test.missing.some((row) => row.reason !== null && NO_ROOM_REASONS.includes(row.reason));
+  return [
+    translate(language, "test.result.incomplete", { steps }),
+    translate(language, noRoom ? "test.incomplete.houseLoad" : "test.incomplete.again"),
+  ].join(" ");
+}
 
 const STATUS_LABELS: Record<string, TranslationKey> = {
   pending: "test.status.pending",
@@ -252,6 +316,7 @@ const RESULT_VALUES: Record<NonNullable<TestState["result"]>, TranslationKey> = 
   partial: "test.value.partial",
   skipped: "test.value.skipped",
   failed: "test.value.failed",
+  incomplete: "test.value.incomplete",
 };
 
 /** A site with nothing to test and no earlier test has no "Hårdvarutest" row: nothing to press, nothing to read. */
@@ -669,14 +734,14 @@ export function testBox(input: BetaBoxInput): HTMLElement {
       lines.push(say("test.running"));
     } else if (waiting) {
       // Pressed: it runs by itself at a suitable moment, and says when it is likely to.
-      if (test.result === "partial") {
+      if (test.result === "partial" || test.result === "incomplete") {
         lines.push(say("test.waiting.retry"));
       }
       lines.push(test.nextAt === null
         ? say("test.waiting.soon")
         : say("test.waiting.at", { time: dateText(language, test.nextAt, true) }));
     } else if (test.result !== null) {
-      lines.push(say(RESULT_LABELS[test.result]));
+      lines.push(resultText(language, test));
       if (batteryRunElsewhere(test)) {
         // The battery's part was skipped because something else runs it: what to do first.
         lines.push(say("test.blocked.runElsewhere"));
