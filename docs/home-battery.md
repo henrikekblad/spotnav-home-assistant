@@ -251,7 +251,9 @@ plant's own hardware test stops its control only when a step fails, never when t
    test waits for a suitable moment by itself, runs only in waking hours (08–21), tells your phones while it runs
    (with a Stop button) and always hands the battery back. Its result is sent by itself when it ends, with the
    battery's log and history over the test, while Beta tester is on. The card then says *The result has been sent. You get an answer by
-   e-mail.*
+   e-mail.* A test where nothing failed but a step the brand needs could not be shown (the small grid charge had no
+   room under the fuse because the house drew a lot, say) ends as **not complete**, not as passed: the card names
+   the steps still to be shown, the other steps still ran, and the test can be run again the same day.
 3. **Enter the control code.** SpotNav's developer reads the test's log and answers by e-mail: with a **control code**
    when the test passed and looks right, otherwise with what was seen (and possibly a fix in a later release). Paste
    the code under Support → Hardware test (spaces and line breaks do not matter); it is taken only once the hardware
