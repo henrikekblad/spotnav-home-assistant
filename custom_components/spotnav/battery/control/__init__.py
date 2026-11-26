@@ -79,6 +79,25 @@ The order on every path:
   battery's executor runs the same plant (its Remote EMS on, also while it hands back) the export instance is told so
   (`sibling_active`) and still takes and keeps the limit; Remote EMS on otherwise is another controller's and hands
   the limit back; it is judged on the site's grid power (`grid_import_kw`).
+
+The package's parts (every name is imported from the package itself, as when it was one module):
+
+* `core.py`: `BatteryControl` and its attributes. What it does is in mixins on that one state, methods moved as they
+  were: `life.py` (the start on what was stored, the timer, the stop and the unload), `look.py` (one look and its
+  order, the slot control runs), `write_path.py` (a step with its state stored before its writes, each write behind
+  the gate, the hand-back loops), `exec_inputs.py` (the reads and an executor's inputs), `report.py` (the options,
+  the firmware key, the report control runs on, the state, the settings), `gate_record.py` (hardware test passes, the
+  tester's sign-up, control codes, a grandfathered plant), `verify_driver.py` (the routine), `hardware_run.py` (a
+  person's hardware test), `plan_proof.py` (the plan's own commands as the check of a new key), `trial_run.py` (the
+  owner's test action), `per_phase.py` (the hold variant and the charge per phase), `expiry.py` (the plant's own
+  expiry and its test), `import_limit.py` (the plant's own import limit), `caps.py` (the HA-down caps) and
+  `status.py` (the store, the checklist, the status and the snapshot).
+* Without a site: `io.py` (a stored control's read, one write as its service call), `stored.py` (the hand-back of a
+  stored snapshot), `trial.py` (`Trial` and the refusals), `helpers.py`, `const.py`.
+
+Each module reads its globals from itself: a test replaces one through `tests/battery_patch.py`, which sets it in
+every module whose code reads it. A change to one part is checked against the recorded shell traces
+(`tests/test_battery_control_golden.py`, `tests/test_battery_control_golden_brands.py`).
 """
 
 from __future__ import annotations

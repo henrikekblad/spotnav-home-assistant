@@ -1,4 +1,4 @@
-"""A grid charge per phase through the shell (`battery/control.py`) on the owner's plant in a fake Home Assistant:
+"""A grid charge per phase through the shell (`battery/control/`) on the owner's plant in a fake Home Assistant:
 when it is used and when the balanced charge is, the verification's mode `per_phase` (the sign and the phase
 mapping), its `charge` tried per phase where the balanced charge has no room (and so the hardware test's), the
 status, and an unbalanced house under the fuse when Home Assistant stops."""

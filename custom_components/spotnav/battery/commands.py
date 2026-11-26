@@ -1133,7 +1133,7 @@ class BrandControl:
     house_states: Mapping[str, Callable[[float, float], tuple[Want, ...]]] = field(default_factory=dict)
     #: A slow control (a cloud: Tesla): planned actions only. No hold for a car, no peak cover, no change of action
     #: sooner than `min_change_s`, the read-back waits `readback_s` and a hand-back waits `rearm_s` before the next
-    #: action (`executor/`, `control.py`). `None`: the executor's own figure.
+    #: action (`executor/`, `control/`). `None`: the executor's own figure.
     slow: bool = False
     min_change_s: float = 0.0
     rearm_s: float | None = None

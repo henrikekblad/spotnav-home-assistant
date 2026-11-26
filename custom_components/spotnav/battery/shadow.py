@@ -3,7 +3,7 @@
 A part is `shadow` (it decides and logs, writes nothing) or `on` (it writes). In this release a part of the book
 cannot be turned on: `ON_REACHABLE` is off, a stored `on` loads as `shadow`, and nothing offers a way to turn it on.
 "All back to shadow" puts every part back in one step. The battery and export-limit control does not use the book's
-states: it writes only behind its site's own gate (`gate.py`, `control.py`), and the hold for the car reaches it as a
+states: it writes only behind its site's own gate (`gate.py`, `control/`), and the hold for the car reaches it as a
 request (`runtime.BatteryShadow.hold_requested`).
 
 The hold for the car (`PART_HOLD_FOR_CAR`) decides when to hold; what it would write is the executor's action

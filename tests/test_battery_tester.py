@@ -1,5 +1,5 @@
 """Becoming a tester for a battery brand whose control is still being tested, and its control code
-(`battery/tester.py`, the gate in `battery/control.py`, `spotnav/battery_control`'s actions, beta's longer period).
+(`battery/tester.py`, the gate in `battery/control/`, `spotnav/battery_control`'s actions, beta's longer period).
 
 The codes are signed with a throwaway key; the developer's public key is swapped for its half in each test."""
 

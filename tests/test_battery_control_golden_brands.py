@@ -1,4 +1,4 @@
-"""The battery control's shell, pinned before `battery/control.py` is split, for more than Sigenergy's recipe: Solis
+"""The battery control's shell, pinned before `battery/control.py` became the package `battery/control/`, for more than Sigenergy's recipe: Solis
 (a force sent by the integration's own services, renewed by SpotNav, a dead-man the hardware test times) and EcoFlow
 (a dead-man the integration renews and the hardware test silences), each as a plant in Home Assistant's registry
 behind the fake inverter of its own test file (`test_battery_solis_control.Hybrid`, `test_battery_ecoflow.PowerOcean`),

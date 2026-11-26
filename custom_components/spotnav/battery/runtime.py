@@ -16,7 +16,7 @@ and in what SpotNav detected; nothing is raised in Repairs (nothing there is for
 notice an earlier version raised is deleted at start.
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
-the site's diagnostics (and so in the debug bundle) only. The write path (`control.py`), behind the site's gate, takes
+the site's diagnostics (and so in the debug bundle) only. The write path (`control/`), behind the site's gate, takes
 the hold's decision as a request (`hold_requested`) and runs it through the executor.
 """
 
@@ -444,7 +444,7 @@ class BatteryShadow:
         self.facts: BatteryFacts = BatteryFacts()
         self.dry_run = HoldDryRun(Ledger(), Monitor())
         self.outside = OutsideControlWatch()
-        #: Whether SpotNav's own write path (`control.py`) acts on the battery now, and whether the person let it take
+        #: Whether SpotNav's own write path (`control/`) acts on the battery now, and whether the person let it take
         #: the plant over from its own optimiser (`battery_control_ai_takeover_ack`); set by that path.
         self.spotnav_acting: Callable[[], bool] = lambda: False
         #: The states SpotNav's control found before it first wrote, by entity id (`Executor.found_states`): a floor
