@@ -126,7 +126,7 @@ from .commands import (
     FOLLOWS_MAX,
     GATED_AFTER_RUNNING,
     NORMAL,
-    OUTPUT_TYPE_PHASES,
+    plant_phases,
     BrandControl,
     Expiry,
     Phases,
@@ -3441,11 +3441,12 @@ class BatteryControl:
         return kw * 1000.0 / phase_volts(stored_voltage_between_phases_v(self.site.config))
 
     def _plant_phases(self, control: BrandControl | None) -> int:
-        """The phases the plant spreads a grid charge over: its Output Type when it shows one, else the brand's."""
+        """The phases the plant spreads a grid charge over: its Output Type (Solis: the inverter's own type) when
+        it shows one, else the brand's (`commands.plant_phases`)."""
         if control is None:
             return 1
         state = read_plant_entity(self.hass, self.site.config, control.output_type)
-        return OUTPUT_TYPE_PHASES.get(str(state).lower(), control.grid_charge_phases) if state else control.grid_charge_phases
+        return plant_phases(control, state)
 
     def _house_peak_kw(self, now: datetime) -> float | None:
         """The house forecast's p90 for the running hour (kW), read once an hour; `None` when it has none."""
@@ -3691,6 +3692,7 @@ class BatteryControl:
             measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
             headroom_a=min(headrooms) if headrooms else None,
             charge_phases=self._plant_phases(control),
+            output_balanced=control.balanced_output,
             volts_between_phases=stored_voltage_between_phases_v(config),
             grid_import_kw=grid_import_kw,
             # The fast shedding order (`gate.battery_yields`): the battery's grid charge before the car, the car

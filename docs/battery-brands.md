@@ -335,8 +335,12 @@ the inverter take, even if part of a write is lost on the way. SpotNav never wri
 inverter's default) with every force and renews the force every 2 minutes, so if Home Assistant (or SpotNav) stops,
 the inverter goes back to Self-Use within about five minutes. The renewals are bounded (800 a day; a whole day of
 control is 720). This comes from the integration's source; the hardware test times it. A grid charge's fuse cap is
-reckoned as for any battery that keeps its command (the house at its learned peak, the whole charge on one phase,
-since Solis does not say how a three-phase unit spreads it): a five-minute timeout never lifts it. Nobody states
+reckoned as for any battery that keeps its command (the house at its learned peak): a five-minute timeout never
+lifts it. **Phases:** a three-phase hybrid (an S6-EH3P, an RHI-3P) is counted as balanced, a third of a grid charge
+and of what the battery puts out on each phase (a tester's S6-EH3P 15 kW put out the same on each phase within
+90 W), under the fuse now and for the case that Home Assistant stops. SpotNav takes three phases only from the
+inverter's own type, the sensor *Inverter model definition* reading "... 3-Phase ..."; a single-phase model, or that
+sensor missing, disabled or reading "Unknown Model", keeps the whole charge counted on one phase. Nobody states
 whether these registers are kept in flash; they are the ones an outside energy manager writes all day. If a renewal
 is lost and the force lapses by itself, SpotNav hands back and starts again; three lapses in a day stop control for a
 while.
