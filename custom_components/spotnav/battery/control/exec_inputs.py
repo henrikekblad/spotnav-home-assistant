@@ -20,7 +20,7 @@ from ..executor import ExecInputs, Executor, RoleRead
 from ..export_curtail import curtails
 from ..facts import BatteryFacts
 from ..plan_model import ACTION_GRID_CHARGE, ACTION_HOLD, ACTION_SELF_CONSUME
-from ..runtime import read_battery_facts, read_export_facts, read_role_reads
+from ..runtime import read_battery_facts, read_export_facts, read_role_reads, site_phase_total, site_signed_w
 from .const import ACTING_GRACE_S, _UNSET
 from .helpers import _state_of
 from .io import stored_reads
@@ -135,7 +135,7 @@ class Inputs:
 
     def _grid_import_kw(self) -> float | None:
         """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
-        signed = list(self.site.result.phase_signed_active_power_w.values())
+        signed = site_signed_w(self.site)
         if not signed or not all(value is not None and math.isfinite(value) for value in signed):
             return None
         return sum(signed) / 1000.0  # type: ignore[arg-type]
@@ -220,6 +220,7 @@ class Inputs:
             measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
             headroom_a=min(headrooms) if headrooms else None,
             charge_phases=self._plant_phases(control),
+            site_phases=site_phase_total(self.site),
             output_balanced=control.balanced_output,
             volts_between_phases=stored_voltage_between_phases_v(config),
             grid_import_kw=grid_import_kw,

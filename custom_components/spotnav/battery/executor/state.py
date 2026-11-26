@@ -46,6 +46,9 @@ class ExecInputs:
     #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
     #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
     charge_phases: int = 3
+    #: The phases the site has: 1 on a single-phase site, where the plant, the house and the meter are all on L1
+    #: (`charge_phases` is then 1 too, `headroom_a` is L1's and `grid_import_kw` is L1's signed power); else 3.
+    site_phases: int = 3
     #: The plant puts out the same on each of its phases (`BrandControl.balanced_output`): on three phases
     #: (`charge_phases`) what its discharge covers comes back a third on each when it stops (`cover_a`).
     output_balanced: bool = False

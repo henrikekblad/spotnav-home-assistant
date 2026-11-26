@@ -260,7 +260,8 @@ def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: boo
 
     A sale (`sale_kw`, its rate) uses the same rule less the sale's own share on each phase: spread evenly over a
     plant's three phases it still gives that back on the loaded one. A plant on fewer phases gets no share (the
-    phase it puts out on is not known)."""
+    phase it puts out on is not known), except on a single-phase site (`ExecInputs.site_phases`), where the sale
+    is all on L1 as the cover is."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
     return (
@@ -284,11 +285,14 @@ OWN_IMPORT_UNKNOWN_A: Final = 1000.0
 
 def uncovered_a(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> float:
     """What the start rule (`hold_headroom_ok`) counts as coming back on the most loaded phase (A): the cover now
-    (`cover_a`) less a sale's own share on each phase at `sale_kw` (a plant on three phases only)."""
+    (`cover_a`) less a sale's own share on each phase at `sale_kw`: a third on a plant on three phases, all of it on a
+    single-phase site (`ExecInputs.site_phases`: the sale and the cover are both on L1), none otherwise."""
     if inputs.volts_between_phases <= 0:
         return 0.0
     extra_a = cover_a(inputs, sale=from_sale)
-    if sale_kw > 0 and inputs.charge_phases >= 3:
+    if sale_kw > 0 and inputs.site_phases == 1:
+        extra_a = max(extra_a - sale_kw * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases, 0.0)
+    elif sale_kw > 0 and inputs.charge_phases >= 3:
         extra_a = max(extra_a - sale_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases), 0.0)
     return extra_a
 
@@ -298,7 +302,13 @@ def _import_headroom_a(inputs: ExecInputs) -> float | None:
     export cap's (`gate.export_discharge_cap_kw`, recomputed each look), which lets a sale and the sun fill a phase
     to where its headroom reads about `RESTORE_HEADROOM_A`: judged there too, a sale at its cap would be handed back
     and started again every `REARM_S`. `None` when no phase imports; the least headroom on any phase when the
-    meter's sign per phase is not known."""
+    meter's sign per phase is not known. On a single-phase site (`ExecInputs.site_phases`) the one phase is L1: its
+    headroom while the site imports (or its grid power is not known), `None` while it exports."""
+    if inputs.site_phases == 1:
+        grid = inputs.grid_import_kw
+        if grid is None or not math.isfinite(grid) or grid >= 0.0:
+            return inputs.headroom_a
+        return None
     signed, headroom = inputs.grid_phase_kw, inputs.phase_headroom_a
     if signed is None or headroom is None:
         return inputs.headroom_a
