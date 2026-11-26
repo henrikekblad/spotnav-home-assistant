@@ -1,7 +1,8 @@
-"""After an update (the plant's firmware, its integration's version, the recipe's revision) control keeps running on
-the last report that passed for the brand on this plant while the routine checks the new key, at the first suitable
-moment of any hour (owner rule 2026-11-24: control must never stop because of an update). A check that fails still
-stops control; another brand's report, a held-back recipe and a hold variant the recipe dropped never carry."""
+"""After an update (the plant's firmware, its integration's version, the recipe's revision) control keeps running each
+step on the latest answer it has for the brand on this plant while the routine checks the new key, at the first
+suitable moment of any hour (owner rule 2026-11-24: control must never stop because of an update; each step by itself
+since 2026-11-26). A check that fails still stops control; another brand's report, a held-back recipe and a hold
+variant the recipe dropped never carry."""
 
 from __future__ import annotations
 
@@ -39,6 +40,11 @@ def _soon():
     return dt_util.now() + timedelta(minutes=1)
 
 
+def _sources(report: Any) -> set[str]:
+    """The keys a report's carried steps came from."""
+    return set(((report or {}).get("carried_from") or {}).values())
+
+
 def _row(outcome: str, **more: Any) -> dict[str, Any]:
     return {"outcome": outcome, **more}
 
@@ -57,7 +63,8 @@ def test_the_report_control_runs_on_is_the_last_passed_one_of_the_brand_while_th
     old = _report("A | sigen 1")
     reports = {"A | sigen 1": old}
     carried = gate.control_report(None, reports, key="B | sigen 1", brand="sigenergy")
-    assert gate.report_status(carried) == "passed" and carried["carried_from"] == "A | sigen 1"
+    assert gate.report_status(carried) == "passed"
+    assert carried["carried_from"] == dict.fromkeys(("hold", "charge", "discharge_house", "normal"), "A | sigen 1")
     assert carried["key"] == "B | sigen 1"
     assert gate.allowed_actions(carried, gate.Options(enabled=True, shadow_only=False)) >= {"hold", "grid_charge"}
     # Another brand's report, an unread firmware's, and no report at all: nothing to run on.
@@ -74,7 +81,8 @@ def test_a_mode_decided_on_the_new_key_counts_and_an_open_one_keeps_the_old_answ
     # The first run on the new key could not judge the discharge: it stays allowed as before the update.
     new = _report("B | sigen 1", discharge_house="not_judgeable:house_deficit_unknown")
     carried = gate.control_report(new, reports, key="B | sigen 1", brand="sigenergy")
-    assert "discharge_house" in gate.allowed_actions(carried, options) and carried["carried_from"] == "A | sigen 1"
+    assert "discharge_house" in gate.allowed_actions(carried, options)
+    assert carried["carried_from"] == {"discharge_house": "A | sigen 1"}
     # A charge the new firmware ignores is off, whatever passed before.
     new = _report("B | sigen 1", charge="ignored", discharge_house="not_judgeable:house_deficit_unknown")
     carried = gate.control_report(new, reports, key="B | sigen 1", brand="sigenergy")
@@ -100,7 +108,7 @@ def test_the_last_verdict_of_the_brand_must_be_a_pass_and_its_expiry_and_dropped
     # The newest pass is the one carried.
     newer = _report("B | sigen 1", at="2026-11-05T10:00:00+00:00", charge="ignored")
     carried = gate.control_report(None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy")
-    assert carried["carried_from"] == "B | sigen 1"
+    assert _sources(carried) == {"B | sigen 1"} and "charge" not in carried["carried_from"]
     # An expiry measured on the old firmware lifts no cap on the new one.
     with_expiry = _report("A | sigen 1", expiry=_row("obeyed", expiry_id="x", passes=2))
     carried = gate.control_report(None, {"A | sigen 1": with_expiry}, key="C | sigen 1", brand="sigenergy")
@@ -108,9 +116,9 @@ def test_the_last_verdict_of_the_brand_must_be_a_pass_and_its_expiry_and_dropped
     # A pass older than the plant's last failure that left no report (`since`) is not carried; a later one is.
     since = dt_util.parse_datetime("2026-11-03T10:00:00+00:00")
     assert gate.control_report(None, {"A | sigen 1": old}, key="C | sigen 1", brand="sigenergy", since=since) is None
-    assert gate.control_report(
+    assert _sources(gate.control_report(
         None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy", since=since
-    )["carried_from"] == "B | sigen 1"
+    )) == {"B | sigen 1"}
     # A hold passed in a variant the recipe no longer has is no pass (`without_removed_hold`).
     stale = _report("A | sigen 1", hold=_row("obeyed", variant="msc_no_discharge"))
     assert gate.control_report(
@@ -145,7 +153,7 @@ async def test_an_integration_update_keeps_the_grid_charge_running_while_the_che
     status = control.status()
     assert status["state"] == "on" and status["line"] == "waiting_after_update:executor_busy"
     assert "grid_charge" in status["allowed_actions"]
-    assert control.snapshot()["carried_from"] == old_key
+    assert control.snapshot()["carried_from"] == dict.fromkeys(("hold", "charge", "discharge_house", "normal"), old_key)
     assert not [row for row in control.log if row["kind"] == "verify_started"]
 
 
@@ -301,7 +309,9 @@ def test_what_failed_on_a_later_key_whose_check_never_finished_is_not_carried_pa
     charge = _report("B | sigen 1", at="2026-11-05T10:00:00+00:00", hold=waiting, normal="skipped", charge="ignored")
     carried = gate.control_report(None, {"A | sigen 1": old, "B | sigen 1": charge}, key="C | sigen 1", brand="sigenergy")
     allowed = gate.allowed_actions(carried, options)
-    assert carried["carried_from"] == "A | sigen 1" and "grid_charge" not in allowed
+    assert carried["carried_from"] == {
+        "hold": "A | sigen 1", "normal": "A | sigen 1", "per_phase": "A | sigen 1", "discharge_house": "B | sigen 1",
+    } and "grid_charge" not in allowed
     assert {"hold", "discharge_house"} <= allowed
     # The capability per phase withdrawn on B while control ran there on A's report stays withdrawn on C.
     withdrawn = gate.per_phase_failed(
@@ -344,9 +354,9 @@ def test_a_key_whose_pass_is_void_is_no_source_and_hides_no_older_pass() -> None
     assert gate.control_report(
         None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy", void={"B | sigen 1"}
     ) is None
-    assert gate.control_report(
+    assert _sources(gate.control_report(
         None, {"A | sigen 1": old, "B | sigen 1": newer}, key="C | sigen 1", brand="sigenergy", void={"A | sigen 1"}
-    )["carried_from"] == "B | sigen 1"
+    )) == {"B | sigen 1"}
 
 
 async def test_a_hardware_test_that_failed_before_the_time_was_kept_leaves_no_pass_to_run_on(
@@ -364,3 +374,202 @@ async def test_a_hardware_test_that_failed_before_the_time_was_kept_leaves_no_pa
     assert failed_on in control.hardware_failed and control.firmware_key() != failed_on
     assert control.carried_from() is None and control.state() == "waiting" and control.allowed() == frozenset()
     await control.async_stop()
+
+
+# --- each step by itself (owner rule 2026-11-26) -----------------------------------------------------------------------
+
+A, B, C = "A | sigen 1", "B | sigen 1", "C | sigen 1"
+T_A, T_B = "2026-11-01T10:00:00+00:00", "2026-11-05T10:00:00+00:00"
+WAITING = "not_judgeable:battery_not_discharging"
+OPTIONS = gate.Options(enabled=True, shadow_only=False)
+
+
+def _only(key: str, at: str = T_B, attempts: int = 0, **modes: Any) -> dict[str, Any]:
+    """A report with these rows only (`_report` fills in the four steps as passed)."""
+    return _report(key, at=at, attempts=attempts, **({"hold": None, "charge": None, "discharge_house": None,
+                                                      "normal": None} | modes))
+
+
+def test_a_key_that_showed_only_hold_and_the_hand_back_hides_no_older_answer_of_the_other_steps() -> None:
+    # A passed every step. On B the plan showed only the hold and the hand-back, which passes B. On C the charge
+    # and the discharge still run on what A showed.
+    reports = {A: _report(A, at=T_A), B: _only(B, hold=_row("obeyed", via="plan"), normal=_row("restored", via="plan"))}
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    assert carried["carried_from"] == {"hold": B, "normal": B, "charge": A, "discharge_house": A}
+    assert {"hold", "grid_charge", "discharge_house"} <= gate.allowed_actions(carried, OPTIONS)
+    assert carried["modes"]["hold"]["via"] == "plan" and "via" not in carried["modes"]["charge"]
+    # Rows not judgeable, skipped or stopped on B hide nothing either.
+    reports[B] = _only(B, hold="obeyed", normal="restored", charge="not_judgeable:no_room", discharge_house="skipped")
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    assert carried["carried_from"] == {"hold": B, "normal": B, "charge": A, "discharge_house": A}
+    # A key between that decided nothing at all is read past.
+    reports[B] = _only(B, hold=WAITING, normal="skipped")
+    assert _sources(gate.control_report(None, reports, key=C, brand="sigenergy")) == {A}
+
+
+def test_hold_and_the_hand_back_may_come_from_different_keys_for_control_to_run() -> None:
+    # B showed the hold (the plan's command) and never handed back before the next update.
+    reports = {A: _report(A, at=T_A), B: _only(B, hold=_row("obeyed", via="plan"))}
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    assert gate.report_status(carried) == "passed"
+    assert carried["carried_from"]["hold"] == B and carried["carried_from"]["normal"] == A
+    # Without a hand-back that passed anywhere, nothing is carried: control would not run on it.
+    reports = {A: _only(A, at=T_A, charge="obeyed", hold="obeyed"), B: _only(B, discharge_house="obeyed")}
+    assert gate.control_report(None, reports, key=C, brand="sigenergy") is None
+
+
+def test_a_failure_on_a_later_key_beats_an_older_pass_of_that_step_whatever_passed_there() -> None:
+    # B passed (hold, normal) and ignored the charge: A's charge is not brought back on C.
+    reports = {A: _report(A, at=T_A), B: _only(B, hold="obeyed", normal="restored", charge="ignored")}
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    allowed = gate.allowed_actions(carried, OPTIONS)
+    assert "grid_charge" not in allowed and "discharge_house" in allowed
+    assert carried["carried_from"] == {"hold": B, "normal": B, "discharge_house": A}
+    # Nor by a still older pass, nor by a pass between that is older than the failure.
+    zero = _report("0 | sigen 1", at="2026-10-20T10:00:00+00:00")
+    carried = gate.control_report(None, {"0 | sigen 1": zero, **reports}, key=C, brand="sigenergy")
+    assert "charge" not in carried["carried_from"]
+    # A pass later than the failure counts again.
+    later = _only("D | sigen 1", at="2026-11-08T10:00:00+00:00", charge="obeyed")
+    carried = gate.control_report(None, {**reports, "D | sigen 1": later}, key=C, brand="sigenergy")
+    assert carried["carried_from"]["charge"] == "D | sigen 1"
+    # A step the key now failed is off whatever is carried for the others.
+    now = _only(C, attempts=1, charge="ignored")
+    carried = gate.control_report(now, {A: _report(A, at=T_A)}, key=C, brand="sigenergy")
+    assert "charge" not in carried["carried_from"] and "grid_charge" not in gate.allowed_actions(carried, OPTIONS)
+
+
+def test_a_check_that_failed_or_gave_up_on_a_later_key_ends_all_carrying() -> None:
+    old = _report(A, at=T_A)
+    # The hand-back failed on B.
+    reports = {A: old, B: _only(B, attempts=1, hold="obeyed", normal="aborted:restore_failed", charge="obeyed")}
+    assert gate.control_report(None, reports, key=C, brand="sigenergy") is None
+    # B gave up with the hold still open: neither A's answers nor B's own charge are carried.
+    reports = {A: old, B: _only(B, attempts=gate.MAX_ATTEMPTS, hold=WAITING, charge="obeyed")}
+    assert gate.control_report(None, reports, key=C, brand="sigenergy") is None
+    # A key later than the failure starts afresh: only what it showed itself counts.
+    after = _only("D | sigen 1", at="2026-11-08T10:00:00+00:00", attempts=1, hold="obeyed", normal="restored")
+    carried = gate.control_report(None, {**reports, "D | sigen 1": after}, key=C, brand="sigenergy")
+    assert carried["carried_from"] == {"hold": "D | sigen 1", "normal": "D | sigen 1"}
+    assert gate.allowed_actions(carried, OPTIONS) == {"hold"}
+    # A failed hardware test or a forgotten failed check (`since`) ends it the same way, step by step too.
+    since = dt_util.parse_datetime("2026-11-03T10:00:00+00:00")
+    reports = {A: old, B: _only(B, hold="obeyed", normal="restored")}
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy", since=since)
+    assert carried["carried_from"] == {"hold": B, "normal": B}
+    assert gate.control_report(None, {A: old}, key=C, brand="sigenergy", since=since) is None
+
+
+def test_what_a_key_never_showed_in_all_its_runs_stays_off_after_it() -> None:
+    # B used its five runs: hold and the hand-back passed, the charge was never shown and went off there. It does
+    # not come back on C from A.
+    reports = {A: _report(A, at=T_A), B: _only(B, attempts=gate.MAX_ATTEMPTS, hold="obeyed", normal="restored",
+                                              charge="not_judgeable:no_room")}
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    assert _sources(carried) == {B} and gate.allowed_actions(carried, OPTIONS) == {"hold"}
+
+
+def test_the_hold_is_carried_with_the_variant_of_the_key_it_comes_from() -> None:
+    names = ("first", "second")
+    old = _report(A, at=T_A, hold=_row("obeyed", variant="first", variants=[{"variant": "first", "outcome": "obeyed"}]))
+    # B's hold passed in the second variant after the first failed there: C runs B's, never A's.
+    newer = _only(B, attempts=1, normal="restored", hold=_row("obeyed", variant="second", variants=[
+        {"variant": "first", "outcome": "ignored"}, {"variant": "second", "outcome": "obeyed"}]))
+    carried = gate.control_report(None, {A: old, B: newer}, key=C, brand="sigenergy", variants=names)
+    assert carried["carried_from"]["hold"] == B and gate.hold_variant(carried) == "second"
+    assert gate.hold_variant_to_run(carried, names) == "second" and carried["modes"]["hold"] is newer["modes"]["hold"]
+    # B's hold still open with A's variant failed there: A's hold is not carried, so nothing is.
+    open_hold = _only(B, attempts=1, normal="skipped", hold=_row(WAITING, variants=[
+        {"variant": "first", "outcome": "ignored"}]))
+    assert gate.control_report(None, {A: old, B: open_hold}, key=C, brand="sigenergy", variants=names) is None
+    # The key now failed A's variant and passed its own hold in the other: its hold is its own, the rest is carried.
+    now = _only(C, attempts=1, hold=newer["modes"]["hold"])
+    carried = gate.control_report(now, {A: old}, key=C, brand="sigenergy", variants=names)
+    assert "hold" not in carried["carried_from"] and gate.hold_variant(carried) == "second"
+    assert carried["carried_from"]["charge"] == A
+
+
+def test_a_hold_in_a_variant_the_recipe_dropped_is_never_carried_and_no_older_hold_stands_in() -> None:
+    names = ("pv_first",)
+    old = _report(A, at=T_A, hold=_row("obeyed", variant="pv_first"))
+    dropped = _row("obeyed", variant="msc_no_discharge", variants=[{"variant": "msc_no_discharge", "outcome": "obeyed"}])
+    # The latest hold answer (B) is in a variant the recipe no longer has.
+    reports = {A: old, B: _only(B, attempts=1, hold=dropped, normal="restored")}
+    assert gate.control_report(None, reports, key=C, brand="sigenergy", variants=names) is None
+    # Also once B's report had it taken back to pending (`without_removed_hold`).
+    reports[B] = dict(gate.without_removed_hold(reports[B], names))
+    assert gate.report_status(reports[B]) == "pending"
+    assert gate.control_report(None, reports, key=C, brand="sigenergy", variants=names) is None
+    # And on the key now: its own hold, taken back, waits for the routine instead of running on A's.
+    now = dict(gate.without_removed_hold(_only(C, attempts=1, hold=dropped, normal="restored"), names))
+    assert gate.control_report(now, {A: old}, key=C, brand="sigenergy", variants=names) is now
+    # A brand with one hold has no variants to drop.
+    assert gate.control_report(None, {A: _report(A, at=T_A), B: _only(B, hold=dropped, normal="restored")},
+                               key=C, brand="sigenergy")["carried_from"]["hold"] == B
+
+
+def test_another_brand_a_void_key_and_an_expiry_are_never_carried_step_by_step_either() -> None:
+    old = _report(A, at=T_A, expiry=_row("obeyed", expiry_id="x", passes=2))
+    newer = _only(B, hold="obeyed", normal="restored", expiry=_row("obeyed", expiry_id="x", passes=2))
+    # Another brand's older report fills no step of this brand's.
+    carried = gate.control_report(None, {A: {**old, "brand": "huawei"}, B: newer}, key=C, brand="sigenergy")
+    assert carried["carried_from"] == {"hold": B, "normal": B}
+    # An expiry is measured again, whichever key measured it.
+    carried = gate.control_report(None, {A: old, B: newer}, key=C, brand="sigenergy")
+    assert "expiry" not in carried["modes"] and "expiry" not in carried["carried_from"]
+    # A void key gives no step, and its answer is still the step's latest: A's hold is not brought back past it.
+    assert gate.control_report(None, {A: old, B: newer}, key=C, brand="sigenergy", void={B}) is None
+    carried = gate.control_report(None, {A: old, B: newer}, key=C, brand="sigenergy", void={A})
+    assert carried["carried_from"] == {"hold": B, "normal": B}
+
+
+def test_the_capability_per_phase_is_carried_as_a_step_and_a_later_failure_of_it_stands() -> None:
+    old = _report(A, at=T_A, per_phase="obeyed")
+    reports = {A: old, B: _only(B, hold="obeyed", normal="restored")}
+    assert gate.per_phase(gate.control_report(None, reports, key=C, brand="sigenergy")) == "verified"
+    # A charge tried per phase that failed on B fails the capability there, and so on C.
+    reports[B] = _only(B, hold="obeyed", normal="restored", charge=_row("ignored", via="per_phase"))
+    carried = gate.control_report(None, reports, key=C, brand="sigenergy")
+    assert gate.per_phase(carried) != "verified" and "per_phase" not in carried["carried_from"]
+    assert "grid_charge" not in gate.allowed_actions(carried, OPTIONS)
+
+
+def test_after_its_own_five_runs_the_keys_answers_stand_alone() -> None:
+    reports = {A: _report(A, at=T_A)}
+    now = _only(C, attempts=gate.MAX_ATTEMPTS, hold="obeyed", normal="restored", charge="not_judgeable:no_room")
+    assert gate.control_report(now, reports, key=C, brand="sigenergy") is now
+    assert gate.allowed_actions(now, OPTIONS) == {"hold"}
+
+
+async def test_the_charge_stays_on_over_a_key_that_showed_only_hold_and_the_hand_back_also_after_a_restart(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_charge)
+    first = control.firmware_key()
+    monkeypatch.setattr(gate, "suitable", lambda moment: "car_charging")
+    now = await _looks(control, _soon(), 6)
+    assert "grid_charge" in control.allowed()
+    # The second key: the plan showed the hold and the hand-back there, nothing else.
+    hass.states.async_set(FIRMWARE, NEW_FIRMWARE)
+    now = await _looks(control, now, 2)
+    second = control.firmware_key()
+    shown = None
+    for mode in ("hold", "normal"):
+        shown = gate.plan_proved(shown, mode, key=second, brand="sigenergy", firmware=NEW_FIRMWARE, now=now)
+    control._keep_report(second, shown)
+    assert gate.report_status(control.report()) == "passed"
+    # The third key: hold and the hand-back from the second, the charge and the discharge from the first.
+    hass.states.async_set(FIRMWARE, "V100R001C21SPC119")
+    now = await _looks(control, now + timedelta(minutes=1), 6)
+    expected = {"hold": second, "normal": second, "charge": first, "discharge_house": first}
+    assert control.firmware_key() not in (first, second) and control.report() is None
+    assert control.state() == "on" and {"hold", "grid_charge", "discharge_house"} <= control.allowed()
+    assert control.snapshot()["carried_from"] == expected
+    assert control.executor.state.phase == "active" and control.executor.state.action == "grid_charge"
+    await control.async_shutdown()
+    again = BatteryControl(hass, controller, plan_source=_charge)
+    await again.async_start()
+    assert again.state() == "on" and "grid_charge" in again.allowed()
+    assert again.snapshot()["carried_from"] == expected
+    await again.async_shutdown()
