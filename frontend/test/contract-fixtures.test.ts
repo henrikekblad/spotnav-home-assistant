@@ -997,7 +997,8 @@ const DERIVED = ["L1", "L2", "L3"].flatMap((phase) =>
     (kind) => `derived_${phase}_${kind}`,
   ),
 );
-const DERIVED_REQUIRED = ["L1", "L2", "L3"].flatMap((phase) =>
+// L1's alone: a single-phase supply has no L2 or L3 to name.
+const DERIVED_REQUIRED = ["L1"].flatMap((phase) =>
   ["power", "voltage"].map((kind) => `derived_${phase}_${kind}`),
 );
 /** What follows the phase meters: the sign options, the meter's total grid power, the battery sensors, the heat pump's

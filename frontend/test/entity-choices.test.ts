@@ -153,9 +153,11 @@ describe("two sensors are never saved incomplete", () => {
     pick("grid", "two");
     submit();
     expect(saved).toEqual([]);
-    for (const phase of ["L1", "L2", "L3"]) {
-      expect(errorOf(`derived_${phase}_power_export`)!.hidden).toBe(false);
-      expect(errorOf(`derived_${phase}_power_export`)!.dataset["code"]).toBe("required");
+    // No phase but L1 is named: a single-phase supply's one export is needed.
+    expect(errorOf("derived_L1_power_export")!.hidden).toBe(false);
+    expect(errorOf("derived_L1_power_export")!.dataset["code"]).toBe("required");
+    for (const phase of ["L2", "L3"]) {
+      expect(errorOf(`derived_${phase}_power_export`)?.hidden ?? true).toBe(true);
     }
   });
 

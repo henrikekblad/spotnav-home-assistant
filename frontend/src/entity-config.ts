@@ -931,6 +931,21 @@ export function derivedFieldName(phase: string, kind: string): string {
   return `derived_${phase}_${kind}`;
 }
 
+/**
+ * The fields `name` gives for the phases a site's meter covers: L1 alone (a single-phase supply) while none of L2's
+ * and L3's `probes` fields (by default `name`'s own) is filled, else all three, as the backend holds them
+ * (`_measured_phases`).
+ */
+export function phasesNamed(
+  draft: Record<string, string>,
+  name: (phase: string) => string,
+  probes: ReadonlyArray<(phase: string) => string> = [name],
+): string[] {
+  const others = PHASES.filter((phase) => phase !== "L1");
+  const filled = others.some((phase) => probes.some((probe) => (draft[probe(phase)] ?? "").trim() !== ""));
+  return (filled ? PHASES : (["L1"] as const)).map((phase) => name(phase));
+}
+
 const PHASE_FIELD = /^(direct_L[123]|derived_L[123]_(power|power_export|reactive_power|apparent_power|current|voltage))$/;
 
 export function isPhaseField(field: string): boolean {
@@ -968,7 +983,8 @@ export function phaseField(config: EntityConfig, field: string): EntityFieldEnti
     field,
     kind: "entity",
     scope: "site",
-    required: derived === null || DERIVED_REQUIRED_KINDS.includes(derived[1] ?? ""),
+    // L2's and L3's meters may stay empty for a single-phase supply; L1's never.
+    required: field.includes("_L1") && (derived === null || DERIVED_REQUIRED_KINDS.includes(derived[1] ?? "")),
     writable: true,
     current: null,
     effective: null,
