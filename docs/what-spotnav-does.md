@@ -96,4 +96,26 @@ Read more: [Solar](solar.md).
 - It never takes over a device that another controller runs. It watches and says so.
 - It never skips a safety rule: the fuse, the write limits, the comfort band and the read-back of every write.
 - It never stops a boost or a charge you started yourself.
-- When it stops controlling something, it puts back what it found.
+- When it stops controlling something, it puts back what it found, as below.
+
+## When SpotNav lets go
+
+What SpotNav hands back, and when:
+
+- **Turning a control off, disabling, reloading or removing the site, and Home Assistant's stop.** The heat
+  relay and the SG Ready contacts SpotNav holds are opened, a heat curve offset it lowered is written back, the
+  zones' thermostats get your setpoint back, a water heater it held off is turned on, and the pool, spa and sauna
+  get your values back. Only where the device still reads SpotNav's value: a change you made yourself wins. What
+  could not be handed back in time (a switch that did not answer, the pool's circulation running on after its heat
+  pump) is handed back at the next start. If the site is removed before that, the log says what to set back by
+  hand. A hot-water boost always ends by itself and is never stopped.
+- **Turning load balancing off, taking a charger off the site, disabling or removing the site.** A charge that
+  load balancing held back is started again while it is still wanted. After a reload or a restart, load balancing
+  resumes it by its own rules. Its safety stop is resumed by load balancing itself, 5 minutes after the first stop
+  of a plug-in, twice as long after each further one, at most 30 minutes.
+- **Removing a charger from SpotNav.** The charger is started again only if the stop was SpotNav's own and its
+  control still reads off. A stop by you, the charger's app or anything else stays. The current the charger had
+  before SpotNav first set one is written back, where SpotNav knows it. Nothing else is changed.
+- **Disabling or reloading a charger, and restarting Home Assistant.** The charger is left as it is, and SpotNav
+  takes it up again where it left off when it comes back. A charger you disable for good keeps a stop of SpotNav's:
+  remove it from SpotNav instead, or start it in the charger's own app.
