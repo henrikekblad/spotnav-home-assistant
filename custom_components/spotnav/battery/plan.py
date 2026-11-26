@@ -297,9 +297,13 @@ def _candidates(
         wanted.append((ACTION_SHAVE, action_power(slot, battery, soc_kwh, ACTION_SHAVE, 0.0, limits)))
 
     out: list[tuple[str, float]] = []
-    for action, power in wanted:
-        if all(abs(power - seen) > _SAME_KW for _, seen in out):
-            out.append((action, power))
+    for candidate in wanted:
+        power = candidate[1]
+        for _, seen in out:
+            if not abs(power - seen) > _SAME_KW:
+                break
+        else:
+            out.append(candidate)
     return out
 
 
@@ -403,9 +407,11 @@ def _best(
     best: _Outcome | None = None
     best_total = 0.0
     limits = _limits(slot, battery, soc_kwh)
+    cycle_cost, hurdle = request.cycle_cost, request.export_hurdle
+    value = grid.value
     for action, power in _candidates(slot, battery, soc_kwh, request, reserve, limits):
-        outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle, limits)
-        total = outcome.cost + outcome.wear + outcome.hurdle + outcome.peak + grid.value(after, outcome.soc_end_kwh)
+        outcome = _apply(slot, battery, soc_kwh, action, power, cycle_cost, hurdle, limits)
+        total = outcome.cost + outcome.wear + outcome.hurdle + outcome.peak + value(after, outcome.soc_end_kwh)
         if best is None or total < best_total - _TIE:
             best, best_total = outcome, total
     assert best is not None  # self-consumption is always open
@@ -454,8 +460,10 @@ def self_consumption(request: PlanRequest) -> PlanRun:
     decisions: list[SlotDecision] = []
     outcomes: list[_Outcome] = []
     for index, slot in enumerate(_slot_figures(request)):
-        action, power = _candidates(slot, figures, soc, request)[0]
-        outcome = _apply(slot, figures, soc, action, power, request.cycle_cost)
+        # Self-consumption alone: the first of `_candidates`, without working out the rest.
+        limits = _limits(slot, figures, soc)
+        power = action_power(slot, figures, soc, ACTION_SELF_CONSUME, 0.0, limits)
+        outcome = _apply(slot, figures, soc, ACTION_SELF_CONSUME, power, request.cycle_cost, 0.0, limits)
         if days is not None:
             peak = days.start(index, peak)
             charge, peak = _raise(slot, peak, outcome.grid_kw)
