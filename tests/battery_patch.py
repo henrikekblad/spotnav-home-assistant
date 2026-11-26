@@ -37,6 +37,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "Store": ("control.core", "control.life",),
     "blocked": ("control.gate_record", "control.report",),
     "control_for": (
+        "control.caps",
         "control.core",
         "control.expiry",
         "control.gate_record",
@@ -53,7 +54,7 @@ READ_IN: Final[dict[str, tuple[str, ...]]] = {
     "learning_gate_open": ("control.report",),
     "plant_entity_id": ("control.import_limit", "control.verify_driver",),
     "read_export_facts": ("control.core", "control.life", "control.stored",),
-    "read_plant_entity": ("control.core", "control.import_limit",),
+    "read_plant_entity": ("control.caps", "control.import_limit",),
     "recipe_field_tested": ("control.report",),
 }
 
