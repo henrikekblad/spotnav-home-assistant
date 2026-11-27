@@ -2217,6 +2217,8 @@
   "house.nowTab.why.sunBattery": "The sun covers the house and charges the battery.",
   "house.nowTab.why.sunAll": "The sun covers the house.",
   "house.nowTab.why.sunPart": "The sun covers part of the house.",
+  "house.nowTab.why.sunBatteryAll": "The sun and the battery cover the house.",
+  "house.nowTab.why.sunBatteryPart": "The sun and the battery cover part of the house.",
   "house.nowTab.why.battery": "The battery covers the house.",
   "house.nowTab.why.batteryPart": "The battery covers part of the house.",
   "house.nowTab.why.car": "The car is charging.",

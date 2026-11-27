@@ -288,21 +288,27 @@ describe("Now", () => {
   });
 
   it("lays one or two outer nodes in a row beside the house and three or four at fixed corners", () => {
-    expect(flowLayout(["grid"], 360)).toMatchObject({ kind: "row", height: 150, spots: { grid: { x: 44, y: 75 }, house: { x: 180, y: 75 } } });
+    // Each outer node as far out as its drawing allows: its reach and 6 px off the edge.
+    expect(flowLayout(["grid"], 360)).toMatchObject({ kind: "row", height: 150, spots: { grid: { x: 31, y: 75 }, house: { x: 180, y: 75 } } });
     const two = flowLayout(["car", "grid"], 360);
     expect(two.kind).toBe("row");
-    expect(two.spots.grid).toEqual({ x: 44, y: 75 });
-    expect(two.spots.car).toEqual({ x: 316, y: 75 });
+    expect(two.spots.grid).toEqual({ x: 31, y: 75 });
+    expect(two.spots.car).toEqual({ x: 329, y: 75 });
     const three = flowLayout(["sun", "grid", "car"], 360);
-    expect(three).toMatchObject({ kind: "corners", height: 300, spots: { sun: { x: 46, y: 52 }, grid: { x: 314, y: 52 }, car: { x: 314, y: 248 }, house: { x: 180, y: 150 } } });
-    // A missing corner stays empty.
+    expect(three).toMatchObject({ kind: "corners", spots: { sun: { x: 31, y: 52 }, grid: { x: 329, y: 52 }, car: { x: 329 } } });
+    // The diagonals near 40°: the rise to the house 0.85 of the run.
+    const run = three.spots.house!.x - three.spots.sun!.x;
+    expect((three.spots.house!.y - three.spots.sun!.y) / run).toBeCloseTo(0.85, 2);
+    expect(three.spots.car!.y - three.spots.house!.y).toBeCloseTo(three.spots.house!.y - three.spots.sun!.y);
+    // A missing corner stays empty; with the battery the corners make room for its level ring.
     expect(three.spots.battery).toBeUndefined();
-    expect(flowLayout(["sun", "grid", "battery", "car"], 360).spots.battery).toEqual({ x: 46, y: 248 });
+    expect(flowLayout(["sun", "grid", "battery", "car"], 360).spots.battery!.x).toBe(37);
     // A house with the grid alone: one row, the grid to the house; drawn with room above and below for the captions.
     const alone = draw(live("house_alone_now.json"), house("house_learning.json"), "en");
     expect(roles(alone)).toEqual(["grid"]);
     expect(alone.dataset["layout"]).toBe("row");
     expect(alone.getAttribute("viewBox")).toBe("0 -20 340 200");
+    expect(alone.style.maxWidth).toBe("340px");
     const lines = draw(live()).dataset["layout"];
     expect(lines).toBe("corners");
   });
@@ -319,9 +325,10 @@ describe("Now", () => {
     const ends = lineEnds({ x: 46, y: 248 }, { x: 180, y: 150 }, NODE_OUTER.battery, NODE_OUTER.house);
     expect(Math.hypot(ends.a.x - 46, ends.a.y - 248)).toBeCloseTo(31);
     expect(Math.hypot(ends.b.x - 180, ends.b.y - 150)).toBeCloseTo(51);
+    const spots = flowLayout(["sun", "grid", "battery", "car"], 340).spots;
     const d = svg.querySelector(".spotnav-now-line[data-role='battery']")!.getAttribute("d")!;
     const [x0, y0] = d.slice(1).split("L")[0]!.split(" ").map(Number);
-    expect(Math.hypot(x0! - 46, y0! - 248)).toBeCloseTo(31, 0);
+    expect(Math.hypot(x0! - spots.battery!.x, y0! - spots.battery!.y)).toBeCloseTo(31, 0);
   });
 
   it("puts the kW above a horizontal line and on the outer side of a diagonal, half the width and 10 px off", () => {
@@ -341,9 +348,8 @@ describe("Now", () => {
   });
 
   it("anchors a caption near an edge inward and writes two lines at each node", () => {
-    expect(captionAnchor(52, 360)).toEqual({ x: 26, anchor: "start" });
-    expect(captionAnchor(20, 360)).toEqual({ x: 4, anchor: "start" });
-    expect(captionAnchor(308, 360)).toEqual({ x: 334, anchor: "end" });
+    expect(captionAnchor(37, 360)).toEqual({ x: 4, anchor: "start" });
+    expect(captionAnchor(323, 360)).toEqual({ x: 356, anchor: "end" });
     expect(captionAnchor(180, 360)).toEqual({ x: 180, anchor: "middle" });
     const svg = draw(live());
     expect(text(svg, "[data-k='state-sun']")).toBe("Sol");
@@ -387,7 +393,8 @@ describe("Now", () => {
     const grid = svg.querySelector(".spotnav-now-line[data-role='grid']")!;
     expect(grid.getAttribute("data-tone")).toBe("export");
     const [x0, y0] = grid.getAttribute("d")!.slice(1).split("L")[0]!.split(" ").map(Number);
-    expect(Math.hypot(x0! - 170, y0! - 150)).toBeCloseTo(51, 0);
+    const house = flowLayout(["sun", "grid", "battery", "car"], 340).spots.house!;
+    expect(Math.hypot(x0! - house.x, y0! - house.y)).toBeCloseTo(51, 0);
     const run = svg.querySelector<SVGGElement>("[data-k='run-grid']")!;
     expect(run.querySelectorAll(".spotnav-now-chevron").length).toBeGreaterThanOrEqual(3);
     expect(run.style.animationDuration).toMatch(/s$/);
@@ -488,6 +495,15 @@ describe("Now's headline", () => {
     expect(whyKey(figures({ grid_kw: -3.1, sun_kw: 7.8, battery_kw: 2.4, car_kw: 0, house_kw: 2.3, rest_kw: 1.4, other_kw: 1.4 }), "cheap")).toBe("house.nowTab.why.sunBatterySold");
     expect(whyKey(figures({ grid_kw: -3.1, sun_kw: 5.4, battery_kw: 0, car_kw: 0, house_kw: 2.3, rest_kw: 1.4, other_kw: 1.4 }), "mid")).toBe("house.nowTab.why.sunSold");
     expect(whyKey(figures({ grid_kw: 0.5, sun_kw: 1.0, battery_kw: 0, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "mid")).toBe("house.nowTab.why.sunPart");
+    // The owner's morning: the sun 1,0 kW and the battery 0,6 kW cover the house, the grid idle.
+    expect(whyKey(figures({ grid_kw: 0, sun_kw: 1.0, battery_kw: -0.6, car_kw: 0, house_kw: 1.6, rest_kw: 0.5, other_kw: 0.5 }), "mid")).toBe("house.nowTab.why.sunBatteryAll");
+    expect(translate("sv", "house.nowTab.why.sunBatteryAll")).toBe("Solen och batteriet täcker huset.");
+    expect(whyKey(figures({ grid_kw: 0.4, sun_kw: 1.0, battery_kw: -0.6, car_kw: 0, house_kw: 2.0, rest_kw: 0.9, other_kw: 0.9 }), "mid")).toBe("house.nowTab.why.sunBatteryPart");
+    // The battery alone, and with the grid.
+    expect(whyKey(figures({ grid_kw: 0, sun_kw: 0, battery_kw: -1.5, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "mid")).toBe("house.nowTab.why.battery");
+    expect(whyKey(figures({ grid_kw: 0.5, sun_kw: 0, battery_kw: -1.0, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "mid")).toBe("house.nowTab.why.batteryPart");
+    // The sun alone, all of it and part of it with the grid.
+    expect(whyKey(figures({ grid_kw: 0, sun_kw: 1.5, battery_kw: 0, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "mid")).toBe("house.nowTab.why.sunAll");
     // The house takes everything from the grid.
     expect(whyKey(figures({ grid_kw: 2.0, sun_kw: 0, battery_kw: 0, car_kw: 0, house_kw: 2.0, rest_kw: 0.9, other_kw: 0.9 }), "mid")).toBe("house.nowTab.why.gridAll");
     expect(whyKey(nowFigures(null, house()), "mid")).toBeNull();
@@ -775,6 +791,23 @@ describe("the card element's tabs", () => {
     root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='graph']")!.click();
     await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS * 3);
     expect(hass.liveMessages).toHaveLength(2);
+    element.remove();
+  });
+
+  it("draws Now at the width its own box has, not the card's less a fixed padding", async () => {
+    const hass = new FakeHass();
+    hass.liveHandler = async () => read("house_now", "villa_now.json");
+    const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { width: this.classList.contains("spotnav-now-flow") ? 408.6 : 0, height: 0, x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    const element = await mount({}, hass);
+    await vi.advanceTimersByTimeAsync(0);
+    const drawing = element.shadowRoot!.querySelector<SVGSVGElement>(".spotnav-now-schematic")!;
+    expect(drawing.getAttribute("viewBox")!.split(" ")[2]).toBe("408");
+    // A live refresh keeps that width.
+    await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS);
+    expect(element.shadowRoot!.querySelector(".spotnav-now-schematic")!.getAttribute("viewBox")!.split(" ")[2]).toBe("408");
+    measure.mockRestore();
     element.remove();
   });
 

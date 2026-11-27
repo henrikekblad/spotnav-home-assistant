@@ -434,6 +434,9 @@ export function whyKey(figures: NowFigures, band: PriceBand | null): Translation
   if (sun && selling) {
     return charging ? "house.nowTab.why.sunBatterySold" : "house.nowTab.why.sunSold";
   }
+  if (sun && discharging) {
+    return buying ? "house.nowTab.why.sunBatteryPart" : "house.nowTab.why.sunBatteryAll";
+  }
   if (sun && charging && !buying) {
     return "house.nowTab.why.sunBattery";
   }
@@ -508,9 +511,9 @@ export function chevronSpeed(kw: number, k = 1): number {
 }
 
 /** The drawing's scale for its width: the approved drawing is 360 px wide; a wider card draws its nodes, rings, icons,
- * lines and words larger, up to 1.45 times, the rest of the width spreading the nodes. */
+ * lines and words larger, up to 1.6 times, the rest of the width spreading the nodes. */
 export function nowScale(width: number): number {
-  return Math.max(1, Math.min(1.45, width / 360));
+  return Math.max(1, Math.min(1.6, width / 360));
 }
 
 /** The words' sizes (whole screen pixels, so they stay crisp at the drawing's scale of 1): captions, kW labels and
@@ -544,22 +547,33 @@ export function flowLayout(roles: NodeRole[], width: number): FlowLayout {
   const order: NodeRole[] = ["sun", "grid", "battery", "car"];
   const outer = order.filter((role) => roles.includes(role));
   const k = nowScale(width);
+  // As far out as the nodes go: each centre its drawing's reach (the battery's level ring the widest) and 6 px off
+  // the edge; the captions are anchored inward from the edges.
+  const side = Math.max(...outer.map((role) => NODE_OUTER[role]), NODE_OUTER.grid) * k + NODE_EDGE_PX;
   if (outer.length <= 2) {
     const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 75 * k } };
     outer.forEach((role, index) => {
-      spots[role] = { x: index === 0 ? 44 * k : width - 44 * k, y: 75 * k };
+      spots[role] = { x: index === 0 ? side : width - side, y: 75 * k };
     });
     return { kind: "row", width, k, height: 150 * k, spots };
   }
-  // Out toward the card's edges, with room for the captions anchored inward.
-  const side = 46 * k;
-  const corners: Record<NodeRole, Spot> = { sun: { x: side, y: 52 * k }, grid: { x: width - side, y: 52 * k }, battery: { x: side, y: 248 * k }, car: { x: width - side, y: 248 * k } };
-  const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 150 * k } };
+  // The corners' rise to the house about 0.85 of their run, so the diagonals stay near 40°, never less than the
+  // approved drawing's.
+  const top = 52 * k;
+  const rise = Math.max(98 * k, 0.85 * (width / 2 - side));
+  const bottom = top + 2 * rise;
+  const corners: Record<NodeRole, Spot> = { sun: { x: side, y: top }, grid: { x: width - side, y: top }, battery: { x: side, y: bottom }, car: { x: width - side, y: bottom } };
+  const spots: FlowLayout["spots"] = { house: { x: width / 2, y: top + rise } };
   for (const role of outer) {
     spots[role] = corners[role];
   }
-  return { kind: "corners", width, k, height: 300 * k, spots };
+  return { kind: "corners", width, k, height: bottom + top, spots };
 }
+
+/** The room (px) between a corner node's drawing and the drawing's edge. */
+export const NODE_EDGE_PX = 6;
+/** The captions' room (px) from the drawing's edge. */
+export const CAPTION_EDGE_PX = 4;
 
 /** How far out from its centre each node's drawing reaches: a line ends there. */
 export const NODE_OUTER: Record<NodeRole | "house", number> = { sun: 25, grid: 25, car: 25, battery: 31, house: 51 };
@@ -604,12 +618,12 @@ export function labelPlace(a: Spot, b: Spot, kw: number, centreX: number, k = 1)
 }
 
 /** Where a node's captions start (see the module): anchored inward near an edge, centred in the middle. */
-export function captionAnchor(x: number, width: number, k = 1): { x: number; anchor: "start" | "middle" | "end" } {
+export function captionAnchor(x: number, width: number): { x: number; anchor: "start" | "middle" | "end" } {
   if (x < width / 3) {
-    return { x: Math.max(4, x - 26 * k), anchor: "start" };
+    return { x: CAPTION_EDGE_PX, anchor: "start" };
   }
   if (x > (width * 2) / 3) {
-    return { x: Math.min(width - 4, x + 26 * k), anchor: "end" };
+    return { x: width - CAPTION_EDGE_PX, anchor: "end" };
   }
   return { x, anchor: "middle" };
 }
@@ -737,8 +751,7 @@ export function captionSize(wanted: number, width: number, layout: FlowLayout, w
         continue;
       }
       // From the left caption's start to the right one's end (`captionAnchor`), a gap between them.
-      const left = Math.min(...group.map((role) => layout.spots[role]!.x));
-      const room = group.length > 1 ? width - 2 * Math.max(4, left - 26 * layout.k) - 16 : width - 8;
+      const room = width - 2 * CAPTION_EDGE_PX - (group.length > 1 ? 16 : 0);
       size = Math.min(size, Math.floor(room / (CAPTION_EM * chars)));
     }
   }
@@ -896,7 +909,7 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     root.append(group);
     const words = captionWords.get(line.role)!;
     const below = spot.y >= house.y;
-    const at = captionAnchor(spot.x, width, k);
+    const at = captionAnchor(spot.x, width);
     const step = fonts.caption + 3;
     [
       [words.state, "spotnav-now-state", "state"],

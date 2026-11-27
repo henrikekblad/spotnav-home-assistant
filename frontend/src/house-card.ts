@@ -167,6 +167,8 @@ export class SpotnavHouseCard extends HTMLElement {
   private connected = false;
   private generation = 0;
   private width = HOUSE_FALLBACK_WIDTH;
+  /** The Now tab's own box width, measured after it is drawn (`fitNow`), so its drawing spans it. */
+  private nowWidth: number | null = null;
   private boxHeight = 0;
   private observer: ResizeObserver | null = null;
   private readonly idPrefix: string;
@@ -807,7 +809,7 @@ export class SpotnavHouseCard extends HTMLElement {
       language: this.language ?? resolveLanguage(null),
       answer: this.state.answer,
       live: this.live,
-      width: this.width,
+      width: this.nowWidth ?? this.width,
       height: fixed,
       idPrefix: this.idPrefix,
       nowMs: Date.now(),
@@ -874,6 +876,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.pendingRender = false;
     const focused = focusSelector(this.root.activeElement);
     this.paint(null);
+    this.fitNow();
     this.fit();
     if (focused !== null) {
       const again = this.root.querySelector<HTMLElement>(focused);
@@ -888,6 +891,18 @@ export class SpotnavHouseCard extends HTMLElement {
    * picture takes the room the rest leaves, never below `FILL_MIN_PX`. One reading of the natural layout, one plan
    * from it: measuring again gives the same plan, so a resize never loops. In a plain column nothing changes.
    */
+  /** The Now tab drawn again at its own box's width where that differs from the one drawn (the card's padding and the
+   * panel's are not the same on every dashboard): measured once more it is the same, so it never loops. */
+  private fitNow(): void {
+    const flow = this.root.querySelector<HTMLElement>(".spotnav-now-flow");
+    const measured = flow === null ? 0 : Math.floor(flow.getBoundingClientRect().width);
+    if (measured <= 0 || Math.abs(measured - (this.nowWidth ?? this.width)) < 2) {
+      return;
+    }
+    this.nowWidth = measured;
+    this.paint(null);
+  }
+
   private fit(): void {
     const box = this.offsetHeight;
     this.boxHeight = box;
@@ -924,6 +939,7 @@ export class SpotnavHouseCard extends HTMLElement {
       houseBody({
         doc,
         language,
+        nowWidth: this.nowWidth,
         state: this.state,
         ui: { ...this.ui, fill },
         handlers: {

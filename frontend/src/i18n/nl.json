@@ -2217,6 +2217,8 @@
   "house.nowTab.why.sunBattery": "De zon dekt het huis en laadt de batterij.",
   "house.nowTab.why.sunAll": "De zon dekt het huis.",
   "house.nowTab.why.sunPart": "De zon dekt een deel van het huis.",
+  "house.nowTab.why.sunBatteryAll": "De zon en de batterij dekken het huis.",
+  "house.nowTab.why.sunBatteryPart": "De zon en de batterij dekken een deel van het huis.",
   "house.nowTab.why.battery": "De batterij dekt het huis.",
   "house.nowTab.why.batteryPart": "De batterij dekt een deel van het huis.",
   "house.nowTab.why.car": "De auto laadt.",

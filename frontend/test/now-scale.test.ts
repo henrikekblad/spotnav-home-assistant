@@ -43,11 +43,12 @@ function box(text: SVGTextElement, size: number): { x0: number; x1: number; y0: 
 const meet = (a: ReturnType<typeof box>, b: ReturnType<typeof box>): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
 describe("the Now drawing at the card's width", () => {
-  it("scales with the width from 360 px, at most 1.45 times, and writes in whole pixels of at least 12", () => {
+  it("scales with the width from 360 px, at most 1.6 times, and writes in whole pixels of at least 12", () => {
     expect(nowScale(300)).toBe(1);
     expect(nowScale(360)).toBe(1);
     expect(nowScale(400)).toBeCloseTo(1.111, 3);
-    expect(nowScale(560)).toBe(1.45);
+    expect(nowScale(560)).toBeCloseTo(1.556, 3);
+    expect(nowScale(640)).toBe(1.6);
     expect(nowFontSizes(1)).toEqual({ caption: 12, label: 13, big: 16 });
     expect(nowFontSizes(nowScale(400)).caption).toBe(13);
     expect(lineWidth(4, 1.2)).toBeCloseTo(8.8 * 1.2);
@@ -58,7 +59,7 @@ describe("the Now drawing at the card's width", () => {
     expect(wide.height).toBeGreaterThan(narrow.height);
   });
 
-  for (const width of [300, 360, 400, 500, 560]) {
+  for (const width of [300, 360, 400, 436, 500, 560, 640]) {
     for (const [name, answer, now] of [
       ["corners", "villa_battery_sun.json", "villa_now.json"],
       ["corners, export", "villa_battery_sun.json", "villa_export.json"],
@@ -70,6 +71,9 @@ describe("the Now drawing at the card's width", () => {
           const [x, y, w, h] = svg.getAttribute("viewBox")!.split(" ").map(Number);
           expect(w).toBe(width);
           expect(svg.style.maxWidth).toBe(`${width}px`);
+          // The corner nodes at the edges: the first one's centre its reach and 6 px in.
+          const first = Math.min(...Array.from(svg.querySelectorAll<SVGGElement>(".spotnav-now-node")).map((node) => Number(/translate\(([\d.]+)/.exec(node.getAttribute("transform")!)![1])));
+          expect(first).toBeLessThanOrEqual(31 * nowScale(width) + 6.1);
           const size = Number.parseInt(svg.style.getPropertyValue("--spotnav-now-caption"), 10);
           // At least 12 px, and 13 from 400 px, where the words fit beside each other (a long German pair on a
           // narrow card is written smaller rather than overlapping).

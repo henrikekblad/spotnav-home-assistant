@@ -118,6 +118,8 @@ export interface HouseRenderInput {
   handlers: HouseHandlers;
   /** The chart's width in CSS pixels (the card's measured content width). */
   width: number;
+  /** The Now tab's own box width as the card measured it (its drawing spans it), else `width`. */
+  nowWidth?: number | null;
   nowMs: number;
   idPrefix: string;
   entityWords?: EntityWords;
@@ -805,7 +807,7 @@ function nowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEleme
   // Not "spotnav-now": that is the charts' now line, whose stroke would be inherited by the drawing's words.
   const wrap = element(doc, "div", "spotnav-now-tab");
   wrap.dataset["part"] = "now";
-  wrap.append(renderNow({ doc, language, answer, live, width: input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix, nowMs: input.nowMs }));
+  wrap.append(renderNow({ doc, language, answer, live, width: input.nowWidth ?? input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix, nowMs: input.nowMs }));
   panel.append(wrap);
   const plan = planSentence(language, answer, input.nowMs);
   if (plan !== null) {
