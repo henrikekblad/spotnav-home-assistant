@@ -55,7 +55,7 @@ import statistics
 from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from datetime import datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from ..planning.planner import FiscalChoice, effective_minor_per_kwh
 from .plan_model import (
@@ -511,17 +511,7 @@ def plan_battery(
     if _priced(request):
         return _plan_peaks(request, keep, keep_min_gain, baseline, end_value, grid, reserves)
 
-    # Backwards: the value-to-go at each grid point, from the horizon's end value.
-    figures = battery.figures()
-    slots = _slot_figures(request)
-    values: list[list[float]] = [[] for _ in range(len(slots) + 1)]
-    values[-1] = [-end_value * point for point in grid.points]
-    for index in range(len(slots) - 1, -1, -1):
-        slot = slots[index]
-        after = values[index + 1]
-        reserve = None if reserves is None else reserves[index]
-        values[index] = [_best(slot, request, point, after, grid, reserve, figures)[1] for point in grid.points]
-
+    values = _values_to_go(request, end_value, grid, reserves)
     best = _forward(request, values, grid, reserves=reserves)
     kept = False
     keep_gain: float | None = None
@@ -538,6 +528,180 @@ def plan_battery(
         kept=kept,
         keep_gain=keep_gain,
     )
+
+
+def _values_to_go(
+    request: PlanRequest, end_value: float, grid: _Grid, reserves: Sequence[float] | None
+) -> list[list[float]]:
+    """Backwards: the value-to-go at each grid point before each slot (and, last, at the horizon: its end value).
+    On numpy where Home Assistant has it (`_values_to_go_numpy`), else point by point; the same numbers either way."""
+    figures = request.battery.figures()
+    slots = _slot_figures(request)
+    np = _numpy()
+    if np is not None:
+        return _values_to_go_numpy(np, request, slots, figures, end_value, grid, reserves)
+    values: list[list[float]] = [[] for _ in range(len(slots) + 1)]
+    values[-1] = [-end_value * point for point in grid.points]
+    for index in range(len(slots) - 1, -1, -1):
+        slot = slots[index]
+        after = values[index + 1]
+        reserve = None if reserves is None else reserves[index]
+        values[index] = [_best(slot, request, point, after, grid, reserve, figures)[1] for point in grid.points]
+    return values
+
+
+#: numpy once looked for: the module, or `None` where it is not installed.
+_NUMPY: list[Any] = []
+
+
+def _numpy() -> Any:
+    """numpy if this Python has it, looked for on the first plan (in the executor, not at import: its import is
+    slow). The integration does not require it: Home Assistant's images ship it, a bare install may not."""
+    if not _NUMPY:
+        try:
+            import numpy  # noqa: PLC0415
+        except ImportError:
+            _NUMPY.append(None)
+        else:
+            _NUMPY.append(numpy)
+    return _NUMPY[0]
+
+
+def _values_to_go_numpy(
+    np: Any,
+    request: PlanRequest,
+    slots: Sequence[SlotFigures],
+    battery: BatteryFigures,
+    end_value: float,
+    grid: _Grid,
+    reserves: Sequence[float] | None,
+) -> list[list[float]]:
+    """`_values_to_go` with every grid point of a slot at once: what `_limits`, `_candidates`, `_apply` and `_best`
+    do, written over arrays of slot x action x grid point.
+
+    Nothing of an action's power, cost and end energy depends on the value-to-go, so those are worked out for the
+    whole horizon first; the walk backwards then only reads the value of each end energy off the slot after and
+    takes the best, in `_candidates`'s order with `_best`'s tie rule. Each number comes from the same operations in
+    the same order as point by point (IEEE doubles both ways), so the values are the same floats, which
+    `test_battery_plan_numpy` holds it to. What is fixed per slot is worked out in plain Python, as there.
+    """
+    count = len(slots)
+    points = np.array(grid.points)
+    steps = grid.steps
+
+    def column(values: Iterable[float]) -> Any:
+        return np.array(list(values), dtype=float).reshape(count, 1)
+
+    hours_of = [slot.hours for slot in slots]
+    net_of = [slot.net_kw for slot in slots]
+    surplus_of = [max(0.0, -net) for net in net_of]
+    deficit_of = [max(0.0, net) for net in net_of]
+    hours = column(hours_of)
+    net = column(net_of)
+    surplus = column(surplus_of)
+    deficit = column(deficit_of)
+
+    # `_limits`: `BatteryFigures.charge_for_room` and `charge_limit_kw`, then the discharge the energy left allows.
+    sun_eff, grid_eff, out_eff = battery.sun_charge_efficiency, battery.charge_efficiency, battery.discharge_efficiency
+    room_kwh = battery.max_kwh - points
+    sun_room = column(sun * sun_eff * h for sun, h in zip(surplus_of, hours_of))
+    room = np.where(
+        room_kwh <= sun_room,
+        room_kwh / column(sun_eff * h for h in hours_of),
+        surplus + (room_kwh - sun_room) / column(grid_eff * h for h in hours_of),
+    )
+    room = np.where((room_kwh <= 0) | (hours <= 0), 0.0, room)
+    charge_lim = np.maximum(0.0, np.minimum(column(battery.charge_limit_kw(sun) for sun in surplus_of), room))
+    above_floor = points - battery.min_kwh
+    discharge_lim = np.maximum(0.0, np.minimum(battery.max_discharge_kw, above_floor * out_eff / hours))
+
+    # `_candidates`: each action's wanted power (`action_power`), in its order.
+    hold = np.minimum(surplus, charge_lim)
+    to_house = -np.minimum(deficit, discharge_lim)
+    wanted = [np.where(net <= 0, hold, to_house), hold, to_house]
+    for share in request.charge_shares:
+        charge_kw = share * battery.max_charge_kw
+        want_of = []
+        for slot, sun in zip(slots, surplus_of):
+            want = max(charge_kw, sun)
+            if slot.grid_charge_cap_kw is not None:
+                want = max(sun, min(want, slot.grid_charge_cap_kw))
+            want_of.append(want)
+        wanted.append(np.minimum(charge_lim, column(want_of)))
+    open_: list[Any] = [None] * len(wanted)  # where an action is open at all; `None` is everywhere
+    if request.allow_export_discharge:
+        power = -discharge_lim
+        if reserves is not None:
+            left = np.maximum(0.0, (above_floor - column(reserves)) * out_eff / hours)
+            power = np.maximum(power, -left)
+            open_.append(-power > column(need + _SAME_KW for need in deficit_of))
+        else:
+            open_.append(None)
+        wanted.append(power)
+    tried = len(wanted)
+    power = np.stack(wanted, axis=1)  # slot x action x point
+
+    # Duplicates dropped: an action within `_SAME_KW` of an earlier one that was kept.
+    kept = np.ones(power.shape, dtype=bool)
+    for later in range(1, tried):
+        far = np.abs(power[:, :later] - power[:, later : later + 1]) > _SAME_KW
+        keep = (far | ~kept[:, :later]).all(axis=1)
+        kept[:, later] = keep if open_[later] is None else keep & open_[later]
+
+    # `_apply`: the grid's caps, the energy the action ends with, and its cost, wear and margin.
+    net = net.reshape(count, 1, 1)
+    hours = hours.reshape(count, 1, 1)
+    grid_kw = net + power
+    if any(slot.import_cap_kw is not None for slot in slots):
+        capped = column(slot.import_cap_kw is not None for slot in slots).reshape(count, 1, 1) > 0
+        cap = column(slot.import_cap_kw or 0.0 for slot in slots).reshape(count, 1, 1)
+        over = capped & (grid_kw > cap)
+        power = np.where(over, np.maximum(power - (grid_kw - cap), -discharge_lim.reshape(count, 1, -1)), power)
+        grid_kw = net + power
+    if any(slot.export_cap_kw is not None for slot in slots):
+        capped = column(slot.export_cap_kw is not None for slot in slots).reshape(count, 1, 1) > 0
+        floor = -column(slot.export_cap_kw or 0.0 for slot in slots).reshape(count, 1, 1)
+        under = capped & (grid_kw < floor)
+        power = np.where(under & (power < 0), np.minimum(0.0, power + (floor - grid_kw)), power)
+        grid_kw = net + power
+        grid_kw = np.where(under & (grid_kw < floor), floor, grid_kw)
+
+    sun = np.minimum(power, surplus.reshape(count, 1, 1))
+    stored = np.where(power <= 0, power / out_eff * hours, (sun * sun_eff + (power - sun) * grid_eff) * hours)
+    soc_end = np.minimum(battery.max_kwh, np.maximum(np.minimum(points, battery.min_kwh), points + stored))
+    energy = grid_kw * hours
+    cost = np.where(
+        grid_kw >= 0,
+        energy * column(slot.buy for slot in slots).reshape(count, 1, 1),
+        energy * column(slot.sell for slot in slots).reshape(count, 1, 1),
+    )
+    wear = np.abs(power) * hours * request.cycle_cost
+    sold = np.maximum(0.0, np.minimum(-power, -grid_kw)) * hours
+    money = cost + wear + sold * request.export_hurdle
+
+    # `_Grid.value`: where each end energy falls on the grid. The values get one more point past the ceiling, so an
+    # end at or above it reads the ceiling's value as it stands (share 0 of the way on).
+    position = (soc_end - grid.low) / grid.step
+    below, above = position <= 0, position >= steps
+    lower = np.where(below, 0, np.where(above, steps, position.astype(np.int64)))
+    share = np.where(below | above, 0.0, position - lower)
+    upper = lower + 1
+
+    values = np.empty((count + 1, steps + 2))
+    values[count, : steps + 1] = -end_value * points
+    values[count, steps + 1] = values[count, steps]
+    live = kept.any(axis=2).tolist()
+    for index in range(count - 1, -1, -1):
+        after = values[index + 1]
+        at_lower = after.take(lower[index])
+        total = money[index] + (at_lower + (after.take(upper[index]) - at_lower) * share[index])
+        best = total[0].copy()  # self-consumption is always open
+        for action in range(1, tried):
+            if live[index][action]:
+                np.copyto(best, total[action], where=kept[index, action] & (total[action] < best - _TIE))
+        values[index, : steps + 1] = best
+        values[index, steps + 1] = best[steps]
+    return values[:, : steps + 1].tolist()
 
 
 def _forward(
