@@ -431,6 +431,10 @@ class SiteHouseForecast:
         self.car_kwh_by_hour: Callable[[Sequence[datetime]], Awaitable[Mapping[datetime, float]]] | None = None
         #: How many hours the last refresh filled from the statistics (`_async_fill_gross`).
         self.last_filled = 0
+        #: The hours the statistics were read for and did not fill (`_async_fill_gross`), skipped by later refreshes
+        #: while the meters read are the same (`_unfillable_for`); in memory, only hours of the fill's reach.
+        self._unfillable: set[datetime] = set()
+        self._unfillable_for: tuple[Any, ...] | None = None
         self._attribute: list[dict[str, Any]] = []
         self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
@@ -852,7 +856,8 @@ class SiteHouseForecast:
     async def _async_fill_gross(self, tracked: Sequence[Any], now: datetime, *, battery: bool) -> None:
         """Fill the whole load's hours still missing past the production wait from the Energy dashboard's hourly
         statistics (`HouseHistory.fill_gross`, `FILL_DAYS` back): one read of the dashboard's meters in the recorder's
-        executor, only while there are such hours. Nothing is filled on a site whose dashboard lacks the grid's
+        executor, only while there are such hours, and not again for an hour it read and could not fill while the
+        meters are the same (`_fillable`). Nothing is filled on a site whose dashboard lacks the grid's
         import, the export beside its sun, or the battery's meters beside a battery SpotNav reads (the balance would
         miss a flow), nor without the cars' energy."""
         gaps = self.history.gap_hours(now)
@@ -862,6 +867,9 @@ class SiteHouseForecast:
         try:
             ids = energy_flow_ids(await async_energy_prefs(self.hass))
             if not ids.grid_in or (ids.solar and not ids.grid_out) or (battery and not ids.battery_in):
+                return
+            gaps = self._fillable(gaps, (ids.all(), battery))
+            if not gaps:
                 return
             current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
             rows = await async_statistics(self.hass, ids.all(), gaps[0], current, "hour")
@@ -876,6 +884,7 @@ class SiteHouseForecast:
             # Only the hours every meter has: the cars' figures are read for those alone.
             wanted = [start for start in gaps if flows.house_kwh(start, 0.0) is not None]
             if not wanted:
+                self._unfillable.update(gaps)
                 return
             car = await self.car_kwh_by_hour(wanted)
         except Exception:  # noqa: BLE001 - the gaps wait for the next refresh
@@ -883,8 +892,19 @@ class SiteHouseForecast:
             return
         outdoor = {hour.start.astimezone(timezone.utc): hour.outdoor_c for hour in tracked}
         self.last_filled = self.history.fill_gross(flows, car, now, outdoor=outdoor)
+        self._unfillable.update(start for start in gaps if start not in self.history.gross)
         if self.last_filled:
             _LOGGER.debug("SpotNav house forecast: %d hours of the whole load filled from the statistics", self.last_filled)
+
+    def _fillable(self, gaps: list[datetime], meters: tuple[Any, ...]) -> list[datetime]:
+        """`gaps` less the hours already read and not filled with the same `meters`; the remembered hours older than
+        the oldest gap are forgotten (the fill no longer reaches them), and all of them when the meters change."""
+        if meters != self._unfillable_for:
+            self._unfillable_for = meters
+            self._unfillable = set()
+        oldest = gaps[0]
+        self._unfillable = {start for start in self._unfillable if start >= oldest}
+        return [start for start in gaps if start not in self._unfillable]
 
     async def async_take_rows(self, rows: list[tuple[datetime, float]], now: datetime) -> int:
         """Take the battery plan's own rows (`grid - car - battery` per hour) over as the whole load, once
