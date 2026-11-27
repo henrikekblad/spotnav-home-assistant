@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} ciclos",
   "yearReview.battery.buy": "comprado a {price}",
   "yearReview.battery.use": "usado a {price}",
-  "yearReview.battery.charged": "cargado {kwh}",
-  "yearReview.battery.gaveBack": "devolvió {kwh}",
   "yearReview.battery.earnedSince": "El dinero se cuenta con los días revisados desde el {date}.",
   "yearReview.battery.savedFoot": "≈ Calculado con el precio de cada hora, sin importar quién controlara la batería.",
   "yearReview.fuse.eyebrow": "El fusible",

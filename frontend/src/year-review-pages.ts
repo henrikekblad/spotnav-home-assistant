@@ -225,14 +225,8 @@ export function storyPage(language: Language, review: YearReview, source: YearRe
           foot.push(translate(L, "yearReview.battery.earnedSince", { date: dayMonth(L, source.earned_since) }));
         }
       } else {
-        if (source.kwh_in !== null) {
-          chips.push(translate(L, "yearReview.battery.charged", { kwh: kwhWhole(L, source.kwh_in) }));
-        }
         if (source.saved !== null) {
-          // What it saved at each hour's price, whoever controlled it; the energy given back as a chip.
-          if (source.kwh_out !== null) {
-            chips.push(translate(L, "yearReview.battery.gaveBack", { kwh: kwhWhole(L, source.kwh_out) }));
-          }
+          // What it saved at each hour's price, whoever controlled it.
           big = { value: source.saved / divisor, digits: 0, unit: major, approx: true };
           say = translate(L, "yearReview.battery.saySaved");
           foot.push(translate(L, "yearReview.battery.savedFoot"), ...sinceLine(L, source.saved_since));

@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} cycli",
   "yearReview.battery.buy": "gekocht voor {price}",
   "yearReview.battery.use": "gebruikt bij {price}",
-  "yearReview.battery.charged": "geladen {kwh}",
-  "yearReview.battery.gaveBack": "teruggegeven {kwh}",
   "yearReview.battery.earnedSince": "Het geld wordt geteld vanaf gecontroleerde dagen sinds {date}.",
   "yearReview.battery.savedFoot": "≈ Gerekend met de prijs van elk uur, wie de batterij ook aanstuurde.",
   "yearReview.fuse.eyebrow": "De zekering",

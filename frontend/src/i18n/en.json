@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} cycles",
   "yearReview.battery.buy": "bought at {price}",
   "yearReview.battery.use": "used at {price}",
-  "yearReview.battery.charged": "charged {kwh}",
-  "yearReview.battery.gaveBack": "gave back {kwh}",
   "yearReview.battery.earnedSince": "The money is counted from reviewed days since {date}.",
   "yearReview.battery.savedFoot": "≈ Worked out at each hour's price, whoever controlled the battery.",
   "yearReview.fuse.eyebrow": "The fuse",

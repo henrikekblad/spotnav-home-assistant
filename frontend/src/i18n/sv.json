@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} varv",
   "yearReview.battery.buy": "köpte för {price}",
   "yearReview.battery.use": "använde vid {price}",
-  "yearReview.battery.charged": "laddade {kwh}",
-  "yearReview.battery.gaveBack": "gav tillbaka {kwh}",
   "yearReview.battery.earnedSince": "Pengarna räknas från granskade dagar sedan {date}.",
   "yearReview.battery.savedFoot": "≈ Räknat på varje timmes pris, oavsett vem som styrde batteriet.",
   "yearReview.fuse.eyebrow": "Säkringen",

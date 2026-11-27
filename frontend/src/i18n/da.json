@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} cyklusser",
   "yearReview.battery.buy": "købte for {price}",
   "yearReview.battery.use": "brugte ved {price}",
-  "yearReview.battery.charged": "opladede {kwh}",
-  "yearReview.battery.gaveBack": "gav tilbage {kwh}",
   "yearReview.battery.earnedSince": "Pengene regnes fra gennemgåede dage siden {date}.",
   "yearReview.battery.savedFoot": "≈ Regnet med hver times pris, uanset hvem der styrede batteriet.",
   "yearReview.fuse.eyebrow": "Sikringen",
