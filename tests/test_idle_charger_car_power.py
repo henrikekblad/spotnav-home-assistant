@@ -8,6 +8,7 @@ now counts such a charger as drawing nothing; the import target, which steers ch
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -16,7 +17,10 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.const import CONF_MEASURED_CURRENT_SOURCE, CONF_MODE, MEASUREMENT_MODE_DERIVED, MODE_OCPP
-from custom_components.spotnav.execution.solar_execution import site_car_w
+from custom_components.spotnav.execution import solar_execution
+from custom_components.spotnav.execution.solar_execution import IDLE_UNREAD_HOLD_S, site_car_w
+from custom_components.spotnav.planning.demand_charge import HourMean
+from custom_components.spotnav.site.demand_tracker import HourTracker
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
 
 from .helpers import make_entry, make_site_entry
@@ -105,11 +109,14 @@ async def test_an_idle_ocpp_charger_without_phase_attributes_draws_nothing(
 
 
 async def test_an_idle_charger_of_unknown_status_whose_current_reads_zero_draws_nothing(hass: HomeAssistant) -> None:
-    _charger, site = await _world(hass, status="unavailable")
+    charger, site = await _world(hass, status="unavailable")
 
     assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
-    # The current sensor itself unreadable too: nothing says it is idle.
+    # The current sensor itself unreadable too: only having just been seen idle says it is.
     hass.states.async_set(CURRENT, "unavailable")
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    # Never seen idle: nothing says it is.
+    charger.idle_seen_at = None
     assert site_car_w(hass, site, idle_unread_as_zero=True) is None
     # Or reading a current: it may be drawing.
     _current(hass, 10.0)
@@ -155,3 +162,58 @@ async def test_the_fuse_protection_still_credits_nothing_for_an_unreadable_charg
     measured = site.charger_measured_current(charger.entry_id)
     assert measured is not None
     assert all(measured.get(phase).value is None for phase in ("L1", "L2", "L3"))
+
+
+def _flapping_hour(hass: HomeAssistant, site, *, away: dict[str, str]) -> HourMean:
+    """One hour of the tracker fed every 30 s with the site's grid and the chargers' draw, as `_observe_demand`
+    reads them, while the charger drops off for 90 s in every 4 minutes (its entities `away` meanwhile): the field
+    case of 2026-11-26, an OCPP charger with no car unavailable about 16 times an hour."""
+    tracker = HourTracker(tz="Europe/Stockholm")
+    start = datetime(2026, 11, 26, 23, 0, tzinfo=timezone.utc)
+    present = {entity_id: hass.states.get(entity_id) for entity_id in away}
+    for step in range(121):
+        dropped = step % 8 >= 5
+        for entity_id, state in present.items():
+            if dropped:
+                hass.states.async_set(entity_id, away[entity_id])
+            else:
+                hass.states.async_set(entity_id, state.state, state.attributes)
+        car_w = site_car_w(hass, site, idle_unread_as_zero=True)
+        tracker.observe(start + timedelta(seconds=30 * step), 1800.0, car_w, battery_w=0.0)
+    assert len(tracker.hours) == 1
+    return tracker.hours[0]
+
+
+async def test_a_charger_with_no_car_that_flaps_unavailable_keeps_the_house(hass: HomeAssistant) -> None:
+    """Last read idle (no car, 0 A), the charger still draws nothing while it is away: the hour keeps its house."""
+    _charger, site = await _world(hass, status="Available")
+
+    hour = _flapping_hour(hass, site, away={STATUS: "unavailable", CURRENT: "unavailable", SWITCH: "unavailable"})
+
+    assert hour.house_kw == pytest.approx(1.8)
+    assert hour.ex_battery_kw == pytest.approx(1.8)
+
+
+async def test_a_charger_that_drops_off_while_charging_stays_a_gap(hass: HomeAssistant) -> None:
+    """Seen charging when it dropped, it may be charging still: the hour keeps no house, as before."""
+    _charger, site = await _world(hass, status="Charging", amps=10.0, phases={"L1": 10.0, "L2": 10.0, "L3": 10.0})
+
+    hour = _flapping_hour(hass, site, away={STATUS: "unavailable", CURRENT: "unavailable", SWITCH: "unavailable"})
+
+    assert hour.house_kw is None
+    assert hour.ex_battery_kw is None
+
+
+async def test_an_idle_charger_away_longer_than_the_hold_is_unknown(hass: HomeAssistant, monkeypatch) -> None:
+    charger, site = await _world(hass, status="Available")
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    seen = charger.idle_seen_at
+    assert seen is not None
+    hass.states.async_set(STATUS, "unavailable")
+    hass.states.async_set(CURRENT, "unavailable")
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    # Measured only: the import target, which steers chargers, keeps it unknown.
+    assert site_car_w(hass, site) is None
+
+    monkeypatch.setattr(solar_execution.time, "monotonic", lambda: seen + IDLE_UNREAD_HOLD_S + 1.0)
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None

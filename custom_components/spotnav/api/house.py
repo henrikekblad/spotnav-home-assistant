@@ -352,6 +352,24 @@ async def async_car_hours(
     return {**{start: kwh for start, kwh in car.items() if start in wanted}, **known}
 
 
+async def async_car_kwh_by_hour(hass: HomeAssistant, controller: Any, starts: Sequence[datetime]) -> dict[datetime, float]:
+    """The cars' energy (kWh) in each hour of `starts` (UTC hour starts) as the energy flow counts it (`_car_hours`:
+    the chargers' energy registers, the battery plan's measure, their sessions); 0 in every hour on a site without
+    chargers, and an hour none of them has is left out. For the house forecast's filled hours
+    (`site/house_forecast._async_fill_gross`)."""
+    if not starts:
+        return {}
+    if not controller.config.get(CONF_CHARGER_ENTRY_IDS):
+        return dict.fromkeys(starts, 0.0)
+    ordered = sorted(starts)
+    car_ids = _car_register_ids(hass, controller)
+    rows = (
+        await async_statistics(hass, car_ids, ordered[0], ordered[-1] + timedelta(hours=1), "hour") if car_ids else {}
+    )
+    car = _car_hours(hass, controller, rows, car_ids, ordered)
+    return {start: car[start] for start in ordered if start in car}
+
+
 def reads_quarters(midnight: datetime, now: datetime, keep_days: int | None) -> bool:
     """Whether a day starting at `midnight` is read by the quarter hour: all of it within the short-term window."""
     return keep_days is not None and midnight >= now - timedelta(days=keep_days)

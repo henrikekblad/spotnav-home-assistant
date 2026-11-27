@@ -889,6 +889,8 @@ class SiteCapacityController:
         )
         # A broken statistic hour of a heat zone stays out of the heat split's learning.
         self.house_forecast.heat.cap_kw = self._main_fuse_kw
+        # The cars' energy per hour, for the whole load's hours filled from the statistics.
+        self.house_forecast.car_kwh_by_hour = self._async_car_kwh_by_hour
         # The sun's value per quarter hour on a site without a home battery, reviewed each night (`site/sun_review.py`):
         # the house card's Earnings tab and Money section. Shown only.
         self.sun_review = SiteSunReview(
@@ -1652,6 +1654,12 @@ class SiteCapacityController:
         if schedule_apply and self._active_control_allowed():
             self._schedule_apply_active_control()
         self._notify()
+
+    async def _async_car_kwh_by_hour(self, starts: Sequence[datetime]) -> dict[datetime, float]:
+        """The cars' energy (kWh) per hour of `starts` (`api/house.async_car_kwh_by_hour`)."""
+        from ..api.house import async_car_kwh_by_hour  # noqa: PLC0415 - it imports the site
+
+        return await async_car_kwh_by_hour(self.hass, self, starts)
 
     def _observe_demand(self) -> None:
         """Give the hour tracker this recompute's net grid power and the chargers' draw (at most every few seconds).

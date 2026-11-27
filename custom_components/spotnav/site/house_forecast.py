@@ -18,7 +18,10 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   once `MIN_GROSS_HOURS` such hours are kept, and an hour is filed only with its production (never as the house
   less the sun). The battery plan's own rows of before are taken over once (`async_take_rows`). The shown forecast,
   the log's house kinds and the battery plan's input (`battery_house_by_hour`, the median without the in-day
-  adjustment) are then the whole load.
+  adjustment) are then the whole load. An hour of the whole load the tracker could not measure (a charger that
+  could not be read, a restart) is filled once past the production wait from the Energy dashboard's hourly
+  statistics with the chargers' own energy (`_async_fill_gross`, `site/house_history.py`: measured figures, so the
+  forecast learns from them; marked `filled`), so the house card's energy graph has no hole there either.
 * **The expected solar surplus** (`surplus_house_by_hour`): the sun less the house's whole load, so it reads the
   whole load's median without the in-day adjustment, and nothing (with a reason) while there is no whole load with
   the sun in every hour: the import less the chargers already has the sun taken off.
@@ -79,7 +82,7 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from functools import partial
 import logging
@@ -96,7 +99,7 @@ from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.demand_charge import hour_start
 from .demand_tracker import outdoor_reading, SiteDemand
-from .energy_statistics import async_energy_ids, async_statistics, summed
+from .energy_statistics import async_energy_ids, async_energy_prefs, async_statistics, energy_flow_ids, summed
 from .forecast_log import (
     ForecastLog,
     KEEP_HOURS_DAYS,
@@ -112,7 +115,7 @@ from .forecast_log import (
 )
 from .forecast_band import FORM_ADDITIVE, learn as learn_band, pairs_from_log, view as band_view
 from .heat_meter import HeatSplit, SiteHeatMeter, heat_split
-from .house_history import HouseHistory
+from .house_history import HourFlows, HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
 from .temperature_history import NO_OFFSET, Offset, source_marker, SOURCE_SENSOR, SOURCE_WEATHER, TemperatureHistory
 
@@ -422,6 +425,12 @@ class SiteHouseForecast:
         #: The heat pump relay's change to the expected load per hour (`heat/runtime.HeatShadow.forecast_delta`), set
         #: by the site once its heat shadow exists; `None` without one.
         self.heat_delta: Callable[[datetime], Mapping[datetime, float]] | None = None
+        #: The cars' energy (kWh) per UTC hour start of the hours asked for, as the chargers' own figures have it
+        #: (`api/house.async_car_kwh_by_hour`), set by the site; the whole load's hours are filled from the statistics
+        #: only with it (`_async_fill_gross`). An hour it leaves out is not filled.
+        self.car_kwh_by_hour: Callable[[Sequence[datetime]], Awaitable[Mapping[datetime, float]]] | None = None
+        #: How many hours the last refresh filled from the statistics (`_async_fill_gross`).
+        self.last_filled = 0
         self._attribute: list[dict[str, Any]] = []
         self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
@@ -675,6 +684,7 @@ class SiteHouseForecast:
             whole = battery or solar
             if whole:
                 await self._async_merge_gross(tracked, now, sun_needed=not battery)
+                await self._async_fill_gross(tracked, now, battery=battery)
             basis = house_basis(battery=battery, solar=solar, gross_ready=self.history.gross_ready(now))
             net_hours = self.history.hours()
             hours = self.history.gross_hours() if basis == BASIS_GROSS else net_hours
@@ -838,6 +848,43 @@ class SiteHouseForecast:
         read, production = await self._async_production(waiting[0].start.astimezone(timezone.utc), now)
         if read and (production is not None or not sun_needed):
             self.history.merge_gross(tracked, production, now)
+
+    async def _async_fill_gross(self, tracked: Sequence[Any], now: datetime, *, battery: bool) -> None:
+        """Fill the whole load's hours still missing past the production wait from the Energy dashboard's hourly
+        statistics (`HouseHistory.fill_gross`, `FILL_DAYS` back): one read of the dashboard's meters in the recorder's
+        executor, only while there are such hours. Nothing is filled on a site whose dashboard lacks the grid's
+        import, the export beside its sun, or the battery's meters beside a battery SpotNav reads (the balance would
+        miss a flow), nor without the cars' energy."""
+        gaps = self.history.gap_hours(now)
+        self.last_filled = 0
+        if not gaps or self.car_kwh_by_hour is None:
+            return
+        try:
+            ids = energy_flow_ids(await async_energy_prefs(self.hass))
+            if not ids.grid_in or (ids.solar and not ids.grid_out) or (battery and not ids.battery_in):
+                return
+            current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            rows = await async_statistics(self.hass, ids.all(), gaps[0], current, "hour")
+            has_battery = bool(ids.battery_in)
+            flows = HourFlows(
+                grid_in=summed(rows, ids.grid_in),
+                grid_out=summed(rows, ids.grid_out) if ids.grid_out else None,
+                solar=summed(rows, ids.solar) if ids.solar else None,
+                battery_in=summed(rows, ids.battery_in) if has_battery else None,
+                battery_out=summed(rows, ids.battery_out) if has_battery else None,
+            )
+            # Only the hours every meter has: the cars' figures are read for those alone.
+            wanted = [start for start in gaps if flows.house_kwh(start, 0.0) is not None]
+            if not wanted:
+                return
+            car = await self.car_kwh_by_hour(wanted)
+        except Exception:  # noqa: BLE001 - the gaps wait for the next refresh
+            _LOGGER.debug("SpotNav house forecast: the statistics for the missing hours could not be read", exc_info=True)
+            return
+        outdoor = {hour.start.astimezone(timezone.utc): hour.outdoor_c for hour in tracked}
+        self.last_filled = self.history.fill_gross(flows, car, now, outdoor=outdoor)
+        if self.last_filled:
+            _LOGGER.debug("SpotNav house forecast: %d hours of the whole load filled from the statistics", self.last_filled)
 
     async def async_take_rows(self, rows: list[tuple[datetime, float]], now: datetime) -> int:
         """Take the battery plan's own rows (`grid - car - battery` per hour) over as the whole load, once

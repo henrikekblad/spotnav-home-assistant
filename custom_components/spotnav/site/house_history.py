@@ -22,6 +22,18 @@ charged and discharged, so on a battery site it is not the house: the owner's re
   files every hour as it is and marks it (`sun` false): the rows are then the house less the sun.
 * **Migration** (`take_rows`): the battery plan kept its own rows of `grid - car - battery` before this; they are
   taken over once (`gross_migrated_at`), each hour before the first one filed here, with its production added.
+* **Filled from the statistics** (`gap_hours`, `fill_gross`): an hour still not filed once it is past the production
+  wait (the hour tracker had no `grid - car - battery` for it: a charger that could not be read, a restart; or its
+  production never came) is filled from the Energy dashboard's hourly statistics, `FILL_DAYS` back at most: the whole
+  load is `grid_in - grid_out + solar + battery_out - battery_in - car` (`HourFlows`, kWh in the hour, its mean kW),
+  `car` the chargers' own energy for the hour (their energy registers, the battery plan's measure, their sessions).
+  Only where every statistic the site has, and the car, has the hour; never over an hour already filed, and a
+  measured hour never waits on it (the gaps are the hours past the wait). The figures are measured (meters, not an
+  estimate), so the forecast learns from a filled hour as from any other; it is marked (`filled`, with the outdoor
+  temperature the tracker read in it) and counted in the diagnostics (`gross_filled`). On a hybrid whose dashboard
+  meters its battery at the battery the filled hour holds the inverter's loss as the battery's, a little off the
+  tracker's AC-side figure (`site/demand_tracker.py`); a filled hour below 0 by more than `FILL_SLACK_KWH` (the meters
+  disagree) is left out, a smaller shortfall is 0.
 * **Basis** (`gross_ready`): on a solar site without a battery the house's whole load is the site's house figure from
   `MIN_GROSS_HOURS` hours in the forecast's window on; on a battery site from the first (`house_forecast.house_basis`).
 
@@ -51,6 +63,41 @@ MIN_GROSS_HOURS: Final = 72
 PRODUCTION_WAIT_H: Final = 24
 #: The flat figure of the whole load is the mean of its last this many hours.
 FLAT_HOURS: Final = 24
+#: Hours of the whole load still missing are filled from the statistics this many days back at most (`fill_gross`).
+FILL_DAYS: Final = 7
+#: A filled hour may come out below 0 by this much (kWh, the meters read at different moments) and is then 0.
+FILL_SLACK_KWH: Final = 0.1
+
+
+@dataclass(frozen=True, slots=True)
+class HourFlows:
+    """The Energy dashboard's hourly energy (kWh per UTC hour start) for `HouseHistory.fill_gross`; `None` where the
+    site has no such meter (its term is then 0)."""
+
+    grid_in: Mapping[datetime, float]
+    grid_out: Mapping[datetime, float] | None = None
+    solar: Mapping[datetime, float] | None = None
+    battery_in: Mapping[datetime, float] | None = None
+    battery_out: Mapping[datetime, float] | None = None
+
+    def house_kwh(self, start: datetime, car_kwh: float) -> float | None:
+        """The hour's whole load (kWh), `None` when a meter the site has lacks the hour."""
+        terms: list[tuple[Mapping[datetime, float] | None, float]] = [
+            (self.grid_in, 1.0),
+            (self.grid_out, -1.0),
+            (self.solar, 1.0),
+            (self.battery_out, 1.0),
+            (self.battery_in, -1.0),
+        ]
+        total = -car_kwh
+        for series, sign in terms:
+            if series is None:
+                continue
+            value = series.get(start)
+            if value is None or not _usable(value):
+                return None
+            total += sign * float(value)
+        return total
 
 
 def _usable(value: Any) -> bool:
@@ -74,6 +121,9 @@ class HouseHistory:
     gross: dict[datetime, tuple[float, bool]] = field(default_factory=dict)
     #: When the battery plan's own rows were taken over (`None` until they were).
     gross_migrated_at: datetime | None = None
+    #: The hours of the whole load filled from the statistics (`fill_gross`), with the outdoor temperature the
+    #: tracker read in each (`None` without one).
+    filled: dict[datetime, float | None] = field(default_factory=dict)
 
     def merge(self, hours: Iterable[HourMean], now: datetime) -> int:
         """Take the usable hours in; how many were new. Old rows are dropped."""
@@ -97,6 +147,7 @@ class HouseHistory:
         self.rows = dict(kept[-MAX_ROWS:])
         gross = sorted((start, row) for start, row in self.gross.items() if start >= oldest)
         self.gross = dict(gross[-MAX_ROWS:])
+        self.filled = {start: outdoor for start, outdoor in self.filled.items() if start in self.gross}
 
     # ---- the house's whole load
 
@@ -141,7 +192,8 @@ class HouseHistory:
         """Take the battery plan's own rows over, once (`(hour start, mean kW of grid - car - battery)`): each hour
         before the first one filed here and not held, its production added as `merge_gross` adds it. How many."""
         now = now.astimezone(timezone.utc)
-        first = min(self.gross) if self.gross else None
+        # The first hour filed from the tracker: an hour filled from the statistics (`fill_gross`) holds none back.
+        first = min((start for start in self.gross if start not in self.filled), default=None)
         taken = 0
         for start, kw in rows:
             start = start.astimezone(timezone.utc)  # noqa: PLW2901
@@ -158,6 +210,47 @@ class HouseHistory:
         self._prune(now)
         return taken
 
+    def gap_hours(self, now: datetime) -> list[datetime]:
+        """The hours of the last `FILL_DAYS` days not filed and no longer waiting for their production (`waiting`):
+        those `fill_gross` may fill, oldest first (UTC hour starts)."""
+        now = now.astimezone(timezone.utc)
+        current = now.replace(minute=0, second=0, microsecond=0)
+        waited = now - timedelta(hours=PRODUCTION_WAIT_H)
+        moment = current - timedelta(days=FILL_DAYS)
+        gaps: list[datetime] = []
+        while moment < current:
+            if moment < waited and moment not in self.gross:
+                gaps.append(moment)
+            moment += timedelta(hours=1)
+        return gaps
+
+    def fill_gross(
+        self,
+        flows: HourFlows,
+        car_kwh: Mapping[datetime, float],
+        now: datetime,
+        *,
+        outdoor: Mapping[datetime, float | None] | None = None,
+    ) -> int:
+        """Fill the gaps (`gap_hours`) from the statistics (see the module): an hour is filed only where every meter
+        the site has and the cars' energy (`car_kwh`) have it; marked `filled`, with its `outdoor` temperature. Never
+        over a filed hour. How many were filled."""
+        filled = 0
+        sun = flows.solar is not None
+        for start in self.gap_hours(now):
+            car = car_kwh.get(start)
+            if car is None or not _usable(car):
+                continue
+            kwh = flows.house_kwh(start, float(car))
+            if kwh is None or not math.isfinite(kwh) or kwh < -FILL_SLACK_KWH:
+                continue
+            self.gross[start] = (max(0.0, kwh), sun)
+            self.filled[start] = _temperature((outdoor or {}).get(start))
+            filled += 1
+        if filled:
+            self._prune(now.astimezone(timezone.utc))
+        return filled
+
     def gross_in_window(self, now: datetime) -> int:
         """How many hours of the whole load are in the forecast's window."""
         oldest = now.astimezone(timezone.utc) - timedelta(days=WINDOW_DAYS)
@@ -169,13 +262,13 @@ class HouseHistory:
 
     def gross_hours(self) -> list[HourMean]:
         """The whole load's hours as the forecast reads them, oldest first, each with the outdoor temperature the
-        measured hour of the same start recorded."""
+        measured hour of the same start recorded (a filled hour's own, `filled`)."""
         return [
             HourMean(
                 start=start,
                 kw=kw,
                 house_kw=kw,
-                outdoor_c=self.rows[start][1] if start in self.rows else None,
+                outdoor_c=self.rows[start][1] if start in self.rows else self.filled.get(start),
             )
             for start, (kw, _sun) in sorted(self.gross.items())
         ]
@@ -209,6 +302,11 @@ class HouseHistory:
             # Beside the hours: a build before the whole load ignores the key.
             "gross": [[start.isoformat(), round(kw, 3), 1 if sun else 0] for start, (kw, sun) in sorted(self.gross.items())],
             "gross_migrated_at": None if self.gross_migrated_at is None else self.gross_migrated_at.isoformat(),
+            # Beside the whole load's rows, so a build before the fill reads them as any other hour.
+            "gross_filled": [
+                [start.isoformat(), None if outdoor is None else round(outdoor, 1)]
+                for start, outdoor in sorted(self.filled.items())
+            ],
         }
 
     def restore(self, raw: Any) -> None:
@@ -235,6 +333,15 @@ class HouseHistory:
             gross[start] = (float(row[1]), row[2] == 1)
         self.gross = dict(sorted(gross.items())[-MAX_ROWS:])
         self.gross_migrated_at = aware_utc(raw.get("gross_migrated_at"))
+        filled: dict[datetime, float | None] = {}
+        kept = raw.get("gross_filled")
+        for row in kept if isinstance(kept, list) else []:
+            if not isinstance(row, list) or len(row) != 2:
+                continue
+            start = aware_utc(row[0])
+            if start is not None and start in self.gross:
+                filled[start] = _temperature(row[1])
+        self.filled = filled
 
     def diagnostics(self) -> dict[str, Any]:
         """How much is kept (not the rows: the forecast's own window is in its block)."""
@@ -249,5 +356,6 @@ class HouseHistory:
             "gross_first": min(self.gross).isoformat() if self.gross else None,
             "gross_last": max(self.gross).isoformat() if self.gross else None,
             "gross_with_sun": sum(1 for _kw, sun in self.gross.values() if sun),
+            "gross_filled": len(self.filled),
             "gross_migrated_at": None if self.gross_migrated_at is None else self.gross_migrated_at.isoformat(),
         }
