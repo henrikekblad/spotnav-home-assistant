@@ -46,8 +46,8 @@ on. Each page's rule:
   cars used (the energy flow's rule, hour by hour), `null` without an export meter (nothing is guessed); `export_paid`
   whether what went out earned anything at the held sell prices (`null` without them), so the card says "sold" only
   where it was; `since` the first hour read where that is after 7 January. Left out without a solar meter.
-* **battery**: the Energy dashboard's battery meters over the year (`kwh_in`, `kwh_out`, `cycles` = out over the
-  battery's capacity); the money (`earned`, the arbitrage the house card's headline shows, `battery/stored_value.py`;
+* **battery**: the Energy dashboard's battery meters over the year (`kwh_in`, `kwh_out`; `cycles` = out over the
+  battery's capacity, from the first day of the money shown (`earned_since` / `saved_since`) so both cover one span); the money (`earned`, the arbitrage the house card's headline shows, `battery/stored_value.py`;
   `buy_price` and `use_price`, what a charged kWh cost and a given one was worth) only from `MIN_BATTERY_DAYS` days of
   SpotNav's own count on, `earned_since` its first day where after 7 January. `saved` what the battery saved whoever
   controlled it (an inverter's own optimiser too), from the meters' hours and the held hourly prices
@@ -706,14 +706,27 @@ def battery_page(
         buy = cost / charged if charged > 0 else None
         use = worth / discharged if discharged > 0 else None
     saved = saved_since = None
+    saved_start: date | None = None
     if inputs.has_battery and prices and zone is not None:
         value, priced_days = battery_saved(hours, prices, zone)
         if len(priced_days) >= MIN_BATTERY_DAYS and value >= MINOR_PER_MAJOR:
             saved = value
-            saved_since = _later_than_full(min(priced_days), inputs.year)
+            saved_start = min(priced_days)
+            saved_since = _later_than_full(saved_start, inputs.year)
+    # The cycles cover the same days as the money the page shows (the count's first day, else the priced hours'),
+    # so the page never mixes a short span's kr with a longer span's cycles; without money, the whole year read.
+    money_start = counted[0][0] if earned is not None else saved_start
     cycles = None
     if kwh_out is not None and inputs.capacity_kwh and inputs.capacity_kwh > 0:
-        cycles = kwh_out / inputs.capacity_kwh
+        given = kwh_out
+        if money_start is not None:
+            given = sum(
+                max(0.0, hour.battery_out)
+                for hour in hours
+                if hour.battery_out is not None
+                and (hour.start.astimezone(zone).date() if zone is not None else hour.start.date()) >= money_start
+            )
+        cycles = given / inputs.capacity_kwh
     return {
         "id": "battery",
         "earned": _r(earned),

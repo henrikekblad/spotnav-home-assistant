@@ -385,7 +385,9 @@ def test_a_year_old_site_has_every_page_with_the_figures_of_its_year() -> None:
     battery = pages["battery"]
     assert battery["earned"] == 61 * 600 and battery["earned_since"] == "2026-10-15"
     assert battery["buy_price"] == 62.0 and battery["use_price"] == 200.0
-    assert battery["kwh_out"] == 348 * 3 and battery["cycles"] == round(348 * 3 / 10)
+    assert battery["kwh_out"] == 348 * 3
+    # The cycles run over the days of the money shown (from 15 October to the end of the data), not the whole year.
+    assert battery["cycles"] == round(61 * 3 / 10)
 
     assert pages["fuse"] == {"id": "fuse", "count": 47, "since": "2026-02-01"}
 

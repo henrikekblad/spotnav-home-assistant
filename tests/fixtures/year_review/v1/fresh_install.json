@@ -45,7 +45,7 @@
       },
       {
         "buy_price": 62.0,
-        "cycles": 104,
+        "cycles": 8,
         "earned": 15000,
         "earned_since": "2026-11-20",
         "id": "battery",
