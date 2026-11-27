@@ -13,7 +13,9 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.api.house_now import solar_power_ids, state_kw, websocket_get_house_now
+import random
+
+from custom_components.spotnav.api.house_now import plant_is_all_sun, solar_power_ids, state_kw, websocket_get_house_now
 from custom_components.spotnav.site.house_now import (
     NOW_KEYS,
     RECENT_MAX,
@@ -69,8 +71,9 @@ def test_the_house_is_the_balance_of_the_readings() -> None:
     assert answer["has"] == {"sun": True, "battery": True, "car": True, "heat": True}
     # Charging the car and the battery from an import: what is left is the house.
     assert house_now(villa(grid_kw=9.0, battery_kw=3.0, car_kw=4.0, sun_kw=0.0))["house_kw"] == pytest.approx(2.0)
-    # Meters read at different moments may cross below zero: never a negative house.
-    assert house_now(villa(grid_kw=-3.0, battery_kw=0.0, sun_kw=1.0))["house_kw"] == 0.0
+    # Meters read at different moments may cross below zero: never a negative house, and the lines still meet.
+    crossed = house_now(villa(grid_kw=-3.0, battery_kw=0.0, sun_kw=1.0))
+    assert crossed["house_kw"] == 0.0 and crossed["sun_kw"] == 3.0 and crossed["estimated"] == ["sun", "heat"]
 
 
 def test_a_battery_read_at_the_battery_is_drawn_as_read_and_the_inverter_stays_in_the_house() -> None:
@@ -185,7 +188,124 @@ async def test_the_pilot_site_is_answered_and_refused(hass: HomeAssistant, freez
     assert not refused["success"] and refused["error"]["code"] == "spotnav_no_site"
 
 
+def _meets(answer: dict[str, Any]) -> None:
+    """The node balance as drawn: into the house what goes out of it, and the heat a part of the house."""
+    grid, sun, battery, car = (answer[key] or 0.0 for key in ("grid_kw", "sun_kw", "battery_kw", "car_kw"))
+    assert grid + sun == pytest.approx(answer["house_kw"] + car + battery, abs=1e-9)
+    assert answer["house_kw"] >= 0 and answer["rest_kw"] >= 0 and sun >= 0 and car >= 0
+    heat = answer["heat_kw"] or 0.0
+    assert 0 <= heat <= answer["house_kw"] and heat + answer["rest_kw"] == pytest.approx(answer["house_kw"], abs=1e-9)
+
+
+# The mismatches the owner's site showed on 2026-11-27 (synthetic figures of their shape).
+STALE_PARTS = dict(grid_kw=0.0, sun_kw=0.6, sun_from="recent", battery_kw=-1.44, car_kw=0.0, heat_kw=1.77,
+                   heat_from="recent", car_connected=False)
+HEAT_OVER = dict(grid_kw=0.1, sun_kw=0.0, battery_kw=-1.2, car_kw=0.0, heat_kw=1.6, heat_from="power",
+                 car_connected=False)
+CAR_LAGS = dict(grid_kw=0.5, sun_kw=0.0, battery_kw=0.0, car_kw=2.0, heat_kw=0.0, heat_from="power")
+SUN_LAGS = dict(grid_kw=-3.0, sun_kw=1.0, sun_from="recent", battery_kw=0.5, car_kw=0.0, heat_kw=0.4,
+                heat_from="power", car_connected=False)
+
+
+def test_the_last_period_parts_are_marked_and_the_heat_is_drawn_beside_the_rest() -> None:
+    # The sun and the heat from a 5-minute period up to 20 minutes old: marked; the house's disc holds the rest.
+    answer = house_now(villa(**STALE_PARTS))
+    assert answer["house_kw"] == pytest.approx(2.04) and answer["heat_kw"] == 1.77
+    assert answer["rest_kw"] == pytest.approx(0.27) and answer["estimated"] == ["sun", "heat"]
+    _meets(answer)
+    # Read now: nothing marked.
+    assert house_now(villa(**{**STALE_PARTS, "sun_from": "power", "heat_from": "power"}))["estimated"] == []
+
+
+def test_a_heat_larger_than_the_house_is_cut_to_it_and_marked() -> None:
+    answer = house_now(villa(**HEAT_OVER))
+    assert (answer["house_kw"], answer["heat_kw"], answer["rest_kw"]) == (1.3, 1.3, 0.0)
+    assert answer["estimated"] == ["heat"]
+    _meets(answer)
+
+
+def test_a_deficit_is_taken_from_the_car_then_given_to_the_sun_the_battery_and_last_the_grid() -> None:
+    lagging = house_now(villa(**CAR_LAGS))
+    assert (lagging["car_kw"], lagging["house_kw"], lagging["estimated"]) == (0.5, 0.0, ["car"])
+    _meets(lagging)
+    exporting = house_now(villa(**SUN_LAGS))
+    assert (exporting["sun_kw"], exporting["battery_kw"], exporting["grid_kw"]) == (3.5, 0.5, -3.0)
+    assert exporting["house_kw"] == 0.0 and exporting["heat_kw"] == 0.0 and exporting["estimated"] == ["sun", "heat"]
+    _meets(exporting)
+    # Without the sun the battery takes it; with neither, the grid.
+    no_sun = house_now(villa(**{**CAR_LAGS, "car_kw": 0.0, "grid_kw": -1.0, "has_sun": False, "sun_kw": None}))
+    assert no_sun["battery_kw"] == -1.0 and no_sun["estimated"] == ["battery"]
+    _meets(no_sun)
+    bare = house_now(villa(grid_kw=-0.4, has_sun=False, sun_kw=None, has_battery=False, battery_kw=None, has_car=False,
+                           car_kw=None, has_heat=False, heat_kw=None))
+    assert bare["grid_kw"] == 0.0 and bare["estimated"] == ["grid"]
+    _meets(bare)
+
+
+def test_the_lines_meet_for_any_readings() -> None:
+    rng = random.Random(20261127)
+    for _ in range(2000):
+        answer = house_now(
+            villa(
+                grid_kw=rng.uniform(-12, 17), sun_kw=rng.choice([rng.uniform(-0.2, 11), 0.0]),
+                sun_from=rng.choice(["power", "recent"]), battery_kw=rng.uniform(-10, 10),
+                car_kw=rng.choice([0.0, rng.uniform(0, 11)]), heat_kw=rng.uniform(0, 6),
+                heat_from=rng.choice(["power", "recent"]), battery_loss=rng.choice([None, (0.035, 0.043)]),
+            )
+        )
+        _meets(answer)
+        for key in ("grid_kw", "sun_kw", "battery_kw", "car_kw", "heat_kw", "house_kw", "rest_kw"):
+            assert answer[key] == round(answer[key], 2)
+
+
+def test_the_plant_is_all_of_the_sun_only_when_every_solar_source_is_on_its_device(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(domain="sigen")
+    entry.add_to_hass(hass)
+    plant = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, identifiers={("sigen", "plant")})
+    other = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, identifiers={("sigen", "other")})
+    registry = er.async_get(hass)
+    for unique, device in (("battery", plant), ("pv", plant), ("pv2", other)):
+        registry.async_get_or_create("sensor", "sigen", unique, suggested_object_id=f"plant_{unique}", device_id=device.id)
+    prefs = {"energy_sources": [{"type": "solar", "stat_energy_from": "sensor.plant_pv"}]}
+    assert plant_is_all_sun(hass, prefs, "sensor.plant_battery")
+    prefs["energy_sources"].append({"type": "solar", "stat_energy_from": "sensor.plant_pv2"})
+    assert not plant_is_all_sun(hass, prefs, "sensor.plant_battery")
+    assert not plant_is_all_sun(hass, {"energy_sources": []}, "sensor.plant_battery")
+    assert not plant_is_all_sun(hass, prefs, None)
+
+
+def test_a_heat_source_is_read_now_from_its_power_sensor(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.spotnav.site.heat_meter import live_power_id
+
+    entry = MockConfigEntry(domain="mqtt")
+    entry.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    floor = devices.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("mqtt", "floor")})
+    plant = devices.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("mqtt", "plant")})
+    registry = er.async_get(hass)
+    for unique, device, kind in (("floor_energy", floor, "energy"), ("floor_power", floor, "power"),
+                                 ("plant_energy", plant, "energy"), ("plant_pv", plant, "power"),
+                                 ("plant_load", plant, "power")):
+        registry.async_get_or_create("sensor", "mqtt", unique, suggested_object_id=unique, device_id=device.id,
+                                     original_device_class=kind)
+    assert live_power_id(hass, "sensor.meter_w", "power", {}) == "sensor.meter_w"
+    assert live_power_id(hass, "sensor.zone_e", "energy", {"sensor.zone_w": "sensor.zone_e"}) == "sensor.zone_w"
+    # The one power sensor on the energy sensor's device; none told apart among two, and none without a device.
+    assert live_power_id(hass, "sensor.floor_energy", "energy", {}) == "sensor.floor_power"
+    assert live_power_id(hass, "sensor.plant_energy", "energy", {}) is None
+    assert live_power_id(hass, "sensor.nowhere", "energy", {}) is None
+
+
 def test_contract_fixtures() -> None:
+    _fixture("villa_stale_parts.json", house_now(villa(**STALE_PARTS)))
+    _fixture("villa_heat_over.json", house_now(villa(**HEAT_OVER)))
+    _fixture("villa_car_lags.json", house_now(villa(**CAR_LAGS)))
     _fixture("villa_now.json", house_now(villa()))
     _fixture("villa_export.json", house_now(villa(grid_kw=-2.6, sun_kw=4.8, sun_from="recent", battery_kw=1.2, soc_pct=81.0, car_kw=0.0, heat_kw=0.6, car_connected=False)))
     _fixture("villa_car.json", house_now(villa(grid_kw=7.6, sun_kw=0.0, battery_kw=-1.5, car_kw=7.4, heat_kw=0.8)))

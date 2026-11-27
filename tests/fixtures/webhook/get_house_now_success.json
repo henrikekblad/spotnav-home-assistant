@@ -7,6 +7,7 @@
   "car_connected": true,
   "car_kw": null,
   "car_soc_pct": null,
+  "estimated": [],
   "grid_kw": 4.0,
   "has": {
     "battery": false,
@@ -19,6 +20,7 @@
   "house_from": null,
   "house_kw": null,
   "ok": true,
+  "rest_kw": null,
   "site_id": "site_entry_a",
   "soc_pct": null,
   "sun_from": null,

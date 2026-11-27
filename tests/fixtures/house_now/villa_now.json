@@ -6,6 +6,9 @@
   "car_connected": true,
   "car_kw": 0.0,
   "car_soc_pct": 73.0,
+  "estimated": [
+    "heat"
+  ],
   "grid_kw": 0.4,
   "has": {
     "battery": true,
@@ -17,6 +20,7 @@
   "heat_kw": 1.1,
   "house_from": "balance",
   "house_kw": 3.1,
+  "rest_kw": 2.0,
   "site_id": "site",
   "soc_pct": 54.0,
   "sun_from": "power",
