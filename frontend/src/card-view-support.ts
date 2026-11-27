@@ -234,6 +234,13 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
         actions.push(phones);
       }
     }
+    // Last before the sponsor row: the year's review, while the card offers it.
+    const year = input.yearReviewRow?.() ?? null;
+    if (year !== null) {
+      const review = supportAction(doc, "year_review", year.label, () => year.open(null));
+      review.button.dataset["yearReview"] = "open";
+      actions.push(review);
+    }
     return supportSection({ doc, language: L, note, rows, actions });
   }
 

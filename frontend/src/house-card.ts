@@ -49,6 +49,7 @@ import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Langu
 import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
+import { YEAR_REVIEW_STYLES, YearReviewHost } from "./year-review-banner";
 
 export const HOUSE_CARD_TYPE = "spotnav-house-card";
 export const HOUSE_CARD_ELEMENT = "spotnav-house-card";
@@ -181,6 +182,8 @@ export class SpotnavHouseCard extends HTMLElement {
   private loadsPopover: LoadsPopover | null = null;
   private pillProbe: SVGTextElement | null = null;
   private readonly pillWidths = new Map<string, number>();
+  /** The year's review: its band at the top of the card and its row under Settings → Support. */
+  readonly yearReview: YearReviewHost;
 
   constructor() {
     super();
@@ -189,12 +192,24 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES + PLAN_STYLES + NOT_READY_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES + PLAN_STYLES + NOT_READY_STYLES + YEAR_REVIEW_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
     this.layer.className = VISUAL_CLASSES.shell;
     this.root.append(this.styleNode, this.mount, this.layer);
+    this.yearReview = new YearReviewHost({
+      doc,
+      owner: this.layer,
+      background: () => this.mount,
+      idPrefix: this.idPrefix,
+      hass: () => this.hassObject,
+      target: () => this.target(),
+      language: () => this.language ?? resolveLanguage(null),
+      // The house card's Settings is an administrator's: the thanks page says the story stays there only to them.
+      supportReachable: () => this.hassObject?.user?.is_admin === true,
+      onChange: () => this.render(),
+    });
     this.mount.addEventListener("pointerenter", (event) => {
       this.hovering = (event as PointerEvent).pointerType === "mouse";
     });
@@ -217,6 +232,7 @@ export class SpotnavHouseCard extends HTMLElement {
         target: () => this.target(),
         language: () => this.language ?? resolveLanguage(null),
         onChanged: () => void this.refresh(),
+        yearReviewRow: () => this.yearReview.row(),
       });
     }
     return this.settingsPopover;
@@ -323,6 +339,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.live = null;
     this.liveUnsupported = false;
     this.stopLive();
+    this.yearReview.reset();
     this.state = this.target() === null ? { kind: "unconfigured" } : { kind: "loading" };
     this.render();
     this.start();
@@ -368,6 +385,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.historyDialog = null;
     this.loadsPopover?.destroy();
     this.loadsPopover = null;
+    this.yearReview.destroy();
   }
 
   getCardSize(): number {
@@ -447,6 +465,7 @@ export class SpotnavHouseCard extends HTMLElement {
       this.timer = window.setInterval(() => void this.refresh(), HOUSE_REFRESH_MS);
     }
     void this.refresh();
+    void this.yearReview.load();
   }
 
   /** Read the answer once; an older read that comes back after a newer config is dropped. */
@@ -1004,6 +1023,11 @@ export class SpotnavHouseCard extends HTMLElement {
         ...(tabs === undefined ? {} : { tabs }),
       }),
     );
+    // The year's review: its band under the card's header while the answer says so.
+    const banner = this.state.kind === "ready" ? this.yearReview.banner() : null;
+    if (banner !== null) {
+      this.mount.firstElementChild?.firstElementChild?.after(banner);
+    }
     // The tab row's wording by the room it really has: long names, short ones or icons.
     const row = this.mount.querySelector<HTMLElement>("[role='tablist']");
     if (row !== null) {

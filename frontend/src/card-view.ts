@@ -9,6 +9,7 @@
 // max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
 // bar, and the header's History and Settings actions.
 
+import type { YearReviewRow } from "./year-review-banner";
 import { NotificationPhones } from "./notification-phones";
 import { chartNowAt, nextIntervalBoundary, type ChartAxisMode, type ChartMark, type ChartNow } from "./chart";
 import {
@@ -249,6 +250,8 @@ export interface CardViewInput {
    * open.
    */
   onDialogsClosed?: () => void;
+  /** The year's review under Settings → Support while the card offers it (`year-review-banner.ts`). */
+  yearReviewRow?: () => YearReviewRow | null;
   /** The Home Assistant object the entity pickers need, read when an editor opens. */
   hass?: () => unknown;
   /**
@@ -430,6 +433,8 @@ export interface CardView {
   setCardOutdated(outdated: boolean): void;
   /** The line saying SpotNav was updated (`self-heal.ts`), at the top of the card; `null` takes it away. */
   setUpdateNotice(notice: HTMLElement | null): void;
+  /** The year review's band under the header, or none. */
+  setYearBanner(banner: HTMLElement | null): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
   /** Close the value editor after its write took (the card then reads the dashboard and shows Settings). */
@@ -2405,6 +2410,13 @@ export function createCardView(input: CardViewInput): CardView {
     },
     closeSettingsOverview(): void {
       settingsOverviewDialog.hide({ restoreFocus: false });
+    },
+    setYearBanner(banner: HTMLElement | null): void {
+      card.querySelector(":scope > [data-year-banner]")?.remove();
+      if (banner !== null) {
+        header.after(banner);
+      }
+      fit();
     },
     setUpdateNotice(notice: HTMLElement | null): void {
       card.querySelector(":scope > [data-card-updated]")?.remove();

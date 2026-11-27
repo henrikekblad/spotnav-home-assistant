@@ -10,7 +10,7 @@ describe("the year review's commands", () => {
     const hass = new FakeHass();
     void getYearReview(hass, { site: "site_villa" });
     void getYearReview(hass, { charger: "entry_a" });
-    expect(hass.messages).toEqual([
+    expect(hass.yearReviewMessages).toEqual([
       { type: "spotnav/get_year_review", api_version: 1, site_id: "site_villa" },
       { type: "spotnav/get_year_review", api_version: 1, charger_id: "entry_a" },
     ]);
@@ -20,7 +20,7 @@ describe("the year review's commands", () => {
     const hass = new FakeHass();
     void markYearReviewSeen(hass, "site_villa", 2026, "viewed");
     void markYearReviewSeen(hass, "site_villa", 2026, "dismissed");
-    expect(hass.messages).toEqual([
+    expect(hass.yearReviewMessages).toEqual([
       { type: "spotnav/year_review_seen", api_version: 1, site_id: "site_villa", year: 2026, action: "viewed" },
       { type: "spotnav/year_review_seen", api_version: 1, site_id: "site_villa", year: 2026, action: "dismissed" },
     ]);
