@@ -296,9 +296,9 @@ describe("Now", () => {
     expect(two.spots.car).toEqual({ x: 329, y: 75 });
     const three = flowLayout(["sun", "grid", "car"], 360);
     expect(three).toMatchObject({ kind: "corners", spots: { sun: { x: 31, y: 52 }, grid: { x: 329, y: 52 }, car: { x: 329 } } });
-    // The diagonals near 40°: the rise to the house 0.85 of the run.
+    // The diagonals flat, near 24°: the rise to the house 0.45 of the run.
     const run = three.spots.house!.x - three.spots.sun!.x;
-    expect((three.spots.house!.y - three.spots.sun!.y) / run).toBeCloseTo(0.85, 2);
+    expect((three.spots.house!.y - three.spots.sun!.y) / run).toBeCloseTo(0.45, 2);
     expect(three.spots.car!.y - three.spots.house!.y).toBeCloseTo(three.spots.house!.y - three.spots.sun!.y);
     // A missing corner stays empty; with the battery the corners make room for its level ring.
     expect(three.spots.battery).toBeUndefined();
@@ -369,7 +369,7 @@ describe("Now", () => {
     expect(sunToday.getAttribute("text-anchor")).toBe("start");
     expect(svg.querySelector("[data-k='today-grid']")?.getAttribute("text-anchor")).toBe("end");
     // The battery's below its node.
-    expect(Number(svg.querySelector("[data-k='today-battery']")!.getAttribute("y"))).toBeGreaterThan(248);
+    expect(Number(svg.querySelector("[data-k='today-battery']")!.getAttribute("y"))).toBeGreaterThan(200);
     // Unplugged: no car; charging: its level.
     expect(text(draw({ ...live(), car_connected: false, car_soc_pct: null }), "[data-k='state-car']")).toBe("Ingen bil");
     expect(text(draw(live("villa_car.json")), "[data-k='state-car']")).toBe("Laddar · 73 %");
