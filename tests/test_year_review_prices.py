@@ -34,7 +34,13 @@ def _old(name: str) -> dict[str, Any]:
 
 
 def _plain(review: dict[str, Any] | None) -> Any:
-    return json.loads(json.dumps(review))
+    """The review as JSON, without the battery's `saved` (it came after the whole-year path, which had no buys)."""
+    out = json.loads(json.dumps(review))
+    for page in [] if out is None else out["pages"]:
+        if page["id"] == "battery":
+            assert "saved" in page and "saved_since" in page
+            del page["saved"], page["saved_since"]
+    return out
 
 
 @pytest.mark.parametrize("name", sorted(variants()))
@@ -63,10 +69,11 @@ def test_a_part_read_back_from_the_store_is_the_same_part_and_small() -> None:
     # The spring clock change: 23 hours, 92 quarters, one run.
     spring = days[date(2026, 3, 29)]
     assert spring.runs == ((0, 900, 92),) and spring.covered_s == 23 * 3600 and len(spring.sells) == 23
+    assert spring.buys is not None and len(spring.buys) == 23
     for day, price in days.items():
         stored = json.loads(json.dumps(DayParts(price=price).as_dict()))
         assert DayParts.from_dict(stored) == DayParts(price=price), day
-        assert len(json.dumps(stored)) < 400
+        assert len(json.dumps(stored)) < 700
     assert DayParts.from_dict({"price": {}}) == DayParts(price=PriceDay())
     assert DayParts.from_dict({"price": {"r": "x"}}) == DayParts()
     assert DayParts.from_dict({"price": {"r": [[0, 900, 0]]}}) == DayParts()

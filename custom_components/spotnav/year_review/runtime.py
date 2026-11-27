@@ -8,11 +8,13 @@ January. Once at start-up, `STARTUP_DELAY_S` after the site started: inside that
 none of the year, else the price parts only. And on `spotnav.show_year_review` (`async_show`). Never on a read: the
 cards and the service read the kept review (`answer`).
 
-**The price parts** (`compute.PriceDay`, about 300 bytes a day): each finished local day's prices as the review reads
+**The price parts** (`compute.PriceDay`, about 500 bytes a day): each finished local day's prices as the review reads
 them, worked out from the held day documents with that day's fees (`pricing/period_prices.period_price_slots` over a
 few days, on the loop: it reads the price source and the held documents, no I/O) and kept in the store, so the year's
 slots are never read at once. A day without a part is worked out once, `PRICE_DAYS` back (the longest price history
-held); a day whose part covers less than the whole day again while it is `PRICE_RETRY_DAYS` recent. At most
+held); a day whose part covers less than the whole day again while it is `PRICE_RETRY_DAYS` recent; a part kept
+before it had the hourly buy prices (`PriceDay.buys` `None`) once more, and where the day's prices are no longer held
+it is kept as it was, marked looked at (`buys` `()`), so it is not read again. At most
 `PRICE_BATCH` days in one loop turn, yielding between: the first run after the feature arrives fills up to a year of
 days (Nord Pool's 55 days, ENTSO-E's or the relay's up to 365) in about fifty short turns, every later night one day.
 Nothing is written while yesterday has no price held (the prices not settled after a start, or no price source): a
@@ -265,9 +267,14 @@ class SiteYearReview:
             for day in batch:
                 price = found.get(day, PriceDay())
                 held = self.store.day_parts.get(day)
+                held_price = None if held is None else held.price
                 # A part worked out again never covers less than the one held.
-                if held is None or held.price is None or price.covered_s > held.price.covered_s:
+                if held_price is None or price.covered_s > held_price.covered_s:
                     parts[day] = DayParts(price=price)
+                elif held_price.buys is None:
+                    # Kept before the buys were: the new part where it covers as much, else the old one looked at.
+                    fresh = price if price.runs and price.covered_s >= held_price.covered_s else None
+                    parts[day] = DayParts(price=fresh or replace(held_price, buys=()))
             self.store.merge_parts(parts, today)
             await asyncio.sleep(0)
 
@@ -287,7 +294,7 @@ class SiteYearReview:
         """A day without a price part, or a recent one whose part covers less than the whole day."""
         held = self.store.day_parts.get(day)
         price = None if held is None else held.price
-        if price is None:
+        if price is None or price.buys is None:
             return True
         if (today - day).days > PRICE_RETRY_DAYS:
             return False

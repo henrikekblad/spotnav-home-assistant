@@ -17,7 +17,8 @@ and the review (`compute_review`), money in the area's minor unit (öre), dates 
              {id: "saved", total, battery, car, heat, estimated, starts: {battery, car, heat}},
              {id: "car", cheap_share_pct, charges, kwh, cheapest: {price, date} | null, estimated, since},
              {id: "sun", kwh, home_pct, export_paid, since},
-             {id: "battery", earned, earned_since, cycles, buy_price, use_price, kwh_in, kwh_out},
+             {id: "battery", earned, earned_since, saved, saved_since, cycles, buy_price, use_price, kwh_in,
+              kwh_out},
              {id: "fuse", count, since},
              {id: "expensive", price, start, bought_kwh, since},
              {id: "thanks"}]}
@@ -48,8 +49,12 @@ on. Each page's rule:
 * **battery**: the Energy dashboard's battery meters over the year (`kwh_in`, `kwh_out`, `cycles` = out over the
   battery's capacity); the money (`earned`, the arbitrage the house card's headline shows, `battery/stored_value.py`;
   `buy_price` and `use_price`, what a charged kWh cost and a given one was worth) only from `MIN_BATTERY_DAYS` days of
-  SpotNav's own count on, `earned_since` its first day where after 7 January. Left out without a battery meter and
-  without a counted day.
+  SpotNav's own count on, `earned_since` its first day where after 7 January. `saved` what the battery saved whoever
+  controlled it (an inverter's own optimiser too), from the meters' hours and the held hourly prices
+  (`battery_saved`): each priced hour's discharge at its buy price, less its charge, the part the grid's import
+  covers (`min(battery_in, grid_in)`) at the buy price and the rest (the sun's) at the sell price it gave up; `null`
+  under `MIN_BATTERY_DAYS` priced days with the battery's hours or under one major unit, `saved_since` the first
+  priced day where after 7 January. Left out without a battery meter and without a counted day.
 * **fuse**: the overload episodes the regulator lowered a charge for (counted once per episode since the counter
   started, `site/overload_episodes.py`). Left out under `MIN_FUSE_DAYS` counted days or `MIN_FUSE_COUNT` episodes.
 * **expensive**: the clock hour with the highest mean buy price (spot with that day's fees) among the held prices
@@ -82,7 +87,9 @@ PAGE_KEYS: Final[dict[str, tuple[str, ...]]] = {
     "saved": ("id", "total", "battery", "car", "heat", "estimated", "starts"),
     "car": ("id", "cheap_share_pct", "charges", "kwh", "cheapest", "estimated", "since"),
     "sun": ("id", "kwh", "home_pct", "export_paid", "since"),
-    "battery": ("id", "earned", "earned_since", "cycles", "buy_price", "use_price", "kwh_in", "kwh_out"),
+    "battery": (
+        "id", "earned", "earned_since", "saved", "saved_since", "cycles", "buy_price", "use_price", "kwh_in", "kwh_out"
+    ),
     "fuse": ("id", "count", "since"),
     "expensive": ("id", "price", "start", "bought_kwh", "since"),
     "thanks": ("id",),
@@ -110,7 +117,7 @@ MIN_PRICE_DAYS: Final = 28
 FULL_PRICE_DAYS: Final = 300
 #: A clock hour counts for the most expensive one when its slots cover this much of it (seconds).
 _HOUR_COVERED_S: Final = 3540.0
-#: The decimals a clock hour's mean sell price is kept to in the year store (minor per kWh).
+#: The decimals a clock hour's mean sell and buy prices are kept to in the year store (minor per kWh).
 SELL_DIGITS: Final = 3
 
 
@@ -159,6 +166,9 @@ class PriceDay:
     * `sells`: each local clock hour's mean sell price from the day's first hour (minor per kWh, `SELL_DIGITS`
       decimals: only whether the year's export earned anything is shown), `None` for an hour without a slot. The sun
       page's `export_paid`.
+    * `buys`: each local clock hour's mean buy price the same way. The battery page's `saved`. `None` for a part
+      kept before the buys were (stored without `b`): it is worked out again while its day's prices are held
+      (`runtime`), and set to `()` where they no longer are.
     * `top`: the day's most expensive clock hour that the slots cover (`_HOUR_COVERED_S`), `(hour from the day's
       first, mean buy price)`, `None` without one. The expensive hour, and the days counted priced.
 
@@ -168,6 +178,7 @@ class PriceDay:
     cheap: int = 0
     sells: tuple[float | None, ...] = ()
     top: tuple[int, float] | None = None
+    buys: tuple[float | None, ...] | None = ()
 
     @property
     def covered_s(self) -> int:
@@ -189,6 +200,11 @@ class PriceDay:
         midnight = _midnight(day, zone)
         return {midnight + timedelta(hours=index): sell for index, sell in enumerate(self.sells) if sell is not None}
 
+    def hour_buys(self, day: date, zone: tzinfo) -> dict[datetime, float]:
+        """Each clock hour's mean buy price, by its UTC start (none for a part kept without them)."""
+        midnight = _midnight(day, zone)
+        return {midnight + timedelta(hours=index): buy for index, buy in enumerate(self.buys or ()) if buy is not None}
+
     def top_hour(self, day: date, zone: tzinfo) -> tuple[datetime, float] | None:
         """The day's most expensive covered clock hour (its UTC start) and its mean buy price."""
         if self.top is None:
@@ -196,8 +212,8 @@ class PriceDay:
         return _midnight(day, zone) + timedelta(hours=self.top[0]), self.top[1]
 
     def as_dict(self) -> dict[str, Any]:
-        """`{r: [[offset, seconds, count], ...], c: cheap bits in hex, s: [sell | null, ...], t: [hour, buy]}`, `{}`
-        for a day without a slot."""
+        """`{r: [[offset, seconds, count], ...], c: cheap bits in hex, s: [sell | null, ...], b: [buy | null, ...],
+        t: [hour, buy]}`, `{}` for a day without a slot (`b` left out of a part kept before the buys were)."""
         if not self.runs:
             return {}
         out: dict[str, Any] = {
@@ -205,6 +221,8 @@ class PriceDay:
             "c": format(self.cheap, "x"),
             "s": list(self.sells),
         }
+        if self.buys is not None:
+            out["b"] = list(self.buys)
         if self.top is not None:
             out["t"] = [self.top[0], self.top[1]]
         return out
@@ -220,17 +238,19 @@ class PriceDay:
             runs = tuple((int(run[0]), int(run[1]), int(run[2])) for run in raw["r"] if len(run) == 3)
             cheap = int(raw.get("c") or "0", 16)
             sells = tuple(None if sell is None else float(sell) for sell in raw.get("s") or ())
+            buys_raw = raw.get("b")
+            buys = None if buys_raw is None else tuple(None if buy is None else float(buy) for buy in buys_raw)
             top_raw = raw.get("t")
             top = None if top_raw is None else (int(top_raw[0]), float(top_raw[1]))
         except KeyError, TypeError, ValueError, IndexError:
             return None
         if not runs or any(count <= 0 for _offset, _seconds, count in runs) or cheap < 0:
             return None
-        if any(sell is not None and not math.isfinite(sell) for sell in sells):
+        if any(price is not None and not math.isfinite(price) for price in (*sells, *(buys or ()))):
             return None
         if top is not None and not math.isfinite(top[1]):
             return None
-        return cls(runs=runs, cheap=cheap, sells=sells, top=top)
+        return cls(runs=runs, cheap=cheap, sells=sells, top=top, buys=buys)
 
 
 def price_day_of(day: date, slots: Sequence[PriceSlot], zone: tzinfo) -> PriceDay:
@@ -251,16 +271,15 @@ def price_day_of(day: date, slots: Sequence[PriceSlot], zone: tzinfo) -> PriceDa
     cheap = cheap_slots(ordered, zone)
     bits = sum(1 << index for index, slot in enumerate(ordered) if slot.start in cheap)
     hours = {round((hour - midnight).total_seconds() / 3600): row for hour, row in _hour_prices(ordered, zone).items()}
-    sells = tuple(
-        None if index not in hours else round(hours[index][2], SELL_DIGITS)
-        for index in range(max(hours) + 1 if hours else 0)
-    )
+    count = max(hours) + 1 if hours else 0
+    sells = tuple(None if index not in hours else round(hours[index][2], SELL_DIGITS) for index in range(count))
+    buys = tuple(None if index not in hours else round(hours[index][1], SELL_DIGITS) for index in range(count))
     held = {index: row for index, row in hours.items() if row[0] >= _HOUR_COVERED_S}
     top = None
     if held:
         index = max(held, key=lambda index: (held[index][1], -index))
         top = (index, held[index][1])
-    return PriceDay(runs=tuple((run[0], run[1], run[2]) for run in runs), cheap=bits, sells=sells, top=top)
+    return PriceDay(runs=tuple((run[0], run[1], run[2]) for run in runs), cheap=bits, sells=sells, top=top, buys=buys)
 
 
 def price_days_of(slots: Iterable[PriceSlot], zone: tzinfo) -> dict[date, PriceDay]:
@@ -433,7 +452,7 @@ def compute_review(inputs: YearInputs) -> dict[str, Any] | None:
         saved_page(inputs, first, through),
         car_page(inputs, first, through, prices, zone),
         sun_page(inputs, hours, prices, zone),
-        battery_page(inputs, hours, first, through),
+        battery_page(inputs, hours, first, through, prices, zone),
         fuse_page(inputs, first, through),
         expensive_page(inputs, hours, prices, zone),
         {"id": "thanks"},
@@ -624,8 +643,42 @@ def sun_page(
     }
 
 
+def battery_saved(
+    hours: Sequence[EnergyHour], prices: Mapping[date, PriceDay], zone: tzinfo
+) -> tuple[float, set[date]]:
+    """What the battery saved over the hours whatever controlled it (minor units), and the local days of the priced
+    hours with a battery reading: each whole priced hour's discharge at its mean buy price, less its charge, the part
+    the grid's import covers (`min(battery_in, grid_in)`) at the buy price and the rest at the sell price (the export
+    the sun's energy gave up)."""
+    buys: dict[datetime, float] = {}
+    sells: dict[datetime, float] = {}
+    for day, price in prices.items():
+        buys.update(price.hour_buys(day, zone))
+        sells.update(price.hour_sells(day, zone))
+    total = 0.0
+    days: set[date] = set()
+    for hour in hours:
+        if hour.minutes != 60 or (hour.battery_in is None and hour.battery_out is None):
+            continue
+        buy = buys.get(hour.start)
+        sell = sells.get(hour.start)
+        if buy is None or sell is None:
+            continue
+        charged = max(0.0, hour.battery_in or 0.0)
+        given = max(0.0, hour.battery_out or 0.0)
+        from_grid = min(charged, max(0.0, hour.grid_in))
+        total += given * buy - from_grid * buy - (charged - from_grid) * sell
+        days.add(hour.start.astimezone(zone).date())
+    return total, days
+
+
 def battery_page(
-    inputs: YearInputs, hours: Sequence[EnergyHour], first: date, through: date
+    inputs: YearInputs,
+    hours: Sequence[EnergyHour],
+    first: date,
+    through: date,
+    prices: Mapping[date, PriceDay] | None = None,
+    zone: tzinfo | None = None,
 ) -> dict[str, Any] | None:
     kwh_in = kwh_out = None
     if inputs.has_battery:
@@ -652,6 +705,12 @@ def battery_page(
             worth += flow.worth
         buy = cost / charged if charged > 0 else None
         use = worth / discharged if discharged > 0 else None
+    saved = saved_since = None
+    if inputs.has_battery and prices and zone is not None:
+        value, priced_days = battery_saved(hours, prices, zone)
+        if len(priced_days) >= MIN_BATTERY_DAYS and value >= MINOR_PER_MAJOR:
+            saved = value
+            saved_since = _later_than_full(min(priced_days), inputs.year)
     cycles = None
     if kwh_out is not None and inputs.capacity_kwh and inputs.capacity_kwh > 0:
         cycles = kwh_out / inputs.capacity_kwh
@@ -659,6 +718,8 @@ def battery_page(
         "id": "battery",
         "earned": _r(earned),
         "earned_since": _iso(earned_since),
+        "saved": _r(saved),
+        "saved_since": _iso(saved_since),
         "cycles": _r(cycles),
         "buy_price": _r(buy, 1),
         "use_price": _r(use, 1),

@@ -286,6 +286,16 @@ def sun_battery_site() -> YearInputs:
     )
 
 
+def inverter_battery_site() -> YearInputs:
+    """The year-old villa whose battery the inverter's own optimiser runs: SpotNav counts no battery day of its own."""
+    inputs = full_site()
+    savings = savings_from(UPGRADE, TODAY, battery=False, car=True, heat_from=None)
+    parts = day_parts_of(savings, estimate_days(inputs.sessions, ZONE))
+    return replace(
+        inputs, battery_days={}, fuse_since=None, day_parts=with_prices(parts, price_slots(YEAR_START, TODAY))
+    )
+
+
 def nord_pool_site() -> YearInputs:
     """A year-old site whose provider keeps 55 days of prices."""
     return priced(full_site(), price_slots(TODAY - timedelta(days=55), TODAY))
@@ -446,6 +456,34 @@ def test_the_battery_s_kronor_wait_for_two_weeks_of_its_own_count() -> None:
     assert battery["kwh_in"] is not None and battery["cycles"] is not None
 
 
+def test_a_battery_spotnav_does_not_control_says_what_it_saved_at_each_hour_s_price() -> None:
+    battery = pages_of(compute_review(inverter_battery_site()))["battery"]
+    assert battery["earned"] is None and battery["buy_price"] is None
+    # Each day: 3 kWh given back at 250 öre, 2 × 1.5 kWh charged: 1 kWh from the grid at 50, 0.5 kWh of its own at
+    # the 25 öre sell price; 348 days (the spring hour lost and the autumn one gained cancel).
+    assert battery["saved"] == 348 * (3 * 250.0 - 2 * (1.0 * 50.0 + 0.5 * 25.0))
+    assert battery["saved_since"] is None
+    assert battery["kwh_out"] == 1044 and battery["cycles"] == 104
+
+
+def test_the_battery_s_saving_needs_two_weeks_of_priced_hours_and_a_krona() -> None:
+    inputs = inverter_battery_site()
+    few = priced(inputs, price_slots(TODAY - timedelta(days=13), TODAY))
+    assert pages_of(compute_review(few))["battery"]["saved"] is None
+    weeks = pages_of(compute_review(priced(inputs, price_slots(TODAY - timedelta(days=14), TODAY))))["battery"]
+    assert weeks["saved"] == 14 * 625.0 and weeks["saved_since"] == "2026-12-01"
+    # A battery that lost money says no saving (its kWh still told).
+    flat = priced(inputs, price_slots(YEAR_START, TODAY, sell=1000.0))
+    lost = pages_of(compute_review(flat))["battery"]
+    assert lost["saved"] is None and lost["kwh_out"] == 1044
+    without_buys = {
+        day: replace(parts, price=replace(parts.price, buys=()))
+        for day, parts in inputs.day_parts.items()
+        if parts.price is not None
+    }
+    assert pages_of(compute_review(replace(inputs, day_parts=without_buys)))["battery"]["saved"] is None
+
+
 def test_without_an_export_meter_the_sun_s_home_share_is_not_guessed() -> None:
     inputs = replace(sun_battery_site(), has_export=False)
     sun = pages_of(compute_review(inputs))["sun"]
@@ -529,6 +567,7 @@ def _answer(review: dict[str, Any] | None, *, state: str = STATE_READY) -> dict[
         ("car_only.json", car_only_site),
         ("sun_battery_no_car.json", sun_battery_site),
         ("nord_pool_55_days.json", nord_pool_site),
+        ("inverter_battery.json", inverter_battery_site),
     ],
 )
 def test_the_contract_fixtures_are_the_backend_s_answers(name: str, inputs: Any) -> None:

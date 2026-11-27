@@ -10,7 +10,7 @@
   the car's day-average estimate before 3.0, merged in every night (`merge_parts`), so a part whose source keeps
   fewer days (the heat's review 35 days) is still there at the year's end; a merge never takes a day or a part away.
   Trimmed to `KEPT_DAYS` back. Each day's `fuse` is the overload episodes counted that day (`add_fuse`), from
-  `fuse_since`, the day the counter started on this site. Each day's `price` (`compute.PriceDay`, about 300 bytes
+  `fuse_since`, the day the counter started on this site. Each day's `price` (`compute.PriceDay`, about 500 bytes
   for a day of quarters) is what the review reads of that day's prices, worked out once the day is over with that
   day's fees (`runtime.SiteYearReview._async_merge_prices`).
 * **Each person's seen state** (`users`, by Home Assistant user id): whether they opened the review of `year`
