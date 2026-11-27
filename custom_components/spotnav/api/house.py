@@ -501,10 +501,10 @@ class HeatPart:
     estimated: Mapping[datetime, float] = field(default_factory=dict)
 
 
-def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSources) -> list[HeatPart]:
-    """The pool's heat pump and circulation, the spa and the sauna as parts of heat: those set up with energy counted,
-    less a part whose device the heat pump's meter, a zone's climate or a zone's sensor (a meter moved to heat) is on,
-    which already counts it (counted once)."""
+def heat_part_ids(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSources) -> list[tuple[str, str]]:
+    """The pool's heat pump and circulation, the spa and the sauna set up, as `(part, entity_id)`, less a part whose
+    device the heat pump's meter, a zone's climate or a zone's sensor (a meter moved to heat) is on, which already
+    counts it (counted once)."""
     from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
 
     shadow = getattr(controller, "pool_spa", None)
@@ -539,10 +539,17 @@ def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSour
             *controller.house_forecast.heat.zone_climates(),
         )
     } - {None}
+    return [(part, entity_id) for part, entity_id in found if device(entity_id) not in covered]
+
+
+def heat_parts(hass: HomeAssistant, controller: Any, meter: Any, zones: ZoneSources) -> list[HeatPart]:
+    """The pool's heat pump and circulation, the spa and the sauna as parts of heat: those set up with energy counted,
+    each counted once (`heat_part_ids`)."""
+    shadow = getattr(controller, "pool_spa", None)
+    if shadow is None:
+        return []
     out: list[HeatPart] = []
-    for part, entity_id in found:
-        if device(entity_id) in covered:
-            continue
+    for part, entity_id in heat_part_ids(hass, controller, meter, zones):
         quarters = shadow.energy_quarters(part)
         if not quarters:
             continue

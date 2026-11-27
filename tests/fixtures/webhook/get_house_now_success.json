@@ -13,6 +13,7 @@
     "battery": false,
     "car": true,
     "heat": false,
+    "pool": false,
     "sun": false
   },
   "heat_from": null,
@@ -20,6 +21,8 @@
   "house_from": null,
   "house_kw": null,
   "ok": true,
+  "other_kw": null,
+  "pool_kw": null,
   "rest_kw": null,
   "site_id": "site_entry_a",
   "soc_pct": null,

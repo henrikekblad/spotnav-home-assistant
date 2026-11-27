@@ -75,7 +75,7 @@ def test_the_house_is_the_balance_of_the_readings() -> None:
     assert tuple(answer) == NOW_KEYS
     # 0.4 from the grid, 1.2 from the sun, 1.5 from the battery, nothing to the car.
     assert answer["house_kw"] == pytest.approx(3.1)
-    assert answer["has"] == {"sun": True, "battery": True, "car": True, "heat": True}
+    assert answer["has"] == {"sun": True, "battery": True, "car": True, "heat": True, "pool": False}
     # Charging the car and the battery from an import: what is left is the house.
     assert house_now(villa(grid_kw=9.0, battery_kw=3.0, car_kw=4.0, sun_kw=0.0))["house_kw"] == pytest.approx(2.0)
     # Meters read at different moments may cross below zero: never a negative house, and the lines still meet.
@@ -176,7 +176,7 @@ async def test_the_pilot_site_is_answered_and_refused(hass: HomeAssistant, freez
     assert answer["success"], answer
     result = answer["result"]
     assert tuple(result) == NOW_KEYS and result["site_id"] == site.entry_id
-    assert result["has"] == {"sun": False, "battery": False, "car": True, "heat": False}
+    assert result["has"] == {"sun": False, "battery": False, "car": True, "heat": False, "pool": False}
     assert result["sun_kw"] is None and result["battery_kw"] is None
     assert result["car_connected"] in (True, False, None)
     assert (await ask(hass, 2, api_version=1, site_id=site.entry_id))["result"]["site_id"] == site.entry_id
@@ -222,6 +222,53 @@ def test_the_last_period_parts_are_marked_and_the_heat_is_drawn_beside_the_rest(
     _meets(answer)
     # Read now: nothing marked.
     assert house_now(villa(**{**STALE_PARTS, "sun_from": "power", "heat_from": "power"}))["estimated"] == []
+
+
+POOL = dict(grid_kw=-3.1, sun_kw=7.8, battery_kw=2.4, car_kw=0.0, heat_kw=0.9, heat_from="power", car_connected=False,
+            pool_kw=0.9, has_pool=True, pool_estimated=True)
+
+
+def test_the_pool_is_a_part_of_the_house_beside_the_heat_and_the_rest_is_other() -> None:
+    answer = house_now(villa(**POOL))
+    assert (answer["house_kw"], answer["heat_kw"], answer["pool_kw"], answer["other_kw"]) == (2.3, 0.9, 0.9, 0.5)
+    # The rest beside the heat keeps its meaning (the pool in it); the ring's parts add up to the house.
+    assert answer["rest_kw"] == 1.4 and answer["has"]["pool"] is True
+    assert answer["heat_kw"] + answer["pool_kw"] + answer["other_kw"] == pytest.approx(answer["house_kw"])
+    assert answer["estimated"] == ["pool"]
+    _meets(answer)
+    # Measured by its own sensor: not marked; nothing drawn: not marked either.
+    assert house_now(villa(**{**POOL, "pool_estimated": False}))["estimated"] == []
+    assert house_now(villa(**{**POOL, "pool_kw": 0.0}))["estimated"] == []
+    # Larger than what the heat leaves of the house: cut to it, and marked.
+    over = house_now(villa(**{**POOL, "pool_kw": 3.0, "pool_estimated": False}))
+    assert (over["pool_kw"], over["other_kw"], over["estimated"]) == (1.4, 0.0, ["pool"])
+    # Without a pool: none, and the other is the rest; unread: no house, no other.
+    plain = house_now(villa())
+    assert (plain["pool_kw"], plain["other_kw"], plain["has"]["pool"]) == (None, plain["rest_kw"], False)
+    assert house_now(villa(**{**POOL, "grid_kw": None}))["other_kw"] is None
+
+
+def test_the_pool_draw_is_read_from_the_parts_the_heat_does_not_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    import custom_components.spotnav.api.house_now as module
+
+    draws = {"pool_heat": (1.2, False), "pool_circulation": (0.3, True), "spa": (2.0, False)}
+    controller = SimpleNamespace(pool_spa=SimpleNamespace(live_draws=lambda: draws))
+    # The spa is on the heat meter's device: counted there, not here.
+    monkeypatch.setattr(module, "heat_part_ids", lambda *_a: [("pool_heat", "switch.pool"), ("pool_circulation", "switch.circ")])
+    assert module.pool_draw(None, controller, None, None) == (True, pytest.approx(1.5), True)
+    monkeypatch.setattr(module, "heat_part_ids", lambda *_a: [("pool_circulation", "switch.circ")])
+    assert module.pool_draw(None, controller, None, None) == (True, pytest.approx(0.3), False)
+    monkeypatch.setattr(module, "heat_part_ids", lambda *_a: [])
+    assert module.pool_draw(None, controller, None, None) == (False, None, False)
+    assert module.pool_draw(None, SimpleNamespace(pool_spa=None), None, None) == (False, None, False)
+
+    def broken(*_a: Any) -> Any:
+        raise RuntimeError("no registry")
+
+    monkeypatch.setattr(module, "heat_part_ids", broken)
+    assert module.pool_draw(None, controller, None, None) == (False, None, False)
 
 
 def test_a_heat_larger_than_the_house_is_cut_to_it_and_marked() -> None:
@@ -412,6 +459,7 @@ def test_contract_fixtures() -> None:
     _fixture("villa_heat_over.json", house_now(villa(**HEAT_OVER)))
     _fixture("villa_car_lags.json", house_now(villa(**CAR_LAGS)))
     _fixture("villa_now.json", house_now(villa()))
+    _fixture("villa_pool.json", house_now(villa(**POOL)))
     _fixture("villa_export.json", house_now(villa(grid_kw=-2.6, sun_kw=4.8, sun_from="recent", battery_kw=1.2, soc_pct=81.0, car_kw=0.0, heat_kw=0.6, car_connected=False)))
     _fixture("villa_car.json", house_now(villa(grid_kw=7.6, sun_kw=0.0, battery_kw=-1.5, car_kw=7.4, heat_kw=0.8)))
     _fixture(

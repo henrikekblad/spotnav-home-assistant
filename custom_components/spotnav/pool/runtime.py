@@ -697,6 +697,11 @@ class PoolSpaShadow:
                 put(kind, self._measured_kw(kind), (block.heater_kw or DEFAULT_KW[kind]) if part.reading.heating else 0.0)
         return out
 
+    def live_draws(self) -> dict[str, tuple[float, bool]]:
+        """What each part draws now (kW) and whether it is measured (`_draws`), for the house card's live flows
+        (`api/house_now.py`)."""
+        return self._draws(self.config())
+
     def _account_energy(self, now: datetime, config: HeatConfig) -> None:
         """Count each part's energy since the last look into its UTC quarter hours (a gap over `MAX_GAP` is not
         counted), and forget the quarters (and the hours of before) older than `DAYS_KEPT` days."""
