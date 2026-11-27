@@ -557,17 +557,17 @@ export function flowLayout(roles: NodeRole[], width: number): FlowLayout {
     });
     return { kind: "row", width, k, height: 150 * k, spots };
   }
-  // The corners' rise to the house about 0.85 of their run, so the diagonals stay near 40°, never less than the
-  // approved drawing's.
+  // The corners' rise to the house about 0.45 of their run, so the diagonals stay flat (near 24°) and the drawing
+  // low, never less than 60 px (scaled) so the nodes and their captions keep clear of each other and the ring.
   const top = 52 * k;
-  const rise = Math.max(98 * k, 0.85 * (width / 2 - side));
+  const rise = Math.max(60 * k, 0.45 * (width / 2 - side));
   const bottom = top + 2 * rise;
   const corners: Record<NodeRole, Spot> = { sun: { x: side, y: top }, grid: { x: width - side, y: top }, battery: { x: side, y: bottom }, car: { x: width - side, y: bottom } };
   const spots: FlowLayout["spots"] = { house: { x: width / 2, y: top + rise } };
   for (const role of outer) {
     spots[role] = corners[role];
   }
-  return { kind: "corners", width, k, height: bottom + top, spots };
+  return { kind: "corners", width, k, height: bottom + 36 * k, spots };
 }
 
 /** The room (px) between a corner node's drawing and the drawing's edge. */
