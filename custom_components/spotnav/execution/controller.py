@@ -1125,6 +1125,9 @@ class ChargingController:
         # When (monotonic s) the charger was last read not drawing, by what only measures
         # (`solar_execution._held_idle_draw`): a dropout of its entities soon after still counts as nothing.
         self.idle_seen_at: float | None = None
+        # The site's net grid power (W) when that dropout was first read (`_held_idle_draw`): a jump in the import
+        # since ends the hold early (the charger may be charging on its own while it is away).
+        self.idle_unread_grid_w: float | None = None
         # Who asked for the Start that was last accepted and when, for the charge session record.
         self._start_cause: tuple[str, datetime] | None = None
         #: A session start found its current's target unavailable (a number that exists only while

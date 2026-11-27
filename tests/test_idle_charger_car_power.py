@@ -18,7 +18,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.const import CONF_MEASURED_CURRENT_SOURCE, CONF_MODE, MEASUREMENT_MODE_DERIVED, MODE_OCPP
 from custom_components.spotnav.execution import solar_execution
-from custom_components.spotnav.execution.solar_execution import IDLE_UNREAD_HOLD_S, site_car_w
+from custom_components.spotnav.execution.solar_execution import IDLE_UNREAD_HOLD_S, IDLE_UNREAD_JUMP_W, site_car_w
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.site.demand_tracker import HourTracker
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
@@ -217,3 +217,30 @@ async def test_an_idle_charger_away_longer_than_the_hold_is_unknown(hass: HomeAs
 
     monkeypatch.setattr(solar_execution.time, "monotonic", lambda: seen + IDLE_UNREAD_HOLD_S + 1.0)
     assert site_car_w(hass, site, idle_unread_as_zero=True) is None
+
+
+async def test_an_idle_charger_away_is_unknown_once_the_grid_import_jumps(hass: HomeAssistant) -> None:
+    """Away from Home Assistant a charger may start a car on its own: an import risen by more than a car on one phase
+    since it went away ends the hold, and it stays unknown until it is read again."""
+    charger, site = await _world(hass, status="Available")
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    hass.states.async_set(STATUS, "unavailable")
+    hass.states.async_set(CURRENT, "unavailable")
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    assert charger.idle_unread_grid_w == pytest.approx(3 * SITE_W)
+    # A house load a little below the jump: still nothing.
+    set_derived_site_entities(hass, "my_home", SITE_W + (IDLE_UNREAD_JUMP_W - 100.0) / 3)
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    # Above it: unknown, and still so once the import falls back.
+    set_derived_site_entities(hass, "my_home", SITE_W + (IDLE_UNREAD_JUMP_W + 100.0) / 3)
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
+    set_derived_site_entities(hass, "my_home", SITE_W)
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
+    # Read idle again: the hold starts afresh.
+    hass.states.async_set(STATUS, "Available")
+    _current(hass, 0.0)
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
+    assert charger.idle_unread_grid_w is None
