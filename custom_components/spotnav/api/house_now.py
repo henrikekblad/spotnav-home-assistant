@@ -4,8 +4,10 @@
 `site/house_now.py:house_now` (its docstring has the shape), from what the site already reads every recompute: the
 net grid power and the chargers' draw as solar reads them (`execution/solar_execution.py`), the battery's facts
 (`battery/facts.py`: its power and whether it is read on the DC side) with the inverter's
-loss the battery plan knows (`battery/conversion_loss.py`), the Energy dashboard's solar power sensors (`stat_rate`) and the heat pump's meter where it is a
-power sensor. Without a power sensor the sun and the heat take the last period of today's energy flow (cached per
+loss the battery plan knows (`battery/conversion_loss.py`), the battery's power read now, the Energy dashboard's solar
+power sensors (`stat_rate`) or else the battery plant's own PV power where the plant is all of the sun
+(`plant_is_all_sun`), and the heat meter's and the heat zones' power sensors (`SiteHeatMeter.live_power_ids`). Without
+a power sensor the sun and the heat take the last period of today's energy flow (cached per
 5-minute row, `api/house.py:async_cached_day_flow`), so the card polls this every 30 s cheaply.
 
 Refusals as `spotnav/get_house`'s (without `spotnav_invalid_date`).
@@ -27,7 +29,6 @@ from homeassistant.core import HomeAssistant, callback
 from ..const import CONF_CHARGER_ENTRY_IDS
 from ..runtime import site_controller_for
 from ..site.energy_statistics import async_energy_prefs
-from ..site.heat_meter import KIND_POWER
 from ..site.house_now import FROM_POWER, FROM_RECENT, HOUSE_NOW_API_VERSION, HouseNowInputs, house_now, recent_kw
 from .common import send_unsupported_version
 from .house import async_cached_day_flow, battery_loss
@@ -67,6 +68,26 @@ def solar_power_ids(prefs: Any) -> tuple[str, ...]:
             rate = source.get("stat_rate")
             ids.append(rate if isinstance(rate, str) and rate else None)
     return tuple(i for i in ids if i) if ids and all(ids) else ()
+
+
+def plant_is_all_sun(hass: HomeAssistant, prefs: Any, battery_entity_id: str | None) -> bool:
+    """Whether the battery plant's own PV power is all of the sun: every solar source's energy statistic is on the
+    battery's device (a Sigenergy plant counts its PV with its battery), so no other inverter's sun is left out."""
+    sources = prefs.get("energy_sources") if isinstance(prefs, Mapping) else None
+    stats = [
+        source.get("stat_energy_from")
+        for source in (sources if isinstance(sources, list) else [])
+        if isinstance(source, Mapping) and source.get("type") == "solar"
+    ]
+    if not stats or not battery_entity_id or not all(isinstance(stat, str) and stat for stat in stats):
+        return False
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415 - kept beside its only use
+
+    registry = er.async_get(hass)
+    battery = registry.async_get(battery_entity_id)
+    if battery is None or battery.device_id is None:
+        return False
+    return all((entry := registry.async_get(stat)) is not None and entry.device_id == battery.device_id for stat in stats)
 
 
 def summed_kw(hass: HomeAssistant, entity_ids: Sequence[str]) -> float | None:
@@ -127,6 +148,12 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     plugged, car_soc = car_plugged(hass, chargers)
     facts = controller.battery_shadow.facts
     has_battery = facts.battery_entity_id is not None
+    battery_kw = facts.power_kw if has_battery else None
+    if has_battery:
+        # Read now, as the grid is, rather than at the battery's last look (every 10 s).
+        reading = controller.battery_aggregate_power()
+        if reading is not None and reading.value is not None:
+            battery_kw = reading.value / 1000.0
     prefs = await async_energy_prefs(hass)
     solar_sources = [
         source
@@ -141,8 +168,16 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     if has_sun and (power_ids := solar_power_ids(prefs)):
         sun_kw = summed_kw(hass, power_ids)
         sun_from = None if sun_kw is None else FROM_POWER
-    if has_heat and meter.found and not zones.sources and meter.kind == KIND_POWER and meter.entity_id:
-        heat_kw = state_kw(hass, meter.entity_id)
+    if (
+        has_sun
+        and sun_kw is None
+        and facts.plant_pv_kw is not None
+        and plant_is_all_sun(hass, prefs, facts.battery_entity_id)
+    ):
+        # The plant's own PV power, read with its battery every 10 s: live, where the last period may be 20 min old.
+        sun_kw, sun_from = facts.plant_pv_kw, FROM_POWER
+    if has_heat and (heat_ids := controller.house_forecast.heat.live_power_ids(zones)):
+        heat_kw = summed_kw(hass, heat_ids)
         heat_from = None if heat_kw is None else FROM_POWER
     if (has_sun and sun_kw is None) or (has_heat and heat_kw is None):
         try:
@@ -162,7 +197,7 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             grid_kw=None if grid_w is None else grid_w / 1000.0,
             sun_kw=sun_kw,
             sun_from=sun_from,
-            battery_kw=facts.power_kw if has_battery else None,
+            battery_kw=battery_kw,
             soc_pct=facts.soc_pct if has_battery else None,
             car_kw=None if car_w is None else car_w / 1000.0,
             heat_kw=heat_kw,

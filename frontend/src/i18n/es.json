@@ -2210,6 +2210,7 @@
   "house.nowTab.heat": "Calor hoy",
   "house.nowTab.house": "Casa hoy",
   "house.nowTab.houseNow": "La casa ahora",
+  "house.nowTab.houseRestNow": "La casa sin la calefacción ahora",
   "house.nowTab.noLive": "aún sin valores en directo",
   "house.nowTab.line.sun.in": "El sol da {kw}",
   "house.nowTab.line.sun.out": "El sol da {kw}",

@@ -546,6 +546,18 @@ class SiteHeatMeter:
             _LOGGER.debug("SpotNav heat meter: the Energy dashboard could not be read", exc_info=True)
         return self.current_zones()
 
+    def live_power_ids(self, zones: Any) -> tuple[str, ...] | None:
+        """The power sensors that tell the house card's heat now (the meter and each zone, `live_power_id`), `None`
+        when one of them has none: the heat is then the last period's (`api/house_now.py`)."""
+        sources: list[tuple[str, str]] = []
+        if self.meter.found and self.meter.entity_id:
+            sources.append((self.meter.entity_id, self.meter.kind))
+        sources.extend((source.sensor_id, source.kind) for source in getattr(zones, "sources", ()))
+        if not sources:
+            return None
+        ids = [live_power_id(self.hass, sensor_id, kind, self._pairs) for sensor_id, kind in sources]
+        return None if any(i is None for i in ids) else tuple(i for i in ids if i)
+
     def _meter_name(self, stat: str) -> str:
         """A dashboard device's name: the dashboard's, else its sensor's, else the statistic id."""
         if self._names.get(stat):
@@ -630,3 +642,26 @@ class SiteHeatMeter:
             "read_failed": self.read_failed,
             "reads": self.reads,
         }
+
+
+def live_power_id(hass: HomeAssistant, sensor_id: str, kind: str, pairs: Mapping[str, str]) -> str | None:
+    """The power sensor that tells what an energy source draws now: a power sensor itself, the Energy dashboard's
+    power sensor paired with an energy statistic (`stat_rate`), else the one enabled power sensor on the energy
+    sensor's device; `None` where there is none or more than one (which one is meant cannot be told)."""
+    if kind == KIND_POWER:
+        return sensor_id
+    for rate, stat in pairs.items():
+        if stat == sensor_id:
+            return rate
+    registry = er.async_get(hass)
+    entry = registry.async_get(sensor_id)
+    if entry is None or entry.device_id is None:
+        return None
+    found = [
+        other.entity_id
+        for other in er.async_entries_for_device(registry, entry.device_id)
+        if other.domain == "sensor"
+        and other.disabled_by is None
+        and (other.device_class or other.original_device_class) == "power"
+    ]
+    return found[0] if len(found) == 1 else None

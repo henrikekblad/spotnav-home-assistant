@@ -2210,6 +2210,7 @@
   "house.nowTab.heat": "Lämpö tänään",
   "house.nowTab.house": "Talo tänään",
   "house.nowTab.houseNow": "Talo nyt",
+  "house.nowTab.houseRestNow": "Talo ilman lämmitystä nyt",
   "house.nowTab.noLive": "ei vielä reaaliaikaisia lukemia",
   "house.nowTab.line.sun.in": "Aurinko tuottaa {kw}",
   "house.nowTab.line.sun.out": "Aurinko tuottaa {kw}",

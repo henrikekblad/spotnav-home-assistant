@@ -25,6 +25,13 @@
 // * The battery's line carries the battery's power as read (`battery_kw`, what its own app shows), and the house is
 //   the balance with it (`site/house_now.py`), so the lines add up around the house: on a hybrid that reads the
 //   battery at the battery (DC) the inverter's loss and standby are in the house, as in the energy flow.
+// * The figures add up as drawn (2026-11-27): the heat is its own line out of the house, as the energy flow has the
+//   heat beside the house, so the house's disc says what the house uses besides it (`rest_kw`); what flows in is
+//   what flows out plus the disc. The backend balances the figures (`site/house_now.py`); the card rounds each side
+//   to tenths by the largest remainder (`balancedTenths`), so the written figures add up too, every one with one
+//   decimal. A part the backend marks as estimated (`estimated`: read from the last period, or moved to make the
+//   lines meet) has "≈" before its figure and "(estimated)" in the picture's description, and so has the disc,
+//   which is what is left of them.
 // * The sentence: from the battery plan's hours (`HouseHour.battery_action`), what the battery does now and until
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
@@ -58,7 +65,18 @@ export interface HouseNow {
   house_kw: number | null;
   /** How the house is had: `plant` (the plant's own load) or `balance`; `null` unread or from a backend before it. */
   house_from: string | null;
+  /** The house less its heat, the house's disc (`house_kw` less `heat_kw` from a backend before it). */
+  rest_kw: number | null;
+  /** The roles whose figure is estimated (`site/house_now.py`); none from a backend before it. */
+  estimated: string[];
   has: { sun: boolean; battery: boolean; car: boolean; heat: boolean };
+}
+
+function stringList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    throw new Error("not a list");
+  }
+  return raw.map((item) => text(item));
 }
 
 export type HouseNowDecode = { ok: true; value: HouseNow } | { ok: false; failure: "unsupported" | "malformed" };
@@ -89,12 +107,21 @@ export function decodeHouseNow(raw: unknown): HouseNowDecode {
         heat_from: textOrNull(source.heat_from),
         house_kw: numberOrNull(source.house_kw),
         house_from: source.house_from === undefined ? null : textOrNull(source.house_from),
+        rest_kw:
+          source.rest_kw === undefined
+            ? restOf(numberOrNull(source.house_kw), numberOrNull(source.heat_kw))
+            : numberOrNull(source.rest_kw),
+        estimated: source.estimated === undefined ? [] : stringList(source.estimated),
         has: { sun: flag(has.sun), battery: flag(has.battery), car: flag(has.car), heat: flag(has.heat) },
       },
     };
   } catch {
     return { ok: false, failure: "malformed" };
   }
+}
+
+function restOf(house: number | null, heat: number | null): number | null {
+  return house === null ? null : Math.max(0, house - (heat ?? 0));
 }
 
 // ------------------------------------------------------------------------------------------------ the sentence
@@ -183,6 +210,58 @@ export interface SchematicLine {
   way: "in" | "out" | "still";
   /** What flows, for the dots' colour: the role's own, an import or an export. */
   tone: NodeRole | "import" | "export";
+  /** The figure is estimated (`HouseNow.estimated`): "≈" before it. */
+  estimated: boolean;
+}
+
+/**
+ * Whole tenths for `values` (kW, never negative) that add up to `total` tenths: each rounded down, and the tenths
+ * left given to the largest remainders (ties to the earlier). The written figures so add up as the backend's do.
+ */
+export function largestRemainder(values: number[], total: number): number[] {
+  const scaled = values.map((value) => Math.max(0, value) * 10);
+  const floors = scaled.map((value) => Math.floor(value + 1e-9));
+  let left = total - floors.reduce((sum, value) => sum + value, 0);
+  // Remainders compared to a millionth, so a float's last bit never breaks a tie.
+  const order = scaled.map((value, index) => ({ index, rest: Math.round((value - floors[index]!) * 1e6) })).sort((a, b) => b.rest - a.rest || a.index - b.index);
+  for (let step = 0; left > 0 && order.length > 0; step += 1) {
+    floors[order[step % order.length]!.index]! += 1;
+    left -= 1;
+  }
+  for (let step = order.length - 1; left < 0 && step >= 0; step -= 1) {
+    const index = order[step]!.index;
+    if (floors[index]! > 0) {
+      floors[index]! -= 1;
+      left += 1;
+    }
+  }
+  return floors;
+}
+
+/** One flow at the house: into it (`in`) or out of it, with its signed reading's size (kW). */
+interface Flow {
+  key: NodeRole | "house";
+  kw: number;
+  in: boolean;
+}
+
+/**
+ * The live figures in whole tenths that balance at the house as written (see the module): the flows in rounded to
+ * their sum's tenths, the flows out (the disc's rest among them) to the same. `null` keys are unread.
+ */
+export function balancedTenths(flows: Flow[]): Map<NodeRole | "house", number> {
+  const inflows = flows.filter((flow) => flow.in);
+  const outflows = flows.filter((flow) => !flow.in);
+  const sumIn = inflows.reduce((sum, flow) => sum + flow.kw, 0);
+  const sumOut = outflows.reduce((sum, flow) => sum + flow.kw, 0);
+  // The backend's figures balance to the hundredth; a backend before it may not: each side then rounds alone.
+  const meets = Math.abs(sumIn - sumOut) < 0.011;
+  const total = (sum: number) => Math.round(sum * 10 + 1e-9);
+  const shown = new Map<NodeRole | "house", number>();
+  const place = (side: Flow[], tenths: number) => largestRemainder(side.map((flow) => flow.kw), tenths).forEach((value, index) => shown.set(side[index]!.key, value));
+  place(inflows, total(sumIn));
+  place(outflows, meets ? total(sumIn) : total(sumOut));
+  return shown;
 }
 
 /** Whether a car is plugged in: the live answer's word; unknown (no line drawn) without it. */
@@ -190,19 +269,27 @@ export function carPlugged(live: HouseNow | null): boolean {
   return live?.car_connected === true;
 }
 
-/** Each line of the schematic from the live figures (`null`: the day's figures only, the battery's own power). The
- * car has a line only while a car is plugged in. */
-export function schematicLines(live: HouseNow | null, answer: HouseAnswer): SchematicLine[] {
+/** Whether the car has a line: while a car is plugged in, or while the chargers draw (the figure is in the balance). */
+function carDrawn(live: HouseNow | null): boolean {
+  return carPlugged(live) || (live?.car_kw ?? 0) >= STILL_KW;
+}
+
+/** The lines and the house's disc as written (see the module). */
+export function schematicFigures(live: HouseNow | null, answer: HouseAnswer): { lines: SchematicLine[]; house: { kw: number | null; estimated: boolean } } {
   const has = present(live, answer);
+  const estimated = new Set(live?.estimated ?? []);
   const lines: SchematicLine[] = [];
+  // Which way each figure flows by its sign, a still one too (it still counts in the balance).
+  const inward = new Map<NodeRole, boolean>();
   const line = (role: NodeRole, signed: number | null, inPositive: boolean): SchematicLine => {
     if (signed === null) {
-      return { role, kw: null, way: "still", tone: role };
+      return { role, kw: null, way: "still", tone: role, estimated: false };
     }
+    inward.set(role, signed !== 0 && (signed > 0) === inPositive);
     const kw = Math.abs(signed);
     const way = kw < STILL_KW ? "still" : (signed > 0) === inPositive ? "in" : "out";
     const tone: SchematicLine["tone"] = role === "grid" ? (way === "out" ? "export" : "import") : role;
-    return { role, kw, way, tone };
+    return { role, kw, way, tone, estimated: estimated.has(role) };
   };
   if (has.sun) {
     lines.push(line("sun", live?.sun_kw ?? null, true));
@@ -212,13 +299,34 @@ export function schematicLines(live: HouseNow | null, answer: HouseAnswer): Sche
     // + charging: away from the house.
     lines.push(line("battery", live?.battery_kw ?? answer.battery?.now?.power_kw ?? null, false));
   }
-  if (has.car && carPlugged(live)) {
+  if (has.car && carDrawn(live)) {
     lines.push(line("car", live?.car_kw ?? null, false));
   }
   if (has.heat) {
     lines.push(line("heat", live?.heat_kw ?? null, false));
   }
-  return lines;
+  // The disc: the house besides the heat where the heat has its own line, else the whole house.
+  const rest = live === null ? null : has.heat ? live.rest_kw : live.house_kw;
+  const house = { kw: rest, estimated: rest !== null && estimated.size > 0 };
+  if (live === null || rest === null || lines.some((item) => item.kw === null)) {
+    return { lines, house };
+  }
+  const flows: Flow[] = lines.map((item) => ({ key: item.role, kw: item.kw!, in: inward.get(item.role) === true }));
+  flows.push({ key: "house", kw: rest, in: false });
+  const tenths = balancedTenths(flows);
+  const written = lines.map((item): SchematicLine => {
+    const kw = tenths.get(item.role)! / 10;
+    // The way as written: still at 0.0 kW, else by the sign (a still figure given a tenth shows it).
+    const way = kw === 0 ? "still" : inward.get(item.role) === true ? "in" : "out";
+    return { ...item, kw, way, tone: item.role === "grid" ? (way === "out" ? "export" : "import") : item.role };
+  });
+  return { lines: written, house: { ...house, kw: tenths.get("house")! / 10 } };
+}
+
+/** Each line of the schematic from the live figures (`null`: the day's figures only, the battery's own power). The
+ * car has a line only while a car is plugged in (or its chargers draw). */
+export function schematicLines(live: HouseNow | null, answer: HouseAnswer): SchematicLine[] {
+  return schematicFigures(live, answer).lines;
 }
 
 /** Which nodes the site has: the live answer's word, else what the day's energy flow and the answer show. */
@@ -240,8 +348,9 @@ function flowKwh(flow: EnergyFlow | null, side: "source" | "use", role: string):
   return node === undefined ? null : node.kwh;
 }
 
-function kwText(language: Language, kw: number): string {
-  return `${formatFixed(language, kw, kw >= 10 ? 0 : 1)} kW`;
+/** A live figure with one decimal at any size, so the written figures add up (see the module); "≈" when estimated. */
+function kwText(language: Language, kw: number, estimated = false): string {
+  return `${estimated ? "≈ " : ""}${formatFixed(language, kw, 1)} kW`;
 }
 
 /** A figure without its unit, for the grid's sold part ("0,1"). */
@@ -406,7 +515,8 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
   const has = present(live, answer);
   const row = !has.sun && !has.battery && !has.car && !has.heat;
   const height = row ? ROW_HEIGHT : Math.max(220, Math.round(input.height ?? schematicHeight(width)));
-  const lines = schematicLines(live, answer);
+  const figures = schematicFigures(live, answer);
+  const lines = figures.lines;
   const words = cornerWords(language, answer, live, width >= 480);
   const root = svg(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "spotnav-now-schematic", role: "img" });
   root.dataset["sig"] = signature(lines, words, row, width, height);
@@ -473,7 +583,7 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     const group = svg(doc, "g", { class: "spotnav-now-pill", transform: `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)})` });
     group.dataset["role"] = line.role;
     group.dataset["tone"] = line.tone;
-    const text = Object.assign(svg(doc, "text", { x: 0, y: 4, "text-anchor": anchor }), { textContent: kwText(language, line.kw) });
+    const text = Object.assign(svg(doc, "text", { x: 0, y: 4, "text-anchor": anchor }), { textContent: kwText(language, line.kw, line.estimated) });
     text.dataset["k"] = `kw-${line.role}`;
     group.append(text);
     labels.append(group);
@@ -503,18 +613,19 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     disc("battery", NODE_R);
   }
   if (has.car) {
-    disc("car", NODE_R, !carPlugged(live));
+    disc("car", NODE_R, !carDrawn(live));
   }
   if (has.heat) {
     disc("heat", NODE_R - 2);
   }
   const house = disc("house", houseR);
-  const houseKw = live?.house_kw ?? null;
+  const houseKw = figures.house.kw;
   if (houseKw !== null && !row) {
-    const text = Object.assign(svg(doc, "text", { x: 0, y: 17, "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: kwText(language, houseKw) });
+    const text = Object.assign(svg(doc, "text", { x: 0, y: 17, "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: kwText(language, houseKw, figures.house.estimated) });
     text.dataset["k"] = "kw-house";
     house.append(text);
-    said.push(`${translate(language, "house.nowTab.houseNow")} ${kwText(language, houseKw)}`);
+    const name = translate(language, has.heat ? "house.nowTab.houseRestNow" : "house.nowTab.houseNow");
+    said.push(`${name} ${kwText(language, houseKw)}${figures.house.estimated ? ` ${translate(language, "house.loads.estimated")}` : ""}`);
   }
   // The corners: in a row only the grid (left) and the house (right).
   const room = row ? width / 2 - 8 : width / 3 - 6;
@@ -559,7 +670,8 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
   root.append(labels);
   for (const line of lines) {
     if (line.kw !== null && line.way !== "still") {
-      said.push(translate(language, `house.nowTab.line.${line.role}.${line.way}` as TranslationKey, { kw: kwText(language, line.kw) }));
+      const estimate = line.estimated ? ` ${translate(language, "house.loads.estimated")}` : "";
+      said.push(translate(language, `house.nowTab.line.${line.role}.${line.way}` as TranslationKey, { kw: kwText(language, line.kw) + estimate }));
     }
   }
   title.textContent = said.join(". ");
