@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "Batteristyrningen nekade: {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Det finns ingen berättelse om {year} än: året har ingen dag bakom sig."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Ingen export vid negativa priser",
           "description": "Sätt anläggningens exportgräns till noll medan en såld kWh ger mindre än noll, och återställ den efteråt. För en anläggning med eller utan batteri; batteristyrningens reglage slår inte på den."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Visa Året med SpotNav",
+      "description": "Räkna fram anläggningens \"Året med SpotNav\" nu och visa den i husets och laddarens kort i sju dagar, oavsett datum: bandet och raden under Inställningar, Support. Svarar med berättelsens siffror, så att en ny installation kan se dem här. Bara för administratörer.",
+      "fields": {
+        "site": {
+          "name": "Anläggning",
+          "description": "Anläggningen. Utelämna när det bara finns en."
+        },
+        "year": {
+          "name": "År",
+          "description": "Året att visa (standard: i år i december, förra året i januari, annars året hittills)."
+        },
+        "reset": {
+          "name": "Visa bandet igen",
+          "description": "Visa bandet igen för alla som öppnat eller stängt det (på som standard)."
         }
       }
     }

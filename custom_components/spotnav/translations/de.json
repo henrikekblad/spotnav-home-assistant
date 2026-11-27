@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "Die Batteriesteuerung hat abgelehnt: {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Für {year} gibt es noch keinen Rückblick: Das Jahr hat noch keinen Tag hinter sich."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Keine Einspeisung bei negativen Preisen",
           "description": "Die Einspeisebegrenzung der Anlage auf null setzen, solange eine verkaufte kWh weniger als nichts einbringt, und sie danach zurücksetzen. Für eine Anlage mit oder ohne Batterie; der Schalter der Batteriesteuerung schaltet dies nicht ein."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Jahresrückblick zeigen",
+      "description": "Den \"Jahresrückblick mit SpotNav\" eines Standorts jetzt berechnen und sieben Tage lang in der Haus- und der Ladekarte anbieten, unabhängig vom Datum: das Banner und die Zeile unter Einstellungen, Support. Antwortet mit den Zahlen des Rückblicks, damit eine neue Installation sie hier sieht. Nur für Administratoren.",
+      "fields": {
+        "site": {
+          "name": "Standort",
+          "description": "Der Standort. Weglassen, wenn es nur einen gibt."
+        },
+        "year": {
+          "name": "Jahr",
+          "description": "Das Jahr des Rückblicks (Standard: im Dezember dieses Jahr, im Januar das Vorjahr, sonst das Jahr bis heute)."
+        },
+        "reset": {
+          "name": "Banner wieder zeigen",
+          "description": "Das Banner allen wieder zeigen, die es geöffnet oder geschlossen haben (standardmäßig an)."
         }
       }
     }

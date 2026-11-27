@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "De batterijsturing weigerde: {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Er is nog geen overzicht van {year}: het jaar heeft nog geen dag achter zich."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Geen teruglevering bij negatieve prijzen",
           "description": "Zet de terugleverlimiet van de installatie op nul zolang een verkochte kWh minder dan niets oplevert, en zet hem daarna terug. Voor een installatie met of zonder batterij; de schakelaar van de batterijsturing zet dit niet aan."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Jaaroverzicht tonen",
+      "description": "Bereken nu het \"Jaar met SpotNav\" van een locatie en toon het zeven dagen in de huis- en laderkaart, ongeacht de datum: de banner en de regel onder Instellingen, Ondersteuning. Antwoordt met de cijfers van het overzicht, zodat een nieuwe installatie ze hier ziet. Alleen voor beheerders.",
+      "fields": {
+        "site": {
+          "name": "Locatie",
+          "description": "De locatie. Weglaten als er maar één is."
+        },
+        "year": {
+          "name": "Jaar",
+          "description": "Het jaar van het overzicht (standaard: in december dit jaar, in januari vorig jaar, anders het jaar tot nu)."
+        },
+        "reset": {
+          "name": "Banner opnieuw tonen",
+          "description": "Toon de banner opnieuw aan iedereen die hem opende of sloot (standaard aan)."
         }
       }
     }

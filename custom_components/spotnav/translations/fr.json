@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "Le pilotage de la batterie a refusé : {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Il n'y a pas encore de bilan de {year} : l'année n'a encore aucun jour derrière elle."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Pas d'injection à prix négatifs",
           "description": "Met à zéro la limite d'injection de l'installation tant qu'un kWh vendu rapporte moins que rien, puis la rétablit. Pour une installation avec ou sans batterie ; l'interrupteur du pilotage de la batterie ne l'active pas."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Afficher le bilan de l'année",
+      "description": "Calculer maintenant « L'année avec SpotNav » d'un site et la proposer dans les cartes de la maison et du chargeur pendant sept jours, quelle que soit la date : le bandeau et la ligne sous Paramètres, Assistance. Répond avec les chiffres du bilan, pour qu'une nouvelle installation les voie ici. Administrateurs uniquement.",
+      "fields": {
+        "site": {
+          "name": "Site",
+          "description": "Le site. À omettre lorsqu'il n'y en a qu'un."
+        },
+        "year": {
+          "name": "Année",
+          "description": "L'année du bilan (par défaut : cette année en décembre, l'année précédente en janvier, sinon l'année jusqu'ici)."
+        },
+        "reset": {
+          "name": "Afficher à nouveau le bandeau",
+          "description": "Afficher à nouveau le bandeau à tous ceux qui l'ont ouvert ou fermé (activé par défaut)."
         }
       }
     }
