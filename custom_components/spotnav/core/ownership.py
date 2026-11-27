@@ -26,7 +26,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   (`car_ended`: when, the level read then, which car, what the plan waits for); what the rule reads besides it comes
   as the event's car facts (`CarFacts`), read right before the decision.
 * A window that opens (its timer, a re-arm) while the charger says no car is plugged in starts nothing: the plug-in
-  inside it does. A charger that cannot say is started as before.
+  inside it does. A charger that says nothing at that moment (offline, its status unavailable) counts as what it
+  last said (`car_away`): after an unplug, nothing starts either. A charger that cannot say is started as before.
 * A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back starts
   nothing and keeps that memory: the regulator gives the charge back when there is room, as without the re-arm.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
@@ -563,6 +564,13 @@ def _connection_unknown(session: ChargeSession, event: ConnectionUnknown, now: d
     return session, ()
 
 
+def car_away(session: ChargeSession, connected: bool | None) -> bool:
+    """Whether no car is at the charger for an automatic start: the charger says so now, or it says nothing now (an
+    offline charger, its status unavailable) and the last thing it did say was an unplug. A charger that never
+    said (`plugged` `None`, as after a restart, or one that cannot say) is started as before."""
+    return connected is False or (connected is None and session.plugged is False)
+
+
 def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> Decision:
     blocked = hold_blocked(session, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
     ended_holds = car_ended_holds_window(session, open_window_start=event.open_window_start, facts=CarFacts.of(event))
@@ -579,9 +587,9 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
         if event.trigger == TRIGGER_REARM and s.balancing_paused:
             # Load balancing holds a charge back: its regulator resumes it, with its own margin and dwell.
             return s, ()
-        if event.connected is False:
+        if car_away(s, event.connected):
             # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in
-            # inside the window starts it.
+            # inside the window starts it. A charger that says nothing now (offline) counts as what it last said.
             return s, ()
         if event.finished:
             # The car finished the charge itself and a start of this same plan was already tried since, with its level
@@ -606,7 +614,7 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
         if s.owner in (OWNER_NONE, OWNER_CHARGER_SELF):
             return _claim(s)
         return s, ()
-    if event.connected is False or event.start_pending or s.balancing_paused or event.target_reached:
+    if car_away(s, event.connected) or event.start_pending or s.balancing_paused or event.target_reached:
         return s, ()
     if s.owner in WINDOW_START_SPARED:
         return s, ()
@@ -664,9 +672,9 @@ def _rearm(session: ChargeSession, event: Rearm, now: datetime) -> Decision:
     )
     if spared:
         return session, ()
-    if event.connected is False and not event.charging:
+    if car_away(session, event.connected) and not event.charging:
         # No car at the charger: nothing to stop (a new plan's install after a price update would pause an empty
-        # charger). The plug-in decides the car's charge.
+        # charger). The plug-in decides the car's charge. An offline charger counts as what it last said.
         return session, ()
     return _stop(session, REASON_REARM, was_on=event.charging)
 
@@ -759,7 +767,7 @@ def _solar_stop(session: ChargeSession, event: SolarStop, now: datetime) -> Deci
 
 
 def _min_soc_start(session: ChargeSession, event: MinSocStart, now: datetime) -> Decision:
-    if event.connected is False or not automatic_allowed(session, GATE_START):
+    if car_away(session, event.connected) or not automatic_allowed(session, GATE_START):
         # No car, or a person's pause or Stop (or their Start) holds Auto: the person decided.
         return session, ()
     if session.owner in (OWNER_MIN_SOC, OWNER_PERSON):
