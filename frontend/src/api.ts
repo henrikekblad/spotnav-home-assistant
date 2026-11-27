@@ -35,6 +35,7 @@ import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION, 
 import { PLAN_API_VERSION } from "./house-plan";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 import { hasUnknownKeys } from "./contract";
+import { YEAR_REVIEW_API_VERSION } from "./year-review-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -1103,5 +1104,36 @@ export async function updateSiteSettingsBySite(hass: HomeAssistantLike, siteId: 
     site_id: siteId,
     expected: request.expected,
     changes: request.changes,
+  });
+}
+
+// ------------------------------------------------------------------ the year's review
+
+/**
+ * The year's review of a site (`spotnav/get_year_review`, the site's id or a charger's in it) and whether this person's
+ * cards offer it; `unknown` until `decodeYearReview()` decodes it. Read from memory on the backend; any signed-in user
+ * may read it.
+ */
+export async function getYearReview(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_year_review",
+    api_version: YEAR_REVIEW_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+  });
+}
+
+/** This person opened the review of `year` (`viewed`, the banner goes for good) or closed its banner (`dismissed`). */
+export async function markYearReviewSeen(
+  hass: HomeAssistantLike,
+  siteId: string,
+  year: number,
+  action: "viewed" | "dismissed",
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/year_review_seen",
+    api_version: YEAR_REVIEW_API_VERSION,
+    site_id: siteId,
+    year,
+    action,
   });
 }
