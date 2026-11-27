@@ -827,6 +827,12 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "site_webhook_price_not_permitted.json",
             "site_webhook_site_unloaded.json",
             "site_webhook_update_site_settings.json",
+            # The year review for the paired phone (`tests/test_year_review_webhook.py`).
+            "get_year_review_no_site.json",
+            "get_year_review_success.json",
+            "get_year_review_viewed.json",
+            "year_review_seen_invalid.json",
+            "year_review_seen_success.json",
             # The card's words for the app (`tests/test_strings_api.py`).
             "get_strings_english.json",
             "get_strings_success.json",

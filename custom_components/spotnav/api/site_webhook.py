@@ -16,6 +16,7 @@ Reads (HTTP 200, or 400 with `{"ok": false, "error": <the command's stable code>
 | `get_plan` | `spotnav/get_plan` (the house card's Plan tab, with each car's `does_not_fit`) | `date?`, `start?` |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` (`writable` true, `site.active_control.writable` false, as the webhook's dashboard) | |
 | `battery_control` | `spotnav/battery_control` | `changes?` |
+| `get_year_review` | `spotnav/get_year_review` (for this phone: `api/year_review.py`) | `app_id?` |
 
 Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/app_3_0_plan.md`):
 
@@ -28,6 +29,8 @@ Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/ap
 * `spa` and `sauna` (`spotnav/spa`, `spotnav/sauna`): their bath or session times and temperatures, the "now" press and
   the answers to a session that will not be ready, `spa_action` / `sauna_action` with `value`; HTTP 200, 400 for a
   value refused, 429 for `spotnav_rate_limited`, 409 for the other refusals.
+* `year_review_seen` (`spotnav/year_review_seen`, for this phone: `app_id`, `year`, `seen_action` "viewed" or
+  "dismissed"); HTTP 200 `{ok: true, action}`, 400 for a value refused.
 * `battery_control` with `changes`: `battery_mode` only (`self_consumption`, `balanced`, `max_profit`).
 * `heat_boost` (`spotnav/heat_boost`): the Boost button, `boost_action` "start" or "stop" (`action` routes the
   body); HTTP 200, 400 for an unknown `boost_action`, 429 for `spotnav_rate_limited`, 409 for the other refusals.
@@ -89,6 +92,7 @@ from .plan import async_plan_answer
 from .power_month import PowerMonthRefusal
 from .grid_tariff import READS_POWER_LEVEL, without_power_level
 from .site_view import SITE_VIEW_API_VERSION, site_settings_view
+from .year_review import webhook_get_year_review, webhook_year_review_seen
 
 type _Handler = Callable[[HomeAssistant, ConfigEntry, dict[str, Any]], Awaitable[web.Response]]
 #: A site action bound to a site: `(hass, site, payload)`, `site` `None` for a charger in no site.
@@ -272,6 +276,8 @@ def site_handlers(*, price_writable: bool) -> dict[str, SiteHandler]:
         "pool": _pool,
         "spa": _deadline("spa"),
         "sauna": _deadline("sauna"),
+        "get_year_review": webhook_get_year_review,
+        "year_review_seen": webhook_year_review_seen,
     }
 
 

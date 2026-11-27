@@ -1,0 +1,25 @@
+{
+  "action": "get_year_review",
+  "api_version": 1,
+  "banner": true,
+  "ok": true,
+  "review": {
+    "money": null,
+    "pages": [
+      {
+        "id": "cover"
+      },
+      {
+        "id": "thanks"
+      }
+    ],
+    "partial": true,
+    "since": "2026-06-01",
+    "through": "2026-12-14",
+    "year": 2026
+  },
+  "row": true,
+  "site_id": "site_entry_year",
+  "state": "ready",
+  "year": 2026
+}
