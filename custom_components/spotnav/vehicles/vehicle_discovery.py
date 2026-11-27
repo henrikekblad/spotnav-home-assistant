@@ -50,6 +50,8 @@ _BATTERY_DEVICE_CLASS = "battery"
 _RANGE_DEVICE_CLASS = "distance"
 # A car's range is a road distance. A presence or level sensor reports its distance in m, cm or mm.
 _RANGE_UNITS = ("km", "mi")
+# Home Assistant's `tibber` integration reports a car's range in m. It is only trusted from there.
+_RANGE_METRES_PLATFORMS = frozenset({"tibber"})
 # `energy_storage` is an exact match; `energy` is the weaker fallback.
 _ENERGY_STORAGE_DEVICE_CLASS = "energy_storage"
 _ENERGY_DEVICE_CLASS = "energy"
@@ -706,6 +708,7 @@ def _range_signal_entity_ids(
     Rejected on purpose: charging or plug binary sensors (home batteries, laptops),
     percent numbers, device trackers, name patterns, and a distance in m, cm or mm (a
     battery-powered mmWave presence sensor has a battery percent and a distance too). The
+    one exception is metres from the `tibber` integration, which reports a car's range so. The
     cost is a miss, never a wrong report.
     """
     return [
@@ -713,12 +716,16 @@ def _range_signal_entity_ids(
         for entry, state in entities
         if entry.domain == "sensor"
         and state.attributes.get("device_class") == _RANGE_DEVICE_CLASS
-        and _is_range_unit(state.attributes.get("unit_of_measurement"))
+        and _is_range_unit(state.attributes.get("unit_of_measurement"), entry.platform)
     ]
 
 
-def _is_range_unit(unit: Any) -> bool:
-    return isinstance(unit, str) and unit.strip() in _RANGE_UNITS
+def _is_range_unit(unit: Any, platform: str | None) -> bool:
+    """km and mi always; m only from an integration known to report a car's range that way."""
+    if not isinstance(unit, str):
+        return False
+    unit = unit.strip()
+    return unit in _RANGE_UNITS or (unit == "m" and platform in _RANGE_METRES_PLATFORMS)
 
 
 def _has_range_signal(entities: list[tuple[er.RegistryEntry, State]]) -> bool:

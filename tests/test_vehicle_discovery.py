@@ -57,11 +57,12 @@ def _entity(
     object_id: str,
     state: str,
     attributes: dict | None = None,
+    platform: str = "test",
 ) -> str:
     """One entity on `device_id`, registered and given a live state."""
     entry = er.async_get(hass).async_get_or_create(
         domain,
-        "test",
+        platform,
         f"{device_id}_{object_id}",
         device_id=device_id,
         suggested_object_id=object_id,
@@ -1095,3 +1096,42 @@ async def test_a_stale_confirmation_on_a_single_sensor_device_detects_normally(
     # 42, from the sensor that still exists: not the stale 96 and not excluded.
     assert vehicles[device_id].soc_percent == 42.0
     assert discover_ambiguous_vehicles(hass) == []
+
+
+async def test_a_range_in_metres_counts_only_from_the_tibber_integration(hass: HomeAssistant) -> None:
+    """Tibber reports a car's range in m, beside a state of charge and a read-only target. Metres from any
+    other integration stay rejected."""
+    for platform, expected in (("tibber", True), ("other", False)):
+        device_id = _device(hass, unique_id=f"car_{platform}", name=f"ID.7 {platform}")
+        _entity(
+            hass,
+            device_id=device_id,
+            domain="sensor",
+            object_id=f"{platform}_state_of_charge",
+            state="60",
+            attributes={"device_class": "battery", "unit_of_measurement": "%"},
+            platform=platform,
+        )
+        _entity(
+            hass,
+            device_id=device_id,
+            domain="sensor",
+            object_id=f"{platform}_target_state_of_charge",
+            state="80",
+            attributes={"device_class": "battery", "unit_of_measurement": "%"},
+            platform=platform,
+        )
+        _entity(
+            hass,
+            device_id=device_id,
+            domain="sensor",
+            object_id=f"{platform}_estimated_remaining_driving_range",
+            state="250000",
+            attributes={"device_class": "distance", "unit_of_measurement": "m"},
+            platform=platform,
+        )
+        found = {vehicle.id: vehicle for vehicle in discover_vehicles(hass)}
+        assert (device_id in found) is expected
+        if expected:
+            assert found[device_id].soc_percent == 60.0
+            assert found[device_id].target_soc_percent_max == 80.0
