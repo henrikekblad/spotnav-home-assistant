@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any, Final
@@ -259,8 +260,13 @@ class SiteYearReview:
             prices=period_price_slots(hass, self.entry_id, Period(PERIOD_YEAR, first, through + timedelta(days=1))),
             sessions=self._sessions(),
             day_parts=dict(self.store.day_parts),
-            # Today's money is still being counted: only the finished days go to the executor.
-            battery_days={day: money for day, money in money_days.items() if first <= day <= through},
+            # Copies of the finished days only (today's is still being counted): the executor never reads what the
+            # loop may change.
+            battery_days={
+                day: replace(money, hours={}, hour_flows={}, flow=None if money.flow is None else replace(money.flow))
+                for day, money in money_days.items()
+                if first <= day <= through
+            },
             capacity_kwh=battery.facts.capacity_kwh,
             fuse_since=self.store.fuse_since,
         )
