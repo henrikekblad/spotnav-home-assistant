@@ -1099,6 +1099,12 @@
     },
     "year_review_no_year": {
       "message": "Il n'y a pas encore de bilan de {year} : l'année n'a encore aucun jour derrière elle."
+    },
+    "year_review_not_loaded": {
+      "message": "Le site SpotNav n'est pas chargé, son bilan de l'année ne peut donc pas être affiché. Rechargez le site et réessayez."
+    },
+    "year_review_failed": {
+      "message": "Le bilan de {year} n'a pas pu être calculé. Le journal dit pourquoi ; le bilan précédent est conservé."
     }
   },
   "services": {

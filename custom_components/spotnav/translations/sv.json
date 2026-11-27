@@ -1099,6 +1099,12 @@
     },
     "year_review_no_year": {
       "message": "Det finns ingen berättelse om {year} än: året har ingen dag bakom sig."
+    },
+    "year_review_not_loaded": {
+      "message": "SpotNav-anläggningen är inte inläst, så årets berättelse kan inte visas. Läs in anläggningen igen och försök på nytt."
+    },
+    "year_review_failed": {
+      "message": "Berättelsen om {year} kunde inte tas fram. Loggen säger varför; den förra berättelsen finns kvar."
     }
   },
   "services": {

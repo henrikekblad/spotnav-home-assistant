@@ -428,6 +428,10 @@ class SiteYearReview:
             review=self.store.review if ready else None,
         )
 
+    def default_year(self) -> int:
+        """The year the service reviews when none is named: the year rule's for today."""
+        return review_year(self.today())
+
     async def async_show(self, year: int | None, reset: bool) -> dict[str, Any]:
         """The service: work the review out now, offer it for `FORCED_FOR`, forget who saw it (`reset`)."""
         now = self.now()
