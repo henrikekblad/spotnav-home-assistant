@@ -139,3 +139,28 @@ async def test_the_site_counts_an_overload_lowering_only_with_its_active_control
     controller._count_overload_episode()
     controller._count_overload_episode()
     assert len(seen) == 1
+
+
+async def test_a_real_overload_lowering_is_one_episode_in_the_site_s_year_store(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The owner's night of 2 October (`tests/test_balancing_retry.py`): a reading 3.6 A over the fuse lowers the car,
+    read again on later passes and a new reading still over: one episode on the site's local day."""
+    from custom_components.spotnav.runtime import site_data
+    from tests.test_balancing_retry import _night, _site_a
+
+    halo = await _night(hass, monkeypatch, "nightyear", battery_w=0.0)
+    await halo.start()
+    halo.switch("on")
+    await hass.async_block_till_done()
+    _site_a(hass, halo.site, 22.6, 23.6, 23.6)
+    await halo.tick()
+    for _ in range(3):
+        await halo.tick()
+    _site_a(hass, halo.site, 21.0, 22.0, 22.0)
+    await hass.async_block_till_done()
+    await halo.tick()
+    assert halo.written()[-1] == "1.10,2.10"
+    data = site_data(hass, halo.controller.entry_id)
+    assert data is not None and data.year_review is not None
+    assert sum(parts.fuse for parts in data.year_review.store.day_parts.values()) == 1
