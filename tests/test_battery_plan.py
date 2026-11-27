@@ -570,3 +570,11 @@ def test_without_a_kept_action_the_diagnostics_shape_is_unchanged() -> None:
     result = plan_battery(_request(_slots([20, 300], house=2.0)))
     assert result.kept is False and result.keep_gain is None
     assert "kept" not in result.as_dict()
+
+
+def test_a_battery_that_cannot_charge_has_no_refill_price():
+    """A battery with no charge power has nothing to refill with: no price, never a division by zero."""
+    from custom_components.spotnav.battery.plan import refill_price
+
+    battery = BatteryParams(usable_kwh=10, max_charge_kw=0, max_discharge_kw=5, min_soc_pct=10, max_soc_pct=100)
+    assert refill_price([(1.0, 1.0)] * 24, battery) is None
