@@ -80,6 +80,7 @@ from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHi
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
 from .sun_review import SiteSunReview
+from .overload_episodes import OverloadEpisodes
 from ..pricing.period_prices import period_price_slots
 from .demand_ceiling import SiteDemandCeiling
 from .priority import charger_rank, solar_priority
@@ -898,6 +899,9 @@ class SiteCapacityController:
             has_battery=lambda: self.battery_shadow.facts.battery_entity_id is not None,
             prices=lambda period: period_price_slots(hass, entry_id, period),
         )
+        # The fuse's overload episodes for the year's review (`site/overload_episodes.py`): counted only, never read
+        # by a decision; the year review sets its listener (`year_review/runtime.py`).
+        self.overload_episodes = OverloadEpisodes()
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -1470,6 +1474,16 @@ class SiteCapacityController:
         if not self._closed:
             self._recompute()
 
+    def _count_overload_episode(self) -> None:
+        """Tell the overload episodes' counter whether this recompute lowers for an overload with the site's active
+        control on (`site/overload_episodes.py`). A count only: it never raises into the recompute."""
+        try:
+            self.overload_episodes.observe(
+                dt_util.utcnow(), self._active_control_allowed() and self._import_overload_now()
+            )
+        except Exception:  # noqa: BLE001 - a count must never disturb the regulator
+            _LOGGER.debug("SpotNav site %s: an overload episode could not be counted", self.entry_id, exc_info=True)
+
     def _import_overload_now(self) -> bool:
         """Whether the last recompute found an import overload: a decision that must lower (`_must_lower`)."""
         return any(_must_lower(decision) for decision in self.regulator_decisions.values())
@@ -1645,6 +1659,7 @@ class SiteCapacityController:
         _log_regulator_decisions(
             self.entry_id, previous_decisions, self.regulator_decisions
         )
+        self._count_overload_episode()
         self._last_logged_conflicts = current_conflicts
         self.evaluation = self._build_evaluation()
         # The only path from a regulator decision to a charger command: queued, never awaited
