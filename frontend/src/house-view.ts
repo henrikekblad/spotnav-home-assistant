@@ -802,7 +802,8 @@ function boxed(input: HouseRenderInput): boolean {
 function nowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement): void {
   const { doc, language } = input;
   const live = input.tabs?.live ?? null;
-  const wrap = element(doc, "div", "spotnav-now");
+  // Not "spotnav-now": that is the charts' now line, whose stroke would be inherited by the drawing's words.
+  const wrap = element(doc, "div", "spotnav-now-tab");
   wrap.dataset["part"] = "now";
   wrap.append(renderNow({ doc, language, answer, live, width: input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix, nowMs: input.nowMs }));
   panel.append(wrap);

@@ -1038,10 +1038,13 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
     color: var(--secondary-text-color, #727272);
     overflow-wrap: break-word;
   }
+  /* No stroke to inherit: a card-wide rule on an ancestor (the charts' now line is "spotnav-now") must never outline
+     the drawing's words. */
   .spotnav-now-schematic {
     display: block;
     margin: 0 auto;
     overflow: visible;
+    stroke: none;
   }
   .spotnav-now-idle {
     fill: none;
@@ -1120,7 +1123,10 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
     stroke-width: 2;
     opacity: 0.18;
   }
-  .spotnav-now-schematic text { font-variant-numeric: tabular-nums; }
+  .spotnav-now-schematic text {
+    font-variant-numeric: tabular-nums;
+    text-rendering: geometricPrecision;
+  }
   .spotnav-now-kw, .spotnav-now-house-kw {
     fill: var(--primary-text-color, #212121);
     font-weight: 600;
@@ -1133,15 +1139,21 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
     paint-order: stroke;
   }
   .spotnav-now-house-kw { font-size: 16px; font-weight: 700; }
+  /* The captions: plain, crisp words, never outlined or shadowed. */
+  .spotnav-now-house-name, .spotnav-now-state, .spotnav-now-today, .spotnav-now-house-kw {
+    stroke: none;
+    filter: none;
+  }
   .spotnav-now-house-name, .spotnav-now-state {
-    font-size: 10.5px;
+    font-size: 11px;
+    font-weight: 400;
     fill: var(--secondary-text-color, #727272);
   }
   /* Today's figures in their node's colour, a third toward the text colour, so they keep 4.5:1 on both cards. */
   .spotnav-now-today {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 600;
-    fill: color-mix(in srgb, var(--spotnav-now-tone) 68%, var(--primary-text-color, #212121));
+    fill: color-mix(in srgb, var(--spotnav-now-tone, var(--secondary-text-color, #727272)) 68%, var(--primary-text-color, #212121));
   }
   .spotnav-now-legend {
     display: flex;
