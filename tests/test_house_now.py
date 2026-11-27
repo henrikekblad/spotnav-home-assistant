@@ -15,7 +15,14 @@ from homeassistant.core import HomeAssistant
 
 import random
 
-from custom_components.spotnav.api.house_now import plant_is_all_sun, solar_power_ids, state_kw, websocket_get_house_now
+from custom_components.spotnav.api.house_now import (
+    plant_is_all_sun,
+    solar_live_ids,
+    solar_power_ids,
+    state_kw,
+    sun_kw_of,
+    websocket_get_house_now,
+)
 from custom_components.spotnav.site.house_now import (
     NOW_KEYS,
     RECENT_MAX,
@@ -300,6 +307,104 @@ def test_a_heat_source_is_read_now_from_its_power_sensor(hass: HomeAssistant) ->
     assert live_power_id(hass, "sensor.floor_energy", "energy", {}) == "sensor.floor_power"
     assert live_power_id(hass, "sensor.plant_energy", "energy", {}) is None
     assert live_power_id(hass, "sensor.nowhere", "energy", {}) is None
+
+
+def _solar_devices(hass: HomeAssistant) -> None:
+    """Inverters as the registry has them: a plain one (energy + its one power sensor), a hybrid with a pv power among
+    its battery and output powers, a hybrid where none is named pv, and one with two strings."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(domain="solarman")
+    entry.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    registry = er.async_get(hass)
+    layout = {
+        "plain": (("plain_yield", "energy"), ("plain_active_power", "power")),
+        "hybrid": (("hybrid_pv_energy", "energy"), ("hybrid_pv_power", "power"), ("hybrid_battery_power", "power"),
+                   ("hybrid_output_power", "power")),
+        "vague": (("vague_energy", "energy"), ("vague_active_power", "power"), ("vague_battery_power", "power")),
+        "strings": (("strings_pv1_energy", "energy"), ("strings_pv1_power", "power"), ("strings_pv2_power", "power")),
+        "lonely": (("lonely_energy", "energy"), ("lonely_grid_power", "power")),
+    }
+    for name, sensors in layout.items():
+        device = devices.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("solarman", name)})
+        for unique, kind in sensors:
+            registry.async_get_or_create("sensor", "solarman", unique, suggested_object_id=unique,
+                                         device_id=device.id, original_device_class=kind)
+
+
+def _solar(*stats: str, rate: str | None = None) -> dict[str, Any]:
+    sources: list[dict[str, Any]] = [{"type": "solar", "stat_energy_from": stat} for stat in stats]
+    if rate:
+        sources[0]["stat_rate"] = rate
+    return {"energy_sources": [*sources, {"type": "grid"}]}
+
+
+async def test_a_solar_source_is_read_now_from_the_power_sensor_on_its_device(hass: HomeAssistant) -> None:
+    _solar_devices(hass)
+    # The device's only power sensor; the one named pv among a hybrid's; the pv string paired by its name.
+    assert solar_live_ids(hass, _solar("sensor.plain_yield")) == ("sensor.plain_active_power",)
+    assert solar_live_ids(hass, _solar("sensor.hybrid_pv_energy")) == ("sensor.hybrid_pv_power",)
+    assert solar_live_ids(hass, _solar("sensor.strings_pv1_energy")) == ("sensor.strings_pv1_power",)
+    assert solar_live_ids(hass, _solar("sensor.plain_yield", "sensor.hybrid_pv_energy")) == (
+        "sensor.plain_active_power", "sensor.hybrid_pv_power")
+    # The Energy dashboard's own power sensor first, the device's for the other source.
+    assert solar_live_ids(hass, _solar("sensor.vague_energy", "sensor.plain_yield", rate="sensor.vague_w")) == (
+        "sensor.vague_w", "sensor.plain_active_power")
+    # Not guessed: several and none named pv (a total may hold the battery), a grid power alone, no device.
+    assert solar_live_ids(hass, _solar("sensor.vague_energy")) == ()
+    assert solar_live_ids(hass, _solar("sensor.lonely_energy")) == ()
+    assert solar_live_ids(hass, _solar("sensor.nowhere")) == ()
+    # One of two sources without one: none of the sun is read live.
+    assert solar_live_ids(hass, _solar("sensor.plain_yield", "sensor.vague_energy")) == ()
+
+
+async def test_the_sun_from_found_sensors_is_only_a_plausible_production(hass: HomeAssistant) -> None:
+    hass.states.async_set("sensor.a", "1500", {"unit_of_measurement": "W", "state_class": "measurement"})
+    hass.states.async_set("sensor.b", "0.5", {"unit_of_measurement": "kW"})
+    hass.states.async_set("sensor.tiny", "-3", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.neg", "-1200", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.kwh", "12", {"unit_of_measurement": "kWh", "state_class": "total_increasing"})
+    hass.states.async_set("sensor.total", "1200", {"unit_of_measurement": "W", "state_class": "total"})
+    assert sun_kw_of(hass, ["sensor.a", "sensor.b", "sensor.tiny"]) == pytest.approx(2.0)
+    for wrong in ("sensor.neg", "sensor.kwh", "sensor.total", "sensor.unread"):
+        assert sun_kw_of(hass, ["sensor.a", wrong]) is None, wrong
+    assert sun_kw_of(hass, []) is None
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_the_pilot_site_reads_its_inverters_sun_now_or_marks_the_period_estimated(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import custom_components.spotnav.api.house_now as module
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+    await run(hass, freezer, 60, 4000.0)
+    _solar_devices(hass)
+    hass.states.async_set("sensor.plain_active_power", "2400", {"unit_of_measurement": "W", "state_class": "measurement"})
+    prefs: dict[str, Any] = {}
+
+    async def energy_prefs(_hass: HomeAssistant) -> dict[str, Any]:
+        return prefs
+
+    async def day_flow(_hass: HomeAssistant, _entry_id: str, controller: Any) -> Any:
+        at = controller.demand.now()
+        return SimpleNamespace(periods=[SimpleNamespace(solar=0.25, heat=None, minutes=15, end=at)])
+
+    monkeypatch.setattr(module, "async_energy_prefs", energy_prefs)
+    monkeypatch.setattr(module, "async_cached_day_flow", day_flow)
+    prefs.update(_solar("sensor.plain_yield"))
+    live = (await ask(hass, 1, api_version=1, site_id=site.entry_id))["result"]
+    assert live["sun_from"] == "power" and live["sun_kw"] == pytest.approx(2.4) and "sun" not in live["estimated"]
+    for stats in (("sensor.vague_energy",), ("sensor.plain_yield", "sensor.vague_energy")):
+        prefs.clear()
+        prefs.update(_solar(*stats))
+        stale = (await ask(hass, 2, api_version=1, site_id=site.entry_id))["result"]
+        assert stale["sun_from"] == "recent" and stale["sun_kw"] == pytest.approx(1.0), stats
+        assert "sun" in stale["estimated"], stats
 
 
 def test_contract_fixtures() -> None:

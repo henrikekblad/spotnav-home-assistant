@@ -653,15 +653,21 @@ def live_power_id(hass: HomeAssistant, sensor_id: str, kind: str, pairs: Mapping
     for rate, stat in pairs.items():
         if stat == sensor_id:
             return rate
+    found = device_power_sensors(hass, sensor_id)
+    return found[0].entity_id if len(found) == 1 else None
+
+
+def device_power_sensors(hass: HomeAssistant, sensor_id: str) -> list[er.RegistryEntry]:
+    """The enabled power sensors on `sensor_id`'s device (empty without a device): the candidates `live_power_id`
+    and the house card's live sun (`api/house_now.py:solar_live_power_id`) choose from."""
     registry = er.async_get(hass)
     entry = registry.async_get(sensor_id)
     if entry is None or entry.device_id is None:
-        return None
-    found = [
-        other.entity_id
+        return []
+    return [
+        other
         for other in er.async_entries_for_device(registry, entry.device_id)
         if other.domain == "sensor"
         and other.disabled_by is None
         and (other.device_class or other.original_device_class) == "power"
     ]
-    return found[0] if len(found) == 1 else None

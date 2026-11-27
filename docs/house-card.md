@@ -125,8 +125,10 @@ to choose (more than one could be it) is said here.
 
 The live figures are read every 30 seconds while Now is shown: the grid and the chargers as load balancing reads them,
 whether a car is plugged in and its level, the battery's own power, the sun from the Energy dashboard's solar power
-sensors (else the battery plant's own PV power where the plant is all of the sun) and the heat from the power sensors of
-the heat pump's meter and the heat zones (else the last quarter hour's mean). They are
+sensors (else the battery plant's own PV power where the plant is all of the sun, else each solar source's PV power
+sensor on its inverter's device: its only power sensor, or the one named pv or solar; where a device has several and
+none is clearly the panels', or one source has none, the sun is the last quarter hour's mean, marked ≈) and the heat
+from the power sensors of the heat pump's meter and the heat zones (else the last quarter hour's mean). They are
 written into the picture in place: the dots keep running and only start again when a line turns. From an older SpotNav
 the picture has the day's figures and the battery's own power only, and says "no live figures yet".
 
