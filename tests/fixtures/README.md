@@ -83,3 +83,11 @@ path passed (the day's slot left), `ended.json` the period ended by itself (no s
 
 `webhook/get_strings_*.json` are `get_strings` on the webhooks from a small language directory of their own (`tests/test_strings_api.py`):
 Swedish words, the same language again with its hash held (`unchanged`), and a language the card has no words for (English).
+
+`year_review/v1/*` are `spotnav/get_year_review`'s answers (`api/year_review.py`), written by the pure computation
+(`tests/test_year_review.py`) for 15 December 2026: `full_year.json` a villa on SpotNav all year with the sun, a
+battery and a car, upgraded to 3.0 on 15 October (every page; the car's 2.x charges at the day-average estimate);
+`fresh_install.json` installed on 20 November (a partial year, charges imported, no fuse or expensive-hour page);
+`car_only.json` a car alone; `sun_battery_no_car.json` the sun and a battery without a car; `nord_pool_55_days.json`
+a year-old site whose provider keeps 55 days of prices (`since` on the car and the expensive hour); `state_none.json`
+no review yet.
