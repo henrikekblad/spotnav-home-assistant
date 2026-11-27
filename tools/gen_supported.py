@@ -1665,7 +1665,9 @@ def vehicles_section() -> list[str]:
         "Kia Uvo (`kia_uvo`) asks the car itself when its last report is older than the integration's force-refresh "
         "interval (in the Australian region at every update), which can wake the car.",
         "- **No range sensor, no vehicle.** A device without a distance-class range sensor, or with no "
-        "device classes at all, is not detected. Nor is an integration that registers no device: Nissan Leaf "
+        "device classes at all, is not detected. A range counts when it is in kilometres or miles. The one "
+        "exception is the Tibber integration (`tibber`), which gives a car's range in metres: its cars (a VW ID.7, "
+        "for example) are found as vehicles too. Nor is an integration that registers no device: Nissan Leaf "
         "(`nissan_leaf`) has no device and no device class on its ranges, and Volkswagen GoConnect "
         "(`volkswagen_goconnect`) none on its charge level or range.",
         "- **A charge limit that is writable only in one mode.** The unofficial Polestar integration (`polestar`) "
