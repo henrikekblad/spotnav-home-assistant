@@ -14,8 +14,8 @@ review (`answer`).
   in the recorder's executor, `recorder.get_instance(hass).async_add_executor_job`).
 * What SpotNav saved per day: `api/saving.async_day_savings` (the sessions with their hours from the same statistics,
   cached once settled; the battery's day money and the heat's reviews in memory).
-* The sessions (the session store, costed with the current settings, its own cache), the year's price slots with the fees as set now
-  (`pricing/period_prices.period_price_slots`, the held day documents), the battery's day money and capacity, the
+* The sessions (the session store, costed with the current settings, its own cache), the year store's day parts (the
+  prices among them, `DayParts.price`), the battery's day money and capacity, the
   site's set-up day and its chargers' first live sessions.
 
 The computation over the year's hours and sessions runs in an executor job (`hass.async_add_executor_job`); the store
@@ -228,7 +228,6 @@ class SiteYearReview:
     async def _async_inputs(self, year: int, today: date, first: date, through: date) -> YearInputs:
         """Everything the computation reads (see the module), gathered on the loop from memory and the readers."""
         from ..api.house_history import history_with_periods  # noqa: PLC0415 - the API imports the site
-        from ..pricing.period_prices import period_price_slots  # noqa: PLC0415 - it imports the planner
         from ..pricing.price_source import site_price_source  # noqa: PLC0415
         from ..site.energy_statistics import async_energy_prefs, energy_flow_ids  # noqa: PLC0415
 
@@ -257,7 +256,6 @@ class SiteYearReview:
             has_solar=bool(ids is not None and ids.solar),
             has_export=bool(ids is not None and ids.grid_out),
             has_battery=bool(ids is not None and (ids.battery_in or ids.battery_out)),
-            prices=period_price_slots(hass, self.entry_id, Period(PERIOD_YEAR, first, through + timedelta(days=1))),
             sessions=self._sessions(),
             day_parts=dict(self.store.day_parts),
             # Copies of the finished days only (today's is still being counted): the executor never reads what the

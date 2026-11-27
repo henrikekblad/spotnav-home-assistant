@@ -22,7 +22,9 @@ and the review (`compute_review`), money in the area's minor unit (öre), dates 
              {id: "expensive", price, start, bought_kwh, since},
              {id: "thanks"}]}
 
-A page left out of `pages` has nothing to stand on. Each page's rule:
+The prices are read from the year store's day parts (`DayParts.price`, `PriceDay`: worked out once per finished day
+with that day's fees, `price_day_of`), never from the year's slots. A page left out of `pages` has nothing to stand
+on. Each page's rule:
 
 * **cover**: always. `since` is the first day of SpotNav's own record (the site's set-up, the first charge recorded
   live) where that is after 7 January, else `null`; `partial` with a `since`.
@@ -34,7 +36,7 @@ A page left out of `pages` has nothing to stand on. Each page's rule:
   when the total is under one major unit or fewer than `MIN_SAVED_DAYS` days have any part. Never a saving for a time
   SpotNav did not control.
 * **car**: the sessions that started in the year (`charges`, `kwh`). `cheap_share_pct` is the share of the priced kWh
-  drawn in the cheapest third of each local day's price intervals (by the buy price with the fees as set now); `null`
+  drawn in the cheapest third of each local day's price intervals (by the buy price with that day's fees); `null`
   under `MIN_PRICED_CAR_KWH` priced kWh; `since` the first priced day where the priced kWh are under
   `PRICED_CAR_SHARE` of the year's. `cheapest` the session of at least `MIN_CHEAPEST_KWH` kWh, every kWh priced,
   with the lowest mean buy price (the session's own price slices, the charger card's figure). `estimated` where an
@@ -50,7 +52,7 @@ A page left out of `pages` has nothing to stand on. Each page's rule:
   without a counted day.
 * **fuse**: the overload episodes the regulator lowered a charge for (counted once per episode since the counter
   started, `site/overload_episodes.py`). Left out under `MIN_FUSE_DAYS` counted days or `MIN_FUSE_COUNT` episodes.
-* **expensive**: the clock hour with the highest mean buy price (spot with the fees as set now) among the held prices
+* **expensive**: the clock hour with the highest mean buy price (spot with that day's fees) among the held prices
   of the year, its start (local, with its offset) and the grid's import in it (`bought_kwh`, `null` without the
   hour's row); `since` the first priced day where under `FULL_PRICE_DAYS` days are priced. Left out under
   `MIN_PRICE_DAYS` priced days.
@@ -108,6 +110,8 @@ MIN_PRICE_DAYS: Final = 28
 FULL_PRICE_DAYS: Final = 300
 #: A clock hour counts for the most expensive one when its slots cover this much of it (seconds).
 _HOUR_COVERED_S: Final = 3540.0
+#: The decimals a clock hour's mean sell price is kept to in the year store (minor per kWh).
+SELL_DIGITS: Final = 3
 
 
 # ------------------------------------------------------------------------------------------------ the year
@@ -139,6 +143,134 @@ def year_bounds(year: int, today: date) -> tuple[date, date] | None:
 # ------------------------------------------------------------------------------------------------ the inputs
 
 
+def _midnight(day: date, zone: tzinfo) -> datetime:
+    """A local day's first instant (UTC)."""
+    return datetime(day.year, day.month, day.day, tzinfo=zone).astimezone(timezone.utc)
+
+
+@dataclass(frozen=True, slots=True)
+class PriceDay:
+    """One local day's prices as the review reads them (`price_day_of`), worked out once the day is over with that
+    day's fees and kept in the year store, so the year is never read slot by slot:
+
+    * `runs`: the day's price slots in order, as `(offset from the day's first instant, slot length, count)` in
+      seconds (a whole day of quarters is one run); `cheap`: a bit per slot, in that order, set for the slots in the
+      day's cheapest third (`cheap_slots`). The car page's share.
+    * `sells`: each local clock hour's mean sell price from the day's first hour (minor per kWh, `SELL_DIGITS`
+      decimals: only whether the year's export earned anything is shown), `None` for an hour without a slot. The sun
+      page's `export_paid`.
+    * `top`: the day's most expensive clock hour that the slots cover (`_HOUR_COVERED_S`), `(hour from the day's
+      first, mean buy price)`, `None` without one. The expensive hour, and the days counted priced.
+
+    No slot: an empty part (the day was looked at and had no price)."""
+
+    runs: tuple[tuple[int, int, int], ...] = ()
+    cheap: int = 0
+    sells: tuple[float | None, ...] = ()
+    top: tuple[int, float] | None = None
+
+    @property
+    def covered_s(self) -> int:
+        """The seconds the day's slots cover."""
+        return sum(seconds * count for _offset, seconds, count in self.runs)
+
+    def intervals(self, day: date, zone: tzinfo) -> list[tuple[datetime, datetime, bool]]:
+        """The day's slots again: `(start, end, in the cheapest third)`, in order."""
+        midnight = _midnight(day, zone)
+        out: list[tuple[datetime, datetime, bool]] = []
+        for offset, seconds, count in self.runs:
+            for step in range(count):
+                start = midnight + timedelta(seconds=offset + step * seconds)
+                out.append((start, start + timedelta(seconds=seconds), bool(self.cheap >> len(out) & 1)))
+        return out
+
+    def hour_sells(self, day: date, zone: tzinfo) -> dict[datetime, float]:
+        """Each clock hour's mean sell price, by its UTC start."""
+        midnight = _midnight(day, zone)
+        return {midnight + timedelta(hours=index): sell for index, sell in enumerate(self.sells) if sell is not None}
+
+    def top_hour(self, day: date, zone: tzinfo) -> tuple[datetime, float] | None:
+        """The day's most expensive covered clock hour (its UTC start) and its mean buy price."""
+        if self.top is None:
+            return None
+        return _midnight(day, zone) + timedelta(hours=self.top[0]), self.top[1]
+
+    def as_dict(self) -> dict[str, Any]:
+        """`{r: [[offset, seconds, count], ...], c: cheap bits in hex, s: [sell | null, ...], t: [hour, buy]}`, `{}`
+        for a day without a slot."""
+        if not self.runs:
+            return {}
+        out: dict[str, Any] = {
+            "r": [list(run) for run in self.runs],
+            "c": format(self.cheap, "x"),
+            "s": list(self.sells),
+        }
+        if self.top is not None:
+            out["t"] = [self.top[0], self.top[1]]
+        return out
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> PriceDay | None:
+        """The part again; `None` for one that cannot be read (it is worked out again where the prices are held)."""
+        if not isinstance(raw, Mapping):
+            return None
+        if not raw:
+            return cls()
+        try:
+            runs = tuple((int(run[0]), int(run[1]), int(run[2])) for run in raw["r"] if len(run) == 3)
+            cheap = int(raw.get("c") or "0", 16)
+            sells = tuple(None if sell is None else float(sell) for sell in raw.get("s") or ())
+            top_raw = raw.get("t")
+            top = None if top_raw is None else (int(top_raw[0]), float(top_raw[1]))
+        except KeyError, TypeError, ValueError, IndexError:
+            return None
+        if not runs or any(count <= 0 for _offset, _seconds, count in runs) or cheap < 0:
+            return None
+        if any(sell is not None and not math.isfinite(sell) for sell in sells):
+            return None
+        if top is not None and not math.isfinite(top[1]):
+            return None
+        return cls(runs=runs, cheap=cheap, sells=sells, top=top)
+
+
+def price_day_of(day: date, slots: Sequence[PriceSlot], zone: tzinfo) -> PriceDay:
+    """Day `day`'s part from its price slots (those that start on it, local; `pricing/period_prices`)."""
+    ordered = sorted(slots, key=lambda slot: slot.start)
+    if not ordered:
+        return PriceDay()
+    midnight = _midnight(day, zone)
+    runs: list[list[int]] = []
+    for slot in ordered:
+        offset = round((slot.start - midnight).total_seconds())
+        seconds = round((slot.end - slot.start).total_seconds())
+        last = runs[-1] if runs else None
+        if last is not None and last[1] == seconds and last[0] + seconds * last[2] == offset:
+            last[2] += 1
+        else:
+            runs.append([offset, seconds, 1])
+    cheap = cheap_slots(ordered, zone)
+    bits = sum(1 << index for index, slot in enumerate(ordered) if slot.start in cheap)
+    hours = {round((hour - midnight).total_seconds() / 3600): row for hour, row in _hour_prices(ordered, zone).items()}
+    sells = tuple(
+        None if index not in hours else round(hours[index][2], SELL_DIGITS)
+        for index in range(max(hours) + 1 if hours else 0)
+    )
+    held = {index: row for index, row in hours.items() if row[0] >= _HOUR_COVERED_S}
+    top = None
+    if held:
+        index = max(held, key=lambda index: (held[index][1], -index))
+        top = (index, held[index][1])
+    return PriceDay(runs=tuple((run[0], run[1], run[2]) for run in runs), cheap=bits, sells=sells, top=top)
+
+
+def price_days_of(slots: Iterable[PriceSlot], zone: tzinfo) -> dict[date, PriceDay]:
+    """Each local day's part from a stretch's price slots (`price_day_of`)."""
+    by_day: dict[date, list[PriceSlot]] = {}
+    for slot in slots:
+        by_day.setdefault(slot.start.astimezone(zone).date(), []).append(slot)
+    return {day: price_day_of(day, day_slots, zone) for day, day_slots in sorted(by_day.items())}
+
+
 @dataclass(frozen=True, slots=True)
 class DayParts:
     """One local day's parts as the year store keeps them (minor units; `None`: not a part of the day): what SpotNav
@@ -150,6 +282,8 @@ class DayParts:
     car_est: float | None = None
     heat: float | None = None
     fuse: int = 0
+    #: The day's prices as the review reads them (`PriceDay`), worked out once the day is over; `None` not yet.
+    price: PriceDay | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -159,6 +293,8 @@ class DayParts:
                 out[name] = round(value, 2)
         if self.fuse:
             out["fuse"] = self.fuse
+        if self.price is not None:
+            out["price"] = self.price.as_dict()
         return out
 
     @classmethod
@@ -173,6 +309,8 @@ class DayParts:
         fuse = raw.get("fuse")
         if isinstance(fuse, int) and not isinstance(fuse, bool) and fuse > 0:
             values["fuse"] = fuse
+        if (price := PriceDay.from_dict(raw.get("price"))) is not None:
+            values["price"] = price
         return cls(**values)
 
     def merged(self, newer: DayParts) -> DayParts:
@@ -184,10 +322,12 @@ class DayParts:
             car=self.car if newer.car is None else newer.car,
             car_est=self.car_est if newer.car_est is None else newer.car_est,
             heat=self.heat if newer.heat is None else newer.heat,
+            price=self.price if newer.price is None else newer.price,
         )
 
     @property
     def any(self) -> bool:
+        """Whether the day has a saving part (the price part and the fuse's count are not savings)."""
         return any(value is not None for value in (self.battery, self.car, self.car_est, self.heat))
 
 
@@ -244,11 +384,9 @@ class YearInputs:
     has_solar: bool = False
     has_export: bool = False
     has_battery: bool = False
-    #: The year's price slots with the fees as set now (`pricing/period_prices.period_price_slots`).
-    prices: Sequence[PriceSlot] = ()
     #: The site's chargers' sessions, costed with the current settings.
     sessions: Sequence[ChargeSession] = ()
-    #: The year store's day parts (merged with tonight's).
+    #: The year store's day parts (merged with tonight's), each day's prices among them (`DayParts.price`).
     day_parts: Mapping[date, DayParts] = field(default_factory=dict)
     #: The battery's money per day (`battery/stored_value.DayMoney`: `arbitrage`, `flow`).
     battery_days: Mapping[date, Any] = field(default_factory=dict)
@@ -285,18 +423,19 @@ def compute_review(inputs: YearInputs) -> dict[str, Any] | None:
     zone = time_zones.require_zone(inputs.tz)
     since = _later_than_full(inputs.record_start, inputs.year)
     hours = [hour for hour in (inputs.hours or ()) if first <= hour.start.astimezone(zone).date() <= through]
-    slots = sorted(
-        (slot for slot in inputs.prices if first <= slot.start.astimezone(zone).date() <= through),
-        key=lambda slot: slot.start,
-    )
+    prices = {
+        day: parts.price
+        for day, parts in sorted(inputs.day_parts.items())
+        if first <= day <= through and parts.price is not None
+    }
     pages: list[dict[str, Any] | None] = [
         {"id": "cover"},
         saved_page(inputs, first, through),
-        car_page(inputs, first, through, slots, zone),
-        sun_page(inputs, hours, slots, zone),
+        car_page(inputs, first, through, prices, zone),
+        sun_page(inputs, hours, prices, zone),
         battery_page(inputs, hours, first, through),
         fuse_page(inputs, first, through),
-        expensive_page(inputs, hours, slots, zone),
+        expensive_page(inputs, hours, prices, zone),
         {"id": "thanks"},
     ]
     money = inputs.money
@@ -361,29 +500,28 @@ def cheap_slots(slots: Sequence[PriceSlot], zone: tzinfo) -> set[datetime]:
 
 
 class _Cover:
-    """How much of a stretch the slots cover, and how much of it in the cheap ones."""
+    """How much of a stretch the slots `(start, end, cheap)` cover, in order, and how much of it in the cheap ones."""
 
-    def __init__(self, slots: Sequence[PriceSlot], cheap: set[datetime]) -> None:
+    def __init__(self, slots: Sequence[tuple[datetime, datetime, bool]]) -> None:
         self.slots = slots
-        self.starts = [slot.start for slot in slots]
-        self.cheap = cheap
+        self.starts = [slot[0] for slot in slots]
 
     def of(self, start: datetime, end: datetime) -> tuple[float, float]:
         covered = cheap = 0.0
         low_index = max(0, bisect_left(self.starts, start - timedelta(hours=2)))
-        for slot in self.slots[low_index : bisect_right(self.starts, end)]:
-            low, high = max(start, slot.start), min(end, slot.end)
+        for slot_start, slot_end, in_cheap in self.slots[low_index : bisect_right(self.starts, end)]:
+            low, high = max(start, slot_start), min(end, slot_end)
             if high <= low:
                 continue
             seconds = (high - low).total_seconds()
             covered += seconds
-            if slot.start in self.cheap:
+            if in_cheap:
                 cheap += seconds
         return covered, cheap
 
 
 def car_page(
-    inputs: YearInputs, first: date, through: date, slots: Sequence[PriceSlot], zone: tzinfo
+    inputs: YearInputs, first: date, through: date, prices: Mapping[date, PriceDay], zone: tzinfo
 ) -> dict[str, Any] | None:
     sessions = sorted(
         (session for session in inputs.sessions if first <= session.start.astimezone(zone).date() <= through),
@@ -391,7 +529,7 @@ def car_page(
     )
     if not sessions:
         return None
-    cover = _Cover(slots, cheap_slots(slots, zone))
+    cover = _Cover([slot for day in sorted(prices) for slot in prices[day].intervals(day, zone)])
     total_kwh = sum(max(0.0, session.energy_kwh) for session in sessions)
     priced_kwh = cheap_kwh = 0.0
     first_priced: date | None = None
@@ -449,7 +587,7 @@ def _hour_prices(slots: Sequence[PriceSlot], zone: tzinfo) -> dict[datetime, tup
 
 
 def sun_page(
-    inputs: YearInputs, hours: Sequence[EnergyHour], slots: Sequence[PriceSlot], zone: tzinfo
+    inputs: YearInputs, hours: Sequence[EnergyHour], prices: Mapping[date, PriceDay], zone: tzinfo
 ) -> dict[str, Any] | None:
     if not inputs.has_solar:
         return None
@@ -460,14 +598,16 @@ def sun_page(
     out_kwh = 0.0
     earned = 0.0
     priced = False
-    prices = _hour_prices(slots, zone)
+    sells: dict[datetime, float] = {}
+    for day, price in prices.items():
+        sells.update(price.hour_sells(day, zone))
     for hour in read:
         exported = allocate_hour(hour).get((ROLE_SOLAR, ROLE_GRID), 0.0)
         out_kwh += exported
-        price = prices.get(hour.start)
-        if price is not None:
+        sell = sells.get(hour.start)
+        if sell is not None:
             priced = True
-            earned += exported * price[2]
+            earned += exported * sell
     home = None
     if inputs.has_export and produced > 0:
         home = 100.0 * max(0.0, produced - out_kwh) / produced
@@ -540,18 +680,17 @@ def fuse_page(inputs: YearInputs, first: date, through: date) -> dict[str, Any] 
 
 
 def expensive_page(
-    inputs: YearInputs, hours: Sequence[EnergyHour], slots: Sequence[PriceSlot], zone: tzinfo
+    inputs: YearInputs, hours: Sequence[EnergyHour], prices: Mapping[date, PriceDay], zone: tzinfo
 ) -> dict[str, Any] | None:
-    prices = _hour_prices(slots, zone)
-    held = {hour: row for hour, row in prices.items() if row[0] >= _HOUR_COVERED_S}
-    days = {hour.astimezone(zone).date() for hour in held}
+    tops = {day: found for day, price in prices.items() if (found := price.top_hour(day, zone)) is not None}
+    days = set(tops)
     if len(days) < MIN_PRICE_DAYS:
         return None
-    top = max(held, key=lambda hour: (held[hour][1], -hour.timestamp()))
+    top, top_buy = max(tops.values(), key=lambda found: (found[1], -found[0].timestamp()))
     bought = next((row.grid_in for row in hours if row.start == top and row.minutes == 60), None)
     return {
         "id": "expensive",
-        "price": _r(held[top][1], 1),
+        "price": _r(top_buy, 1),
         "start": top.astimezone(zone).isoformat(),
         "bought_kwh": None if bought is None else _r(max(0.0, bought), 2),
         "since": _iso(min(days)) if len(days) < FULL_PRICE_DAYS else None,

@@ -31,6 +31,7 @@ from custom_components.spotnav.year_review.compute import (
     YearInputs,
     cheap_slots,
     compute_review,
+    price_days_of,
     day_parts_of,
     estimate_days,
     in_run_window,
@@ -179,6 +180,20 @@ def battery_days(first: date, end: date) -> dict[date, DayMoney]:
     return out
 
 
+def with_prices(parts: dict[date, DayParts], slots: list[PriceSlot]) -> dict[date, DayParts]:
+    """The day parts with each day's price part, as the nightly run lays them in (`compute.price_days_of`)."""
+    out = dict(parts)
+    for day, price in price_days_of(slots, ZONE).items():
+        out[day] = replace(out.get(day, DayParts()), price=price)
+    return out
+
+
+def priced(inputs: YearInputs, slots: list[PriceSlot]) -> YearInputs:
+    """The site's inputs with these prices in place of the ones it had."""
+    parts = {day: replace(held, price=None) for day, held in inputs.day_parts.items()}
+    return replace(inputs, day_parts=with_prices(parts, slots))
+
+
 def with_fuse(parts: dict[date, DayParts], days: list[date]) -> dict[date, DayParts]:
     out = dict(parts)
     for day in days:
@@ -206,9 +221,8 @@ def full_site(today: date = TODAY) -> YearInputs:
         has_solar=True,
         has_export=True,
         has_battery=True,
-        prices=price_slots(YEAR_START, today),
         sessions=sessions,
-        day_parts=with_fuse(parts, fuse_days),
+        day_parts=with_prices(with_fuse(parts, fuse_days), price_slots(YEAR_START, today)),
         battery_days=battery_days(UPGRADE, today),
         capacity_kwh=10.0,
         fuse_since=date(2026, 2, 1),
@@ -230,9 +244,8 @@ def fresh_site() -> YearInputs:
         has_solar=True,
         has_export=True,
         has_battery=True,
-        prices=price_slots(install, TODAY),
         sessions=sessions,
-        day_parts=day_parts_of(savings, estimate_days(sessions, ZONE)),
+        day_parts=with_prices(day_parts_of(savings, estimate_days(sessions, ZONE)), price_slots(install, TODAY)),
         battery_days=battery_days(install, TODAY),
         capacity_kwh=10.0,
         fuse_since=install,
@@ -249,9 +262,8 @@ def car_only_site() -> YearInputs:
         money=MONEY,
         record_start=date(2025, 6, 1),
         hours=energy_hours(YEAR_START, TODAY, solar=False, battery=False, export=False),
-        prices=price_slots(YEAR_START, TODAY),
         sessions=sessions,
-        day_parts=day_parts_of(savings, estimate_days(sessions, ZONE)),
+        day_parts=with_prices(day_parts_of(savings, estimate_days(sessions, ZONE)), price_slots(YEAR_START, TODAY)),
         fuse_since=date(2026, 12, 1),
     )
 
@@ -268,8 +280,7 @@ def sun_battery_site() -> YearInputs:
         has_solar=True,
         has_export=True,
         has_battery=True,
-        prices=price_slots(YEAR_START, TODAY),
-        day_parts=day_parts_of(savings, {}),
+        day_parts=with_prices(day_parts_of(savings, {}), price_slots(YEAR_START, TODAY)),
         battery_days=battery_days(UPGRADE, TODAY),
         capacity_kwh=12.0,
     )
@@ -277,7 +288,7 @@ def sun_battery_site() -> YearInputs:
 
 def nord_pool_site() -> YearInputs:
     """A year-old site whose provider keeps 55 days of prices."""
-    return replace(full_site(), prices=price_slots(TODAY - timedelta(days=55), TODAY))
+    return priced(full_site(), price_slots(TODAY - timedelta(days=55), TODAY))
 
 
 def pages_of(review: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -443,7 +454,7 @@ def test_without_an_export_meter_the_sun_s_home_share_is_not_guessed() -> None:
 
 
 def test_a_zero_export_site_s_sun_page_says_nothing_was_sold() -> None:
-    inputs = replace(sun_battery_site(), prices=price_slots(YEAR_START, TODAY, sell=0.0))
+    inputs = priced(sun_battery_site(), price_slots(YEAR_START, TODAY, sell=0.0))
     assert pages_of(compute_review(inputs))["sun"]["export_paid"] is False
 
 
@@ -468,7 +479,7 @@ def test_without_the_grid_meter_the_pages_from_the_hours_are_left_out() -> None:
 
 
 def test_without_prices_the_car_has_charges_and_kwh_but_no_share_or_expensive_hour() -> None:
-    inputs = replace(car_only_site(), prices=())
+    inputs = priced(car_only_site(), [])
     pages = pages_of(compute_review(inputs))
     assert pages["car"]["cheap_share_pct"] is None and pages["car"]["since"] is None
     assert pages["car"]["charges"] > 0
