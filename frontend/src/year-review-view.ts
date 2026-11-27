@@ -1,7 +1,8 @@
 // The year review's story ("Året med SpotNav"): one fact per panel in a full-screen dialog (`dialog.ts`, its focus
 // trap, Escape and the background made inert), with the progress bars on top, Back, Close and Next under it, ← and →
 // and a swipe between pages, the panel's words read out as they change (`aria-live`). Each panel has its tint from
-// the energy palette, its illustration floating beside the figure (`year-review-art.ts`), the figure counted up and
+// the energy palette, its illustration floating above the figure (`year-review-art.ts`), the page's words in one
+// block centred in the panel (scrolled from its top where it is taller), the figure counted up and
 // fireworks behind the cover and the thanks page (`year-review-fx.ts`). Under reduced motion nothing moves; every
 // frame loop stops when the page changes, the story closes or the tab is hidden.
 //
@@ -30,6 +31,7 @@ export const YR = {
   bars: "spotnav-yr-bars",
   bar: "spotnav-yr-bar",
   panel: "spotnav-yr-panel",
+  content: "spotnav-yr-content",
   eyebrow: "spotnav-yr-eyebrow",
   big: "spotnav-yr-big",
   unit: "spotnav-yr-unit",
@@ -90,10 +92,12 @@ export const YEAR_REVIEW_STYLES = `
   }
   .${YR.fx} { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
   .${YR.art} {
-    position: absolute; right: 16px; top: 30px; width: min(112px, 28vw); height: min(112px, 28vw); pointer-events: none; z-index: 1;
+    flex: none; width: clamp(96px, min(40vw, 24vh), 168px); height: clamp(96px, min(40vw, 24vh), 168px);
+    margin: 4px 0 8px; pointer-events: none;
     filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.35));
     animation: spotnav-yr-float 5s ease-in-out infinite;
   }
+  .${YR.story}[data-page="thanks"] .${YR.art} { width: clamp(72px, min(26vw, 14vh), 104px); height: clamp(72px, min(26vw, 14vh), 104px); margin-bottom: 0; }
   .${YR.art} svg { width: 100%; height: 100%; display: block; }
   @keyframes spotnav-yr-float { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-7px) rotate(-2deg); } }
   .${ART_SPIN} { transform-origin: 50% 50%; animation: spotnav-yr-spin 14s linear infinite; }
@@ -104,22 +108,24 @@ export const YEAR_REVIEW_STYLES = `
   .${YR.bar} { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.3); }
   .${YR.bar}[data-on] { background: rgba(255, 255, 255, 0.95); }
   .${YR.panel} {
-    position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; overflow-y: auto;
-    display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 22px 24px 18px;
+    position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+    display: flex; flex-direction: column; padding: 14px 24px 16px;
   }
-  .${YR.eyebrow} { font-size: 0.78rem; letter-spacing: 0.09em; text-transform: uppercase; opacity: 0.85; font-weight: 600; margin: 0; padding-right: 120px; }
+  .${YR.content} { margin: auto 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .${YR.eyebrow} { font-size: 0.85rem; letter-spacing: 0.09em; text-transform: uppercase; opacity: 0.85; font-weight: 600; margin: 0; }
   .${YR.big} {
-    margin: 0; font-size: clamp(2.6rem, 11vw, 3.6rem); font-weight: 700; line-height: 1.02;
-    font-variant-numeric: tabular-nums; text-wrap: balance; text-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+    margin: 0; font-size: clamp(2.9rem, 13vw, 4.4rem); font-weight: 700; line-height: 1.02;
+    font-variant-numeric: tabular-nums; text-wrap: balance; overflow-wrap: break-word; text-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
   }
-  .${YR.big}[data-words] { font-size: clamp(2rem, 8vw, 2.8rem); }
+  .${YR.big}[data-words] { font-size: clamp(2.2rem, 9.5vw, 3.2rem); overflow-wrap: break-word; hyphens: auto; }
   .${YR.unit} { font-size: 0.42em; font-weight: 500; opacity: 0.9; }
-  .${YR.say} { margin: 0; font-size: 1.06rem; line-height: 1.45; max-width: 30em; text-wrap: pretty; }
-  .${YR.foot} { margin: 0; font-size: 0.8rem; opacity: 0.85; line-height: 1.4; }
-  .${YR.meter} { height: 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+  .${YR.say} { margin: 0; font-size: 1.22rem; line-height: 1.42; max-width: 30em; text-wrap: pretty; overflow-wrap: break-word; hyphens: auto; }
+  .${YR.story}[data-page="thanks"] .${YR.say} { font-size: 1.06rem; line-height: 1.45; }
+  .${YR.foot} { margin: 0; font-size: 0.85rem; opacity: 0.85; line-height: 1.4; }
+  .${YR.meter} { height: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
   .${YR.meter} > span { display: block; height: 100%; background: rgba(255, 255, 255, 0.95); border-radius: 999px; }
   .${YR.chips} { display: flex; gap: 10px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
-  .${YR.chips} > li { background: rgba(255, 255, 255, 0.16); border-radius: 10px; padding: 6px 10px; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .${YR.chips} > li { background: rgba(255, 255, 255, 0.16); border-radius: 10px; padding: 7px 11px; font-size: 0.98rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
   .${YR.badge} { align-self: flex-start; background: rgba(0, 0, 0, 0.22); border-radius: 999px; padding: 4px 10px; font-size: 0.78rem; }
   .${YR.nav} {
     position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px;
@@ -128,7 +134,12 @@ export const YEAR_REVIEW_STYLES = `
   .${YR.nav} button, .${YR.cta} a, .${YR.cta} button {
     font: inherit; border: 0; cursor: pointer; color: #fff; min-height: 40px;
   }
-  .${YR.nav} button { font-size: 0.9rem; border-radius: 999px; padding: 8px 14px; background: rgba(255, 255, 255, 0.2); }
+  .${YR.nav} button {
+    display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 40px;
+    margin: 0; padding: 0 16px; font-size: 0.95rem; line-height: 1; border-radius: 999px; background: rgba(255, 255, 255, 0.2);
+    vertical-align: middle;
+  }
+  .${YR.nav} button > span { display: block; line-height: 1; text-box: trim-both cap alphabetic; }
   .${YR.nav} button:disabled { opacity: 0.35; cursor: default; }
   .${YR.nav} button:focus-visible, .${YR.cta} a:focus-visible, .${YR.cta} button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .${YR.cta} { display: flex; flex-direction: column; gap: 8px; }
@@ -304,8 +315,6 @@ export class YearReviewStory {
     story.setAttribute("aria-roledescription", "carousel");
     const canvas = element(doc, "canvas", YR.fx);
     canvas.setAttribute("aria-hidden", "true");
-    const art = element(doc, "div", YR.art);
-    art.setAttribute("aria-hidden", "true");
     const bars = element(doc, "div", YR.bars);
     bars.setAttribute("aria-hidden", "true");
     const panel = element(doc, "div", YR.panel);
@@ -319,7 +328,7 @@ export class YearReviewStory {
     next.addEventListener("click", () => this.go(this.index + 1));
     close.addEventListener("click", () => this.close());
     nav.append(back, close, next);
-    story.append(canvas, art, bars, panel, nav);
+    story.append(canvas, bars, panel, nav);
     story.addEventListener("pointerdown", (event) => {
       this.swipeFrom = { x: event.clientX, y: event.clientY };
     });
@@ -382,9 +391,6 @@ export class YearReviewStory {
         return bar;
       }),
     );
-    const art = story.querySelector<HTMLElement>(`.${YR.art}`)!;
-    const svg = artElement(doc, entry.id);
-    art.replaceChildren(...(svg === null ? [] : [svg]));
     const panel = story.querySelector<HTMLElement>(`.${YR.panel}`)!;
     panel.setAttribute("aria-label", translate(L, "yearReview.nav.page", { page: String(this.index + 1), pages: String(this.pages.length) }));
     panel.replaceChildren(...this.panelNodes(entry, L));
@@ -404,7 +410,13 @@ export class YearReviewStory {
 
   private panelNodes(entry: StoryPage, L: Language): Node[] {
     const doc = this.input.doc;
-    const nodes: Node[] = [element(doc, "p", YR.eyebrow, entry.eyebrow)];
+    const art = element(doc, "div", YR.art);
+    art.setAttribute("aria-hidden", "true");
+    const svg = artElement(doc, entry.id);
+    if (svg !== null) {
+      art.append(svg);
+    }
+    const nodes: Node[] = [art, element(doc, "p", YR.eyebrow, entry.eyebrow)];
     if (typeof entry.big === "string") {
       const big = element(doc, "p", YR.big, entry.big);
       big.dataset["words"] = "";
@@ -449,7 +461,10 @@ export class YearReviewStory {
     for (const line of entry.foot) {
       nodes.push(element(doc, "p", YR.foot, line));
     }
-    return nodes;
+    // One block, centred in the panel by its margins (from the top where it is taller than the panel).
+    const content = element(doc, "div", YR.content);
+    content.append(...nodes);
+    return [content];
   }
 
   /** The support ask (once, here only) and the picture to share. */
@@ -527,7 +542,8 @@ export class YearReviewStory {
 }
 
 function navButton(doc: Document, key: string, label: string, accessible: string): HTMLButtonElement {
-  const button = element(doc, "button", undefined, label);
+  const button = element(doc, "button");
+  button.append(element(doc, "span", undefined, label));
   button.type = "button";
   button.dataset["nav"] = key;
   button.setAttribute("aria-label", accessible);
