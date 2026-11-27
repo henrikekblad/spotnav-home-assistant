@@ -861,21 +861,6 @@ def _row_value(row: Sequence[float], k: int, frac: float) -> float:
     return row[k] + (row[k + 1] - row[k]) * frac if frac else row[k]
 
 
-def _value_at(rows: Sequence[Sequence[float]], levels: Sequence[float], peak: float, k: int, frac: float) -> float:
-    """The value-to-go at the energy point (k, frac) and the day's [peak], linear between the peak levels."""
-    if len(levels) == 1:
-        return _row_value(rows[0], k, frac)
-    position = (peak - levels[0]) / (levels[-1] - levels[0]) * (len(levels) - 1)
-    if position <= 0:
-        return _row_value(rows[0], k, frac)
-    if position >= len(levels) - 1:
-        return _row_value(rows[-1], k, frac)
-    j = int(position)
-    share = position - j
-    below = _row_value(rows[j], k, frac)
-    return below + (_row_value(rows[j + 1], k, frac) - below) * share if share else below
-
-
 def _shave_to(
     slot: _Slot, battery: _Battery, soc_kwh: float, peak: float, limits: tuple[float, float] | None = None
 ) -> float | None:
@@ -910,6 +895,11 @@ def _best_peak(
         outcome = _apply(slot, battery, soc_kwh, action, power, cycle_cost, hurdle, limits)
         tried.append((outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh)))
     priced = slot.priced_ceiling
+    soft, price = slot.soft_cap_kw, slot.peak_price
+    # The value-to-go between the peak levels of the slot after: linear, as between the energy points.
+    top = len(after_levels) - 1
+    low = after_levels[0]
+    span = after_levels[-1] - low
     out: list[tuple[_Outcome, float]] = []
     for peak in peaks:
         options = tried
@@ -918,20 +908,64 @@ def _best_peak(
             outcome = _apply(slot, battery, soc_kwh, ACTION_SHAVE, power, cycle_cost, hurdle, limits)
             extra = (outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh))
             options = [*tried, extra]
+        floor = max(peak, soft) if priced else peak  # type: ignore[type-var]
         best: _Outcome | None = None
         best_total = 0.0
         best_charge = 0.0
         for outcome, money, k, frac in options:
+            # `_raise`: what the import adds to the demand charge, and the day's peak after it.
+            charge, new = 0.0, peak
             if priced:
-                charge, new = _raise(slot, peak, outcome.grid_kw)
+                grid_kw = outcome.grid_kw
+                if grid_kw > floor:
+                    charge = price * (grid_kw - floor)
+                if grid_kw > peak:
+                    new = grid_kw
+            position = (new - low) / span * top if top else 0.0
+            if position <= 0:
+                value = _row_value(after[0], k, frac)
+            elif position >= top:
+                value = _row_value(after[-1], k, frac)
             else:
-                charge, new = 0.0, peak
-            total = money + charge + _value_at(after, after_levels, new, k, frac)
+                j = int(position)
+                share = position - j
+                value = _row_value(after[j], k, frac)
+                if share:
+                    value += (_row_value(after[j + 1], k, frac) - value) * share
+            total = money + charge + value
             if best is None or total < best_total - _TIE:
                 best, best_total, best_charge = outcome, total, charge
         assert best is not None  # self-consumption is always open
         out.append((best._replace(peak=best_charge), best_total))
     return out
+
+
+def _values_to_go_peaks(
+    request: PlanRequest,
+    levels: Sequence[Sequence[float]],
+    end_value: float,
+    grid: _Grid,
+    reserves: Sequence[float] | None,
+) -> list[list[list[float]]]:
+    """Backwards with the day's peak as a second state: the value-to-go before each slot, per peak level of the slot
+    ([levels], with the horizon's single one last) and grid point."""
+    figures = request.battery.figures()
+    slots = _slot_figures(request)
+    count = len(slots)
+    values: list[list[list[float]]] = [[] for _ in range(count + 1)]
+    values[-1] = [[-end_value * point for point in grid.points]]
+    for index in range(count - 1, -1, -1):
+        slot = slots[index]
+        reserve = None if reserves is None else reserves[index]
+        peaks = levels[index]
+        after, after_levels = values[index + 1], levels[index + 1]
+        rows: list[list[float]] = [[] for _ in peaks]
+        for point in grid.points:
+            found = _best_peak(slot, request, point, peaks, after, after_levels, grid, reserve, figures)
+            for row, (_outcome, total) in zip(rows, found):
+                row.append(total)
+        values[index] = rows
+    return values
 
 
 def _plan_peaks(
@@ -948,22 +982,8 @@ def _plan_peaks(
     figures = battery.figures()
     days = _PeakDays(request)
     slots = _slot_figures(request)
-    count = len(slots)
-    values: list[list[list[float]]] = [[] for _ in range(count + 1)]
-    values[-1] = [[-end_value * point for point in grid.points]]
     levels: list[Sequence[float]] = [*days.levels, (0.0,)]
-    for index in range(count - 1, -1, -1):
-        slot = slots[index]
-        reserve = None if reserves is None else reserves[index]
-        peaks = levels[index]
-        rows: list[list[float]] = [[] for _ in peaks]
-        for point in grid.points:
-            found = _best_peak(
-                slot, request, point, peaks, values[index + 1], levels[index + 1], grid, reserve, figures
-            )
-            for row, (_outcome, total) in zip(rows, found):
-                row.append(total)
-        values[index] = rows
+    values = _values_to_go_peaks(request, levels, end_value, grid, reserves)
 
     def forward(first: tuple[str, float] | None) -> PlanRun:
         soc = battery.usable_kwh * request.soc_now_pct / 100
