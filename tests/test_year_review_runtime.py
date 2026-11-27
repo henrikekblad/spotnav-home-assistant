@@ -149,6 +149,50 @@ async def test_an_overload_episode_is_kept_on_its_local_day(hass: HomeAssistant,
     assert review._controller.overload_episodes._listener is None
 
 
+async def test_the_year_s_savings_are_merged_a_month_a_turn_and_a_restart_merges_only_the_recent_days(
+    hass: HomeAssistant, freezer: Any, computed: list[tuple[int, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.api import saving
+    from custom_components.spotnav.year_review.store import YearReviewStore
+
+    review = await _site(hass, freezer, DECEMBER)
+    real = saving.async_day_savings
+    chunks: list[list[date]] = []
+    yielded: list[bool] = []
+    ran = [True]
+
+    def mark() -> None:
+        ran[0] = True
+
+    async def spy(hass_: HomeAssistant, entry_id: str, controller: Any, days: Any) -> Any:
+        chunks.append(list(days))
+        yielded.append(ran[0])
+        ran[0] = False
+        hass.loop.call_soon(mark)
+        return await real(hass_, entry_id, controller, days)
+
+    monkeypatch.setattr(saving, "async_day_savings", spy)
+    await review.async_run(2026)
+    days = [day for chunk in chunks for day in chunk]
+    # The whole year to yesterday, once each, in runs of at most a month of consecutive days, the loop let go between.
+    assert days == [date(2026, 1, 1) + timedelta(days=offset) for offset in range(348)]
+    assert max(len(chunk) for chunk in chunks) <= year_runtime.MERGE_CHUNK
+    assert all((chunk[-1] - chunk[0]).days == len(chunk) - 1 for chunk in chunks)
+    assert all(yielded)
+    first_review = review.store.review
+    # A restart: the store read back from what it kept merges only the last `MERGE_DAYS` again, the review the same.
+    kept = review.store._snapshot()
+    review.store = YearReviewStore(hass, None)
+    review.store.restore(kept)
+    chunks.clear()
+    await review.async_run(2026)
+    days = [day for chunk in chunks for day in chunk]
+    assert days == [date(2026, 12, 14) - timedelta(days=back) for back in range(year_runtime.MERGE_DAYS - 1, -1, -1)]
+    assert {key: value for key, value in review.store.review.items() if key != "computed_at"} == {
+        key: value for key, value in first_review.items() if key != "computed_at"
+    }
+
+
 def test_the_review_reads_the_recorder_only_through_the_house_card_s_readers() -> None:
     """No statistics call, file read or sleep of its own: the recorder is read by `api/house_history` and `api/saving`
     in the recorder's executor, the store written off the loop (the loop I/O guard covers the rest at run time)."""
