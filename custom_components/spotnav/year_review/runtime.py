@@ -1,11 +1,22 @@
 """The year's review for one site: the shell around `year_review/compute.py` and `year_review/store.py`.
 
 **When it runs**: every night at `RUN_AT` local time the day parts of the last `MERGE_DAYS` days are merged into the
-store (all year: the parts whose sources keep fewer days than a year are kept so); from 10 to 31 December and on 1
+store (all year: the parts whose sources keep fewer days than a year are kept so), and each finished day's price part
+(`_async_merge_prices`); from 10 to 31 December and on 1
 January (`compute.in_run_window`) the review is then worked out again, the year's final one on 1 January, kept through
-January. Once at start-up inside that window, `STARTUP_DELAY_S` after the site started, when the store holds no review
-of the year. And on `spotnav.show_year_review` (`async_show`). Never on a read: the cards and the service read the kept
-review (`answer`).
+January. Once at start-up, `STARTUP_DELAY_S` after the site started: inside that window the review when the store holds
+none of the year, else the price parts only. And on `spotnav.show_year_review` (`async_show`). Never on a read: the
+cards and the service read the kept review (`answer`).
+
+**The price parts** (`compute.PriceDay`, about 300 bytes a day): each finished local day's prices as the review reads
+them, worked out from the held day documents with that day's fees (`pricing/period_prices.period_price_slots` over a
+few days, on the loop: it reads the price source and the held documents, no I/O) and kept in the store, so the year's
+slots are never read at once. A day without a part is worked out once, `PRICE_DAYS` back (the longest price history
+held); a day whose part covers less than the whole day again while it is `PRICE_RETRY_DAYS` recent. At most
+`PRICE_BATCH` days in one loop turn, yielding between: the first run after the feature arrives fills up to a year of
+days (Nord Pool's 55 days, ENTSO-E's or the relay's up to 365) in about fifty short turns, every later night one day.
+Nothing is written while yesterday has no price held (the prices not settled after a start, or no price source): a
+missing day is then not taken for one without prices.
 
 **What is read**, on the event loop only from memory, the statistics through the house card's own readers:
 
@@ -14,9 +25,9 @@ review (`answer`).
   in the recorder's executor, `recorder.get_instance(hass).async_add_executor_job`).
 * What SpotNav saved per day: `api/saving.async_day_savings` (the sessions with their hours from the same statistics,
   cached once settled; the battery's day money and the heat's reviews in memory).
-* The sessions (the session store, costed with the current settings, its own cache), the year's price slots with the fees as set now
-  (`pricing/period_prices.period_price_slots`, the held day documents), the battery's day money and capacity, the
-  site's set-up day and its chargers' first live sessions.
+* The sessions (the session store, costed with the current settings, its own cache), the year store's day parts (the
+  prices among them), the battery's day money and capacity, the site's set-up day and its chargers' first live
+  sessions.
 
 The computation over the year's hours and sessions runs in an executor job (`hass.async_add_executor_job`); the store
 is written off the loop. One run at a time for the installation (a lock): sites one after another. A run that fails
@@ -39,17 +50,20 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..const import CONF_CHARGER_ENTRY_IDS, DOMAIN
 from ..runtime import domain_data, entry_task
-from ..site.history_period import PERIOD_YEAR, Period, local_date
+from ..site.history_period import PERIOD_DAY, PERIOD_YEAR, Period, local_date, midnight_utc
 from .compute import (
     STATE_COMPUTING,
     STATE_NONE,
     STATE_READY,
+    DayParts,
+    PriceDay,
     YearInputs,
     compute_review,
     day_parts_of,
     estimate_days,
     in_run_window,
     in_show_window,
+    price_days_of,
     review_answer,
     review_year,
     year_bounds,
@@ -57,6 +71,7 @@ from .compute import (
 from .store import YearReviewStore
 
 if TYPE_CHECKING:
+    from ..battery.plan_shadow import PriceSlot
     from ..sessions.model import ChargeSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,6 +82,12 @@ RUN_AT: Final = (4, 40)
 MERGE_DAYS: Final = 40
 #: The start-up run waits this long after the site started (the recorder and the prices settle first).
 STARTUP_DELAY_S: Final = 300.0
+#: How far back a day without a price part is worked out (the longest price history held, a year of day documents).
+PRICE_DAYS: Final = 366
+#: A day whose price part covers less than the whole day is worked out again while it is this recent (late prices).
+PRICE_RETRY_DAYS: Final = 7
+#: The days of price parts worked out in one loop turn.
+PRICE_BATCH: Final = 7
 #: How long the service's showing offers the banner and the Support row.
 FORCED_FOR: Final = timedelta(days=7)
 _LOCK: Final = f"{DOMAIN}_year_review_lock"
@@ -99,6 +120,9 @@ class SiteYearReview:
         self._closed = False
         self._cancels: list[Any] = []
         self._task: asyncio.Task[Any] | None = None
+        #: The start-up's price parts outside the window: apart from `_task`, so a night that comes meanwhile still
+        #: runs (after it: the lock).
+        self._prices_task: asyncio.Task[Any] | None = None
 
     # ------------------------------------------------------------------------------------------------ the life
 
@@ -120,8 +144,7 @@ class SiteYearReview:
         self._cancels.append(
             async_track_time_change(self.hass, self._at_run_time, hour=RUN_AT[0], minute=RUN_AT[1], second=0)
         )
-        if in_run_window(today) and self.store.year != review_year(today):
-            self._cancels.append(async_call_later(self.hass, STARTUP_DELAY_S, self._at_startup))
+        self._cancels.append(async_call_later(self.hass, STARTUP_DELAY_S, self._at_startup))
 
     async def async_close(self) -> None:
         self._closed = True
@@ -129,8 +152,9 @@ class SiteYearReview:
             cancel()
         self._cancels = []
         self._controller.overload_episodes.set_listener(None)
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
+        for task in (self._task, self._prices_task):
+            if task is not None and not task.done():
+                task.cancel()
         await self.store.async_close()
 
     @staticmethod
@@ -150,6 +174,14 @@ class SiteYearReview:
         today = self.today()
         if in_run_window(today) and self.store.year != review_year(today):
             self._start_task(self.async_nightly(), "spotnav year review start-up")
+        else:
+            target = self.async_prices()
+            if self._closed:
+                target.close()
+                return
+            self._prices_task = entry_task(
+                self.hass, self.entry_id, target, "spotnav year review prices", eager_start=False
+            )
 
     def _start_task(self, target: Any, name: str) -> None:
         if self._closed or (self._task is not None and not self._task.done()):
@@ -172,6 +204,18 @@ class SiteYearReview:
         except Exception:  # noqa: BLE001 - the review before stays
             _LOGGER.warning("SpotNav site %s: the year's review could not be worked out", self.entry_id, exc_info=True)
 
+    async def async_prices(self) -> None:
+        """The price parts only (the start-up outside the window). Never raises."""
+        try:
+            async with _lock(self.hass):
+                await self._async_merge_prices(self.today())
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the parts are worked out again the next night
+            _LOGGER.warning(
+                "SpotNav site %s: the year's price parts could not be worked out", self.entry_id, exc_info=True
+            )
+
     # ------------------------------------------------------------------------------------------------ the run
 
     async def async_run(self, year: int) -> dict[str, Any]:
@@ -188,6 +232,7 @@ class SiteYearReview:
     async def _async_merge(self, days: list[date], today: date) -> None:
         from ..api.saving import async_day_savings  # noqa: PLC0415 - the API imports the site
 
+        await self._async_merge_prices(today)
         savings, _since = await async_day_savings(self.hass, self.entry_id, self._controller, days)
         first, last = min(days), max(days)
         estimates = {
@@ -196,6 +241,58 @@ class SiteYearReview:
             if first <= day <= last
         }
         self.store.merge_parts(day_parts_of(savings, estimates), today)
+
+    async def _async_merge_prices(self, today: date) -> None:
+        """Work out the price part of each finished day that is due (see the module), `PRICE_BATCH` days a turn."""
+        zone = time_zones.require_zone(self._tz)
+        yesterday = today - timedelta(days=1)
+        due = [
+            day
+            for day in (today - timedelta(days=back) for back in range(PRICE_DAYS, 0, -1))
+            if self._price_due(day, today)
+        ]
+        # Newest first: yesterday's says whether the prices have settled.
+        for batch in reversed(_batches(due)):
+            if self._closed:
+                return
+            slots = self._read_price_slots(batch[0], batch[-1] + timedelta(days=1))
+            if slots is None:
+                return
+            found = price_days_of(slots, zone)
+            if yesterday in batch and not found.get(yesterday, PriceDay()).runs:
+                return
+            parts: dict[date, DayParts] = {}
+            for day in batch:
+                price = found.get(day, PriceDay())
+                held = self.store.day_parts.get(day)
+                # A part worked out again never covers less than the one held.
+                if held is None or held.price is None or price.covered_s > held.price.covered_s:
+                    parts[day] = DayParts(price=price)
+            self.store.merge_parts(parts, today)
+            await asyncio.sleep(0)
+
+    def _read_price_slots(self, first: date, end: date) -> list[PriceSlot] | None:
+        """The price slots of the days `first` to before `end` (and a day either side) with the fees as set now,
+        from the held day documents (on the loop: the price source and the documents are in memory); `None` without
+        a price source, its area or its fees."""
+        from ..pricing.period_prices import period_price_slots  # noqa: PLC0415 - it imports the planner
+        from ..pricing.price_source import site_price_source  # noqa: PLC0415
+
+        source = site_price_source(self.hass, self.entry_id)
+        if source is None or source.area is None or source.fiscal is None:
+            return None
+        return period_price_slots(self.hass, self.entry_id, Period(PERIOD_DAY, first, end))
+
+    def _price_due(self, day: date, today: date) -> bool:
+        """A day without a price part, or a recent one whose part covers less than the whole day."""
+        held = self.store.day_parts.get(day)
+        price = None if held is None else held.price
+        if price is None:
+            return True
+        if (today - day).days > PRICE_RETRY_DAYS:
+            return False
+        length = (midnight_utc(day + timedelta(days=1), self._tz) - midnight_utc(day, self._tz)).total_seconds()
+        return price.covered_s < length
 
     def _sessions(self) -> list[ChargeSession]:
         """The site's chargers' sessions, closed and open, costed with the current settings (the store's cache)."""
@@ -228,7 +325,6 @@ class SiteYearReview:
     async def _async_inputs(self, year: int, today: date, first: date, through: date) -> YearInputs:
         """Everything the computation reads (see the module), gathered on the loop from memory and the readers."""
         from ..api.house_history import history_with_periods  # noqa: PLC0415 - the API imports the site
-        from ..pricing.period_prices import period_price_slots  # noqa: PLC0415 - it imports the planner
         from ..pricing.price_source import site_price_source  # noqa: PLC0415
         from ..site.energy_statistics import async_energy_prefs, energy_flow_ids  # noqa: PLC0415
 
@@ -257,7 +353,6 @@ class SiteYearReview:
             has_solar=bool(ids is not None and ids.solar),
             has_export=bool(ids is not None and ids.grid_out),
             has_battery=bool(ids is not None and (ids.battery_in or ids.battery_out)),
-            prices=period_price_slots(hass, self.entry_id, Period(PERIOD_YEAR, first, through + timedelta(days=1))),
             sessions=self._sessions(),
             day_parts=dict(self.store.day_parts),
             # Copies of the finished days only (today's is still being counted): the executor never reads what the
@@ -320,3 +415,14 @@ class SiteYearReview:
         if reset:
             self.store.reset_users()
         return {"site_id": self.entry_id, "year": chosen, "forced_until": until.isoformat(), "review": review}
+
+
+def _batches(days: list[date]) -> list[list[date]]:
+    """`days` (in order) as runs of consecutive days, `PRICE_BATCH` at most each."""
+    out: list[list[date]] = []
+    for day in days:
+        if out and len(out[-1]) < PRICE_BATCH and out[-1][-1] + timedelta(days=1) == day:
+            out[-1].append(day)
+        else:
+            out.append([day])
+    return out

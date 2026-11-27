@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site.overload_episodes import EPISODE_GAP, OverloadEpisodes
-from custom_components.spotnav.year_review.compute import DayParts
+from custom_components.spotnav.year_review.compute import DayParts, PriceDay
 from custom_components.spotnav.year_review.store import KEPT_DAYS, YearReviewStore
 
 UTC = timezone.utc
@@ -41,6 +41,19 @@ def test_a_merge_keeps_the_fuse_s_count_and_trims_only_beyond_the_kept_days() ->
     store.merge_parts({date(2026, 11, 1): DayParts(battery=1.0), old: DayParts(car=1.0), kept: DayParts(car=2.0)}, TODAY)
     assert store.day_parts[date(2026, 11, 1)] == DayParts(battery=1.0, fuse=2)
     assert old not in store.day_parts and store.day_parts[kept] == DayParts(car=2.0)
+
+
+def test_a_day_s_price_part_outlives_its_fuse_count_and_a_saving_merge_and_is_kept() -> None:
+    store = YearReviewStore(None, None)  # type: ignore[arg-type]
+    price = PriceDay(runs=((0, 900, 96),), cheap=0xFFFFFFFF, sells=(10.0,) * 24, top=(8, 250.5))
+    day = date(2026, 11, 1)
+    store.merge_parts({day: DayParts(price=price)}, TODAY)
+    store.add_fuse(day)
+    store.merge_parts({day: DayParts(battery=3.0)}, TODAY)
+    assert store.day_parts[day] == DayParts(battery=3.0, fuse=1, price=price)
+    again = YearReviewStore(None, None)  # type: ignore[arg-type]
+    again.restore(store._snapshot())
+    assert again.day_parts[day] == store.day_parts[day]
 
 
 def test_each_person_s_seen_state_is_their_own_and_a_new_year_starts_unseen() -> None:

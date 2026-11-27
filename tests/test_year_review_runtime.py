@@ -164,3 +164,117 @@ def test_the_review_reads_the_recorder_only_through_the_house_card_s_readers() -
                 assert not any("recorder" in name or name == "time" for name in names), (path.name, names)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 assert node.func.id not in {"open", "sleep"}, path.name
+
+
+# ------------------------------------------------------------------------------------------------ the price parts
+
+
+class _Prices:
+    """A price source whose day documents reach back to `held_from`: every `period_price_slots` call's stretch and
+    thread, and whether the loop ran something else since the call before (a yield between batches)."""
+
+    def __init__(self, hass: HomeAssistant, held_from: date | None) -> None:
+        self.hass = hass
+        self.held_from = held_from
+        self.calls: list[tuple[date, date, str]] = []
+        self.yielded: list[bool] = []
+        self._ran = True
+
+    def _mark(self) -> None:
+        self._ran = True
+
+    def slots(self, first: date, end: date) -> list[Any]:
+        from zoneinfo import ZoneInfo
+
+        from custom_components.spotnav.battery.plan_shadow import PriceSlot
+
+        self.calls.append((first, end, threading.current_thread().name))
+        self.yielded.append(self._ran)
+        self._ran = False
+        self.hass.loop.call_soon(self._mark)
+        if self.held_from is None:
+            return []
+        zone = ZoneInfo("Europe/Stockholm")
+        out = []
+        day = max(self.held_from, first - timedelta(days=1))
+        while day <= end:
+            start = datetime(day.year, day.month, day.day, tzinfo=zone).astimezone(UTC)
+            stop = datetime.combine(day + timedelta(days=1), datetime.min.time(), zone).astimezone(UTC)
+            while start < stop:
+                buy = 300.0 if start.astimezone(zone).hour == 8 else 100.0
+                out.append(PriceSlot(start, start + timedelta(minutes=15), buy, buy / 2))
+                start += timedelta(minutes=15)
+            day += timedelta(days=1)
+        return out
+
+
+@pytest.fixture
+def prices(hass: HomeAssistant) -> _Prices:
+    return _Prices(hass, None)
+
+
+async def _priced_site(hass: HomeAssistant, freezer: Any, moment: datetime, prices: _Prices) -> SiteYearReview:
+    review = await _site(hass, freezer, moment)
+    review._read_price_slots = prices.slots  # type: ignore[method-assign]
+    return review
+
+
+async def _settle(hass: HomeAssistant, freezer: Any, delay: float = STARTUP_DELAY_S + 1) -> None:
+    freezer.tick(timedelta(seconds=delay))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def test_a_start_up_fills_the_held_days_prices_a_week_a_turn_on_the_loop_and_a_night_adds_one_day(
+    hass: HomeAssistant, freezer: Any, prices: _Prices
+) -> None:
+    review = await _priced_site(hass, freezer, datetime(2026, 7, 4, 9, tzinfo=UTC), prices)
+    today = date(2026, 7, 4)
+    prices.held_from = today - timedelta(days=55)
+    await _settle(hass, freezer)
+    # A year of days, newest first, at most a week a call, read on the loop, the loop let go between calls.
+    assert len(prices.calls) == -(-year_runtime.PRICE_DAYS // year_runtime.PRICE_BATCH)
+    assert all((end - first).days <= year_runtime.PRICE_BATCH for first, end, _t in prices.calls)
+    assert {thread for *_rest, thread in prices.calls} == {threading.main_thread().name}
+    assert all(prices.yielded)
+    assert prices.calls[0][1] == today
+    parts = review.store.day_parts
+    yesterday = today - timedelta(days=1)
+    assert parts[yesterday].price is not None and parts[yesterday].price.covered_s == 24 * 3600
+    assert parts[yesterday].price.top == (8, 300.0)
+    # Older than the held history: looked at once, kept as a day without prices.
+    old = today - timedelta(days=200)
+    assert parts[old].price is not None and parts[old].price.runs == ()
+    assert len([day for day, held in parts.items() if held.price is not None]) == year_runtime.PRICE_DAYS
+    # The next night works out the day just over, and nothing else.
+    prices.calls.clear()
+    freezer.move_to(datetime(2026, 7, 5, 2, 40, tzinfo=UTC))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert [(first, end) for first, end, _t in prices.calls] == [(today, today + timedelta(days=1))]
+    assert review.store.day_parts[today].price.covered_s == 24 * 3600
+
+
+async def test_nothing_is_kept_while_yesterday_has_no_price(hass: HomeAssistant, freezer: Any, prices: _Prices) -> None:
+    review = await _priced_site(hass, freezer, datetime(2026, 7, 4, 9, tzinfo=UTC), prices)
+    await _settle(hass, freezer)
+    # One look at the newest week, then nothing more and nothing kept.
+    assert len(prices.calls) == 1
+    assert all(held.price is None for held in review.store.day_parts.values())
+
+
+async def test_december_s_review_reads_the_price_parts_never_the_year_s_slots(
+    hass: HomeAssistant, freezer: Any, prices: _Prices, computed: list[tuple[int, str]]
+) -> None:
+    prices.held_from = date(2025, 12, 1)
+    review = await _priced_site(hass, freezer, DECEMBER, prices)
+    await _settle(hass, freezer)
+    assert [year for year, _thread in computed] == [2026]
+    assert all((end - first).days <= year_runtime.PRICE_BATCH for first, end, _t in prices.calls)
+    pages = {page["id"]: page for page in review.store.review["pages"]}
+    assert pages["expensive"]["price"] == 300.0
+    assert pages["expensive"]["start"] == "2026-01-01T08:00:00+01:00"
+    # A run the same day reads no price again.
+    prices.calls.clear()
+    await review.async_run(2026)
+    assert prices.calls == []

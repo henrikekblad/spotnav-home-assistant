@@ -1,7 +1,7 @@
 """What the year's review keeps per site (`spotnav.year_review.<site entry id>`), written off the event loop
 (`debug_day.DayStore`, `off_loop`):
 
-    {schema, year, computed_at, through, review, day_parts: {date: {battery, car, car_est, heat, fuse}},
+    {schema, year, computed_at, through, review, day_parts: {date: {battery, car, car_est, heat, fuse, price}},
      fuse_since, users: {user_id: {year, viewed, dismissed}}, forced_until}
 
 * **The review** last worked out (`year`, `through`, `computed_at`, `review`: `year_review/compute.py`'s shape), read
@@ -10,7 +10,9 @@
   the car's day-average estimate before 3.0, merged in every night (`merge_parts`), so a part whose source keeps
   fewer days (the heat's review 35 days) is still there at the year's end; a merge never takes a day or a part away.
   Trimmed to `KEPT_DAYS` back. Each day's `fuse` is the overload episodes counted that day (`add_fuse`), from
-  `fuse_since`, the day the counter started on this site.
+  `fuse_since`, the day the counter started on this site. Each day's `price` (`compute.PriceDay`, about 300 bytes
+  for a day of quarters) is what the review reads of that day's prices, worked out once the day is over with that
+  day's fees (`runtime.SiteYearReview._async_merge_prices`).
 * **Each person's seen state** (`users`, by Home Assistant user id): whether they opened the review of `year`
   (`viewed`) or closed its banner (`dismissed`); a review of another year starts unseen. `reset_users` forgets all.
 * **`forced_until`**: the service's showing (`spotnav.show_year_review`): the banner and the Support row are offered
@@ -22,6 +24,7 @@ A store that cannot be read starts empty. Never raises into the site.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 import logging
 from typing import Any, Final
@@ -162,9 +165,7 @@ class YearReviewStore:
     def add_fuse(self, day: date) -> None:
         """One overload episode began on `day`."""
         held = self.day_parts.get(day, DayParts())
-        self.day_parts[day] = DayParts(
-            battery=held.battery, car=held.car, car_est=held.car_est, heat=held.heat, fuse=held.fuse + 1
-        )
+        self.day_parts[day] = replace(held, fuse=held.fuse + 1)
         if self.fuse_since is None:
             self.fuse_since = day
         self._changed()
