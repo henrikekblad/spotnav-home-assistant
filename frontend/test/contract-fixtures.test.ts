@@ -1439,6 +1439,7 @@ describe("the backend's year_review v1 contract fixtures", () => {
   const PAGES: Record<string, string[] | null> = {
     "car_only.json": ["cover", "saved", "car", "expensive", "thanks"],
     "fresh_install.json": ["cover", "saved", "car", "sun", "battery", "thanks"],
+    "inverter_battery.json": ["cover", "saved", "car", "sun", "battery", "expensive", "thanks"],
     "full_year.json": ["cover", "saved", "car", "sun", "battery", "fuse", "expensive", "thanks"],
     "nord_pool_55_days.json": ["cover", "saved", "car", "sun", "battery", "fuse", "expensive", "thanks"],
     "state_none.json": null,
@@ -1485,6 +1486,14 @@ describe("the backend's year_review v1 contract fixtures", () => {
     expect(pages.find((page) => page.id === "sun")).toEqual({ id: "sun", kwh: 2242, home_pct: 92, export_paid: true, since: null });
     expect(pages.find((page) => page.id === "expensive")).toEqual({
       id: "expensive", price: 793, start: "2026-01-28T08:00:00+01:00", bought_kwh: 0.3, since: null,
+    });
+    const inverter = decodeYearReview(read("inverter_battery.json"));
+    if (!inverter.ok) {
+      throw new Error("did not decode");
+    }
+    expect(inverter.value.review!.pages.find((page) => page.id === "battery")).toEqual({
+      id: "battery", earned: null, earned_since: null, saved: 217500, saved_since: null, cycles: 104, buy_price: null,
+      use_price: null, kwh_in: 1044, kwh_out: 1044,
     });
     expect(full.value.review!.money).toEqual({ currency: "SEK", major_unit: "kr", minor_unit: "öre" });
     expect(fresh.value.review!.since).toBe("2026-11-20");

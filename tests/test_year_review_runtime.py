@@ -278,3 +278,34 @@ async def test_december_s_review_reads_the_price_parts_never_the_year_s_slots(
     prices.calls.clear()
     await review.async_run(2026)
     assert prices.calls == []
+
+
+async def test_a_price_part_kept_before_the_hourly_buys_is_worked_out_again_once(
+    hass: HomeAssistant, freezer: Any, prices: _Prices
+) -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.year_review.compute import DayParts, PriceDay
+
+    review = await _priced_site(hass, freezer, datetime(2026, 7, 4, 9, tzinfo=UTC), prices)
+    today = date(2026, 7, 4)
+    prices.held_from = today - timedelta(days=55)
+    await _settle(hass, freezer)
+    held, gone = today - timedelta(days=10), today - timedelta(days=200)
+    old = PriceDay(runs=((0, 3600, 24),), cheap=0xFF, sells=(5.0,) * 24, top=(9, 400.0), buys=None)
+    # As a part stored before the buys were (no `b`) reads back.
+    stored = DayParts.from_dict({"price": {key: value for key, value in old.as_dict().items() if key != "b"}})
+    assert stored == DayParts(price=old)
+    review.store.merge_parts({held: DayParts(price=old), gone: DayParts(price=old)}, today)
+    assert review.store.day_parts[held].price.buys is None
+    prices.calls.clear()
+    await review.async_prices()
+    assert prices.calls
+    # Where the day's prices are held: worked out again, the buys in.
+    fresh = review.store.day_parts[held].price
+    assert fresh.buys is not None and len(fresh.buys) == 24 and fresh.buys[8] == 300.0
+    # Where they are not: the old part kept, looked at.
+    assert review.store.day_parts[gone].price == replace(old, buys=())
+    prices.calls.clear()
+    await review.async_prices()
+    assert prices.calls == []

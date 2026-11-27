@@ -67,6 +67,9 @@ export interface BatteryPage {
   id: "battery";
   earned: number | null;
   earned_since: string | null;
+  /** What the battery saved at each hour's price, whoever controlled it (≈). */
+  saved: number | null;
+  saved_since: string | null;
   cycles: number | null;
   buy_price: number | null;
   use_price: number | null;
@@ -125,7 +128,7 @@ export const PAGE_KEYS: Record<YearReviewPageId, readonly string[]> = {
   saved: ["id", "total", "battery", "car", "heat", "estimated", "starts"],
   car: ["id", "cheap_share_pct", "charges", "kwh", "cheapest", "estimated", "since"],
   sun: ["id", "kwh", "home_pct", "export_paid", "since"],
-  battery: ["id", "earned", "earned_since", "cycles", "buy_price", "use_price", "kwh_in", "kwh_out"],
+  battery: ["id", "earned", "earned_since", "saved", "saved_since", "cycles", "buy_price", "use_price", "kwh_in", "kwh_out"],
   fuse: ["id", "count", "since"],
   expensive: ["id", "price", "start", "bought_kwh", "since"],
   thanks: ["id"],
@@ -221,6 +224,8 @@ function page(value: unknown): YearReviewPage | null {
         id,
         earned: numberOrNull(source.earned),
         earned_since: dateOrNull(source.earned_since),
+        saved: numberOrNull(source.saved),
+        saved_since: dateOrNull(source.saved_since),
         cycles: numberOrNull(source.cycles),
         buy_price: numberOrNull(source.buy_price),
         use_price: numberOrNull(source.use_price),

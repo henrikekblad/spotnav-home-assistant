@@ -59,7 +59,7 @@ describe("the year review's band in the house card", () => {
     expect(band).not.toBeNull();
     expect(band.previousElementSibling?.querySelector(".spotnav-header")).not.toBeNull();
     expect(band.textContent).toContain(translate("sv", "yearReview.banner.title"));
-    expect(band.textContent).toContain("Se vad 2026 gav, en minut");
+    expect(band.textContent).toContain("Se vad 2026 gav – tar bara en minut");
     expect(band.textContent).not.toContain("GitHub");
     await vi.advanceTimersByTimeAsync(300_000);
     expect(hass.yearReviewMessages).toHaveLength(1);

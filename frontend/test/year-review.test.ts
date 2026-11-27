@@ -198,19 +198,49 @@ describe("the pages in words", () => {
     expect(battery.chips).toEqual(["≈ 104 varv", "köpte för 0,62 kr/kWh", "använde vid 2,00 kr/kWh"]);
     expect(battery.foot).toEqual(["Pengarna räknas från granskade dagar sedan 15 oktober."]);
     const source = review("full_year.json");
-    const early = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, earned: null, earned_since: null, buy_price: null, use_price: null } : entry));
+    const early = source.pages.map((entry) =>
+      entry.id === "battery" ? { ...entry, earned: null, earned_since: null, saved: null, buy_price: null, use_price: null } : entry,
+    );
     const kwh = find(storyPages("sv", { ...source, pages: early }, { supportReachable: true }), "battery");
     expect(kwh.big).toMatchObject({ value: 1044, unit: "kWh" });
     expect(plainAll(kwh.chips)).toEqual(["≈ 104 varv", "laddade 1 044 kWh"]);
     expect(words(kwh)).not.toContain("kr");
-    const none = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, earned: null, kwh_out: null, kwh_in: null, cycles: null } : entry));
+    const none = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, earned: null, saved: null, kwh_out: null, kwh_in: null, cycles: null } : entry));
     expect(storyPages("sv", { ...source, pages: none }, { supportReachable: true }).map((entry) => entry.id)).not.toContain("battery");
+  });
+
+  it("show what a battery SpotNav does not control saved at each hour's price, marked ≈", () => {
+    const battery = find(pagesOf("inverter_battery.json"), "battery");
+    expect(battery.big).toEqual({ value: 2175, digits: 0, unit: "kr", approx: true });
+    expect(battery.say).toBe("sparade batteriet på elräkningen i år.");
+    expect(plainAll(battery.chips)).toEqual(["≈ 104 varv", "laddade 1 044 kWh", "gav tillbaka 1 044 kWh"]);
+    expect(battery.foot).toEqual(["≈ Räknat på varje timmes pris, oavsett vem som styrde batteriet."]);
+    const source = review("inverter_battery.json");
+    const later = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, saved_since: "2026-10-21" } : entry));
+    expect(find(storyPages("sv", { ...source, pages: later }, { supportReachable: true }), "battery").foot).toContain("Sedan 21 oktober.");
+    // SpotNav's own count wins where it has one.
+    expect(find(pagesOf("full_year.json"), "battery").big).toMatchObject({ value: 366, approx: false });
+    for (const language of LANGUAGES) {
+      const words = find(pagesOf("inverter_battery.json", language), "battery");
+      expect(words.foot[0]?.startsWith("≈ ")).toBe(true);
+      expect(words.say).not.toMatch(/\b(smart|AI|we|us|vi|oss)\b/i);
+    }
   });
 
   it("word the most expensive hour with its day, its hour and what was bought then", () => {
     const expensive = find(pagesOf("full_year.json"), "expensive");
     expect(expensive.big).toEqual({ value: 7.93, digits: 2, unit: "kr/kWh", approx: false });
     expect(expensive.say).toBe("28 januari kl. 08:00. Då köpte du bara 0,3 kWh.");
+    const source = review("full_year.json");
+    const bought = (kwh: number, language: (typeof LANGUAGES)[number] = "sv"): string | null => {
+      const pages = source.pages.map((entry) => (entry.id === "expensive" ? { ...entry, bought_kwh: kwh } : entry));
+      return find(storyPages(language, { ...source, pages }, { supportReachable: true }), "expensive").say;
+    };
+    expect(bought(0)).toBe("28 januari kl. 08:00. Då köpte du ingen el från nätet.");
+    expect(bought(0.04)).toBe("28 januari kl. 08:00. Då köpte du ingen el från nätet.");
+    expect(bought(0.05)).toBe("28 januari kl. 08:00. Då köpte du bara 0,1 kWh.");
+    expect(bought(2.4)).toBe("28 januari kl. 08:00. Då köpte du 2,4 kWh.");
+    expect(bought(0, "en")).toBe("28 January at 08:00. You bought no electricity from the grid then.");
     expect(find(pagesOf("full_year.json", "en"), "expensive").eyebrow).toBe("The most expensive hour");
   });
 
@@ -371,6 +401,25 @@ describe("the story", () => {
     expect(dialog.querySelectorAll(".spotnav-yr-bar[data-on]")).toHaveLength(1);
   });
 
+  it("draws each page's picture above its words in one block, and each nav label in its own centred line", () => {
+    const { story, dialog } = open();
+    for (let k = 0; k < story.pageIds.length; k += 1) {
+      story.go(k);
+      const panel = dialog.querySelector<HTMLElement>("[data-panel]")!;
+      expect(panel.children).toHaveLength(1);
+      const content = panel.firstElementChild!;
+      expect(content.classList.contains("spotnav-yr-content")).toBe(true);
+      expect(content.firstElementChild!.classList.contains("spotnav-yr-art")).toBe(true);
+      expect(content.firstElementChild!.querySelector("svg")).not.toBeNull();
+      expect(dialog.querySelectorAll(".spotnav-yr-art")).toHaveLength(1);
+    }
+    for (const key of ["back", "close", "next"]) {
+      const button = dialog.querySelector<HTMLButtonElement>(`[data-nav='${key}']`)!;
+      expect(button.children).toHaveLength(1);
+      expect(button.firstElementChild!.tagName).toBe("SPAN");
+    }
+  });
+
   it("turns pages with Next, Back, the arrow keys and a swipe; the fireworks stop off the cover", () => {
     const { story, dialog } = open();
     dialog.querySelector<HTMLButtonElement>("[data-nav='next']")!.click();
@@ -474,6 +523,16 @@ describe("the picture to share", () => {
       ["battery", "Batteriet tjänade", "366 kr"],
     ]);
     expect(shareTiles("sv", review("car_only.json")).map((tile) => tile.art)).toEqual(["saved", "car"]);
+    // A battery SpotNav does not control: what it saved at each hour's price, else the energy it gave back.
+    const inverter = review("inverter_battery.json");
+    expect(shareTiles("sv", inverter).map((tile) => [tile.art, tile.label, plain(tile.value)])).toEqual([
+      ["saved", "Sparat", "≈ 1 156 kr"],
+      ["car", "Bilen laddad i billiga timmar", "86 %"],
+      ["sun", "Från solen", "2 242 kWh"],
+      ["battery", "Batteriet sparade", "≈ 2 175 kr"],
+    ]);
+    const kwhOnly = inverter.pages.map((entry) => (entry.id === "battery" ? { ...entry, saved: null } : entry));
+    expect(shareTiles("sv", { ...inverter, pages: kwhOnly }).map((tile) => [tile.label, plain(tile.value)])[3]).toEqual(["Batteriet gav tillbaka", "1 044 kWh"]);
     expect(shareTiles("sv", review("fresh_install.json"))[1]?.value).toBe("≈ 83 %");
   });
 
@@ -493,6 +552,26 @@ describe("the picture to share", () => {
       expect(box.label.y).toBeLessThan(box.value.y);
     }
     expect(tileBoxes(7)).toHaveLength(4);
+  });
+
+  it("never leaves a hole: three as two above and one across, two across, one over the whole space", () => {
+    const span = (count: number) => tileBoxes(count).map((box) => [box.x, box.y, box.width, box.height]);
+    expect(span(3)).toEqual([[80, 400, 440, 360], [560, 400, 440, 360], [80, 800, 920, 360]]);
+    expect(span(2)).toEqual([[80, 400, 920, 360], [80, 800, 920, 360]]);
+    expect(span(1)).toEqual([[80, 400, 920, 760]]);
+    expect(span(0)).toEqual([]);
+    for (const count of [1, 2, 3]) {
+      for (const box of tileBoxes(count)) {
+        expect(box.x + box.width).toBeLessThanOrEqual(SHARE_WIDTH - 80);
+        expect(box.y + box.height).toBeLessThan(1270 - 34);
+        expect(box.art.x + box.art.size).toBeLessThanOrEqual(box.x + box.width);
+        expect(box.label.x + box.label.maxWidth).toBeLessThanOrEqual(box.art.x);
+        // The figure never runs under the picture where the two share a height.
+        if (box.art.y + box.art.size > box.value.y - box.value.px) {
+          expect(box.value.x + box.value.maxWidth).toBeLessThanOrEqual(box.art.x);
+        }
+      }
+    }
   });
 
   it("wraps a label to two lines at most and fits the figure to the tile", () => {

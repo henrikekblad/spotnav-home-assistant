@@ -201,40 +201,47 @@ export function storyPage(language: Language, review: YearReview, source: YearRe
       });
     }
     case "battery": {
-      if (source.earned === null && source.kwh_out === null) {
+      if (source.earned === null && source.saved === null && source.kwh_out === null) {
         return null;
       }
       const chips: string[] = [];
       if (source.cycles !== null) {
         chips.push(plural(L, "yearReview.battery.cycles", source.cycles));
       }
-      if (source.earned === null) {
-        if (source.kwh_in !== null) {
-          chips.push(translate(L, "yearReview.battery.charged", { kwh: kwhWhole(L, source.kwh_in) }));
-        }
-      } else {
+      const foot: string[] = [];
+      let big: BigFigure;
+      let say: string;
+      if (source.earned !== null) {
+        // SpotNav's own count of what it earned, as before.
         if (source.buy_price !== null) {
           chips.push(translate(L, "yearReview.battery.buy", { price: priceText(L, source.buy_price, money) }));
         }
         if (source.use_price !== null) {
           chips.push(translate(L, "yearReview.battery.use", { price: priceText(L, source.use_price, money) }));
         }
+        big = { value: source.earned / divisor, digits: 0, unit: major, approx: false };
+        say = translate(L, "yearReview.battery.say");
+        if (source.earned_since !== null) {
+          foot.push(translate(L, "yearReview.battery.earnedSince", { date: dayMonth(L, source.earned_since) }));
+        }
+      } else {
+        if (source.kwh_in !== null) {
+          chips.push(translate(L, "yearReview.battery.charged", { kwh: kwhWhole(L, source.kwh_in) }));
+        }
+        if (source.saved !== null) {
+          // What it saved at each hour's price, whoever controlled it; the energy given back as a chip.
+          if (source.kwh_out !== null) {
+            chips.push(translate(L, "yearReview.battery.gaveBack", { kwh: kwhWhole(L, source.kwh_out) }));
+          }
+          big = { value: source.saved / divisor, digits: 0, unit: major, approx: true };
+          say = translate(L, "yearReview.battery.saySaved");
+          foot.push(translate(L, "yearReview.battery.savedFoot"), ...sinceLine(L, source.saved_since));
+        } else {
+          big = { value: source.kwh_out ?? 0, digits: 0, unit: "kWh", approx: false };
+          say = translate(L, "yearReview.battery.sayKwh");
+        }
       }
-      return page({
-        id: "battery",
-        tint: "battery",
-        eyebrow: translate(L, "yearReview.battery.eyebrow"),
-        big:
-          source.earned === null
-            ? { value: source.kwh_out ?? 0, digits: 0, unit: "kWh", approx: false }
-            : { value: source.earned / divisor, digits: 0, unit: major, approx: false },
-        say: translate(L, source.earned === null ? "yearReview.battery.sayKwh" : "yearReview.battery.say"),
-        chips,
-        foot:
-          source.earned !== null && source.earned_since !== null
-            ? [translate(L, "yearReview.battery.earnedSince", { date: dayMonth(L, source.earned_since) })]
-            : [],
-      });
+      return page({ id: "battery", tint: "battery", eyebrow: translate(L, "yearReview.battery.eyebrow"), big, say, chips, foot });
     }
     case "fuse":
       return page({
@@ -253,13 +260,16 @@ export function storyPage(language: Language, review: YearReview, source: YearRe
     case "expensive": {
       const params = { date: dayMonth(L, source.start), time: clockOf(source.start) };
       const bought = source.bought_kwh;
+      // An amount that would be told as 0,0 kWh is told as none bought.
       const say =
         bought === null
           ? translate(L, "yearReview.expensive.when", params)
-          : translate(L, bought < 1 ? "yearReview.expensive.boughtLittle" : "yearReview.expensive.bought", {
-              ...params,
-              kwh: kwhSmall(L, bought),
-            });
+          : bought < 0.05
+            ? translate(L, "yearReview.expensive.boughtNone", params)
+            : translate(L, bought < 1 ? "yearReview.expensive.boughtLittle" : "yearReview.expensive.bought", {
+                ...params,
+                kwh: kwhSmall(L, bought),
+              });
       const { unit } = moneyUnit(money);
       return page({
         id: "expensive",

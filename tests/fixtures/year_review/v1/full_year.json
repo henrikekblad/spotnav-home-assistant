@@ -51,6 +51,8 @@
         "id": "battery",
         "kwh_in": 1044,
         "kwh_out": 1044,
+        "saved": 217500,
+        "saved_since": null,
         "use_price": 200.0
       },
       {

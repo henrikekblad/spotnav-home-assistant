@@ -1,5 +1,6 @@
 // The year review's picture to share (1080 × 1350): "My 2026 with SpotNav" over up to four tiles (saved, the car's
-// cheap share, the sun's kWh, the battery's money: the first four present), each tinted from the energy palette with
+// cheap share, the sun's kWh, the battery: its money, else what it saved at each hour's price, else the kWh it gave
+// back; the first four present), laid out without a hole (`tileBoxes`), each tinted from the energy palette with
 // its illustration drawn from a `data:` URL at 600 × 600 (no foreignObject, so the canvas is never tainted), the
 // label at the top, the figure at the bottom sized to fit. Only money, kWh, % and "since {month}": never a name, an
 // address or a time. The layout is pure (`shareTiles`, `tileBoxes`, `wrapLines`, `fitFontSize`) and tested without a
@@ -25,6 +26,8 @@ const TILE_H = 360;
 const TILE_GAP = 40;
 const TILE_X = [80, 560] as const;
 const TILE_TOP = 400;
+/** A tile across both columns. */
+const WIDE_W = TILE_W * 2 + TILE_GAP;
 const VALUE_MAX_PX = 84;
 const VALUE_MIN_PX = 48;
 const LABEL_PX = 32;
@@ -42,7 +45,7 @@ function tint(meaning: EnergyMeaning): string {
   return ENERGY_PALETTE[meaning].light;
 }
 
-/** The picture's tiles: what was saved, the car's cheap share, the sun's kWh, the battery's money (first four present). */
+/** The picture's tiles: what was saved, the car's cheap share, the sun's kWh, the battery (first four present). */
 export function shareTiles(language: Language, review: YearReview): ShareTile[] {
   const tiles: ShareTile[] = [];
   const approx = (estimated: boolean, text: string): string => (estimated ? `≈ ${text}` : text);
@@ -53,8 +56,15 @@ export function shareTiles(language: Language, review: YearReview): ShareTile[] 
       tiles.push({ art: "car", label: translate(language, "yearReview.share.car"), value: approx(page.estimated, `${formatNumber(language, page.cheap_share_pct, 0)} %`), colour: tint("car") });
     } else if (page.id === "sun") {
       tiles.push({ art: "sun", label: translate(language, "yearReview.share.sun"), value: `${formatNumber(language, page.kwh, 0)} kWh`, colour: tint("sun") });
-    } else if (page.id === "battery" && page.earned !== null) {
-      tiles.push({ art: "battery", label: translate(language, "yearReview.share.battery"), value: moneyText(language, page.earned, review.money), colour: tint("battery") });
+    } else if (page.id === "battery") {
+      const colour = tint("battery");
+      if (page.earned !== null) {
+        tiles.push({ art: "battery", label: translate(language, "yearReview.share.battery"), value: moneyText(language, page.earned, review.money), colour });
+      } else if (page.saved !== null) {
+        tiles.push({ art: "battery", label: translate(language, "yearReview.share.batterySaved"), value: approx(true, moneyText(language, page.saved, review.money)), colour });
+      } else if (page.kwh_out !== null) {
+        tiles.push({ art: "battery", label: translate(language, "yearReview.share.batteryKwh"), value: `${formatNumber(language, page.kwh_out, 0)} kWh`, colour });
+      }
     }
   }
   return tiles.slice(0, 4);
@@ -73,25 +83,46 @@ export interface TileBox {
   width: number;
   height: number;
   art: { x: number; y: number; size: number };
-  label: { x: number; y: number; maxWidth: number; lineHeight: number };
-  value: { x: number; y: number; maxWidth: number };
+  label: { x: number; y: number; maxWidth: number; lineHeight: number; px: number };
+  /** `px`: the size the figure starts at (made smaller to fit `maxWidth`). */
+  value: { x: number; y: number; maxWidth: number; px: number };
 }
 
-/** Where each of `count` tiles goes: two columns, two rows, the picture top right, the label top left beside it. */
+/** A tile's box: `size` "tile" (one column), "wide" (across both) or "large" (the whole space). */
+function box(x: number, y: number, width: number, height: number, size: "tile" | "wide" | "large" = "tile"): TileBox {
+  const art = { tile: 136, wide: 220, large: 300 }[size];
+  const pad = size === "large" ? 56 : 36;
+  const large = size === "large";
+  return {
+    x,
+    y,
+    width,
+    height,
+    art: { x: x + width - art - 24, y: y + 24, size: art },
+    label: { x: x + pad, y: y + (large ? 96 : 64), maxWidth: width - art - pad - 38, lineHeight: large ? 56 : 40, px: large ? 46 : LABEL_PX },
+    // A wide tile's figure stays clear of its picture (it reaches down beside it).
+    value: { x: x + pad, y: y + height - (large ? 80 : 48), maxWidth: width - pad * 2 - (size === "wide" ? art + 24 : 0), px: { tile: VALUE_MAX_PX, wide: 120, large: 150 }[size] },
+  };
+}
+
+/**
+ * Where each of `count` tiles goes (four at most), never leaving a hole: four in two columns and two rows, three as
+ * two above and one across below, two across one above the other, one large over the whole space. The picture top
+ * right, the label top left beside it, the figure at the bottom.
+ */
 export function tileBoxes(count: number): TileBox[] {
+  const n = Math.min(4, Math.max(0, count));
+  const rowY = (row: number): number => TILE_TOP + row * (TILE_H + TILE_GAP);
+  if (n === 1) {
+    return [box(TILE_X[0], TILE_TOP, WIDE_W, TILE_H * 2 + TILE_GAP, "large")];
+  }
+  if (n === 2) {
+    return [box(TILE_X[0], rowY(0), WIDE_W, TILE_H, "wide"), box(TILE_X[0], rowY(1), WIDE_W, TILE_H, "wide")];
+  }
   const boxes: TileBox[] = [];
-  for (let k = 0; k < Math.min(4, count); k += 1) {
-    const x = TILE_X[k % 2]!;
-    const y = TILE_TOP + Math.floor(k / 2) * (TILE_H + TILE_GAP);
-    boxes.push({
-      x,
-      y,
-      width: TILE_W,
-      height: TILE_H,
-      art: { x: x + TILE_W - 160, y: y + 24, size: 136 },
-      label: { x: x + 36, y: y + 64, maxWidth: TILE_W - 210, lineHeight: 40 },
-      value: { x: x + 36, y: y + TILE_H - 48, maxWidth: TILE_W - 72 },
-    });
+  for (let k = 0; k < n; k += 1) {
+    const wide = n === 3 && k === 2;
+    boxes.push(box(wide ? TILE_X[0] : TILE_X[k % 2]!, rowY(Math.floor(k / 2)), wide ? WIDE_W : TILE_W, TILE_H, wide ? "wide" : "tile"));
   }
   return boxes;
 }
@@ -212,7 +243,7 @@ export async function drawShare(canvas: HTMLCanvasElement, review: YearReview, l
     if (picture !== null) {
       context.drawImage(picture, box.art.x, box.art.y, box.art.size, box.art.size);
     }
-    context.font = `500 ${LABEL_PX}px ${font}`;
+    context.font = `500 ${box.label.px}px ${font}`;
     context.fillStyle = "rgba(255,255,255,0.92)";
     const lines = wrapLines((text) => context.measureText(text).width, tile.label, box.label.maxWidth);
     lines.forEach((line, index) => context.fillText(line, box.label.x, box.label.y + index * box.label.lineHeight));
@@ -223,6 +254,7 @@ export async function drawShare(canvas: HTMLCanvasElement, review: YearReview, l
       },
       tile.value,
       box.value.maxWidth,
+      box.value.px,
     );
     context.font = `700 ${size}px ${font}`;
     context.fillStyle = "#ffffff";
