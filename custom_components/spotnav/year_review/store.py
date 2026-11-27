@@ -2,7 +2,8 @@
 (`debug_day.DayStore`, `off_loop`):
 
     {schema, year, computed_at, through, review, day_parts: {date: {battery, car, car_est, heat, fuse, price}},
-     fuse_since, users: {user_id: {year, viewed, dismissed}}, forced_until}
+     fuse_since, users: {user_id: {year, viewed, dismissed}}, phones: {phone key: {year, viewed, dismissed}},
+     forced_until}
 
 * **The review** last worked out (`year`, `through`, `computed_at`, `review`: `year_review/compute.py`'s shape), read
   by the cards and the service from memory, never worked out on a read.
@@ -14,7 +15,11 @@
   for a day of quarters) is what the review reads of that day's prices, worked out once the day is over with that
   day's fees (`runtime.SiteYearReview._async_merge_prices`).
 * **Each person's seen state** (`users`, by Home Assistant user id): whether they opened the review of `year`
-  (`viewed`) or closed its banner (`dismissed`); a review of another year starts unseen. `reset_users` forgets all.
+  (`viewed`) or closed its banner (`dismissed`); a review of another year starts unseen. `reset_users` forgets all,
+  the phones' too.
+* **Each phone's seen state** (`phones`, the same shape): the paired app's, over the webhook, which has no Home
+  Assistant user. Keyed by the phone's `app_key` (the SHA-256 of the app's secret `app_id`, as the phone store keeps
+  it: `notifications/phones.app_key`), apart from the users so a card's person and a phone never share a state.
 * **`forced_until`**: the service's showing (`spotnav.show_year_review`): the banner and the Support row are offered
   until then whatever the date.
 
@@ -63,6 +68,20 @@ def _year(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and 2000 <= value <= 2200 else None
 
 
+def _seen_states(raw: Any) -> dict[str, dict[str, Any]]:
+    """The kept seen states (`users` or `phones`), each with a year; anything else is left out."""
+    states: dict[str, dict[str, Any]] = {}
+    for key, state in raw.items() if isinstance(raw, Mapping) else ():
+        year = _year(state.get("year")) if isinstance(state, Mapping) else None
+        if isinstance(key, str) and year is not None:
+            states[key] = {
+                "year": year,
+                ACTION_VIEWED: state.get(ACTION_VIEWED) is True,
+                ACTION_DISMISSED: state.get(ACTION_DISMISSED) is True,
+            }
+    return states
+
+
 class YearReviewStore:
     """One site's kept review, day parts, fuse episodes and seen states (see the module)."""
 
@@ -74,6 +93,7 @@ class YearReviewStore:
         self.day_parts: dict[date, DayParts] = {}
         self.fuse_since: date | None = None
         self.users: dict[str, dict[str, Any]] = {}
+        self.phones: dict[str, dict[str, Any]] = {}
         self.forced_until: datetime | None = None
         self._store: DayStore | None = (
             None if entry_id is None else DayStore(hass, store_key(entry_id), self._snapshot, off_loop=True)
@@ -92,6 +112,7 @@ class YearReviewStore:
             "day_parts": {day.isoformat(): parts.as_dict() for day, parts in sorted(self.day_parts.items())},
             "fuse_since": None if self.fuse_since is None else self.fuse_since.isoformat(),
             "users": {user: dict(state) for user, state in self.users.items()},
+            "phones": {phone: dict(state) for phone, state in self.phones.items()},
             "forced_until": None if self.forced_until is None else self.forced_until.isoformat(),
         }
 
@@ -111,15 +132,8 @@ class YearReviewStore:
             if day is not None and found is not None:
                 self.day_parts[day] = found
         self.fuse_since = _date(raw.get("fuse_since"))
-        users = raw.get("users")
-        for user, state in users.items() if isinstance(users, Mapping) else ():
-            year = _year(state.get("year")) if isinstance(state, Mapping) else None
-            if isinstance(user, str) and year is not None:
-                self.users[user] = {
-                    "year": year,
-                    ACTION_VIEWED: state.get(ACTION_VIEWED) is True,
-                    ACTION_DISMISSED: state.get(ACTION_DISMISSED) is True,
-                }
+        self.users = _seen_states(raw.get("users"))
+        self.phones = _seen_states(raw.get("phones"))
         forced = raw.get("forced_until")
         self.forced_until = dt_util.parse_datetime(forced) if isinstance(forced, str) else None
 
@@ -183,25 +197,33 @@ class YearReviewStore:
     def forced(self, now: datetime) -> bool:
         return self.forced_until is not None and now < self.forced_until
 
-    def seen(self, user_id: str | None, year: int) -> tuple[bool, bool]:
-        """Whether the person opened the review of `year`, and whether they closed its banner."""
-        state = self.users.get(user_id or "")
+    def _states(self, phone: bool) -> dict[str, dict[str, Any]]:
+        return self.phones if phone else self.users
+
+    def seen(self, user_id: str | None, year: int, *, phone: bool = False) -> tuple[bool, bool]:
+        """Whether the person (`phone`: the phone of that key) opened the review of `year`, and whether they closed
+        its banner."""
+        state = self._states(phone).get(user_id or "")
         if state is None or state.get("year") != year:
             return False, False
         return bool(state.get(ACTION_VIEWED)), bool(state.get(ACTION_DISMISSED))
 
     @callback
-    def mark(self, user_id: str, year: int, action: str) -> None:
-        """The person opened the review of `year` (`viewed`) or closed its banner (`dismissed`)."""
+    def mark(self, user_id: str, year: int, action: str, *, phone: bool = False) -> None:
+        """The person (`phone`: the phone of that key) opened the review of `year` (`viewed`) or closed its banner
+        (`dismissed`)."""
         if action not in ACTIONS:
             raise ValueError(action)
-        state = self.users.get(user_id)
+        states = self._states(phone)
+        state = states.get(user_id)
         if state is None or state.get("year") != year:
             state = {"year": year, ACTION_VIEWED: False, ACTION_DISMISSED: False}
-        self.users[user_id] = {**state, action: True}
+        states[user_id] = {**state, action: True}
         self._changed()
 
     @callback
     def reset_users(self) -> None:
+        """Forget who saw the review: every person and every phone."""
         self.users = {}
+        self.phones = {}
         self._changed()

@@ -395,14 +395,15 @@ class SiteYearReview:
             return self.store.year
         return review_year(local_date(now, self._tz))
 
-    def answer(self, user_id: str | None) -> dict[str, Any]:
-        """`spotnav/get_year_review`'s answer for one person (`compute.review_answer`), from the kept review."""
+    def answer(self, user_id: str | None, *, phone: bool = False) -> dict[str, Any]:
+        """`spotnav/get_year_review`'s answer for one person (`compute.review_answer`), from the kept review; with
+        `phone`, for the paired phone whose key `user_id` is (the webhook's `get_year_review`), by the same rules."""
         now = self.now()
         year = self.shown_year(now)
         offered = in_show_window(local_date(now, self._tz)) or self.store.forced(now)
         ready = self.store.review is not None and self.store.year == year
         state = STATE_READY if ready else (STATE_COMPUTING if self.running else STATE_NONE)
-        viewed, dismissed = self.store.seen(user_id, year)
+        viewed, dismissed = self.store.seen(user_id, year, phone=phone)
         return review_answer(
             site_id=self.entry_id,
             year=year,
