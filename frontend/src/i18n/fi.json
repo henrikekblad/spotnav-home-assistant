@@ -2217,6 +2217,8 @@
   "house.nowTab.why.sunBattery": "Aurinko kattaa talon ja lataa akkua.",
   "house.nowTab.why.sunAll": "Aurinko kattaa talon.",
   "house.nowTab.why.sunPart": "Aurinko kattaa osan talosta.",
+  "house.nowTab.why.sunBatteryAll": "Aurinko ja akku kattavat talon.",
+  "house.nowTab.why.sunBatteryPart": "Aurinko ja akku kattavat osan talosta.",
   "house.nowTab.why.battery": "Akku kattaa talon.",
   "house.nowTab.why.batteryPart": "Akku kattaa osan talosta.",
   "house.nowTab.why.car": "Auto latautuu.",

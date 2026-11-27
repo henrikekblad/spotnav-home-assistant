@@ -2217,6 +2217,8 @@
   "house.nowTab.why.sunBattery": "Solen täcker huset och laddar batteriet.",
   "house.nowTab.why.sunAll": "Solen täcker huset.",
   "house.nowTab.why.sunPart": "Solen täcker en del av huset.",
+  "house.nowTab.why.sunBatteryAll": "Solen och batteriet täcker huset.",
+  "house.nowTab.why.sunBatteryPart": "Solen och batteriet täcker en del av huset.",
   "house.nowTab.why.battery": "Batteriet täcker huset.",
   "house.nowTab.why.batteryPart": "Batteriet täcker en del av huset.",
   "house.nowTab.why.car": "Bilen laddas.",
