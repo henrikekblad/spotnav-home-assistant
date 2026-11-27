@@ -2742,7 +2742,7 @@
   "yearReview.car.cheapest": "halvin {price}, {date}",
   "yearReview.car.since": "Laskettu {date} lähtien, niin pitkälle kuin hinnat ulottuvat.",
   "yearReview.car.estimated": "≈ Home Assistantin tilastoista luetut lataukset lasketaan tunneittain.",
-  "yearReview.fees": "Hinnat ovat pörssihinta sekä maksut sellaisina kuin ne on asetettu tänään.",
+  "yearReview.fees": "Hinnat ovat pörssihinta sekä maksusi.",
   "yearReview.since": "{date} lähtien.",
   "yearReview.sun.eyebrow": "Aurinko",
   "yearReview.sun.say": "tuli aurinkopaneeleistasi.",

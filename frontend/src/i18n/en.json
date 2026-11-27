@@ -2742,7 +2742,7 @@
   "yearReview.car.cheapest": "cheapest {price}, {date}",
   "yearReview.car.since": "Counted since {date}, as far as the prices reach.",
   "yearReview.car.estimated": "≈ Charges read from Home Assistant’s statistics are counted by the hour.",
-  "yearReview.fees": "Prices are spot plus the fees as set today.",
+  "yearReview.fees": "Prices are spot plus your fees.",
   "yearReview.since": "Since {date}.",
   "yearReview.sun.eyebrow": "The sun",
   "yearReview.sun.say": "came from your solar panels.",

@@ -165,7 +165,7 @@ describe("the pages in words", () => {
     expect(plainAll(saved.chips)).toEqual(["Batteriet 305 kr sedan 15 oktober", "Bilen 1 156 kr", "Värmen 22 kr sedan 1 november"]);
   });
 
-  it("word the car's charges, energy and cheapest charge, with the fees as set today", () => {
+  it("word the car's charges, energy and cheapest charge, with the site's fees", () => {
     const car = find(pagesOf("full_year.json"), "car");
     expect(plainAll(car.chips)).toEqual(["209 laddningar", "2 438 kWh", "billigast 0,50 kr/kWh, 1 januari"]);
     expect(car.meter).toBe(86);

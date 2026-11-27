@@ -2742,7 +2742,7 @@
   "yearReview.car.cheapest": "la más barata {price}, {date}",
   "yearReview.car.since": "Contado desde el {date}, hasta donde llegan los precios.",
   "yearReview.car.estimated": "≈ Las cargas leídas de las estadísticas de Home Assistant se cuentan por horas.",
-  "yearReview.fees": "Los precios son el precio spot más las tarifas tal como están configuradas hoy.",
+  "yearReview.fees": "Los precios son el precio spot más tus tarifas.",
   "yearReview.since": "Desde el {date}.",
   "yearReview.sun.eyebrow": "El sol",
   "yearReview.sun.say": "vinieron de tus paneles solares.",

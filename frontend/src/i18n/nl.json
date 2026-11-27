@@ -2742,7 +2742,7 @@
   "yearReview.car.cheapest": "goedkoopst {price}, {date}",
   "yearReview.car.since": "Geteld sinds {date}, zover de prijzen reiken.",
   "yearReview.car.estimated": "≈ Laadbeurten uit de statistieken van Home Assistant worden per uur geteld.",
-  "yearReview.fees": "De prijzen zijn de spotprijs plus de toeslagen zoals ze vandaag zijn ingesteld.",
+  "yearReview.fees": "De prijzen zijn de spotprijs plus je kosten.",
   "yearReview.since": "Sinds {date}.",
   "yearReview.sun.eyebrow": "De zon",
   "yearReview.sun.say": "kwam van je zonnepanelen.",

@@ -2742,7 +2742,7 @@
   "yearReview.car.cheapest": "billigast {price}, {date}",
   "yearReview.car.since": "Räknat sedan {date}, så långt priserna räcker.",
   "yearReview.car.estimated": "≈ Laddningar hämtade ur Home Assistants statistik räknas per timme.",
-  "yearReview.fees": "Priserna är spotpris plus avgifterna som de är inställda i dag.",
+  "yearReview.fees": "Priserna är spotpris plus dina avgifter.",
   "yearReview.since": "Sedan {date}.",
   "yearReview.sun.eyebrow": "Solen",
   "yearReview.sun.say": "kom från dina solceller.",
