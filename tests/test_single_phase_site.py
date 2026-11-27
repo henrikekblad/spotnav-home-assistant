@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -295,29 +298,45 @@ async def _gx_site(hass: HomeAssistant, readings: dict[str, tuple[str, str]], **
     return site, clock
 
 
-async def test_a_derived_site_whose_l2_and_l3_read_0_v_runs_on_l1_after_the_hold(hass: HomeAssistant) -> None:
+def _judged(site: Any) -> tuple[str, ...]:
+    """The site's phases as a recompute judges them on the states and the clock now."""
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    return site.site_phases
+
+
+async def test_a_derived_site_whose_l2_and_l3_read_0_v_runs_on_l1_after_the_hold(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
     """Configured with all three phases, a GX whose L2 and L3 have no supply (0 V, nothing drawn) is a single-phase
     site once they have read so without a break for the hold; until then, and with an unknown L2, the site keeps its
     three phases and is unusable for the ones it cannot read."""
     site, clock = await _gx_site(hass, _GX_DEAD)
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     assert site.result.state != "observing"
 
     clock["now"] += DEAD_PHASE_HOLD_S - 1
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     clock["now"] += 2
-    assert site.site_phases == SINGLE_PHASE
-    _gx_states(hass, _GX_DEAD)
-    await hass.async_block_till_done()
-    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert _judged(site) == SINGLE_PHASE
+    # No reading changed, yet the calculation is not reused across the hold: the site is watched on L1 alone.
     assert site.result.state == "observing"
     assert site.result.measured_margin_a["L2"] is None
+    # Said once, with when, in the log and the diagnostics.
+    held = [record for record in caplog.records if "held as single-phase" in record.getMessage()]
+    assert len(held) == 1 and held[0].levelname == "WARNING"
+    snapshot = site.dead_phases_snapshot()
+    assert snapshot["held"] is True and snapshot["on_l1_now"] is True and snapshot["since"] is not None
+    # Read between recomputes, the phases move nothing on.
+    hass.states.async_set("sensor.gx_l2_voltage", "unknown", {"unit_of_measurement": "V"})
+    for _ in range(3):
+        assert site.site_phases == SINGLE_PHASE
 
     # Unknown is no evidence: three phases while it lasts, and L1 alone at once when the 0 V is read again.
     hass.states.async_set("sensor.gx_l2_voltage", "unknown", {"unit_of_measurement": "V"})
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     hass.states.async_set("sensor.gx_l2_voltage", "0", {"unit_of_measurement": "V"})
-    assert site.site_phases == SINGLE_PHASE
+    assert _judged(site) == SINGLE_PHASE
+    assert len([record for record in caplog.records if "held as single-phase" in record.getMessage()]) == 1
 
 
 async def test_a_three_phase_meter_reading_0_for_a_moment_stays_three_phase(hass: HomeAssistant) -> None:
@@ -325,14 +344,14 @@ async def test_a_three_phase_meter_reading_0_for_a_moment_stays_three_phase(hass
     site single-phase: a break in the evidence starts the hold again, and a phase once seen live stays a phase."""
     site, clock = await _gx_site(hass, _GX_DEAD)
     clock["now"] += DEAD_PHASE_HOLD_S - 1
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     # The meter comes back before the hold is over: the phases are live.
     _gx_states(hass, {"l2": ("229", "400"), "l3": ("230", "0")})
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     # It reads 0 again, for however long: the site had three phases and has them still.
     _gx_states(hass, _GX_DEAD)
     clock["now"] += 10 * DEAD_PHASE_HOLD_S
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     site._recompute(schedule_apply=False)  # noqa: SLF001
     assert site.result.state != "observing"
 
@@ -347,13 +366,13 @@ async def test_a_charger_drawing_on_several_phases_keeps_the_site_three_phase(ha
         hass, _GX_DEAD, charger_entry_ids=["car"],
         phase_wiring={"car": {"phases": 3, "phase": None, "measured_current_source": source}},
     )
-    assert site.site_phases == PHASES  # the hold starts
+    assert _judged(site) == PHASES  # the hold starts
     for phase in ("l1", "l2", "l3"):
         set_current_sensor(hass, f"sensor.car_{phase}", 10)
     clock["now"] += DEAD_PHASE_HOLD_S + 1
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES
     assert site._other_phase_seen_live is True  # noqa: SLF001
     for phase in ("l2", "l3"):
         set_current_sensor(hass, f"sensor.car_{phase}", 0)
     clock["now"] += DEAD_PHASE_HOLD_S + 1
-    assert site.site_phases == PHASES
+    assert _judged(site) == PHASES

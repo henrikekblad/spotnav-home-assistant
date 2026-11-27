@@ -430,6 +430,8 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # How often load balancing held a charger at its minimum because the site's measurement was lost, when it
         # last did, and for how long the measurement has been lost per charger now.
         "measurement_lost": {} if controller is None else controller.measurement_lost_snapshot(),
+        # Whether a three-phase site is held as single-phase because L2 and L3 read no supply, and since when.
+        "dead_phases": {} if controller is None else controller.dead_phases_snapshot(),
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
         # until enough are seen), and which ones hold load balancing for reporting too seldom.
         "report_cadence": None

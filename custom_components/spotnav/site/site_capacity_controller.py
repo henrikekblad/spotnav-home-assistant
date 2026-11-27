@@ -801,6 +801,10 @@ class SiteCapacityController:
         self._dead_phases_since: float | None = None
         self._dead_phases_held = False
         self._other_phase_seen_live = False
+        # When (UTC) the hold above was taken (logged once then), for the diagnostics; and the site's phases as the
+        # last recompute judged them (`site_phases`), `None` until the first.
+        self._dead_phases_held_at: datetime | None = None
+        self._site_phases: tuple[PhaseName, ...] | None = None
         # A site set up as single-phase whose charger draws on more than one phase (`_single_phase_conflict`): since
         # when (`_yield_now`) one has read so without a break, the charger it stands for once it has for
         # `PHASE_CONFLICT_HOLD_S` (it then stands until the site's settings change), the settings it was judged on,
@@ -1637,6 +1641,8 @@ class SiteCapacityController:
         previous_conflicts = self._last_logged_conflicts
         current_conflicts = self.membership_conflicts
         self._observe_reports()
+        # The site's phases judged once a recompute, the dead phases' hold moved on here only.
+        self._site_phases = self._judge_site_phases()
         self.result = self._calculate()
         self._observe_demand()
         self._sample_battery()
@@ -5328,7 +5334,7 @@ class SiteCapacityController:
         queues, a start's allowance and its reservation all read the same readings, so the result is reused while
         no reading changed (`_readings_key`) and for at most `CALCULATION_REUSE_S`, over which a reading's age would
         drift."""
-        key = (self._readings_key(), self._single_phase_conflict())
+        key = (self._readings_key(), self._single_phase_conflict(), self.site_phases)
         now = dt_util.utcnow()
         cached = self._calculation
         if (
@@ -5424,12 +5430,32 @@ class SiteCapacityController:
 
     @property
     def site_phases(self) -> tuple[PhaseName, ...]:
+        """The site's phases as the last recompute judged them (`_judge_site_phases`; judged now before the first),
+        read the same everywhere in between and moving nothing on."""
+        phases = self._site_phases
+        if phases is None:
+            phases = self._site_phases = self._judge_site_phases()
+        return phases
+
+    def _judge_site_phases(self) -> tuple[PhaseName, ...]:
         """The site's phases: L1 alone on a single-phase site (its meter measures L1 alone,
         `core.electric.site_phase_count`, or a derived site's L2 and L3 have no supply, `_dead_other_phases`), else
         all three."""
         if site_phase_count(self.config) == 1 or self._dead_other_phases():
             return phases_of(1)
         return PHASES
+
+    def dead_phases_snapshot(self) -> dict[str, Any]:
+        """For the diagnostics: whether a derived site's L2 and L3 are held as without supply (`_dead_other_phases`),
+        since when, whether the site runs on L1 for it now, and whether L2 or L3 was seen live since the start."""
+        return {
+            "held": self._dead_phases_held,
+            "since": None if self._dead_phases_held_at is None else self._dead_phases_held_at.isoformat(),
+            "on_l1_now": self._dead_phases_held
+            and site_phase_count(self.config) != 1
+            and self.site_phases == phases_of(1),
+            "other_phase_seen_live": self._other_phase_seen_live,
+        }
 
     def _dead_other_phases(self) -> bool:
         """Whether a derived site's L2 and L3 are taken to have no supply while L1 has (an integration that makes all
@@ -5447,8 +5473,14 @@ class SiteCapacityController:
         if evidence == "live" or self._charger_on_several_phases():
             self._other_phase_seen_live = True
         if self._other_phase_seen_live:
+            if self._dead_phases_held:
+                _LOGGER.warning(
+                    "SpotNav site %s: L2 or L3 reads live again, so the site is watched on all three phases again",
+                    self.entry_id,
+                )
             self._dead_phases_since = None
             self._dead_phases_held = False
+            self._dead_phases_held_at = None
             return False
         if evidence != "dead":
             if not self._dead_phases_held:
@@ -5461,6 +5493,13 @@ class SiteCapacityController:
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         if now_s - self._dead_phases_since >= max(DEAD_PHASE_HOLD_S, 2.0 * max_age_s):
             self._dead_phases_held = True
+            self._dead_phases_held_at = dt_util.utcnow()
+            _LOGGER.warning(
+                "SpotNav site %s is set up with three phases, but L2 and L3 read no voltage and draw nothing: the "
+                "site is held as single-phase and watched on L1 alone until L2 or L3 reads live or Home Assistant "
+                "restarts",
+                self.entry_id,
+            )
         return self._dead_phases_held
 
     def _single_phase_conflict(self) -> bool:
