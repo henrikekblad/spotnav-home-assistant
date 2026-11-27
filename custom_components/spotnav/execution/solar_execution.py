@@ -641,19 +641,26 @@ def _charger_idle(controller: ChargingController) -> bool:
 NOT_DRAWING_CONNECTIONS: Final = frozenset({DISCONNECTED, CONNECTED, PAUSED, FINISHED})
 
 
+def _source_state_current_a(hass: HomeAssistant, site: SiteCapacityController, charger_entry_id: str) -> float | None:
+    """The current (A) the entity that carries a charger's phases as attributes reads in its own state, `None`
+    without one or unreadable."""
+    source = source_from_dict(_wiring(site, charger_entry_id).get(CONF_MEASURED_CURRENT_SOURCE))
+    if source is None or source.kind != "attributes" or not source.entity_id:
+        return None
+    state = hass.states.get(source.entity_id)
+    if state is None:
+        return None
+    value, _problem = classify_current(
+        state.state, state.attributes.get("unit_of_measurement"), signed=source.signed_current
+    )
+    return value
+
+
 def _source_state_reads_zero(hass: HomeAssistant, site: SiteCapacityController, charger_entry_id: str) -> bool:
     """Whether the entity that carries a charger's phases as attributes reads no current in its own state. An OCPP
     charger reports its phases only while it charges: idle after a restart its current sensor reads 0 A with no
     L1/L2/L3 attributes at all (the owner's HALO, 2026-11-13)."""
-    source = source_from_dict(_wiring(site, charger_entry_id).get(CONF_MEASURED_CURRENT_SOURCE))
-    if source is None or source.kind != "attributes" or not source.entity_id:
-        return False
-    state = hass.states.get(source.entity_id)
-    if state is None:
-        return False
-    value, _problem = classify_current(
-        state.state, state.attributes.get("unit_of_measurement"), signed=source.signed_current
-    )
+    value = _source_state_current_a(hass, site, charger_entry_id)
     return value is not None and value < ZERO_CURRENT_A
 
 
@@ -679,8 +686,9 @@ def site_car_w(
 ) -> float | None:
     """What every member charger draws now (W), as solar reads it: an idle one nothing. A charger whose draw cannot
     be read counts as nothing with `unread_as_zero`, else makes the sum unknown (`None`), unless it is plainly not
-    drawing (`_evidently_not_drawing`): that counts as nothing with `idle_unread_as_zero`, which is for what only
-    measures (the hour tracker and the house figure built on it). It is off by default, so a caller that steers
+    drawing (`_evidently_not_drawing`), or was last read not drawing before its entities dropped off
+    (`_held_idle_draw`): that counts as nothing with `idle_unread_as_zero`, which is for what only measures (the hour
+    tracker, the Now tab and the house figures built on them). It is off by default, so a caller that steers
     chargers, like the import target's house figure, keeps a charger it cannot read unknown."""
     car_w = 0.0
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
@@ -712,9 +720,42 @@ def charger_draw_w(
         forced_one_phase=controller.switched_phases == 1,
     )
     drawn = car_draw_w(observation)
-    if drawn is None and idle_unread_as_zero and _evidently_not_drawing(hass, site, charger_entry_id, controller):
+    if not idle_unread_as_zero:
+        return drawn
+    if drawn is None and _evidently_not_drawing(hass, site, charger_entry_id, controller):
         drawn = 0.0
-    return drawn
+    source_a = None if drawn is not None else _source_state_current_a(hass, site, charger_entry_id)
+    return _held_idle_draw(controller, drawn, reads_current=source_a is not None and source_a >= ZERO_CURRENT_A)
+
+
+#: A charger last seen not drawing that then cannot be read at all (its entities unavailable) counts as nothing for
+#: at most this long, where only measuring asks for it (`idle_unread_as_zero`).
+IDLE_UNREAD_HOLD_S: Final = 1800.0
+
+
+def _held_idle_draw(
+    controller: Any, drawn: float | None, *, reads_current: bool = False, now: float | None = None
+) -> float | None:
+    """`drawn` (W), else nothing for a charger last seen not drawing within `IDLE_UNREAD_HOLD_S`.
+
+    An OCPP charger with no car may drop off and back many times an hour (a real site, 2026-11-26: about 16 times an
+    hour overnight); while it is away its status and current are unavailable, so nothing says it is idle, and each
+    dropout left the hour tracker a gap and the house without a figure for the hour. Its last reading said it drew
+    nothing, and a charger away from Home Assistant is not started by SpotNav, so it still counts as nothing. One
+    seen drawing (or charging, or a Start on its way) when it dropped stays unknown, as one that has been away for
+    longer than the hold, or one whose current entity reads a current (`reads_current`). The moment it was last seen
+    not drawing is kept on its controller."""
+    moment = time.monotonic() if now is None else now
+    if drawn is not None:
+        controller.idle_seen_at = moment if drawn <= 0.0 and _charger_idle(controller) else None
+        return drawn
+    if reads_current or not _charger_idle(controller):
+        controller.idle_seen_at = None
+        return None
+    seen = getattr(controller, "idle_seen_at", None)
+    if isinstance(seen, (int, float)) and not isinstance(seen, bool) and 0.0 <= moment - seen <= IDLE_UNREAD_HOLD_S:
+        return 0.0
+    return None
 
 
 def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> SiteSurplus | None:

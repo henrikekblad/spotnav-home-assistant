@@ -1122,6 +1122,9 @@ class ChargingController:
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
+        # When (monotonic s) the charger was last read not drawing, by what only measures
+        # (`solar_execution._held_idle_draw`): a dropout of its entities soon after still counts as nothing.
+        self.idle_seen_at: float | None = None
         # Who asked for the Start that was last accepted and when, for the charge session record.
         self._start_cause: tuple[str, datetime] | None = None
         #: A session start found its current's target unavailable (a number that exists only while
