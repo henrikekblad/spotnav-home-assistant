@@ -23,6 +23,7 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
+from .api.house import async_car_kwh_by_hour
 from .entry_migration import async_migrate_entry  # noqa: F401 - Home Assistant's hook, found by name
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
@@ -956,6 +957,9 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
         hass, entry.entry_id, {**entry.data, CONF_CHARGER_ENTRY_IDS: balanced_members(hass, members)}
     )
     entry.runtime_data = SiteData(controller)
+    # The cars' energy per hour for the house forecast's hours filled from the statistics (the site never imports
+    # the API, so the setup wires it).
+    controller.house_forecast.car_kwh_by_hour = partial(async_car_kwh_by_hour, hass, controller)
     # The shutdown runs from `async_unload_entry`, awaited in full; these two only clean up a setup that failed
     # (the shutdown runs once, whoever asks). Unbound first (unload callbacks run last first): no member charger's
     # sun reads this controller once it is going.
