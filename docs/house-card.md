@@ -83,35 +83,46 @@ a battery that tab is called **Price**.
 
 ### Now
 
-The live flows as a picture: the house in the middle and around it only what the site has: the sun (top left), the grid
-(top right), the battery (bottom left), the car (bottom right) and the heat under the house. A line runs from each to the
-house, with dots running the way the power flows and its kW beside it. The dots are
-amber for the sun, teal for the battery, the car's and the heat's own colours, red for an import and green for an export;
-they run faster with more power. Where the browser asks for reduced motion they stand still, and a filled arrowhead on
-each line's middle shows the way instead. The house's own power besides the heat (the heat has its own line out of
-the house, as in the Energy flow tab; without heat the whole house, the car never) is in its circle. The car's line is drawn only while a car is plugged in; otherwise its node
-is dimmed. A house with the grid alone is one low row, the grid to the house.
+At the top, one row of what is happening now: *87 % own power* (the share of what the home uses now, the car and a
+charging battery included, that is not bought; only with sun or a battery), the price now in its band's colour
+(*Cheap hour*, *Normal hour* or *Expensive hour*: the cheapest third, the middle or the dearest third of the hours the
+plan has priced) and one sentence of what the flows do ("The battery and the sun cover the house in the expensive
+hour.", "Cheap hour: the battery and the car charge from the grid.", "The sun covers the house and charges the
+battery. The surplus is sold.", "The house takes everything from the grid.").
+
+Then the live flows as a picture: the house in the middle and around it only what the site has. With one or two parts
+besides the house (the grid alone, the grid and a car) they stand in one row beside the house with straight lines and
+a low picture; with three or four they stand at fixed corners: the sun top left, the grid top right, the battery bottom
+left, the car bottom right, and a corner the site lacks stays empty. Each line is as wide as the square root of its
+power, so 4 kW is twice as wide as 1 kW, not four times; white chevrons run along it the way the power flows, faster
+with more power (where the browser asks for reduced motion they stand still and still point the way). A line without
+power is a thin dashed line. Its kW stands beside it, above a straight line and on the outer side of a slanted one.
+
+The house shows the whole house's power in its middle, and around it a ring of its parts: the heat, the pool with the
+spa and the sauna (where SpotNav runs them and the heat's own meters do not already read them), and the rest, with
+their kW under the picture. The battery has its level as a ring around it and its icon filled to it; the car its level
+while it is plugged in.
 
 The lines add up around the house: what comes in from the sun, the grid and the battery is what the house, the car and
-the battery take. The battery's line is its power as read, what the battery's own app shows, and the house is what is
-left. On a hybrid inverter that reads the battery at the battery (DC: Sigenergy, SolarEdge, Victron, GoodWe) the
-inverter's own loss on the battery's way in and out and its standby are on no meter: they are in the house, as an
-appliance behind the grid's meter would be (on a Sigenergy plant about 0.6 kW while the battery gives 10 kW, and about
-0.2 kW standing). So the house is a little more than a plant's own house load (Sigenergy's app leaves the inverter
-out). The sun is shown as read.
+the battery take, and the ring's parts add up to the house. The battery's line is its power as read, what the battery's
+own app shows, and the house is what is left. On a hybrid inverter that reads the battery at the battery (DC:
+Sigenergy, SolarEdge, Victron, GoodWe) the inverter's own loss on the battery's way in and out and its standby are on no
+meter: they are in the house, as an appliance behind the grid's meter would be (on a Sigenergy plant about 0.6 kW
+while the battery gives 10 kW, and about 0.2 kW standing). So the house is a little more than a plant's own house load
+(Sigenergy's app leaves the inverter out). The sun is shown as read.
 
-What is written adds up too: what comes in equals what goes out plus the house's circle, each figure rounded to a tenth
-so the rounded figures still add up. Meters update at different moments, so a figure that cannot be read this moment
-(the sun or the heat from the last period) or had to be moved to make the lines meet (a part is never larger than the
-house, a car's draw that lags its charger) has "≈" before it.
+What is written adds up too: each figure is rounded to a tenth so the rounded figures still add up. Meters update at
+different moments, so a figure that cannot be read this moment (the sun or the heat from the last period, the pool
+counted by its on time at its power) or had to be moved to make the lines meet (a part is never larger than the house,
+a car's draw that lags its charger) has "≈" before it.
 
-In the corners, the day so far, each figure in its part's colour (a little darker on a light card, lighter on a dark
-one): *Sun today*, *House today* (the heat included, the car not: where the site has a charger it says "without the
-car", since a battery's own app, Sigenergy's for one, counts the charger into the house's use and so shows a higher
-figure), *Bought today* with what was sold in green, the battery's level and
-the energy in it, *Heat today*, and the car's level with "25.5 kWh today" under it (its energy today alone while no car
-is plugged in). These are the energy flow's own figures, so they add up with the Energy flow tab. A name too long for
-its corner ends in "…".
+At each part, two short lines: what it does now ("Buying", "54 % · covers the house", "Charging · 73 %", "No car") and
+the day so far in its colour (a little darker on a light card, lighter on a dark one): the sun's kWh today, *bought …
+· sold … kWh* at the grid, *in … · out … kWh* at the battery, *charged … today* at the car, and the house's day (the
+heat included, the car not) under its ring. These are the energy flow's own figures, so they add up with the Energy
+flow tab. The colours are the same in every picture of the cards: the sun amber, bought blue, sold green, the battery
+teal, the car magenta, the house violet, the heat red, the pool blue; a Home Assistant theme that is dark gets brighter
+shades of each.
 
 Under the picture: one sentence of what the battery does and what its plan does next ("The battery covers the house and
 stores the sun until 18:00, then it sells to the grid."); while SpotNav does not control the battery it says who does and
@@ -128,8 +139,9 @@ whether a car is plugged in and its level, the battery's own power, the sun from
 sensors (else the battery plant's own PV power where the plant is all of the sun, else each solar source's PV power
 sensor on its inverter's device: its only power sensor, or the one named pv or solar; where a device has several and
 none is clearly the panels', or one source has none, the sun is the last quarter hour's mean, marked ≈) and the heat
-from the power sensors of the heat pump's meter and the heat zones (else the last quarter hour's mean). They are
-written into the picture in place: the dots keep running and only start again when a line turns. From an older SpotNav
+from the power sensors of the heat pump's meter and the heat zones (else the last quarter hour's mean), and the pool,
+the spa and the sauna from their own power sensors, else while they run at their power. They are
+written into the picture in place: the chevrons keep running and only start again when a line turns. From an older SpotNav
 the picture has the day's figures and the battery's own power only, and says "no live figures yet".
 
 ### Plan
