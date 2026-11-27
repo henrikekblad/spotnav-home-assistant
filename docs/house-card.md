@@ -232,6 +232,10 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   month, as wide as the chart allows, with the house, the heat and the car stacked and the sun as a stepped line over
   them, on a kWh axis. Tap a bar or an hour for its figures; the arrow keys walk them.
 
+  The house's bars keep every hour even when a charger with no car keeps dropping offline (it counts as 0 kW, not as a
+  missing reading). An hour that is still missing after about a day, because a meter missed it, is filled in from the
+  hourly statistics of the meters in Home Assistant's Energy dashboard and the cars' energy, and is marked as filled.
+
   ![The house card's Energy chart tab on a month: a bar per day with the house, the heat and the car stacked and the sun as a stepped line](images/house-card-chart.png)
 
 * **Earnings**: what SpotNav saved over the period as bars, an hour, a day or a month each, stacked with a part per

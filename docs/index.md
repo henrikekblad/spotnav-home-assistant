@@ -26,6 +26,8 @@ Home Assistant. SpotNav needs no account and no cloud service of its own.
    parts act today and which only show what they would do.
 3. [Settings](settings.md): where each setting lives.
 
+In December, [The year with SpotNav](year-review.md) tells the year in a few pages.
+
 Is your hardware supported? See [Supported hardware](supported.md).
 Something not working? See [Troubleshooting](troubleshooting.md).
 

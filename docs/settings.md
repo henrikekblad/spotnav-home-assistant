@@ -39,7 +39,7 @@ Rows marked **site-wide** apply to every charger and card on the same site.
 | **Pool**, **Spa**, **Sauna** (site-wide) | Each shown once that load is set up or found: its entities, powers and own control switch; the spa's temperature between baths; the pool's water sensor (second after the heat pump's own reading) and filtering per day. The heat card's phones and their events close the last of them. | [Pool, spa and sauna](pool-spa.md#the-settings) |
 | **Notifications** | Which phones are told about what. | [Notifications](notifications.md) |
 | **Display** | Chart time axis and price unit, for this device only. | [The charging card](card.md#display) |
-| **Support** | Automations, **Beta tester**, **Hardware test**, then rows to act on: Documentation (SpotNav's site), About this card, download and send debug info, disconnect all phones, and **Support the SpotNav project** (GitHub Sponsors). The same in every card. | [Troubleshooting](troubleshooting.md), [Beta testing](beta-testing.md) |
+| **Support** | Automations, **Beta tester**, **Hardware test**, then rows to act on: Documentation (SpotNav's site), About this card, download and send debug info, disconnect all phones, and **Support the SpotNav project** (GitHub Sponsors). From 10 December to 31 January there is also a row for [The year with SpotNav](year-review.md). The same in every card. | [Troubleshooting](troubleshooting.md), [Beta testing](beta-testing.md) |
 
 ## Settings outside the card
 
