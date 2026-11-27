@@ -88,8 +88,8 @@ The live flows as a picture: the house in the middle and around it only what the
 house, with dots running the way the power flows and its kW beside it. The dots are
 amber for the sun, teal for the battery, the car's and the heat's own colours, red for an import and green for an export;
 they run faster with more power. Where the browser asks for reduced motion they stand still, and a filled arrowhead on
-each line's middle shows the way instead. The house's own power (the
-heat included, the car not) is in its circle. The car's line is drawn only while a car is plugged in; otherwise its node
+each line's middle shows the way instead. The house's own power besides the heat (the heat has its own line out of
+the house, as in the Energy flow tab; without heat the whole house, the car never) is in its circle. The car's line is drawn only while a car is plugged in; otherwise its node
 is dimmed. A house with the grid alone is one low row, the grid to the house.
 
 The lines add up around the house: what comes in from the sun, the grid and the battery is what the house, the car and
@@ -99,6 +99,11 @@ inverter's own loss on the battery's way in and out and its standby are on no me
 appliance behind the grid's meter would be (on a Sigenergy plant about 0.6 kW while the battery gives 10 kW, and about
 0.2 kW standing). So the house is a little more than a plant's own house load (Sigenergy's app leaves the inverter
 out). The sun is shown as read.
+
+What is written adds up too: what comes in equals what goes out plus the house's circle, each figure rounded to a tenth
+so the rounded figures still add up. Meters update at different moments, so a figure that cannot be read this moment
+(the sun or the heat from the last period) or had to be moved to make the lines meet (a part is never larger than the
+house, a car's draw that lags its charger) has "≈" before it.
 
 In the corners, the day so far, each figure in its part's colour (a little darker on a light card, lighter on a dark
 one): *Sun today*, *House today* (the heat included, the car not: where the site has a charger it says "without the
@@ -120,7 +125,8 @@ to choose (more than one could be it) is said here.
 
 The live figures are read every 30 seconds while Now is shown: the grid and the chargers as load balancing reads them,
 whether a car is plugged in and its level, the battery's own power, the sun from the Energy dashboard's solar power
-sensors and the heat from the heat pump's meter where it is a power sensor (else the last quarter hour's mean). They are
+sensors (else the battery plant's own PV power where the plant is all of the sun) and the heat from the power sensors of
+the heat pump's meter and the heat zones (else the last quarter hour's mean). They are
 written into the picture in place: the dots keep running and only start again when a line turns. From an older SpotNav
 the picture has the day's figures and the battery's own power only, and says "no live figures yet".
 

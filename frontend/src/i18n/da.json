@@ -2210,6 +2210,7 @@
   "house.nowTab.heat": "Varme i dag",
   "house.nowTab.house": "Hus i dag",
   "house.nowTab.houseNow": "Huset nu",
+  "house.nowTab.houseRestNow": "Huset ud over varmen nu",
   "house.nowTab.noLive": "ingen live-værdier endnu",
   "house.nowTab.line.sun.in": "Solen giver {kw}",
   "house.nowTab.line.sun.out": "Solen giver {kw}",
