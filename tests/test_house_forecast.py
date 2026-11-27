@@ -16,7 +16,7 @@ from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site import house_forecast as house_forecast_module
-from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
+from custom_components.spotnav.site.house_history import FILL_DAYS, HourFlows, HouseHistory, MIN_GROSS_HOURS
 from custom_components.spotnav.site.forecast_log import (
     KIND_HOUSE,
     KIND_HOUSE_DAY_AHEAD,
@@ -733,3 +733,178 @@ async def test_a_site_without_a_battery_records_grid_less_car(
     monkeypatch.setattr(controller, "_battery_live_w", lambda: (True, -800.0))
     controller._observe_demand()
     assert seen == [0.0, None, -800.0]
+
+
+# ---------------------------------------------------------------------------------- the whole load's gaps filled
+
+FILL_NOW = datetime(2026, 11, 27, 9, 30, tzinfo=UTC)
+
+
+def _series(starts: list[datetime], kwh: float, *, without: set[datetime] = frozenset()) -> dict[datetime, float]:
+    return {start: kwh for start in starts if start not in without}
+
+
+def _gap_night() -> list[datetime]:
+    """The field case's night (2026-11-26 17:00 to 09:00 local), well past the production wait at `FILL_NOW + 2 d`."""
+    first = datetime(2026, 11, 25, 16, 0, tzinfo=UTC)
+    return [first + timedelta(hours=index) for index in range(16)]
+
+
+def test_a_gap_past_the_production_wait_is_filled_from_the_statistics() -> None:
+    """Every meter has the hours: the whole load is `grid_in - grid_out + solar + battery_out - battery_in - car`."""
+    history = HouseHistory()
+    night = _gap_night()
+    now = FILL_NOW + timedelta(days=2)
+    flows = HourFlows(
+        grid_in=_series(night, 2.0),
+        grid_out=_series(night, 0.1),
+        solar=_series(night, 0.0),
+        battery_in=_series(night, 0.5),
+        battery_out=_series(night, 0.3),
+    )
+
+    assert set(night) <= set(history.gap_hours(now))
+    filled = history.fill_gross(flows, _series(night, 0.2), now, outdoor={night[0]: -3.0})
+
+    assert filled == len(night)
+    assert all(history.gross[start] == (pytest.approx(1.5), True) for start in night)
+    assert set(history.filled) == set(night)
+    hours = {hour.start: hour for hour in history.gross_hours()}
+    assert hours[night[0]].house_kw == pytest.approx(1.5) and hours[night[0]].outdoor_c == -3.0
+    assert not hours[night[0]].imported  # measured: the forecast learns from it
+    assert history.diagnostics()["gross_filled"] == len(night)
+    # Kept across a restart, the mark too; a build before the fill reads the rows as any other.
+    again = HouseHistory()
+    again.restore(history.as_dict())
+    assert again.gross == history.gross and again.filled == history.filled
+    assert all(len(row) == 3 for row in history.as_dict()["gross"])
+
+
+def test_an_hour_a_statistic_or_the_car_lacks_is_not_filled() -> None:
+    history = HouseHistory()
+    night = _gap_night()
+    now = FILL_NOW + timedelta(days=2)
+    flows = HourFlows(
+        grid_in=_series(night, 2.0),
+        grid_out=_series(night, 0.0, without={night[1]}),
+        solar=_series(night, 0.0, without={night[2]}),
+        battery_in=_series(night, 0.0, without={night[3]}),
+        battery_out=_series(night, 0.0),
+    )
+
+    history.fill_gross(flows, _series(night, 0.0, without={night[4]}), now)
+
+    assert {night[1], night[2], night[3], night[4]}.isdisjoint(history.gross)
+    assert night[0] in history.gross and night[5] in history.gross
+    # A meter the site does not have is no term; the meters far apart (below 0) leave the hour out.
+    other = HouseHistory()
+    assert other.fill_gross(HourFlows(grid_in=_series(night, 0.5)), _series(night, 1.0), now) == 0
+    assert other.fill_gross(HourFlows(grid_in=_series(night, 0.5)), _series(night, 0.55), now) == len(night)
+    assert all(kw == 0.0 and not sun for kw, sun in other.gross.values())
+
+
+def test_a_measured_hour_is_never_overwritten_nor_one_that_waits_for_its_production() -> None:
+    history = HouseHistory()
+    night = _gap_night()
+    now = FILL_NOW + timedelta(days=2)
+    history.gross[night[0]] = (0.7, True)
+    waiting = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
+    flows = HourFlows(grid_in=_series([*night, waiting], 2.0), solar=_series([*night, waiting], 0.0),
+                      grid_out=_series([*night, waiting], 0.0))
+
+    history.fill_gross(flows, _series([*night, waiting], 0.0), now)
+
+    assert history.gross[night[0]] == (0.7, True) and night[0] not in history.filled
+    assert waiting not in history.gross and waiting not in history.gap_hours(now)
+    # Only `FILL_DAYS` back.
+    assert min(history.gap_hours(now)) == now.replace(minute=0, second=0, microsecond=0) - timedelta(days=FILL_DAYS)
+    # The battery plan's rows are still taken over after a filled hour, never over one.
+    rows = [(night[0] - timedelta(hours=2), 1.0), (night[5], 9.0), (night[0] + timedelta(days=1, hours=10), 1.1)]
+    history.take_rows(rows, None, now)
+    assert history.gross[night[0] - timedelta(hours=2)] == (1.0, False)
+    assert history.gross[night[5]] == (pytest.approx(2.0), True)
+
+
+async def test_a_battery_site_fills_the_hours_the_tracker_could_not_measure(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The field case: the tracker kept no `grid - car - battery` for a night (a charger flapping unavailable), the
+    Energy dashboard had every hour. The house card's energy graph reads the whole load's hours: they are there."""
+    weather(hass, 4.0)
+    hass.states.async_set("sensor.battery_power", "0", {"unit_of_measurement": "W"})
+    entry = await pilot_site(hass, freezer, battery_aggregate_power_entity="sensor.battery_power")
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.2)
+    with_ex_battery(controller, 0.9, 12)
+    now = controller.demand.now()
+    prefs = {
+        "energy_sources": [
+            {"type": "grid", "stat_energy_from": "sensor.grid_in", "stat_energy_to": "sensor.grid_out"},
+            {"type": "solar", "stat_energy_from": "sensor.pv"},
+            {"type": "battery", "stat_energy_from": "sensor.bat_out", "stat_energy_to": "sensor.bat_in"},
+        ]
+    }
+    figures = {"sensor.grid_in": 1.2, "sensor.grid_out": 0.0, "sensor.pv": 0.5, "sensor.bat_out": 0.4, "sensor.bat_in": 0.6}
+    lacking = now.replace(minute=0, second=0, microsecond=0) - timedelta(days=2)
+
+    async def energy_prefs(hass: Any) -> dict[str, Any]:
+        return prefs
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return ("sensor.pv",), ("sensor.grid_out",)
+
+    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for statistic_id in wanted:
+            moment, rows = start, []
+            while moment < end:
+                if not (statistic_id == "sensor.bat_in" and moment == lacking):
+                    rows.append({"start": moment.timestamp(), "change": figures.get(statistic_id, 0.0)})
+                moment += timedelta(hours=1)
+            out[statistic_id] = rows
+        return out
+
+    asked: list[list[datetime]] = []
+
+    async def car(starts: Any) -> dict[datetime, float]:
+        asked.append(list(starts))
+        return dict.fromkeys(starts, 0.1)
+
+    monkeypatch.setattr(house_forecast_module, "async_energy_prefs", energy_prefs)
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", ids)
+    monkeypatch.setattr(house_forecast_module, "async_statistics", statistics)
+    house.car_kwh_by_hour = car
+    await house.async_refresh()
+
+    filled = house.history.filled
+    assert filled and house.last_filled == len(filled)
+    assert lacking not in house.history.gross
+    assert all(house.history.gross[start] == (pytest.approx(1.4), True) for start in filled)
+    # The tracker's own hours are filed as before, never filled.
+    measured = {hour.start for hour in house.history.waiting([], now)} | {
+        start for start in house.history.gross if start not in filled
+    }
+    assert measured and not set(filled) & measured
+    assert min(filled) >= now.replace(minute=0, second=0, microsecond=0) - timedelta(days=FILL_DAYS)
+    assert asked and lacking not in asked[0]
+    # Nothing left to fill: the next refresh reads no car.
+    asked.clear()
+    freezer.tick(timedelta(hours=1))
+    await house.async_refresh()
+    assert all(lacking not in starts for starts in asked)
+
+
+async def test_a_site_whose_cars_energy_is_not_known_fills_nothing(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The site's charger has no energy register, no session and no battery plan measure: the hours stay out."""
+    weather(hass, 4.0)
+    hass.states.async_set("sensor.battery_power", "0", {"unit_of_measurement": "W"})
+    entry = await pilot_site(hass, freezer, battery_aggregate_power_entity="sensor.battery_power")
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.2)
+    gaps = house.history.gap_hours(controller.demand.now())
+    assert gaps
+    assert await house.car_kwh_by_hour(gaps[:3]) == {}
