@@ -862,3 +862,307 @@ async def test_the_days_record_sells_at_the_export_rate_and_without_one_at_spot(
         assert all(row[4] == pytest.approx(row[2] + 1.0, abs=1e-3) for row in part["rows"])
     finally:
         domain_data(world.hass).price_repository = None
+
+
+# ------------------------------------------------------------------ a provisional next day (a tariff known in advance)
+
+#: 08:19 in London on 2026-10-04 (BST): the integration holds today's rates only, tomorrow's come in the afternoon.
+MORNING = datetime(2026, 10, 4, 7, 19, tzinfo=UTC)
+GO_C = "E-1R-GO-VAR-22-10-14-C"
+COSY_C = "E-1R-COSY-22-12-08-C"
+
+
+def uk(day: date, hour: int, minute: int = 0) -> datetime:
+    return datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo(LONDON)).replace(hour=hour, minute=minute)
+
+
+async def _morning(world: World, tariff: str = FLUX_C, **kwargs: Any) -> None:
+    world.clock.now = MORNING
+    await world.start()
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TODAY), world.clock.now, tariff=tariff, **kwargs)
+    await world.hass.async_block_till_done()
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+
+
+def _uk_values(document) -> dict[datetime, float]:
+    """A display day's prices back in pounds, by UK start."""
+    out = {}
+    for piece in document.pieces():
+        rate = piece.fx["GBP"]
+        for interval in piece.intervals:
+            out[interval.utc_start.astimezone(ZoneInfo(LONDON))] = round(interval.eur_per_kwh * rate, 4)
+    return out
+
+
+@pytest.mark.parametrize("tariff", [FLUX_C, GO_C, COSY_C, "E-1R-VAR-22-11-01-C"])
+async def test_a_morning_without_tomorrows_rates_plans_on_todays_repeated(world: World, tariff: str) -> None:
+    await _morning(world, tariff)
+    assert (await world.provider.async_fetch_day(AREA, TOMORROW)).outcome == "not_published"
+
+    # What every reader but a plan sees: today ends at 23:00 UK, no tomorrow.
+    assert world.repository.day_snapshot(AREA, TOMORROW).document is None
+    today = world.repository.day_snapshot(AREA, TODAY).document
+    assert not today.provisional and today.covers_until_instant == uk(TODAY, 23)
+    # A plan's: today to midnight, and tomorrow to 23:00 UK, today's bands at the same clock times.
+    planned_today = world.repository.day_snapshot(AREA, TODAY, provisional=True).document
+    planned = world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document
+    assert planned_today.provisional and planned_today.covers_whole_day()
+    assert planned.provisional and planned.covers_until_instant == uk(TOMORROW, 23)
+    values = _uk_values(planned)
+    assert len(values) == 46
+    assert all(value == flux_value(start) for start, value in values.items())
+    assert values[uk(TOMORROW, 3)] == FLUX_NIGHT and values[uk(TOMORROW, 17)] == FLUX_PEAK
+    # Never stored, never held.
+    assert not world.repository.holds_file(AREA, TOMORROW)
+    assert all(not key.endswith(TOMORROW.isoformat()) for key in (world.store.payload or {}).get("days", {}))
+
+
+async def test_the_real_rates_replace_the_provisional_day_as_they_arrive(world: World) -> None:
+    await _morning(world)
+    assert world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document.provisional
+
+    # 16:10 UK: tomorrow's rates are out, and they differ from today's.
+    world.clock.now = datetime(2026, 10, 4, 15, 10, tzinfo=UTC)
+    slots = flux_slots(TODAY - timedelta(days=1), TOMORROW)
+    slots = {
+        start: 0.1111 if start.astimezone(ZoneInfo(LONDON)).date() == TOMORROW else value for start, value in slots.items()
+    }
+    world.meter.publish(slots, world.clock.now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+    await world.manager.async_wait_idle()
+    await world.hass.async_block_till_done()
+
+    # The next day's arrival asked for tomorrow at once; the provisional day is gone.
+    assert world.repository.holds_file(AREA, TOMORROW)
+    document = world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document
+    assert not document.provisional and not any(piece.provisional for piece in document.pieces())
+    assert set(_uk_values(document).values()) == {0.1111}
+    assert world.repository._provisional == {}
+
+
+@pytest.mark.parametrize("tariff", [AGILE_C, "E-1R-INTELLI-VAR-22-10-14-C"])
+async def test_agile_and_intelligent_have_no_provisional_day(world: World, tariff: str) -> None:
+    await _morning(world, tariff)
+    assert (await world.provider.async_provisional_day(AREA, TOMORROW)).outcome == "not_published"
+    assert world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document is None
+    assert not world.repository.day_snapshot(AREA, TODAY, provisional=True).document.provisional
+
+
+async def test_agile_is_unchanged_by_the_provisional_day(world: World) -> None:
+    world.clock.now = MORNING
+    await world.start()
+    await world.publish(TODAY)
+    assert world.provider.publication == PUBLICATION
+    assert (await world.provider.async_provisional_day(AREA, TOMORROW)).outcome == "not_published"
+    fetch = await world.provider.async_fetch_day(AREA, TODAY)
+    assert fetch.document["prices"] == relay_file(TODAY)["prices"] and "retrieved" in fetch.document
+
+
+async def test_a_tariff_changed_since_yesterday_or_tomorrow_has_no_provisional_day(world: World) -> None:
+    await _morning(world, tariffs={"previous_day_rates": AGILE_C})
+    assert (await world.provider.async_provisional_day(AREA, TOMORROW)).outcome == "not_published"
+    assert world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document is None
+
+    # A move named on the next day's entity (tomorrow on another tariff): nothing repeated either.
+    world.meter.publish(
+        flux_slots(TODAY - timedelta(days=1), TODAY), world.clock.now, tariff=FLUX_C, tariffs={"next_day_rates": GO_C}
+    )
+    await world.hass.async_block_till_done()
+    assert (await world.provider.async_provisional_day(AREA, TOMORROW)).outcome == "not_published"
+
+
+async def test_an_incomplete_today_has_no_provisional_day(world: World) -> None:
+    world.clock.now = MORNING
+    await world.start()
+    slots = flux_slots(TODAY - timedelta(days=1), TODAY)
+    del slots[uk(TODAY, 12).astimezone(UTC)]
+    world.meter.publish(slots, world.clock.now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+    assert (await world.provider.async_provisional_day(AREA, TOMORROW)).outcome == "not_published"
+
+
+async def test_today_and_earlier_are_never_provisional(world: World) -> None:
+    await _morning(world)
+    assert (await world.provider.async_provisional_day(AREA, TODAY)).outcome == "not_published"
+
+
+async def test_a_provisional_day_that_becomes_today_stays_marked(world: World) -> None:
+    await _morning(world)
+    # Past midnight UK with the integration not refreshed: the day is today now, still never real.
+    world.clock.now = datetime(2026, 10, 4, 23, 30, tzinfo=UTC)
+    assert world.repository.day_snapshot(AREA, TOMORROW).document is None
+    document = world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document
+    assert document is not None and document.provisional
+
+
+@pytest.mark.parametrize(
+    ("today", "count"),
+    [
+        (date(2026, 10, 24), 50),  # tomorrow is the autumn day: both 01:00s take today's 01:00
+        (date(2026, 10, 25), 48),  # today is the autumn day: its first 01:00 is repeated
+        (date(2026, 3, 28), 46),  # tomorrow is the spring day: no 01:00 to fill
+        (date(2026, 3, 29), 48),  # today is the spring day: tomorrow's 01:00 takes yesterday's
+    ],
+)
+def test_a_clock_change_day_is_repeated_by_clock_time(today: date, count: int) -> None:
+    from custom_components.spotnav.pricing.providers.octopus import repeat_today
+
+    zone = ZoneInfo(LONDON)
+
+    def value(start: datetime) -> float:
+        local = start.astimezone(zone)
+        # A different rate per clock time and day: which day a value came from shows.
+        return local.day + local.hour / 100 + local.minute / 10000
+
+    pool = {start: value(start) for start in flux_slots(today - timedelta(days=1), today)}
+    now = uk(today, 8, 19)
+    repeated = repeat_today(pool, zone, now)
+    assert len(repeated) == count
+    for start, got in repeated.items():
+        local = start.astimezone(zone)
+        assert local.date() == today + timedelta(days=1)
+        spring_hour = today == date(2026, 3, 29) and local.hour == 1
+        source_day = today - timedelta(days=1) if spring_hour else today
+        assert got == pytest.approx(source_day.day + local.hour / 100 + local.minute / 10000)
+    # The autumn day's first 01:00 (BST) is what both repeat: the same value at two instants.
+    if count == 50:
+        ones = [got for start, got in repeated.items() if (start.astimezone(zone).hour, start.astimezone(zone).minute) == (1, 0)]
+        assert len(ones) == 2 and ones[0] == ones[1]
+    # A hole in today: nothing.
+    last = max(start for start in pool if start.astimezone(zone).date() == today)
+    assert repeat_today({start: rate for start, rate in pool.items() if start != last}, zone, now) == {}
+
+
+async def test_a_clock_change_tomorrow_gets_a_whole_provisional_paris_day(world: World) -> None:
+    # 08:19 UK on 24 October: tomorrow's Paris day is 25 hours (50 half-hours).
+    world.clock.now = datetime(2026, 10, 24, 7, 19, tzinfo=UTC)
+    world.rates.day = date(2026, 10, 23)
+    await world.start()
+    world.meter.publish(flux_slots(date(2026, 10, 23), date(2026, 10, 24)), world.clock.now, tariff=FLUX_C)
+    await world.hass.async_block_till_done()
+    fetch = await world.provider.async_provisional_day(AREA, date(2026, 10, 25))
+    assert fetch.outcome == "fetched" and len(fetch.document["prices"]) == 50 and "retrieved" not in fetch.document
+    parsed = parse_day(fetch.document, area_id=AREA, day=date(2026, 10, 25))
+    assert parsed.covers_whole_day() and pounds(fetch.document).count(FLUX_NIGHT) == 6
+
+
+async def test_export_rates_repeat_today_for_a_plan_only(world: World) -> None:
+    world.clock.now = MORNING
+    await world.start()
+    world.meter.publish(flux_slots(TODAY - timedelta(days=1), TODAY), world.clock.now, tariff=FLUX_C)
+    exporter = export_meter(world)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(TODAY - timedelta(days=1), TODAY)},
+        world.clock.now,
+        tariff=FLUX_EXPORT_C,
+    )
+    await world.hass.async_block_till_done()
+    night = uk(TOMORROW, 3)
+
+    real = world.repository.export_rates(AREA)
+    assert real.over(night, night + SLOT) is None and real.provisional == frozenset()
+    planned = world.repository.export_rates(AREA, provisional=True)
+    assert planned.over(night, night + SLOT) == 8.32 and planned.over(uk(TOMORROW, 17), uk(TOMORROW, 17, 30)) == 30.75
+    assert night.astimezone(UTC) in planned.provisional and len(planned.provisional) == 48
+    assert not planned.provisional & set(real.rates)
+    # Never remembered as a rate: the real answer still has no tomorrow.
+    assert world.repository.export_rates(AREA).over(night, night + SLOT) is None
+
+    # Tomorrow's export rates out: real, nothing provisional.
+    world.clock.now = datetime(2026, 10, 4, 15, 10, tzinfo=UTC)
+    exporter.publish(
+        {start: 0.05 for start in flux_slots(TODAY - timedelta(days=1), TOMORROW)}, world.clock.now, tariff=FLUX_EXPORT_C
+    )
+    await world.hass.async_block_till_done()
+    planned = world.repository.export_rates(AREA, provisional=True)
+    assert planned.provisional == frozenset() and planned.over(night, night + SLOT) == 5.0
+
+
+async def test_agile_outgoing_has_no_provisional_export_rates(world: World) -> None:
+    await _morning(world)
+    exporter = export_meter(world)
+    exporter.publish(
+        {start: 0.15 for start in flux_slots(TODAY - timedelta(days=1), TODAY)},
+        world.clock.now,
+        tariff="E-1R-AGILE-OUTGOING-19-05-13-C",
+    )
+    await world.hass.async_block_till_done()
+    planned = world.repository.export_rates(AREA, provisional=True)
+    assert planned.provisional == frozenset() and planned.over(uk(TOMORROW, 3), uk(TOMORROW, 3, 30)) is None
+
+
+async def test_the_days_record_and_review_never_read_a_provisional_day(world: World) -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.day_record import prices_part
+    from custom_components.spotnav.planning.planner import FiscalChoice
+    from custom_components.spotnav.pricing.export_rates import area_export_rates
+    from custom_components.spotnav.runtime import domain_data
+
+    await _morning(world)
+    exporter = export_meter(world)
+    exporter.publish(
+        {start: export_value(start) for start in flux_slots(TODAY - timedelta(days=1), TODAY)},
+        world.clock.now,
+        tariff=FLUX_EXPORT_C,
+    )
+    await world.hass.async_block_till_done()
+    domain_data(world.hass).price_repository = world.repository
+    try:
+        source = SimpleNamespace(
+            area_id=AREA,
+            area=world.repository.area_entry(AREA),
+            fiscal=FiscalChoice(sell_adjustment_minor_per_kwh=1.0).validated(),
+        )
+        assert world.repository.day_snapshot(AREA, TOMORROW, provisional=True).document is not None
+        # Today's record: the real rates only, to 23:00 UK; tomorrow's: none.
+        part = prices_part(world.hass, source, uk(TODAY, 0), uk(TOMORROW, 0), TODAY)
+        assert len(part["rows"]) == 46
+        assert prices_part(world.hass, source, uk(TOMORROW, 0), uk(TOMORROW + timedelta(days=1), 0), TOMORROW) is None
+        assert area_export_rates(world.hass, AREA).over(uk(TOMORROW, 3), uk(TOMORROW, 3, 30)) is None
+        assert area_export_rates(world.hass, AREA, provisional=True).over(uk(TOMORROW, 3), uk(TOMORROW, 3, 30)) == 8.32
+    finally:
+        domain_data(world.hass).price_repository = None
+
+
+async def test_the_morning_battery_plan_sees_tonights_cheap_window(world: World) -> None:
+    """The field case: at 08:19 the plan ended at 23:00 and could not see the 02:00-05:00 window, so it kept the
+    battery for the evening and the next day. With the provisional day it runs to tomorrow evening and spends the
+    battery through the day, refilling in the night window."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.battery.plan import plan_battery
+    from custom_components.spotnav.battery.plan_model import BatteryParams, PlanRequest, PlanSlot
+    from custom_components.spotnav.battery.plan_runtime import price_days
+    from custom_components.spotnav.battery.plan_shadow import price_slots
+    from custom_components.spotnav.planning.planner import FiscalChoice
+    from custom_components.spotnav.pricing.price_points import price_points
+    from custom_components.spotnav.runtime import domain_data
+
+    await _morning(world)
+    domain_data(world.hass).price_repository = world.repository
+    try:
+        fiscal = FiscalChoice().validated()
+        source = SimpleNamespace(area_id=AREA, area=world.repository.area_entry(AREA), fiscal=fiscal)
+        documents = price_days(world.hass, source, world.clock.now)
+        points = price_points(documents, currency="GBP", fiscal=fiscal)
+        prices = [slot for slot in price_slots(((p.start, p.end, p.spot) for p in points), fiscal) if slot.end > MORNING]
+        assert prices[-1].end == uk(TOMORROW, 23)
+        battery = BatteryParams(usable_kwh=10, max_charge_kw=5, max_discharge_kw=5, min_soc_pct=10, max_soc_pct=100)
+        slots = tuple(
+            PlanSlot(start=p.start, end=p.end, buy=p.buy, sell=5.0, house_kw=0.8, solar_kw=0.0, car_kw=0.0)
+            for p in prices
+        )
+        result = plan_battery(PlanRequest(slots=slots, battery=battery, soc_now_pct=100, cycle_cost=1.2))
+        decisions = result.plan.decisions
+        # Not held full through the day: the battery carries the house and meets tonight's window low.
+        window = next(i for i, slot in enumerate(slots) if slot.start == uk(TOMORROW, 2))
+        assert decisions[window - 1].soc_end_pct < 30
+        # And refills in the window.
+        assert decisions[window + 5].soc_end_pct > decisions[window - 1].soc_end_pct + 20
+        # From the start: by 16:00 the battery has carried the house half the day.
+        afternoon = next(i for i, slot in enumerate(slots) if slot.end == uk(TODAY, 16))
+        assert decisions[afternoon].soc_end_pct < 70
+    finally:
+        domain_data(world.hass).price_repository = None

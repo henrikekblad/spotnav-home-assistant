@@ -51,6 +51,12 @@ and the profile and statistics keep their history. A schema 1 store (`"AREA|date
 rewritten as schema 2 on the next write, losing no day; the relay's area list, index and profiles that older
 stores kept beside the days are no longer read and are dropped on that write.
 
+A provider whose tariff is known in advance (Octopus Energy's Flux, Go, Cosy, fixed) may offer a **provisional** file
+for a day it has not published yet (`async_provisional_day`): asked for when the file is "not published yet", kept in
+memory only beside the held files, never stored, and dropped the moment the real file is taken. It is served only
+to a reader that asks for it ([day_snapshot] with `provisional=True`, the plans), marked
+`PriceDocument.provisional`; a day record, a review, the history and the price entities read held files only.
+
 The history profile is built here from the held market-day files (`pricing/price_profile.py`): [profile_for]
 reads the files of the 28-day window on the area's market calendar, keyed by market date, and keeps the result
 until the window or a file in it changes. The past files of that window (and, from a provider that keeps years,
@@ -303,6 +309,8 @@ class PriceRepository:
         # When a provider without an index last answered "not published yet", per (area, market calendar, day);
         # not stored (a restart asks once).
         self._not_published: dict[tuple[str, str, date], datetime] = {}
+        # A provisional file per (area, market day) and the provider that built it (see the module); never stored.
+        self._provisional: dict[tuple[str, date], tuple[str, PriceDocument]] = {}
         # One entry per resource key ever attempted: when it was tried and how it failed (`None` on success).
         self._attempts: dict[tuple[str, ...], tuple[datetime, FailureCode | None]] = {}
         self._inflight: dict[tuple[str, ...], asyncio.Task[Any]] = {}
@@ -321,11 +329,14 @@ class PriceRepository:
         """The area's price source now and its notice (`providers/notices.py`)."""
         return self._router.source_status(area_id)
 
-    def export_rates(self, area_id: str) -> ExportRates | None:
+    def export_rates(self, area_id: str, *, provisional: bool = False) -> ExportRates | None:
         """What a sold kWh earns per slot from the area's provider (`export_rates.ExportRates`), where it reads an
-        export meter's own rates (an Octopus export meter); `None` otherwise. Nothing is fetched."""
+        export meter's own rates (an Octopus export meter); `None` otherwise. With [provisional] (a plan's), a next
+        day not out yet is repeated from today's where the tariff allows it. Nothing is fetched."""
         read = getattr(self._router.provider_for(area_id), "export_rates", None)
-        return None if read is None else read(area_id)
+        if read is None:
+            return None
+        return read(area_id, provisional=True) if provisional else read(area_id)
 
     def entsoe_provider(self) -> EntsoeProvider | None:
         """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""
@@ -365,19 +376,23 @@ class PriceRepository:
             return None
         return entry.tz, entry.market_tz
 
-    def day_snapshot(self, area_id: str, day: date) -> DaySnapshot:
+    def day_snapshot(self, area_id: str, day: date, *, provisional: bool = False) -> DaySnapshot:
         """What is on record for a display date right now, without asking the network.
 
-        Never fetches. Answers exactly what [async_get_day] would without fetching.
+        Never fetches. Answers exactly what [async_get_day] would without fetching. With [provisional] (the plans
+        only), a file not held is read from its provisional one where there is one (see the module): the document
+        is then marked `provisional`, the snapshot's other facts stay the missing file's.
         """
         calendars = self.calendars(area_id)
         if calendars is None:
-            return self.file_snapshot(area_id, day)
-        return self._display_snapshot(area_id, day, *calendars)
+            return self.file_snapshot(area_id, day, provisional=provisional)
+        return self._display_snapshot(area_id, day, *calendars, provisional=provisional)
 
-    def file_snapshot(self, area_id: str, day: date) -> DaySnapshot:
+    def file_snapshot(self, area_id: str, day: date, *, provisional: bool = False) -> DaySnapshot:
         """What is on record for one market-day file right now, without asking the network."""
-        return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day))
+        return self._day_snapshot(
+            area_id, day, authority=self._authority_now(area_id, day), provisional=provisional
+        )
 
     def file_document(self, area_id: str, day: date) -> dict[str, Any] | None:
         """The held market-day file as published (the raw `"v": 1` document, a copy), or `None`. No I/O.
@@ -389,10 +404,14 @@ class PriceRepository:
             return None
         return copy.deepcopy(cached.document)
 
-    def _display_snapshot(self, area_id: str, day: date, tz: str, market_tz: str) -> DaySnapshot:
+    def _display_snapshot(
+        self, area_id: str, day: date, tz: str, market_tz: str, *, provisional: bool = False
+    ) -> DaySnapshot:
         """A display date cut from the files covering it; its facts are its principal file's."""
-        principal = self.file_snapshot(area_id, principal_market_day(day, tz, market_tz))
-        files = [self.file_snapshot(area_id, key) for key in market_days_for(day, tz, market_tz)]
+        principal = self.file_snapshot(area_id, principal_market_day(day, tz, market_tz), provisional=provisional)
+        files = [
+            self.file_snapshot(area_id, key, provisional=provisional) for key in market_days_for(day, tz, market_tz)
+        ]
         document = None
         if principal.document is not None:
             document = compose_display_day(
@@ -835,6 +854,7 @@ class PriceRepository:
             # Not out yet: no failure, nothing cached, and tomorrow is "not listed" until the next attempt.
             if calendar is not None:
                 self._not_published[(area_id, calendar, day)] = self._now()
+            await self._hold_provisional(area_id, day, provider)
             return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day), settled=True)
         try:
             parsed, document = self._accept(fetch, area_id, day)
@@ -846,6 +866,8 @@ class PriceRepository:
             return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day), settled=True)
         if calendar is not None:
             self._not_published.pop((area_id, calendar, day), None)
+        # The real file is here: a provisional one is never kept beside it.
+        self._provisional.pop((area_id, day), None)
         self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
             document=document, fetched_at=self._now(), parsed=parsed, provider=provider.key
         )
@@ -853,6 +875,33 @@ class PriceRepository:
         return self._day_snapshot(
             area_id, day, authority=self._authority_now(area_id, day), source="network", settled=True
         )
+
+    async def _hold_provisional(self, area_id: str, day: date, provider: PriceProvider) -> None:
+        """Keep the provider's provisional file for a day it has not published, or drop the one held when it offers
+        none now. Never raises: without one the plans read the held files only."""
+        build = getattr(provider, "async_provisional_day", None)
+        if build is None:
+            self._provisional.pop((area_id, day), None)
+            return
+        try:
+            fetch = await build(area_id, day)
+            if fetch.outcome != "fetched" or self._held_file(area_id, day) is not None:
+                self._provisional.pop((area_id, day), None)
+                return
+            parsed = replace(self._parse_file(fetch.document, area_id, day), provisional=True)
+        except Exception:  # noqa: BLE001 - a provisional day is a convenience; the real one is still asked for
+            _LOGGER.debug("No provisional prices for %s %s", area_id, day, exc_info=True)
+            self._provisional.pop((area_id, day), None)
+            return
+        self._provisional[(area_id, day)] = (provider.key, parsed)
+
+    def _provisional_file(self, area_id: str, day: date) -> PriceDocument | None:
+        """The provisional file of a market day, when the provider that built it still serves the area."""
+        held = self._provisional.get((area_id, day))
+        provider = self._router.provider_for(area_id)
+        if held is None or provider is None or provider.key != held[0]:
+            return None
+        return held[1]
 
     async def _load_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
         key = ("archive", area_id, day.isoformat())
@@ -917,6 +966,8 @@ class PriceRepository:
         oldest = today - timedelta(days=HISTORY_KEEP_DAYS)
         for where in [where for where in self._days if where[1] < oldest]:
             del self._days[where]
+        for where in [where for where in self._provisional if where[1] < today - timedelta(days=1)]:
+            del self._provisional[where]
         # "Not published yet" only ever concerns tomorrow; yesterday's answers are of no use.
         for key in [key for key in self._not_published if key[2] < today - timedelta(days=1)]:
             del self._not_published[key]
@@ -957,9 +1008,13 @@ class PriceRepository:
         authority: IndexAuthority,
         source: SnapshotSource | None = None,
         settled: bool = False,
+        provisional: bool = False,
     ) -> DaySnapshot:
         key = ("day", area_id, day.isoformat())
         cached = self._held_file(area_id, day)
+        document = None if cached is None else cached.parsed
+        if document is None and provisional:
+            document = self._provisional_file(area_id, day)
         attempt_at, error = self._attempt(key)
         refreshing = not settled and key in self._inflight
 
@@ -976,7 +1031,7 @@ class PriceRepository:
             area_id=area_id,
             day=day,
             state=state,
-            document=None if cached is None else cached.parsed,
+            document=document,
             source=None if cached is None else source_of(cached, explicit=source),
             fetched_at=None if cached is None else cached.fetched_at,
             attempt_at=attempt_at,

@@ -94,7 +94,7 @@ def compose_display_day(
     prices the next file's hour with the next file's rate. The composed document's own positional
     `prices` run from its first interval at the finest resolution of its parts, and stop at the first gap
     (a day whose later file is not out yet simply ends early). Its own rate table and provenance are the
-    first part's.
+    first part's; it is provisional when any part is.
     """
     zone = time_zones.require_zone(tz)
     start, end = display_day_span(day, tz)
@@ -127,6 +127,7 @@ def compose_display_day(
         if part.start_instant != kept[-1].intervals[-1].utc_end:
             break
         kept.append(part)
+    provisional = any(part.provisional for part in kept)
     if len(kept) == 1:
         return kept[0]
     resolution = min(part.resolution_minutes for part in kept)
@@ -148,4 +149,5 @@ def compose_display_day(
         intervals=tuple(intervals),
         fx=MappingProxyType(dict(first.fx)),
         parts=tuple(kept),
+        provisional=provisional,
     )

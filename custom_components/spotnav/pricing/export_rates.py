@@ -6,6 +6,10 @@ Where they are known they are the sell price of that slot (`battery/plan_shadow.
 export rate itself, in the area's minor unit per kWh, in place of the spot price plus the sold-kWh figure. A slot
 the rates do not cover keeps spot plus the figure, as on every other price.
 
+A plan asks for them with a provisional next day (`provisional=True`): where the export meter's tariff repeats a daily
+pattern and tomorrow's rates are not out yet, today's are repeated (`providers/octopus.py`), and those slots are named
+in [ExportRates.provisional]. A day record or a review asks without, and never sees them.
+
 Pure apart from [area_export_rates], which asks the price repository; nothing is fetched.
 """
 
@@ -22,10 +26,11 @@ from homeassistant.core import HomeAssistant
 @dataclass(frozen=True, slots=True)
 class ExportRates:
     """Export rates by slot: UTC start instant → minor units per kWh, each slot [slot] long and aligned to it in
-    UTC (GB's half-hours are)."""
+    UTC (GB's half-hours are). [provisional] names the slots repeated from today's rates, not published yet."""
 
     rates: Mapping[datetime, float]
     slot: timedelta = timedelta(minutes=30)
+    provisional: frozenset[datetime] = frozenset()
     _key: tuple[Any, ...] = field(default=(), compare=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -55,9 +60,10 @@ class ExportRates:
         return total / (end_s - start_s)
 
 
-def area_export_rates(hass: HomeAssistant, area_id: str | None) -> ExportRates | None:
+def area_export_rates(hass: HomeAssistant, area_id: str | None, *, provisional: bool = False) -> ExportRates | None:
     """The export rates the area's price provider holds now, `None` where it has none (every area but a GB region
-    with an Octopus export meter). Never raises."""
+    with an Octopus export meter); with [provisional] (a plan's), a next day not out yet repeated from today's where
+    the tariff allows it. Never raises."""
     from ..runtime import domain_data  # noqa: PLC0415 - the runtime imports the pricing
 
     if area_id is None:
@@ -66,6 +72,6 @@ def area_export_rates(hass: HomeAssistant, area_id: str | None) -> ExportRates |
     if repository is None:
         return None
     try:
-        return repository.export_rates(area_id)
+        return repository.export_rates(area_id, provisional=provisional)
     except Exception:  # noqa: BLE001 - without them a sold kWh earns spot plus the figure, as everywhere
         return None

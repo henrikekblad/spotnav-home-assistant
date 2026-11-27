@@ -17,7 +17,8 @@ their own meter. What the integration exposes (version 19.2, `electricity/rates_
   `serial_number`. "Previous", "current" and "next" are calendar days of Home Assistant's zone;
 * every tariff's rates are thirty-minute slots: the integration cuts a fixed or time-of-use rate (Flux's three
   bands, Go, Cosy, a fixed or variable tariff, Economy 7's day and night) into half-hours over the whole window it
-  holds, yesterday to the end of tomorrow, so a tariff known in advance has tomorrow's rates at any hour. On
+  holds, yesterday to the end of tomorrow; in the field tomorrow's rates of a tariff known in advance arrive in
+  the afternoon all the same (a provisional next day covers the morning, below). On
   Intelligent Octopus Go the integration moves the car's dispatches into the off-peak rate as they are planned;
 * the tariff code names the customer's tariff and region, `E-1R-AGILE-24-10-01-C` or
   `E-1R-FLUX-IMPORT-23-02-14-C`: product and GSP group letter `C`. Any single- or two-register electricity import
@@ -41,6 +42,16 @@ An export meter's rates (Agile Outgoing, Flux export, Outgoing fixed) are what a
 import meter read for the area (they share a serial number), else the first in that meter's region. They are kept
 in pence, never converted, and remembered while Home Assistant runs for [EXPORT_KEPT] after the integration has
 let them go, so a review of a few days back still prices a sold kWh at its own rate.
+
+Tomorrow's rates of a tariff known in advance (Flux, Go, Cosy, fixed) reach the integration in the afternoon, not
+at its first refresh of the day. Until they do, a **provisional** next day repeats today's rates by UK clock time
+([OctopusProvider.async_provisional_day], [OctopusProvider.export_rates] with `provisional`): only when every
+half-hour of today is held, every rate entity of the meter names one tariff (none changed since yesterday) and the
+product repeats a daily pattern (not Agile, whose rates are a market's, nor Intelligent Octopus, whose cheap
+slots follow the car's dispatches). A clock-change day is matched by clock time: on the autumn day both 01:00s
+take today's, on the spring day's missing hour yesterday's stands in. It is never stored and never read by a day
+record or review (`relay_contract.PriceDocument.provisional`); the rates themselves replace it as soon as the
+integration has them ([OctopusProvider.refresh] says so when a meter's next day arrives).
 
 The rates are converted to EUR with the day's ECB rate, written beside them like the relay does; without a rate
 the day is refused (`fx_missing`), as the relay refuses it, and asked for again. `src` is `octopus.energy`, as
@@ -77,8 +88,9 @@ DOMAIN: Final = "octopus_energy"
 #: Agile's next day appears at about 16:00 UK time; the integration asks every 15 minutes.
 PUBLICATION: Final = AreaPublication(local_time=time(16, 0), tz="Europe/London")
 
-#: A tariff whose rates are known in advance (Flux, Go, Cosy, fixed): the integration holds tomorrow's rates from
-#: its first refresh of the day, so tomorrow is asked for from early morning, when no meter read is on Agile.
+#: A tariff whose rates are known in advance (Flux, Go, Cosy, fixed): tomorrow is asked for from early morning, when
+#: no meter read is on Agile; until the integration has it (in the field, the afternoon) a plan reads a provisional
+#: one ([OctopusProvider.async_provisional_day]).
 PUBLICATION_KNOWN: Final = AreaPublication(local_time=time(1, 0), tz="Europe/London")
 
 #: The integration keeps rates from the start of yesterday (UK): not a whole past Paris day.
@@ -102,6 +114,10 @@ _TARIFF: Final = re.compile(r"^E-[12]R-(?P<product>[A-Z0-9-]+)-(?P<region>[A-Z])
 
 #: What a product an export meter is paid on has in its code (`AGILE-OUTGOING-…`, `OUTGOING-VAR-…`, `FLUX-EXPORT-…`).
 _EXPORT_PRODUCT: Final = ("OUTGOING", "EXPORT")
+
+#: Products whose rates repeat no daily pattern: Agile (and Agile Outgoing) follow the market, Intelligent Octopus's
+#: off-peak follows the car's dispatches. No provisional next day is built for them.
+_NO_PATTERN: Final = ("AGILE", "INTELLI")
 
 #: A price beyond this (in pounds per kWh) is not a rate.
 _MAX_ABS_RATE: Final = 100.0
@@ -132,6 +148,11 @@ class OctopusMeter:
     @property
     def agile(self) -> bool:
         return self.product.startswith("AGILE")
+
+    @property
+    def repeats_daily(self) -> bool:
+        """Whether the tariff's rates repeat a daily pattern (a provisional next day may be built from today's)."""
+        return not any(self.product.startswith(prefix) for prefix in _NO_PATTERN)
 
 
 def _tariff_parts(tariff_code: Any) -> tuple[str, str] | None:
@@ -205,8 +226,11 @@ class OctopusProvider:
         self._exports: tuple[OctopusMeter, ...] = ()
         #: Every export rate read so far (UTC start → pence per kWh), by export meter key.
         self._export_seen: dict[str, dict[datetime, float]] = {}
-        #: The last [export_rates] answer and what it was read from (the entities' last updates, the day).
-        self._export_cache: tuple[Any, ExportRates | None] | None = None
+        #: The last [export_rates] answer and what it was read from (the entities' last updates, the day), real
+        #: only and with a provisional next day.
+        self._export_cache: dict[bool, tuple[Any, ExportRates | None]] = {}
+        #: The meters whose next day's rates are held, as of the last [refresh].
+        self._next_held: frozenset[str] = frozenset()
 
     # -------------------------------------------------------------- the meters
 
@@ -230,14 +254,24 @@ class OctopusProvider:
 
     @callback
     def refresh(self) -> bool:
-        """Look for the meters again (registry and states); whether what is served changed."""
+        """Look for the meters again (registry and states); whether what is served changed, or a meter's next day
+        arrived (it replaces a provisional one: tomorrow is asked for again at once)."""
         found = tuple(self._find_meters())
         meters = tuple(meter for meter in found if not meter.export)
         exports = tuple(meter for meter in found if meter.export)
         changed = meters != self._meters or exports != self._exports
         self._meters = meters
         self._exports = exports
-        return changed
+        next_held = frozenset(meter.key for meter in found if self._holds_next_day(meter))
+        arrived = bool(next_held - self._next_held)
+        self._next_held = next_held
+        return changed or arrived
+
+    def _holds_next_day(self, meter: OctopusMeter) -> bool:
+        entity_id = dict(meter.entities).get("next_day_rates")
+        state = None if entity_id is None else self._hass.states.get(entity_id)
+        rates = None if state is None else state.attributes.get("rates")
+        return isinstance(rates, list) and bool(rates)
 
     def _find_meters(self) -> Iterable[OctopusMeter]:
         registry = er.async_get(self._hass)
@@ -316,9 +350,11 @@ class OctopusProvider:
                     return export
         return next((export for export in self._exports if export.region == meter.region), None)
 
-    def export_rates(self, area_id: str) -> ExportRates | None:
+    def export_rates(self, area_id: str, *, provisional: bool = False) -> ExportRates | None:
         """What a sold kWh earns per slot for the area (pence per kWh), from its export meter's rates; `None`
-        without an export meter, or when its rates cannot be read."""
+        without an export meter, or when its rates cannot be read. With [provisional] (the plans), a next day not
+        held yet is today's rates repeated where the tariff allows it (see the module), its slots named in
+        `ExportRates.provisional`; it is never remembered."""
         export = self.export_meter_for(area_id)
         if export is None:
             return None
@@ -328,7 +364,7 @@ class OctopusProvider:
             tuple(getattr(self._hass.states.get(entity_id), "last_updated", None) for entity_id in export.entity_ids()),
             now.date(),
         )
-        cached = self._export_cache
+        cached = self._export_cache.get(provisional)
         if cached is not None and cached[0] == stamp:
             return cached[1]
         seen = self._export_seen.setdefault(export.key, {})
@@ -341,9 +377,15 @@ class OctopusProvider:
         oldest = now - EXPORT_KEPT
         for start in [start for start in seen if start < oldest]:
             del seen[start]
-        rates = ExportRates(dict(seen), SLOT) if seen else None
-        self._export_cache = (stamp, rates)
-        return rates
+        rates: dict[datetime, float] = dict(seen)
+        guessed: frozenset[datetime] = frozenset()
+        if provisional and pool:
+            repeated = self._repeated(export, pool, area_id)
+            guessed = frozenset(start for start in repeated if start not in rates)
+            rates.update({start: round(repeated[start] * 100, 4) for start in guessed})
+        answer = ExportRates(rates, SLOT, provisional=guessed) if rates else None
+        self._export_cache[provisional] = (stamp, answer)
+        return answer
 
     # -------------------------------------------------------------- what the router and repository ask
 
@@ -366,6 +408,16 @@ class OctopusProvider:
 
     async def async_fetch_day(self, area_id: str, market_day: date) -> DayFetch:
         """One Paris day for a GB area; every expected failure is a code, never an exception."""
+        return await self._async_day(area_id, market_day, provisional=False)
+
+    async def async_provisional_day(self, area_id: str, market_day: date) -> DayFetch:
+        """A Paris day after today that the integration does not hold yet, with the UK day after today repeated from
+        today's rates (see the module): `fetched` with the document, else `not_published`. The rates held always
+        win; nothing is kept. The document is the same as a real one, without `retrieved`; the repository marks it
+        provisional."""
+        return await self._async_day(area_id, market_day, provisional=True)
+
+    async def _async_day(self, area_id: str, market_day: date, *, provisional: bool) -> DayFetch:
         routes = self._bundled.routes.get(area_id)
         entry = self._bundled.catalogue.area(area_id)
         if routes is None or routes.octopus is None or entry is None:
@@ -377,12 +429,16 @@ class OctopusProvider:
         start = datetime.combine(market_day, time(0), tzinfo=zone).astimezone(dt_util.UTC)
         end = datetime.combine(market_day + timedelta(days=1), time(0), tzinfo=zone).astimezone(dt_util.UTC)
         today = market_today(self._now(), routes.cet_market_tz)
+        if provisional and (market_day <= today or not meter.repeats_daily):
+            return DayFetch("not_published", code="not_published")
         try:
             pool = self._pool(meter)
+            if provisional:
+                pool = {**self._repeated(meter, pool, area_id), **pool}
             prices = _cut(pool, start, end, future=market_day > today, past=market_day < today)
         except _Refusal as err:
-            _LOGGER.debug("Octopus %s %s: %s", area_id, market_day, err.code)
-            if err.code == "not_published":
+            _LOGGER.debug("Octopus %s %s%s: %s", area_id, market_day, " (provisional)" if provisional else "", err.code)
+            if err.code == "not_published" or provisional:
                 return DayFetch("not_published", code="not_published")
             return DayFetch("failed", code=err.code)
         fx, fx_date = await self._rate.async_rate(entry.currency, market_day)
@@ -403,9 +459,29 @@ class OctopusProvider:
             fx_src=FX_SRC if fx else None,
             src=SRC,
             published=None,
-            retrieved=self._now(),
+            retrieved=None if provisional else self._now(),
         )
         return DayFetch("fetched", document=document)
+
+    def _repeated(self, meter: OctopusMeter, pool: dict[datetime, float], area_id: str) -> dict[datetime, float]:
+        """The UK day after today as today's rates repeated by clock time, for a meter whose tariff repeats a daily
+        pattern and has not changed since yesterday, when every half-hour of today is held; else empty."""
+        entry = self._bundled.catalogue.area(area_id)
+        if entry is None or not meter.repeats_daily or not self._one_tariff(meter):
+            return {}
+        return repeat_today(pool, time_zones.require_zone(entry.tz), self._now())
+
+    def _one_tariff(self, meter: OctopusMeter) -> bool:
+        """Whether every rate entity of the meter that is there names the same tariff (none changed since
+        yesterday)."""
+        codes = set()
+        for entity_id in meter.entity_ids():
+            state = self._hass.states.get(entity_id)
+            if state is None:
+                continue
+            code = state.attributes.get("tariff_code")
+            codes.add(code.strip() if isinstance(code, str) else code)
+        return len(codes) == 1
 
     def _pool(self, meter: OctopusMeter) -> dict[datetime, float]:
         """Every rate the meter's three entities hold, by start instant (UTC), in pounds per kWh.
@@ -437,6 +513,48 @@ class OctopusProvider:
         if not seen:
             raise _Refusal("octopus_unavailable")
         return pool
+
+
+def _uk_day(day: date, zone: Any) -> list[datetime]:
+    """The half-hour starts (UTC) of one local calendar day: 46, 48 or 50 of them."""
+    moment = datetime.combine(day, time(0), tzinfo=zone).astimezone(dt_util.UTC)
+    end = datetime.combine(day + timedelta(days=1), time(0), tzinfo=zone).astimezone(dt_util.UTC)
+    starts = []
+    while moment < end:
+        starts.append(moment)
+        moment += SLOT
+    return starts
+
+
+def repeat_today(pool: dict[datetime, float], zone: Any, now: datetime) -> dict[datetime, float]:
+    """The local day after [now]'s as today's rates repeated by clock time (UTC start → rate), or empty unless every
+    half-hour of today is in [pool].
+
+    A clock time today has twice (the autumn day) is read at its first; a clock time today lacks (the spring day's
+    missing hour, on the day after it) takes yesterday's rate at that time, and without one nothing is repeated.
+    """
+    today = now.astimezone(zone).date()
+    starts = _uk_day(today, zone)
+    if any(start not in pool for start in starts):
+        return {}
+
+    def by_clock(day_starts: list[datetime]) -> dict[tuple[int, int], float]:
+        clock: dict[tuple[int, int], float] = {}
+        for start in day_starts:
+            local = start.astimezone(zone)
+            clock.setdefault((local.hour, local.minute), pool[start])
+        return clock
+
+    known = by_clock(starts)
+    before = by_clock([start for start in _uk_day(today - timedelta(days=1), zone) if start in pool])
+    repeated: dict[datetime, float] = {}
+    for start in _uk_day(today + timedelta(days=1), zone):
+        local = start.astimezone(zone)
+        value = known.get((local.hour, local.minute), before.get((local.hour, local.minute)))
+        if value is None:
+            return {}
+        repeated[start] = value
+    return repeated
 
 
 def _instant(raw: Any) -> datetime:

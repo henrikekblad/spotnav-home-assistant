@@ -355,6 +355,10 @@ class PriceDocument:
     A display day cut from two market-day files (`pricing/market_day.py`) is one document in the
     display zone whose `parts` are the cut files, each with its own rate: a reader that converts
     money iterates [pieces], so an hour from the next file is priced with that file's rate.
+
+    `provisional` marks a day no source has published, repeated from today's rates by a provider whose tariff is
+    known in advance (`providers/octopus.py`): never stored, only served to a reader that asks for it (the plans),
+    never to a day record, review or history. A display day with a provisional part is provisional.
     """
 
     version: int
@@ -374,6 +378,7 @@ class PriceDocument:
     published: datetime | None
     retrieved: datetime | None
     parts: tuple[PriceDocument, ...] = ()
+    provisional: bool = False
 
     def pieces(self) -> tuple[PriceDocument, ...]:
         """The documents that carry this day's rates: its `parts` when it was cut from several, else itself."""
