@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import math
 import time
@@ -811,7 +812,7 @@ class SiteCapacityController:
         # and whether its Repairs issue is raised.
         self._phase_conflict_since: float | None = None
         self._phase_conflict_charger: str | None = None
-        self._phase_conflict_config: int | None = None
+        self._phase_conflict_config: str | None = None
         self._phase_conflict_issue_raised = False
         # Each "Automatic" single-phase charger's followed phase (`site/auto_phase.py`), by `_yield_now`.
         self._auto_phases: dict[str, AutoPhaseTracker] = {}
@@ -5509,7 +5510,7 @@ class SiteCapacityController:
         break for `PHASE_CONFLICT_HOLD_S`, and from then until the site's settings change (L2 and L3 added, or the
         charger's measured current corrected): the site's measurement is unusable meanwhile (`_build_config`), so
         every charger is held as for a lost meter and nothing else is allocated on the site."""
-        config_id = id(self.config)
+        config_id = self._phase_settings_key()
         if self._phase_conflict_config != config_id or site_phase_count(self.config) != 1:
             self._phase_conflict_config = config_id
             self._phase_conflict_since = None
@@ -5536,6 +5537,25 @@ class SiteCapacityController:
             charger_entry_id,
         )
         return True
+
+    def _phase_settings_key(self) -> str:
+        """The settings `_single_phase_conflict` is judged on, as one comparable value: the site's measurement (its
+        mode and entities, which say how many phases it has) and its chargers' wiring and measured currents."""
+        return json.dumps(
+            [
+                self.config.get(key)
+                for key in (
+                    CONF_MEASUREMENT_MODE,
+                    CONF_SITE_CURRENT_SOURCE,
+                    CONF_DIRECT_ENTITIES,
+                    CONF_DERIVED_ENTITIES,
+                    CONF_PHASE_WIRING,
+                    CONF_CHARGER_ENTRY_IDS,
+                )
+            ],
+            sort_keys=True,
+            default=str,
+        )
 
     def _sync_phase_conflict_issue(self) -> None:
         """The Repairs issue of `_single_phase_conflict`: raised once while it stands, gone when it no longer does."""
