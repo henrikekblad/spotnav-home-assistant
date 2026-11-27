@@ -50,7 +50,7 @@ In December the story covers 1 January up to yesterday. In January it is last ye
   planned are estimated against each day's average price.
 - **What the battery saved** is worked out at each hour's price, whoever controlled the battery, so a battery run by
   its own optimiser counts too.
-- **The fuse** counts from the beta that introduced the page, so most homes will not have it for 2026.
+- **The fuse** counts only from the 3.0 beta on, so most homes will not have it for 2026.
 
 ## What ≈ and "since" mean
 
