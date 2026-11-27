@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeEnergyFlow, decodeHouse, type HouseAnswer } from "../src/house-model";
-import { decodeHouseNow, dotLap, fitName, largestRemainder, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicFigures, schematicHeight, schematicLines, type HouseNow, type SchematicLine } from "../src/house-now";
+import { captionAnchor, chevronScale, chevronSpeed, decodeHouseNow, flowLayout, labelPlace, largestRemainder, lineEnds, lineWidth, NODE_OUTER, NOW_STYLES, nowFigures, ownShare, patchNow, patchSchematic, planRuns, planSentence, priceNow, renderNow, renderSchematic, whyKey, type HouseNow, type NowFigures } from "../src/house-now";
 import { energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
 import { choiceLabel, dayOnly, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
@@ -268,106 +268,194 @@ describe("the period picker", () => {
 });
 
 describe("Now", () => {
-  it("draws only the nodes the site has, the live kW on each flowing line and its way", () => {
-    const answer = house();
-    const svg = renderSchematic({ doc: document, language: "sv", answer, live: live(), width: 340, idPrefix: "t" });
-    const roles = Array.from(svg.querySelectorAll<SVGGElement>(".spotnav-now-node")).map((node) => node.dataset["role"]);
-    expect(roles.sort()).toEqual(["battery", "car", "grid", "heat", "house", "sun"]);
-    const labels = Object.fromEntries(Array.from(svg.querySelectorAll<SVGGElement>(".spotnav-now-pill")).map((pill) => [pill.dataset["role"], pill.textContent]));
-    // The heat from the last period: estimated.
-    expect(labels).toEqual({ sun: "1,2 kW", grid: "0,4 kW", battery: "1,5 kW", heat: "≈ 1,1 kW" });
-    // The car draws nothing: its line is still, without dots.
-    expect(svg.querySelector(".spotnav-now-dots[data-role='car']")).toBeNull();
-    expect(svg.querySelector(".spotnav-now-dots[data-role='grid']")?.getAttribute("data-tone")).toBe("import");
-    // The disc holds the house besides the heat, its own line: 3,1 kW in, 1,1 kW to the heat, 2,0 kW left.
-    expect(svg.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 2,0 kW");
-    // Each day figure in its corner.
-    expect(svg.querySelector(".spotnav-now-words[data-role='sun']")?.textContent).toBe("Sol i dag7,5 kWh");
-    // Narrow: what was sold under what was bought, in the export's colour; wide: beside it.
-    expect(svg.querySelector(".spotnav-now-words[data-role='grid']")?.textContent).toBe("Köpt i dag76,9 kWhsålt 0,1 kWh");
-    expect(svg.querySelector(".spotnav-now-words[data-role='grid'] .spotnav-now-extra")?.getAttribute("data-tone")).toBe("export");
-    const wide = renderSchematic({ doc: document, language: "sv", answer, live: live(), width: 760, idPrefix: "t" });
-    expect(wide.querySelector(".spotnav-now-words[data-role='grid'] .spotnav-now-beside")?.textContent).toBe(" · sålt 0,1");
-    // Each figure in its part's colour: the sun, bought, the battery, the car.
-    expect(svg.querySelector(".spotnav-now-value[data-k='value-grid']")?.getAttribute("data-tone")).toBe("import");
-    expect(svg.querySelector(".spotnav-now-value[data-k='value-sun']")?.getAttribute("data-tone")).toBe("sun");
-    // The car plugged in: its level, and today's energy small under it.
-    expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil73 %25,5 kWh i dag");
-    // A filled arrowhead on each flowing line, which the styles show only where the dots stand still.
-    expect(svg.querySelectorAll(".spotnav-now-arrow")).toHaveLength(4);
-    expect(NOW_STYLES).toMatch(/\.spotnav-now-arrow \{[^}]*display: none;/);
-    expect(NOW_STYLES).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.spotnav-now-arrow \{ display: inline; \}/);
-    // The house's day figure says the car is not in it (a battery's own app counts the charger in).
-    expect(svg.querySelector(".spotnav-now-words[data-role='house']")?.textContent).toBe("Hus i dag29,4 kWhutan bilen");
-    // The heat sits well below the house, so its line straight down is long enough to show its flow.
-    const spots = nodeSpots(340, schematicHeight(340));
-    expect(spots.heat.y - spots.house.y).toBeGreaterThanOrEqual(90);
-    expect(svg.querySelector("title")?.textContent).toContain("Köper 0,4 kW från nätet");
-    // A house alone: one low row, the grid to the house, no other corner.
-    const alone = renderSchematic({ doc: document, language: "en", answer: house("house_learning.json"), live: live("house_alone_now.json"), width: 340, idPrefix: "t" });
-    expect(Array.from(alone.querySelectorAll<SVGGElement>(".spotnav-now-node")).map((node) => node.dataset["role"]).sort()).toEqual(["grid", "house"]);
-    expect(alone.getAttribute("height")).toBe("90");
-    expect(Array.from(alone.querySelectorAll<SVGGElement>(".spotnav-now-words")).map((words) => words.dataset["corner"])).toEqual(["top-right", "top-left"]);
+  const draw = (liveNow: HouseNow | null, answer = house(), language: "sv" | "en" | "fr" = "sv", width = 340): SVGSVGElement =>
+    renderSchematic({ doc: document, language, answer, live: liveNow, width, idPrefix: "t", nowMs: NOW });
+  const roles = (svg: SVGSVGElement): string[] => Array.from(svg.querySelectorAll<SVGGElement>(".spotnav-now-node")).map((node) => node.dataset["role"]!);
+  const text = (svg: Element, selector: string): string | null | undefined => svg.querySelector(selector)?.textContent;
+
+  it("draws only the nodes the site has, the live kW beside each flowing line, and the house's whole in the middle", () => {
+    const svg = draw(live());
+    expect(roles(svg)).toEqual(["sun", "grid", "battery", "car"]);
+    const labels = Object.fromEntries(Array.from(svg.querySelectorAll<SVGTextElement>(".spotnav-now-kw")).map((label) => [label.dataset["role"], label.textContent]));
+    expect(labels).toEqual({ sun: "1,2 kW", grid: "0,4 kW", battery: "1,5 kW" });
+    // The car draws nothing: a thin dashed idle line, no chevrons.
+    expect(svg.querySelector(".spotnav-now-idle[data-role='car']")).not.toBeNull();
+    expect(svg.querySelector(".spotnav-now-chevrons[data-role='car']")).toBeNull();
+    expect(svg.querySelector(".spotnav-now-line[data-role='grid']")?.getAttribute("data-tone")).toBe("import");
+    // The whole house in the middle (the heat from the last period: estimated).
+    expect(text(svg, ".spotnav-now-house-kw")).toBe("≈ 3,1 kW");
+    expect(text(svg, "title")).toContain("Köper 0,4 kW från nätet");
   });
 
-  it("dims an unplugged car and draws no line to it", () => {
-    const unplugged = { ...live(), car_connected: false, car_soc_pct: null };
-    const svg = renderSchematic({ doc: document, language: "sv", answer: house(), live: unplugged, width: 340, idPrefix: "t" });
-    expect(svg.querySelector(".spotnav-now-node[data-role='car']")?.getAttribute("data-dim")).toBe("true");
-    expect(svg.querySelector(".spotnav-now-wire[data-role='car']")).toBeNull();
-    expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil25,5 kWhi dag");
+  it("lays one or two outer nodes in a row beside the house and three or four at fixed corners", () => {
+    expect(flowLayout(["grid"], 360)).toMatchObject({ kind: "row", height: 150, spots: { grid: { x: 44, y: 75 }, house: { x: 180, y: 75 } } });
+    const two = flowLayout(["car", "grid"], 360);
+    expect(two.kind).toBe("row");
+    expect(two.spots.grid).toEqual({ x: 44, y: 75 });
+    expect(two.spots.car).toEqual({ x: 316, y: 75 });
+    const three = flowLayout(["sun", "grid", "car"], 360);
+    expect(three).toMatchObject({ kind: "corners", height: 300, spots: { sun: { x: 52, y: 52 }, grid: { x: 308, y: 52 }, car: { x: 308, y: 248 }, house: { x: 180, y: 150 } } });
+    // A missing corner stays empty.
+    expect(three.spots.battery).toBeUndefined();
+    expect(flowLayout(["sun", "grid", "battery", "car"], 360).spots.battery).toEqual({ x: 52, y: 248 });
+    // A house with the grid alone: one row, the grid to the house; drawn with room above and below for the captions.
+    const alone = draw(live("house_alone_now.json"), house("house_learning.json"), "en");
+    expect(roles(alone)).toEqual(["grid"]);
+    expect(alone.dataset["layout"]).toBe("row");
+    expect(alone.getAttribute("viewBox")).toBe("0 -20 340 200");
+    const lines = draw(live()).dataset["layout"];
+    expect(lines).toBe("corners");
   });
 
-  it("cuts a long corner name with an ellipsis and keeps it whole in a tooltip", () => {
-    expect(fitName("SOL I DAG", 100)).toBe("SOL I DAG");
-    expect(fitName("Chauffage aujourd'hui", 80)).toBe("Chauffage…");
-    const svg = renderSchematic({ doc: document, language: "fr", answer: house(), live: live(), width: 300, idPrefix: "t" });
-    for (const name of Array.from(svg.querySelectorAll(".spotnav-now-name"))) {
-      expect(name.firstChild?.textContent?.length ?? 0).toBeLessThanOrEqual(Math.floor(100 / 7.2));
+  it("scales a line's width with the square root of its power, and ends it at each node's outer edge", () => {
+    expect(lineWidth(0)).toBe(1.5);
+    expect(lineWidth(0.04)).toBe(1.5);
+    expect(lineWidth(1)).toBeCloseTo(5.4);
+    expect(lineWidth(4)).toBeCloseTo(8.8);
+    expect(lineWidth(-4)).toBeCloseTo(8.8);
+    const svg = draw(live());
+    expect(Number(svg.querySelector(".spotnav-now-line[data-role='battery']")?.getAttribute("stroke-width"))).toBeCloseTo(lineWidth(1.5), 1);
+    // Never under the battery's ring or the house's: from 31 px off the battery's centre to 51 px off the house's.
+    const ends = lineEnds({ x: 52, y: 248 }, { x: 180, y: 150 }, NODE_OUTER.battery, NODE_OUTER.house);
+    expect(Math.hypot(ends.a.x - 52, ends.a.y - 248)).toBeCloseTo(31);
+    expect(Math.hypot(ends.b.x - 180, ends.b.y - 150)).toBeCloseTo(51);
+    const d = svg.querySelector(".spotnav-now-line[data-role='battery']")!.getAttribute("d")!;
+    const [x0, y0] = d.slice(1).split("L")[0]!.split(" ").map(Number);
+    expect(Math.hypot(x0! - 52, y0! - 248)).toBeCloseTo(31, 0);
+  });
+
+  it("puts the kW above a horizontal line and on the outer side of a diagonal, half the width and 10 px off", () => {
+    const flat = labelPlace({ x: 69, y: 75 }, { x: 129, y: 75 }, 1, 180);
+    expect(flat.side).toBe("above");
+    expect(flat.y).toBeCloseTo(75 - (lineWidth(1) / 2 + 10) + 4);
+    expect(flat.anchor).toBe("middle");
+    // The sun's line (top left to the house): its label up and to the left, anchored at its end.
+    const sun = labelPlace({ x: 70, y: 70 }, { x: 140, y: 120 }, 1.2, 180);
+    expect(sun.side).toBe("outer");
+    expect(sun.x).toBeLessThan(105);
+    expect(sun.anchor).toBe("end");
+    // The car's line (house to bottom right): on its outer side, to the right.
+    const car = labelPlace({ x: 220, y: 180 }, { x: 290, y: 230 }, 7.4, 180);
+    expect(car.x).toBeGreaterThan(255);
+    expect(car.anchor).toBe("start");
+  });
+
+  it("anchors a caption near an edge inward and writes two lines at each node", () => {
+    expect(captionAnchor(52, 360)).toEqual({ x: 26, anchor: "start" });
+    expect(captionAnchor(20, 360)).toEqual({ x: 4, anchor: "start" });
+    expect(captionAnchor(308, 360)).toEqual({ x: 334, anchor: "end" });
+    expect(captionAnchor(180, 360)).toEqual({ x: 180, anchor: "middle" });
+    const svg = draw(live());
+    expect(text(svg, "[data-k='state-sun']")).toBe("Sol");
+    expect(text(svg, "[data-k='today-sun']")).toBe("7,5 kWh i dag");
+    expect(text(svg, "[data-k='state-grid']")).toBe("Köper");
+    expect(text(svg, "[data-k='today-grid']")).toBe("köpt 76,9 · sålt 0,1 kWh");
+    expect(text(svg, "[data-k='state-battery']")).toBe("54 % · täcker huset");
+    expect(text(svg, "[data-k='today-battery']")).toBe("in 38,0 · ut 8,6 kWh");
+    expect(text(svg, "[data-k='state-car']")).toBe("Ansluten · 73 %");
+    expect(text(svg, "[data-k='today-car']")).toBe("laddat 25,5 kWh i dag");
+    // The house's day (with its heat, without the car) under its ring, in its colour.
+    expect(text(svg, "[data-k='today-house']")).toBe("29,4 kWh i dag");
+    expect(svg.querySelector("[data-k='today-house']")?.getAttribute("data-tone")).toBe("house");
+    // The sun's captions above its node (top corner), anchored inward from the left edge.
+    const sunToday = svg.querySelector("[data-k='today-sun']")!;
+    expect(Number(sunToday.getAttribute("y"))).toBeLessThan(52);
+    expect(sunToday.getAttribute("text-anchor")).toBe("start");
+    expect(svg.querySelector("[data-k='today-grid']")?.getAttribute("text-anchor")).toBe("end");
+    // The battery's below its node.
+    expect(Number(svg.querySelector("[data-k='today-battery']")!.getAttribute("y"))).toBeGreaterThan(248);
+    // Unplugged: no car; charging: its level.
+    expect(text(draw({ ...live(), car_connected: false, car_soc_pct: null }), "[data-k='state-car']")).toBe("Ingen bil");
+    expect(text(draw(live("villa_car.json")), "[data-k='state-car']")).toBe("Laddar · 73 %");
+  });
+
+  it("draws the battery's level as a ring and its icon filled to it", () => {
+    const svg = draw(live());
+    const around = 2 * Math.PI * 27;
+    const [shown] = svg.querySelector("[data-k='soc']")!.getAttribute("stroke-dasharray")!.split(" ").map(Number);
+    expect(shown).toBeCloseTo(around * 0.54, 0);
+    expect(Number(svg.querySelector("[data-k='battery-level']")!.getAttribute("height"))).toBeCloseTo(13 * 0.54, 1);
+  });
+
+  it("runs chevrons from source to target, faster with more power, none on a thin line, still under reduced motion", () => {
+    expect(chevronScale(0.1)).toBeNull();
+    expect(chevronScale(1)! * 9).toBeLessThanOrEqual(lineWidth(1) * 0.7 + 1e-9);
+    expect(chevronScale(30)).toBe(1.25);
+    expect(chevronSpeed(6)).toBeGreaterThan(chevronSpeed(1));
+    const svg = draw(live("villa_export.json"));
+    // An export runs from the house to the grid: the line is drawn from the house's edge.
+    const grid = svg.querySelector(".spotnav-now-line[data-role='grid']")!;
+    expect(grid.getAttribute("data-tone")).toBe("export");
+    const [x0, y0] = grid.getAttribute("d")!.slice(1).split("L")[0]!.split(" ").map(Number);
+    expect(Math.hypot(x0! - 170, y0! - 150)).toBeCloseTo(51, 0);
+    const run = svg.querySelector<SVGGElement>("[data-k='run-grid']")!;
+    expect(run.querySelectorAll(".spotnav-now-chevron").length).toBeGreaterThanOrEqual(3);
+    expect(run.style.animationDuration).toMatch(/s$/);
+    // Every chevron's frame is clipped to its line, in user space.
+    expect(svg.querySelector("clipPath")?.getAttribute("clipPathUnits")).toBe("userSpaceOnUse");
+    expect(NOW_STYLES).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.spotnav-now-run \{ animation: none; \}/);
+    // The chevrons are white and see-through.
+    expect(NOW_STYLES).toMatch(/\.spotnav-now-chevron \{[^}]*stroke: #ffffff;[^}]*opacity: 0\.85;/);
+  });
+
+  it("gives depth with shadows in user space over the whole drawing, so a horizontal line is never clipped", () => {
+    const svg = draw(live("house_alone_now.json"), house("house_learning.json"));
+    const filters = Array.from(svg.querySelectorAll("filter"));
+    expect(filters).toHaveLength(2);
+    for (const filter of filters) {
+      expect(filter.getAttribute("filterUnits")).toBe("userSpaceOnUse");
+      expect(Number(filter.getAttribute("width"))).toBeGreaterThanOrEqual(340);
     }
+    expect(svg.querySelector("radialGradient")).not.toBeNull();
   });
 
-  it("patches a live refresh in place, the dots kept running, and draws anew when a line turns", () => {
+  it("patches a live refresh in place, the chevrons kept running, and draws anew when a line turns", () => {
     const answer = house();
     const host = document.createElement("div");
-    const drawn = renderSchematic({ doc: document, language: "sv", answer, live: live(), width: 340, idPrefix: "t" });
+    const drawn = draw(live(), answer);
     host.append(drawn);
-    const dots = drawn.querySelector(".spotnav-now-dots[data-role='grid']");
-    const more = { ...live(), grid_kw: 2.4, house_kw: 5.1, rest_kw: 4.0 };
-    expect(patchSchematic(drawn, renderSchematic({ doc: document, language: "sv", answer, live: more, width: 340, idPrefix: "t" }))).toBe(true);
+    const run = drawn.querySelector("[data-k='run-grid']");
+    const more = { ...live(), grid_kw: 2.4, house_kw: 5.1, rest_kw: 4.0, other_kw: 4.0 };
+    expect(patchSchematic(drawn, draw(more, answer))).toBe(true);
     expect(host.firstElementChild).toBe(drawn);
-    expect(drawn.querySelector(".spotnav-now-dots[data-role='grid']")).toBe(dots);
-    expect(drawn.querySelector(".spotnav-now-pill[data-role='grid']")?.textContent).toBe("2,4 kW");
-    expect(drawn.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 4,0 kW");
+    expect(drawn.querySelector("[data-k='run-grid']")).toBe(run);
+    expect(text(drawn, "[data-k='kw-grid']")).toBe("2,4 kW");
+    expect(Number(drawn.querySelector("[data-k='line-grid']")!.getAttribute("stroke-width"))).toBeCloseTo(lineWidth(2.4), 1);
+    expect(text(drawn, ".spotnav-now-house-kw")).toBe("≈ 5,1 kW");
     // The grid turns to an export: a new drawing.
-    const turned = renderSchematic({ doc: document, language: "sv", answer, live: { ...live(), grid_kw: -1.2 }, width: 340, idPrefix: "t" });
+    const turned = draw({ ...live(), grid_kw: -1.2 }, answer);
     expect(patchSchematic(drawn, turned)).toBe(false);
     expect(host.firstElementChild).toBe(turned);
+    // The whole live part: the headline and the legend replaced, the drawing patched.
+    const block = renderNow({ doc: document, language: "sv", answer, live: live(), width: 340, idPrefix: "t", nowMs: NOW });
+    const svgBefore = block.querySelector("svg");
+    expect(patchNow(block, renderNow({ doc: document, language: "sv", answer, live: more, width: 340, idPrefix: "t", nowMs: NOW }))).toBe(true);
+    expect(block.querySelector("svg")).toBe(svgBefore);
+    expect(block.querySelector("[data-part='heat']")?.textContent).toBe("Värme ≈ 1,1 kW");
   });
 
   it("says each line's way: an export and a charging battery away from the house, in the export's colour", () => {
-    const lines = schematicLines(live("villa_export.json"), house());
+    const lines = nowFigures(live("villa_export.json"), house()).lines;
     const by = Object.fromEntries(lines.map((line) => [line.role, line]));
     expect(by["grid"]).toMatchObject({ way: "out", tone: "export", kw: 2.6 });
     expect(by["battery"]).toMatchObject({ way: "out", kw: 1.2 });
     expect(by["sun"]).toMatchObject({ way: "in" });
-    // No car plugged in: no line to it.
-    expect(by["car"]).toBeUndefined();
-    expect(schematicLines(live("villa_car.json"), house()).find((line) => line.role === "car")).toMatchObject({ way: "out", kw: 7.4 });
-    // Faster dots with more power, within the lap's bounds.
-    expect(dotLap(0)).toBeCloseTo(3.3);
-    expect(dotLap(12)).toBeCloseTo(0.8);
-    expect(dotLap(30)).toBeCloseTo(0.8);
-    expect(dotLap(6)).toBeLessThan(dotLap(1));
+    expect(by["car"]).toMatchObject({ way: "still" });
+    expect(nowFigures(live("villa_car.json"), house()).lines.find((line) => line.role === "car")).toMatchObject({ way: "out", kw: 7.4 });
   });
 
   it("has the day's figures and the battery's own power without the live flows (an older backend)", () => {
     const answer = house();
-    const lines = schematicLines(null, { ...answer, battery: { ...answer.battery!, now: { action: null, power_kw: -0.6 } } });
+    const lines = nowFigures(null, { ...answer, battery: { ...answer.battery!, now: { action: null, power_kw: -0.6 } } }).lines;
     expect(lines.find((line) => line.role === "battery")).toMatchObject({ way: "in", kw: 0.6 });
     expect(lines.find((line) => line.role === "grid")).toMatchObject({ kw: null, way: "still" });
     const card = render(answer, { tab: "now" }, { live: null }, "en");
     expect(card.querySelector("[data-line='battery-sub']")?.textContent).toContain("no live figures yet");
+    expect(card.querySelector("[data-k='today-sun']")?.textContent).toBe("7.5 kWh today");
+    // No live figures: no sentence and no own share, the price still.
+    expect(card.querySelector("[data-part='why']")).toBeNull();
+    expect(card.querySelector("[data-part='own']")).toBeNull();
+    expect(card.querySelector("[data-part='price']")).not.toBeNull();
   });
 
   it("says what the battery does and what its plan does next, and who runs it when SpotNav does not", () => {
@@ -382,6 +470,46 @@ describe("Now", () => {
     expect(planSentence("sv", { ...answer, battery: { ...answer.battery!, status: "waiting" } }, NOW)).toBe(translate("sv", "house.saving.waiting"));
     expect(planSentence("sv", house("house_learning.json"), NOW)).toBeNull();
     expect(render(controlled, { tab: "now" }, {}, "sv").querySelector("[data-line='plan']")?.textContent).toMatch(/^Batteriet täcker huset/);
+  });
+});
+
+describe("Now's headline", () => {
+  const figures = (over: Partial<HouseNow>) => nowFigures({ ...live(), ...over }, house());
+
+  it("says what is happening now from the flows", () => {
+    // The owner's expensive hour: the battery and the sun cover the house.
+    expect(whyKey(figures({ grid_kw: 0, sun_kw: 0.6, battery_kw: -1.5, car_kw: 0, house_kw: 2.1, rest_kw: 1.0, other_kw: 1.0 }), "dear")).toBe("house.nowTab.why.batterySunDear");
+    expect(whyKey(figures({ grid_kw: 0, sun_kw: 0, battery_kw: -1.5, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "dear")).toBe("house.nowTab.why.batteryDear");
+    // A cheap night: the battery and the car charge from the grid.
+    expect(whyKey(figures({ grid_kw: 16.4, sun_kw: 0, battery_kw: 7.0, car_kw: 7.4, house_kw: 2.0, rest_kw: 0.4, other_kw: 0.4 }), "cheap")).toBe("house.nowTab.why.cheapBatteryCar");
+    expect(whyKey(figures({ grid_kw: 9.0, sun_kw: 0, battery_kw: 7.0, car_kw: 0, house_kw: 2.0, rest_kw: 0.4, other_kw: 0.4 }), "cheap")).toBe("house.nowTab.why.cheapBattery");
+    expect(whyKey(figures({ grid_kw: 9.4, sun_kw: 0, battery_kw: 0, car_kw: 7.4, house_kw: 2.0, rest_kw: 0.4, other_kw: 0.4 }), "cheap")).toBe("house.nowTab.why.cheapCar");
+    // A sunny day: the sun covers the house and charges the battery, the surplus sold.
+    expect(whyKey(figures({ grid_kw: -3.1, sun_kw: 7.8, battery_kw: 2.4, car_kw: 0, house_kw: 2.3, rest_kw: 1.4, other_kw: 1.4 }), "cheap")).toBe("house.nowTab.why.sunBatterySold");
+    expect(whyKey(figures({ grid_kw: -3.1, sun_kw: 5.4, battery_kw: 0, car_kw: 0, house_kw: 2.3, rest_kw: 1.4, other_kw: 1.4 }), "mid")).toBe("house.nowTab.why.sunSold");
+    expect(whyKey(figures({ grid_kw: 0.5, sun_kw: 1.0, battery_kw: 0, car_kw: 0, house_kw: 1.5, rest_kw: 0.4, other_kw: 0.4 }), "mid")).toBe("house.nowTab.why.sunPart");
+    // The house takes everything from the grid.
+    expect(whyKey(figures({ grid_kw: 2.0, sun_kw: 0, battery_kw: 0, car_kw: 0, house_kw: 2.0, rest_kw: 0.9, other_kw: 0.9 }), "mid")).toBe("house.nowTab.why.gridAll");
+    expect(whyKey(nowFigures(null, house()), "mid")).toBeNull();
+    expect(translate("sv", "house.nowTab.why.batterySunDear")).toBe("Batteriet och solen täcker huset under den dyra timmen.");
+  });
+
+  it("shows the own share (hidden without sun and battery) and the price now in its band's colour, never the house's kW", () => {
+    // 0,4 kW bought of 3,1 kW used: 87 % own.
+    expect(ownShare(nowFigures(live(), house()))).toBe(87);
+    expect(ownShare(figures({ grid_kw: 16.4, sun_kw: 0, battery_kw: 7.0, car_kw: 7.4, house_kw: 2.0, rest_kw: 0.4, other_kw: 0.4 }))).toBe(0);
+    const head = render(house(), { tab: "now" }, { live: live() }, "sv").querySelector<HTMLElement>(".spotnav-now-head")!;
+    expect(head.querySelector("[data-part='own']")?.textContent).toBe("87 % egen el");
+    expect(head.querySelector("[data-part='own']")?.getAttribute("data-tone")).toBe("high");
+    const price = priceNow(house(), NOW)!;
+    expect(["cheap", "mid", "dear"]).toContain(price.band);
+    const pill = head.querySelector<HTMLElement>("[data-part='price']")!;
+    expect(pill.dataset["band"]).toBe(price.band);
+    expect(pill.textContent).toMatch(/^(Billig|Normal|Dyr) timme · \d+,\d\d kr$/);
+    expect(head.textContent).not.toContain("kW");
+    // A house with the grid alone: no own share.
+    const alone = render(house("house_learning.json"), { tab: "now" }, { live: live("house_alone_now.json") }, "sv");
+    expect(alone.querySelector("[data-part='own']")).toBeNull();
   });
 });
 
@@ -501,7 +629,7 @@ describe("the period tabs' content", () => {
 describe("the live flows' answer", () => {
   it("decodes the backend's own fixtures and refuses a mistyped or another version", () => {
     expect(live().house_kw).toBe(3.1);
-    expect(live("house_alone_now.json").has).toEqual({ sun: false, battery: false, car: false, heat: false });
+    expect(live("house_alone_now.json").has).toEqual({ sun: false, battery: false, car: false, heat: false, pool: false });
     const raw = read("house_now", "villa_now.json");
     expect(decodeHouseNow({ ...raw, api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
     expect(decodeHouseNow({ ...raw, grid_kw: "1" })).toEqual({ ok: false, failure: "malformed" });
@@ -518,7 +646,7 @@ describe("the live flows' answer", () => {
     const dc = live("villa_dc_battery.json");
     expect(dc.battery_kw).toBe(-10);
     expect(dc.house_from).toBe("balance");
-    const lines = schematicLines(dc, house());
+    const lines = nowFigures(dc, house()).lines;
     const by = Object.fromEntries(lines.map((line) => [line.role, line]));
     expect(by["battery"]).toMatchObject({ way: "in", kw: 10 });
     expect((by["grid"]!.kw ?? 0) + (by["sun"]!.kw ?? 0) + by["battery"]!.kw!).toBeCloseTo(dc.house_kw!, 5);
@@ -526,64 +654,87 @@ describe("the live flows' answer", () => {
 });
 
 describe("the live figures add up as written", () => {
-  /** Into the house as written, and out of it with the disc. */
-  function sides(liveNow: HouseNow): { into: number; out: number; disc: number; lines: SchematicLine[] } {
-    const { lines, house: disc } = schematicFigures(liveNow, house());
+  /** Into the house as written, out of it with the house, and the ring's parts against the middle. */
+  function sides(liveNow: HouseNow): { into: number; out: number; house: number; parts: number; figures: NowFigures } {
+    const figures = nowFigures(liveNow, house());
     const tenths = (kw: number | null) => Math.round((kw ?? 0) * 10);
-    const into = lines.filter((line) => line.way === "in").reduce((sum, line) => sum + tenths(line.kw), 0);
-    const out = lines.filter((line) => line.way === "out").reduce((sum, line) => sum + tenths(line.kw), 0) + tenths(disc.kw);
-    return { into, out, disc: tenths(disc.kw), lines };
+    const into = figures.lines.filter((line) => line.way === "in").reduce((sum, line) => sum + tenths(line.kw), 0);
+    const out = figures.lines.filter((line) => line.way === "out").reduce((sum, line) => sum + tenths(line.kw), 0) + tenths(figures.house.kw);
+    const parts = figures.parts.reduce((sum, part) => sum + tenths(part.kw), 0);
+    return { into, out, house: tenths(figures.house.kw), parts, figures };
   }
 
-  it("holds the house besides the heat in the disc, and marks the parts read from the last period", () => {
-    // The owner's morning: the sun and the heat from a 5-minute period, the heat its own line out of the house.
+  it("draws the whole house in the middle and its parts as the ring, marking the parts read from the last period", () => {
     const stale = live("villa_stale_parts.json");
-    const { into, out, disc } = sides(stale);
+    const { into, out, house: middle, parts, figures } = sides(stale);
     expect(into).toBe(out);
-    expect(disc).toBe(2);
-    const svg = renderSchematic({ doc: document, language: "sv", answer: house(), live: stale, width: 340, idPrefix: "t" });
-    expect(svg.querySelector(".spotnav-now-pill[data-role='heat']")?.textContent).toBe("≈ 1,8 kW");
-    expect(svg.querySelector(".spotnav-now-pill[data-role='sun']")?.textContent).toBe("≈ 0,6 kW");
-    expect(svg.querySelector(".spotnav-now-pill[data-role='battery']")?.textContent).toBe("1,4 kW");
-    expect(svg.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 0,2 kW");
-    expect(svg.querySelector("title")?.textContent).toContain("Huset utöver värmen nu 0,2 kW (uppskattat)");
+    expect(parts).toBe(middle);
+    expect(figures.parts).toEqual([
+      { role: "heat", kw: 1.8, estimated: true },
+      { role: "other", kw: 0.2, estimated: true },
+    ]);
+    const block = renderNow({ doc: document, language: "sv", answer: house(), live: stale, width: 340, idPrefix: "t", nowMs: NOW });
+    expect(block.querySelector("[data-k='kw-sun']")?.textContent).toBe("≈ 0,6 kW");
+    expect(block.querySelector("[data-k='kw-battery']")?.textContent).toBe("1,4 kW");
+    expect(block.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 2,0 kW");
+    expect(Array.from(block.querySelectorAll(".spotnav-now-legend-item")).map((item) => item.textContent)).toEqual(["Värme ≈ 1,8 kW", "Övrigt ≈ 0,2 kW"]);
+    expect(Array.from(block.querySelectorAll<SVGElement>(".spotnav-now-ring")).map((ring) => ring.dataset["tone"])).toEqual(["heat", "other"]);
+    expect(block.querySelector("title")?.textContent).toContain("Huset nu 2,0 kW (uppskattat)");
+  });
+
+  it("puts the pool, the spa and the sauna in the ring beside the heat", () => {
+    const pool = live("villa_pool.json");
+    const { into, out, house: middle, parts, figures } = sides(pool);
+    expect(into).toBe(out);
+    expect(parts).toBe(middle);
+    expect(figures.parts.map((part) => [part.role, part.kw, part.estimated])).toEqual([
+      ["heat", 0.9, false],
+      ["pool", 0.9, true],
+      ["other", 0.5, true],
+    ]);
+    const block = renderNow({ doc: document, language: "en", answer: house(), live: pool, width: 340, idPrefix: "t", nowMs: NOW });
+    expect(block.querySelector("[data-part='pool']")?.textContent).toBe("Pool, spa, sauna ≈ 0.9 kW");
+    expect(block.querySelector("[data-part='why']")?.textContent).toBe("The sun covers the house and charges the battery. The surplus is sold.");
   });
 
   it("balances a heat cut to the house and a lagging car", () => {
-    for (const name of ["villa_heat_over.json", "villa_car_lags.json", "villa_now.json", "villa_export.json", "villa_car.json", "villa_dc_battery.json"]) {
-      const { into, out } = sides(live(name));
+    for (const name of ["villa_heat_over.json", "villa_car_lags.json", "villa_now.json", "villa_export.json", "villa_car.json", "villa_dc_battery.json", "villa_pool.json"]) {
+      const { into, out, house: middle, parts } = sides(live(name));
       expect(into, name).toBe(out);
+      expect(parts, name).toBe(middle);
     }
     const over = sides(live("villa_heat_over.json"));
-    expect(over.disc).toBe(0);
-    expect(over.lines.find((line) => line.role === "heat")).toMatchObject({ kw: 1.3, estimated: true });
-    // A car drawing is drawn even before its plug is read, so its figure is not left out of the balance.
+    expect(over.figures.parts.find((part) => part.role === "heat")).toMatchObject({ kw: 1.3, estimated: true });
     const lags = live("villa_car_lags.json");
-    expect(sides({ ...lags, car_connected: null }).lines.find((line) => line.role === "car")).toMatchObject({ kw: 0.5, way: "out", estimated: true });
+    expect(sides({ ...lags, car_connected: null }).figures.lines.find((line) => line.role === "car")).toMatchObject({ kw: 0.5, way: "out", estimated: true });
   });
 
-  it("rounds each side to the same tenths by the largest remainder", () => {
+  it("rounds each side and the ring to the same tenths by the largest remainder", () => {
     expect(largestRemainder([0.66, 0.66, 0.68], 20)).toEqual([7, 6, 7]);
     expect(largestRemainder([1.04, 1.04, 1.04], 31)).toEqual([11, 10, 10]);
     expect(largestRemainder([0.26, 0.26], 4)).toEqual([2, 2]);
-    // Three thirds of a kilowatt into the house, one kilowatt out: 0,4 + 0,3 + 0,3 = 1,0.
-    const thirds: HouseNow = { ...live(), grid_kw: 0.33, sun_kw: 0.33, battery_kw: -0.34, car_kw: 0, heat_kw: 0.5, house_kw: 1.0, rest_kw: 0.5, estimated: [] };
-    const { into, out, lines } = sides(thirds);
+    const thirds: HouseNow = { ...live(), grid_kw: 0.33, sun_kw: 0.33, battery_kw: -0.34, car_kw: 0, heat_kw: 0.55, house_kw: 1.0, rest_kw: 0.45, other_kw: 0.45, estimated: [] };
+    const { into, out, parts, figures } = sides(thirds);
     expect(into).toBe(10);
     expect(out).toBe(10);
-    expect(lines.filter((line) => line.way === "in").map((line) => line.kw).sort()).toEqual([0.3, 0.3, 0.4]);
+    expect(parts).toBe(10);
+    expect(figures.lines.filter((line) => line.way === "in").map((line) => line.kw).sort()).toEqual([0.3, 0.3, 0.4]);
+    expect(figures.parts.map((part) => part.kw)).toEqual([0.6, 0.4]);
     // A large figure keeps its decimal, so it adds up with the small ones.
-    const big = renderSchematic({ doc: document, language: "en", answer: house(), live: { ...live(), grid_kw: 12.34, sun_kw: 0, battery_kw: 0, car_kw: 0, heat_kw: 1, house_kw: 12.34, rest_kw: 11.34, estimated: [] }, width: 340, idPrefix: "t" });
-    expect(big.querySelector(".spotnav-now-pill[data-role='grid']")?.textContent).toBe("12.3 kW");
-    expect(big.querySelector(".spotnav-now-house-kw")?.textContent).toBe("11.3 kW");
+    const big = renderNow({ doc: document, language: "en", answer: house(), live: { ...live(), grid_kw: 12.34, sun_kw: 0, battery_kw: 0, car_kw: 0, heat_kw: 1, house_kw: 12.34, rest_kw: 11.34, other_kw: 11.34, estimated: [] }, width: 340, idPrefix: "t", nowMs: NOW });
+    expect(big.querySelector("[data-k='kw-grid']")?.textContent).toBe("12.3 kW");
+    expect(big.querySelector(".spotnav-now-house-kw")?.textContent).toBe("12.3 kW");
   });
 
-  it("reads an older backend's answer without the rest: the house less the heat, nothing marked", () => {
-    const { rest_kw: _rest, estimated: _estimated, ...raw } = read("house_now", "villa_now.json") as Record<string, unknown>;
-    const decoded = decodeHouseNow(raw);
+  it("reads an older backend's answer without the rest or the pool: the house less the heat, nothing marked", () => {
+    const { rest_kw: _rest, estimated: _estimated, pool_kw: _pool, other_kw: _other, ...raw } = read("house_now", "villa_now.json") as Record<string, unknown>;
+    const decoded = decodeHouseNow({ ...raw, has: { sun: true, battery: true, car: true, heat: true } });
     expect(decoded.ok && decoded.value.rest_kw).toBeCloseTo(2.0, 5);
+    expect(decoded.ok && decoded.value.other_kw).toBeCloseTo(2.0, 5);
+    expect(decoded.ok && decoded.value.has.pool).toBe(false);
     expect(decoded.ok && decoded.value.estimated).toEqual([]);
     expect(decodeHouseNow({ ...raw, estimated: "sun" }).ok).toBe(false);
+    expect(decodeHouseNow({ ...raw, pool_kw: "1" }).ok).toBe(false);
   });
 });
 
@@ -618,7 +769,7 @@ describe("the card element's tabs", () => {
     const element = await mount({}, hass);
     const root = element.shadowRoot!;
     expect(hass.liveMessages).toHaveLength(1);
-    expect(root.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 2.0 kW");
+    expect(root.querySelector(".spotnav-now-house-kw")?.textContent).toBe("≈ 3.1 kW");
     await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS);
     expect(hass.liveMessages).toHaveLength(2);
     root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='graph']")!.click();

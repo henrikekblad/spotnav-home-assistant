@@ -11,7 +11,7 @@ import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, ty
 import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { BatteryFlow, HouseHistory } from "./house-history";
-import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
+import { planSentence, renderNow, type HouseNow } from "./house-now";
 import { localDayKey } from "./chart";
 import { energyChart, flowWords, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
@@ -797,14 +797,14 @@ function boxed(input: HouseRenderInput): boolean {
   return input.ui.fill !== null && input.ui.fill !== undefined;
 }
 
-/** Now: the live schematic, the plan's sentence, today's money, the mode and a learning period, and a heat meter to
+/** Now: the headline, the live flows and the ring's legend (`house-now.ts`), the plan's sentence, today's money, the mode and a learning period, and a heat meter to
  * choose. */
 function nowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement): void {
   const { doc, language } = input;
   const live = input.tabs?.live ?? null;
   const wrap = element(doc, "div", "spotnav-now");
   wrap.dataset["part"] = "now";
-  wrap.append(renderSchematic({ doc, language, answer, live, width: input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix }));
+  wrap.append(renderNow({ doc, language, answer, live, width: input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix, nowMs: input.nowMs }));
   panel.append(wrap);
   const plan = planSentence(language, answer, input.nowMs);
   if (plan !== null) {
@@ -1199,4 +1199,4 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   return card;
 }
 
-export { amount, kwhText, schematicHeight };
+export { amount, kwhText };

@@ -24,6 +24,7 @@
 // - The element owns one `CardView | null`, destroyed before replacement, before error/loading states and
 //   on disconnect. Chart sizing lives in the view.
 
+import { followTheme } from "./energy-palette";
 import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
@@ -498,6 +499,7 @@ export class SpotnavCard extends HTMLElement {
     const nextLanguage = resolveLanguage(hass.locale?.language ?? hass.language);
     const previous = this.language;
     this.hassObject = hass;
+    followTheme(this, hass);
     this.view?.setEntityHass(hass);
     this.followLanguage(nextLanguage);
     const changed = previous !== null && this.language !== previous;

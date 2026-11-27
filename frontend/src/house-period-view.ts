@@ -539,9 +539,9 @@ export const PERIOD_VIEW_STYLES = `
   [data-series="grid"] { --spotnav-tile-colour: var(--spotnav-grid-colour); }
   [data-series="sell"] { --spotnav-tile-colour: var(--spotnav-sell-colour); }
   [data-series="heat"] { --spotnav-tile-colour: var(--spotnav-heat-colour); }
-  [data-series="car"] { --spotnav-tile-colour: var(--spotnav-car-colour, var(--spotnav-flow-car)); }
+  [data-series="car"] { --spotnav-tile-colour: var(--spotnav-car-colour, var(--spotnav-energy-car)); }
   [data-series="earned"] { --spotnav-tile-colour: var(--spotnav-battery-colour); }
-  [data-series="cost"] { --spotnav-tile-colour: var(--spotnav-sell-colour); }
+  [data-series="cost"] { --spotnav-tile-colour: var(--spotnav-grid-colour); }
   .${P.bars} {
     display: flex;
     flex-direction: column;

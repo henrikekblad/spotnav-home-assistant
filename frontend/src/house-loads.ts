@@ -79,7 +79,7 @@ export const LOADS_STYLES = `
     --spotnav-pie-7: var(--spotnav-pie-7-colour, #2aa3c4);
     --spotnav-pie-8: var(--spotnav-pie-8-colour, #8aa02c);
     --spotnav-pie-other-metered: var(--spotnav-pie-other-metered-colour, #b9bdc4);
-    --spotnav-pie-unknown: var(--spotnav-pie-unknown-colour, #747982);
+    --spotnav-pie-unknown: var(--spotnav-pie-unknown-colour, var(--spotnav-energy-other, #8796ab));
     --spotnav-pie-inverter: var(--spotnav-pie-inverter-colour, #3f7f7a);
     min-width: 0;
   }
@@ -405,7 +405,9 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
   }
   // A meter's colour by its statistic id among those shown, not by its size; the pool's, the spa's and the sauna's
   // parts keep their own (as in the Plan tab and the heat card's Use tab).
-  const own = (load: HouseLoad): string | null => (Object.prototype.hasOwnProperty.call(LOAD_COLOURS, load.source) ? LOAD_COLOURS[load.source as OwnLoadKind] : null);
+  // The heat pump's meter in the heat's own colour (the energy palette, `energy-palette.ts`).
+  const own = (load: HouseLoad): string | null =>
+    load.source === "heat_pump" ? "var(--spotnav-energy-heat)" : Object.prototype.hasOwnProperty.call(LOAD_COLOURS, load.source) ? LOAD_COLOURS[load.source as OwnLoadKind] : null;
   const byId = shown.filter((load) => own(load) === null).map((load) => load.statistic_id).sort();
   const slices: PieSlice[] = shown.map((load) => ({
     key: load.statistic_id,

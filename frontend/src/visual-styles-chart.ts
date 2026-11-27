@@ -78,20 +78,20 @@ export const CHART_STYLES = `\
     pointer-events: none;
   }
   .${VISUAL_CLASSES.sunArea} {
-    fill: var(--spotnav-sun, #e8a200);
+    fill: var(--spotnav-energy-sun, #c18b00);
     fill-opacity: 0.2;
     stroke: none;
   }
   .${VISUAL_CLASSES.sunLine} {
     fill: none;
-    stroke: var(--spotnav-sun, #e8a200);
+    stroke: var(--spotnav-energy-sun, #c18b00);
     stroke-width: 1.6;
     stroke-linejoin: round;
     stroke-linecap: round;
     vector-effect: non-scaling-stroke;
   }
   .${VISUAL_CLASSES.sunPeak} {
-    fill: var(--spotnav-sun, #e8a200);
+    fill: var(--spotnav-energy-sun, #c18b00);
     font-size: ${CHART_DENSITY.normal.axisFontPx}px;
     opacity: 0.85;
   }
@@ -109,11 +109,11 @@ export const CHART_STYLES = `\
     width: 0.8em;
     height: 0.6em;
     border-radius: 2px;
-    background: color-mix(in srgb, var(--spotnav-sun, #e8a200) 35%, transparent);
-    border-top: 2px solid var(--spotnav-sun, #e8a200);
+    background: color-mix(in srgb, var(--spotnav-energy-sun, #c18b00) 35%, transparent);
+    border-top: 2px solid var(--spotnav-energy-sun, #c18b00);
   }
   .${VISUAL_CLASSES.cheap} {
-    --spotnav-mark-colour: var(--spotnav-cheap, #2e7d32);
+    --spotnav-mark-colour: var(--spotnav-energy-cheap, #2e7d32);
   }
   /* Today's runs are solid; another day's are filled with a hatch pattern by the renderer instead. */
   .${VISUAL_CLASSES.bandInstalled}:not(.${VISUAL_CLASSES.bandTomorrow}) {
@@ -144,8 +144,8 @@ export const CHART_STYLES = `\
   }
   .${VISUAL_CLASSES.point},
   .${VISUAL_CLASSES.segment} {
-    fill: var(--spotnav-cheap, #2e7d32);
-    stroke: var(--spotnav-cheap, #2e7d32);
+    fill: var(--spotnav-energy-cheap, #2e7d32);
+    stroke: var(--spotnav-energy-cheap, #2e7d32);
   }
   .${VISUAL_CLASSES.segment} {
     stroke-linecap: round;
@@ -168,8 +168,8 @@ export const CHART_STYLES = `\
   }
   .${VISUAL_CLASSES.expensive},
   .${VISUAL_CLASSES.expensive}:is(circle) {
-    fill: var(--spotnav-expensive, #c62828);
-    stroke: var(--spotnav-expensive, #c62828);
+    fill: var(--spotnav-energy-expensive, #c62828);
+    stroke: var(--spotnav-energy-expensive, #c62828);
   }
   .${VISUAL_CLASSES.tomorrow},
   .${VISUAL_CLASSES.tomorrow}:is(circle) {
@@ -244,10 +244,10 @@ export const CHART_STYLES = `\
   /* The day's dearest and cheapest price as text: the price colours mixed a third toward the text colour, darker on a
    * light card and lighter on a dark one, so both read at 4.5:1. */
   .${VISUAL_CLASSES.summaryMax} {
-    color: color-mix(in srgb, var(--spotnav-expensive, #c62828) 65%, var(--primary-text-color, #212121));
+    color: color-mix(in srgb, var(--spotnav-energy-expensive, #c62828) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summaryMin} {
-    color: color-mix(in srgb, var(--spotnav-cheap, #2e7d32) 65%, var(--primary-text-color, #212121));
+    color: color-mix(in srgb, var(--spotnav-energy-cheap, #2e7d32) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summary}[role="button"] {
     cursor: pointer;
@@ -409,10 +409,10 @@ export const CHART_STYLES = `\
     opacity: 0.22;
   }
   .${VISUAL_CLASSES.planPreviewCell}[data-price="cheap"] {
-    background: var(--spotnav-cheap, #2e7d32);
+    background: var(--spotnav-energy-cheap, #2e7d32);
   }
   .${VISUAL_CLASSES.planPreviewCell}[data-price="dear"] {
-    background: var(--spotnav-expensive, #c62828);
+    background: var(--spotnav-energy-expensive, #c62828);
   }
   .${VISUAL_CLASSES.planPreviewCell}[data-planned="true"] {
     opacity: 1;

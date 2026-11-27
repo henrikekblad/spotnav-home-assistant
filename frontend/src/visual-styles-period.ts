@@ -183,8 +183,8 @@ export const PERIOD_CHART_STYLES = `\
     border-radius: 3px 3px 0 0;
     background: color-mix(
       in srgb,
-      var(--spotnav-expensive, #c62828) var(--spotnav-day-dear, 0%),
-      var(--spotnav-cheap, #2e7d32)
+      var(--spotnav-energy-expensive, #c62828) var(--spotnav-day-dear, 0%),
+      var(--spotnav-energy-cheap, #2e7d32)
     );
   }
   /* A money bar: the filled cost with, above it, the hatched saving. The hatch is a diagonal stripe in the text colour

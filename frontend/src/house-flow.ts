@@ -14,8 +14,9 @@
 //   alone. A band is never thinner than `MIN_BAND` px, so none is drawn without width.
 // * A role the card does not know (a newer backend's) is drawn in a neutral colour under its own name; a car giving
 //   energy back would come as `car` on the source side and is drawn as the car.
-// * The colours are custom properties a theme may set (`--spotnav-flow-solar` and so on), each fill bright enough for
-//   the dark words on it on a light and a dark card.
+// * The colours are the energy palette's (`energy-palette.ts`) a step lighter, as custom properties a theme may set
+//   (`--spotnav-flow-solar` and so on), each fill bright enough for the dark words on it on a light and a dark card;
+//   the grid as a use (what is sold) is the export's green.
 // * With `onHouse`, the house block is a button (tap, Enter or Space): the card opens what the house used
 //   (`house-loads.ts`); so is the heat block where the heat holds more than one source (`heat_sources`: the heat
 //   pump's meter, floor heating, an air-to-air heat pump), opening its own pie.
@@ -111,7 +112,11 @@ export function roleWord(language: Language, role: string): string {
   return key === undefined ? role : translate(language, key);
 }
 
-function roleColour(role: string): string {
+/** A block's colour (the energy palette's, `energy-palette.ts`): the grid as a use is what is sold, in the export's. */
+export function roleColour(role: string, side: "source" | "use" = "source"): string {
+  if (role === "grid" && side === "use") {
+    return "var(--spotnav-flow-export)";
+  }
   return ROLE_WORDS[role] === undefined ? "var(--spotnav-flow-other)" : `var(--spotnav-flow-${role})`;
 }
 
@@ -252,12 +257,12 @@ export function renderFlow(
     const to = right.get(link.to)!.node;
     const id = `${idPrefix}-flow-${index}`;
     const gradient = svg(doc, "linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: x0, y1: 0, x2: x1, y2: 0 });
-    for (const [offset, role] of [
-      ["0", from.role],
-      ["1", to.role],
+    for (const [offset, role, side] of [
+      ["0", from.role, "source"],
+      ["1", to.role, "use"],
     ] as const) {
       const stop = svg(doc, "stop", { offset });
-      stop.style.setProperty("stop-color", roleColour(role));
+      stop.style.setProperty("stop-color", roleColour(role, side));
       gradient.append(stop);
     }
     defs.append(gradient);
@@ -281,7 +286,7 @@ export function renderFlow(
     for (const { node, y, h } of placedMap.values()) {
       const group = svg(doc, "g", { class: "spotnav-house-flow-node", "data-role": node.role, "data-side": node.side });
       const rect = svg(doc, "rect", { x, y: y.toFixed(1), width: nodeW, height: h.toFixed(1), rx: 6, class: "spotnav-house-flow-block" });
-      rect.style.setProperty("fill", roleColour(node.role));
+      rect.style.setProperty("fill", roleColour(node.role, node.side));
       // A soft light from the top over the block's own colour.
       const sheen = svg(doc, "rect", { x, y: y.toFixed(1), width: nodeW, height: h.toFixed(1), rx: 6, fill: `url(#${sheenId})`, "aria-hidden": "true" });
       group.append(rect, sheen);

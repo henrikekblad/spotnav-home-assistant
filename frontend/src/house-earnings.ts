@@ -291,7 +291,7 @@ export const EARN_STYLES = `
   [data-series="earn-battery"] { --spotnav-tile-colour: var(--spotnav-battery-colour); }
   [data-series="earn-own"] { --spotnav-tile-colour: color-mix(in srgb, var(--spotnav-battery-colour) 50%, var(--secondary-text-color, #727272)); }
   [data-series="earn-heat"] { --spotnav-tile-colour: var(--spotnav-heat-colour); }
-  [data-series="earn-car"] { --spotnav-tile-colour: var(--spotnav-flow-car); }
+  [data-series="earn-car"] { --spotnav-tile-colour: var(--spotnav-car-colour, var(--spotnav-energy-car)); }
   [data-series="earn-sun"] { --spotnav-tile-colour: var(--spotnav-sun-colour); }
   [data-series="earn-would"] { --spotnav-tile-colour: var(--spotnav-battery-colour); }
   /* What the plan would have earned: hatched and lighter, never a solid bar (nothing was done). */

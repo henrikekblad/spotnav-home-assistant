@@ -56,7 +56,7 @@ const X = HEAT_CLASSES;
 
 export const HEAT_STYLES = `
   .${X.card} {
-    --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
+    --spotnav-heat-colour: var(--spotnav-energy-heat, #e2554a);
   }
   .${X.dialWrap} {
     display: grid;
@@ -251,8 +251,8 @@ export const HEAT_STYLES = `
   .${X.aheadCell}[data-action="raise"],
   .${X.aheadCell}[data-action="return"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 70%, transparent); }
   /* The pool's, the spa's and the sauna's day band: filtering, the extra filtering, a heat-up, the hold. */
-  .${X.aheadCell}[data-run="filter"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, #2fa39a) 55%, transparent); }
-  .${X.aheadCell}[data-run="extra"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, #2fa39a) 90%, transparent); }
+  .${X.aheadCell}[data-run="filter"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, var(--spotnav-energy-pool, #289ed0)) 55%, transparent); }
+  .${X.aheadCell}[data-run="extra"] { background: color-mix(in srgb, var(--spotnav-heat-pool-colour, var(--spotnav-energy-pool, #289ed0)) 90%, transparent); }
   .${X.aheadCell}[data-run="heat"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 70%, transparent); }
   .${X.aheadCell}[data-run="hold"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 30%, transparent); }
   .${X.aheadCell}[data-action="open"] {
@@ -316,7 +316,7 @@ export const HEAT_STYLES = `
   }
   .${X.dayMark}[data-mark="hot_water_bar"] { fill: color-mix(in srgb, var(--spotnav-heat-water-colour, #c62828) 55%, transparent); }
   .${X.dayMark}[data-mark="hot_water_peak"] { stroke: var(--spotnav-heat-water-colour, #c62828); stroke-width: 1.5; }
-  .${X.dayMark}[data-mark="car"] { fill: var(--spotnav-flow-car-colour, #f08c3a); }
+  .${X.dayMark}[data-mark="car"] { fill: var(--spotnav-energy-car, #c2408f); }
   .${X.dayAxis} {
     fill: var(--secondary-text-color, #727272);
     font-size: 12px;
@@ -335,7 +335,7 @@ export const HEAT_STYLES = `
     stroke-dasharray: 3 3;
   }
   .${X.dayDot} {
-    fill: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b));
+    fill: var(--spotnav-heat-indoor-colour, var(--spotnav-energy-heat, #e2554a));
     stroke: var(--card-background-color, #fff);
     stroke-width: 2;
   }
@@ -351,7 +351,7 @@ export const HEAT_STYLES = `
   }
   .${X.indoorLine} {
     fill: none;
-    stroke: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b));
+    stroke: var(--spotnav-heat-indoor-colour, var(--spotnav-energy-heat, #e2554a));
     stroke-width: 2;
     stroke-linejoin: round;
     stroke-linecap: round;
@@ -379,15 +379,15 @@ export const HEAT_STYLES = `
     border-radius: 2px;
   }
   .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #c62828); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
-  .${X.swatch}[data-action="car"] { background: var(--spotnav-flow-car-colour, #f08c3a); height: 4px; }
+  .${X.swatch}[data-action="car"] { background: var(--spotnav-energy-car, #c2408f); height: 4px; }
   .${X.swatch}[data-action="relay"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${X.swatch}[data-action="relay_expected"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
   .${X.swatch}[data-action="executed"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
   .${X.swatch}[data-action="raised"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 40%, transparent); }
   .${X.swatch}[data-action="raise_planned"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 18%, transparent); }
   .${X.swatch}[data-action="planned"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
-  .${X.swatch}[data-action="indoor_mean"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 3px; }
-  .${X.swatch}[data-action="indoor_coldest"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 2px; opacity: 0.55; }
+  .${X.swatch}[data-action="indoor_mean"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-energy-heat, #e2554a)); height: 3px; }
+  .${X.swatch}[data-action="indoor_coldest"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-energy-heat, #e2554a)); height: 2px; opacity: 0.55; }
   .${X.swatch}[data-action="setpoint"] { border-top: 2px dashed var(--primary-text-color, #212121); height: 0; border-radius: 0; opacity: 0.75; }
   .${X.swatch}[data-action="comfort"] { background: color-mix(in srgb, var(--success-color, #43a047) 18%, transparent); }
   .${X.error} {

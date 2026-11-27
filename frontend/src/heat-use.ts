@@ -325,7 +325,7 @@ export function usePanel(input: UsePanelInput): HTMLElement[] {
 }
 
 export const USE_STYLES = `
-  [data-series="use-pump"] { --spotnav-tile-colour: var(--spotnav-heat-colour, var(--spotnav-heat, #e5554b)); }
+  [data-series="use-pump"] { --spotnav-tile-colour: var(--spotnav-heat-colour, var(--spotnav-energy-heat, #e2554a)); }
   [data-series="use-hot_water"] { --spotnav-tile-colour: var(--spotnav-heat-use-water-colour, #2a8fbd); }
   [data-series="use-zone-0"] { --spotnav-tile-colour: var(--spotnav-heat-use-zone-colour, #e0a030); }
   [data-series="use-zone-1"] { --spotnav-tile-colour: #8e6bbf; }
@@ -334,7 +334,7 @@ export const USE_STYLES = `
   [data-series="use-pool"] { --spotnav-tile-colour: var(--spotnav-heat-use-pool-colour, ${LOAD_COLOUR_VALUE.pool_heat}); }
   [data-series="use-spa"] { --spotnav-tile-colour: var(--spotnav-heat-use-spa-colour, ${LOAD_COLOUR_VALUE.spa}); }
   [data-series="use-sauna"] { --spotnav-tile-colour: var(--spotnav-heat-use-sauna-colour, ${LOAD_COLOUR_VALUE.sauna}); }
-  [data-series="use-other"] { --spotnav-tile-colour: color-mix(in srgb, var(--secondary-text-color, #727272) 70%, transparent); }
+  [data-series="use-other"] { --spotnav-tile-colour: var(--spotnav-energy-other, #8796ab); }
   .${U.head} {
     display: flex;
     align-items: flex-start;
