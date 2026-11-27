@@ -294,10 +294,10 @@ describe("Now", () => {
     expect(two.spots.grid).toEqual({ x: 44, y: 75 });
     expect(two.spots.car).toEqual({ x: 316, y: 75 });
     const three = flowLayout(["sun", "grid", "car"], 360);
-    expect(three).toMatchObject({ kind: "corners", height: 300, spots: { sun: { x: 52, y: 52 }, grid: { x: 308, y: 52 }, car: { x: 308, y: 248 }, house: { x: 180, y: 150 } } });
+    expect(three).toMatchObject({ kind: "corners", height: 300, spots: { sun: { x: 46, y: 52 }, grid: { x: 314, y: 52 }, car: { x: 314, y: 248 }, house: { x: 180, y: 150 } } });
     // A missing corner stays empty.
     expect(three.spots.battery).toBeUndefined();
-    expect(flowLayout(["sun", "grid", "battery", "car"], 360).spots.battery).toEqual({ x: 52, y: 248 });
+    expect(flowLayout(["sun", "grid", "battery", "car"], 360).spots.battery).toEqual({ x: 46, y: 248 });
     // A house with the grid alone: one row, the grid to the house; drawn with room above and below for the captions.
     const alone = draw(live("house_alone_now.json"), house("house_learning.json"), "en");
     expect(roles(alone)).toEqual(["grid"]);
@@ -316,12 +316,12 @@ describe("Now", () => {
     const svg = draw(live());
     expect(Number(svg.querySelector(".spotnav-now-line[data-role='battery']")?.getAttribute("stroke-width"))).toBeCloseTo(lineWidth(1.5), 1);
     // Never under the battery's ring or the house's: from 31 px off the battery's centre to 51 px off the house's.
-    const ends = lineEnds({ x: 52, y: 248 }, { x: 180, y: 150 }, NODE_OUTER.battery, NODE_OUTER.house);
-    expect(Math.hypot(ends.a.x - 52, ends.a.y - 248)).toBeCloseTo(31);
+    const ends = lineEnds({ x: 46, y: 248 }, { x: 180, y: 150 }, NODE_OUTER.battery, NODE_OUTER.house);
+    expect(Math.hypot(ends.a.x - 46, ends.a.y - 248)).toBeCloseTo(31);
     expect(Math.hypot(ends.b.x - 180, ends.b.y - 150)).toBeCloseTo(51);
     const d = svg.querySelector(".spotnav-now-line[data-role='battery']")!.getAttribute("d")!;
     const [x0, y0] = d.slice(1).split("L")[0]!.split(" ").map(Number);
-    expect(Math.hypot(x0! - 52, y0! - 248)).toBeCloseTo(31, 0);
+    expect(Math.hypot(x0! - 46, y0! - 248)).toBeCloseTo(31, 0);
   });
 
   it("puts the kW above a horizontal line and on the outer side of a diagonal, half the width and 10 px off", () => {

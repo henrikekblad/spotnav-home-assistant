@@ -320,7 +320,8 @@ export function nowFigures(live: HouseNow | null, answer: HouseAnswer): NowFigur
     readings.push(["battery", live?.battery_kw ?? answer.battery?.now?.power_kw ?? null, false]);
   }
   if (has.car) {
-    readings.push(["car", live?.car_kw ?? null, false]);
+    // No car plugged in draws nothing, read or not (its charger may not be read yet after a restart).
+    readings.push(["car", live?.car_kw ?? (live?.car_connected === false ? 0 : null), false]);
   }
   const inward = new Map<NodeRole, boolean>(readings.map(([role, signed, inPositive]) => [role, signed !== null && signed !== 0 && (signed > 0) === inPositive]));
   const raw: NowLine[] = readings.map(([role, signed]) => {
@@ -331,7 +332,10 @@ export function nowFigures(live: HouseNow | null, answer: HouseAnswer): NowFigur
     const way = kw < STILL_KW ? "still" : inward.get(role) === true ? "in" : "out";
     return { role, kw, way, tone: toneOf(role, way), estimated: estimated.has(role) };
   });
-  const houseKw = live?.house_kw ?? null;
+  // The house from the lines where the answer has none but every line is read (a reading missing just after a
+  // restart): what comes in less what goes out, never below 0.
+  const signedIn = raw.reduce<number | null>((sum, line) => (sum === null || line.kw === null ? null : sum + (inward.get(line.role) === true ? line.kw : -line.kw)), 0);
+  const houseKw = live === null ? null : (live.house_kw ?? (signedIn === null ? null : Math.round(Math.max(0, signedIn) * 100) / 100));
   const anyEstimated = estimated.size > 0;
   const partsRaw: NowPart[] = [];
   if (live !== null && houseKw !== null) {
@@ -341,7 +345,15 @@ export function nowFigures(live: HouseNow | null, answer: HouseAnswer): NowFigur
     if (has.pool && live.pool_kw !== null) {
       partsRaw.push({ role: "pool", kw: live.pool_kw, estimated: estimated.has("pool") });
     }
-    const other = live.other_kw ?? Math.max(0, houseKw - partsRaw.reduce((sum, part) => sum + part.kw, 0));
+    if (live.house_kw === null) {
+      // Parts never larger than the house worked out from the lines.
+      let room = houseKw;
+      for (const part of partsRaw) {
+        part.kw = Math.min(part.kw, room);
+        room -= part.kw;
+      }
+    }
+    const other = (live.house_kw === null ? null : live.other_kw) ?? Math.max(0, houseKw - partsRaw.reduce((sum, part) => sum + part.kw, 0));
     partsRaw.push({ role: "other", kw: other, estimated: anyEstimated });
   }
   if (live === null || houseKw === null || raw.some((line) => line.kw === null)) {
@@ -478,20 +490,33 @@ export function headline(doc: Document, language: Language, answer: HouseAnswer,
 
 // ------------------------------------------------------------------------------------------------ the drawing
 
-/** A line's width (px in the drawing) for its power: `2 + √kW × 3.4`; a thin idle line below `STILL_KW`. */
-export function lineWidth(kw: number | null): number {
-  return kw === null || Math.abs(kw) < STILL_KW ? 1.5 : 2 + Math.sqrt(Math.abs(kw)) * 3.4;
+/** A line's width (px in the drawing) for its power: `(2 + √kW × 3.4) × k`, `k` the drawing's scale (`nowScale`);
+ * a thin idle line below `STILL_KW`. */
+export function lineWidth(kw: number | null, k = 1): number {
+  return (kw === null || Math.abs(kw) < STILL_KW ? 1.5 : 2 + Math.sqrt(Math.abs(kw)) * 3.4) * k;
 }
 
 /** The chevrons' scale on a line (their height at most 70 % of its width), `null` on a line too thin for them. */
-export function chevronScale(kw: number): number | null {
-  const scale = Math.min(1.25, (lineWidth(kw) * 0.7) / 9);
-  return scale < 0.3 ? null : scale;
+export function chevronScale(kw: number, k = 1): number | null {
+  const scale = Math.min(1.25 * k, (lineWidth(kw, k) * 0.7) / 9);
+  return scale < 0.3 * k ? null : scale;
 }
 
 /** The chevrons' speed (px/s along the line): faster with more power. */
-export function chevronSpeed(kw: number): number {
-  return (0.12 + Math.sqrt(Math.abs(kw)) * 0.06) * 60;
+export function chevronSpeed(kw: number, k = 1): number {
+  return (0.12 + Math.sqrt(Math.abs(kw)) * 0.06) * 60 * k;
+}
+
+/** The drawing's scale for its width: the approved drawing is 360 px wide; a wider card draws its nodes, rings, icons,
+ * lines and words larger, up to 1.45 times, the rest of the width spreading the nodes. */
+export function nowScale(width: number): number {
+  return Math.max(1, Math.min(1.45, width / 360));
+}
+
+/** The words' sizes (whole screen pixels, so they stay crisp at the drawing's scale of 1): captions, kW labels and
+ * the house's figure. */
+export function nowFontSizes(k: number): { caption: number; label: number; big: number } {
+  return { caption: Math.round(11.5 * k), label: Math.round(13 * k), big: Math.round(16 * k) };
 }
 
 interface Spot {
@@ -502,33 +527,38 @@ interface Spot {
 export interface FlowLayout {
   kind: "row" | "corners";
   width: number;
+  /** The scale of everything drawn (`nowScale`). */
+  k: number;
   /** The panel's height; the drawing reaches 20 px above it and 30 px below for the captions. */
   height: number;
   spots: Partial<Record<NodeRole | "house", Spot>>;
 }
 
-/** The drawing's width for the card's: as wide as the card, between 300 and 560 px. */
+/** The drawing's width for the card's: the card's whole width, between 300 and 640 px. */
 export function drawingWidth(width: number): number {
-  return Math.round(Math.max(300, Math.min(560, width)));
+  return Math.round(Math.max(300, Math.min(640, width)));
 }
 
 /** Where the nodes stand (see the module): one row for one or two outer nodes, fixed corners for three or four. */
 export function flowLayout(roles: NodeRole[], width: number): FlowLayout {
   const order: NodeRole[] = ["sun", "grid", "battery", "car"];
   const outer = order.filter((role) => roles.includes(role));
+  const k = nowScale(width);
   if (outer.length <= 2) {
-    const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 75 } };
+    const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 75 * k } };
     outer.forEach((role, index) => {
-      spots[role] = { x: index === 0 ? 44 : width - 44, y: 75 };
+      spots[role] = { x: index === 0 ? 44 * k : width - 44 * k, y: 75 * k };
     });
-    return { kind: "row", width, height: 150, spots };
+    return { kind: "row", width, k, height: 150 * k, spots };
   }
-  const corners: Record<NodeRole, Spot> = { sun: { x: 52, y: 52 }, grid: { x: width - 52, y: 52 }, battery: { x: 52, y: 248 }, car: { x: width - 52, y: 248 } };
-  const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 150 } };
+  // Out toward the card's edges, with room for the captions anchored inward.
+  const side = 46 * k;
+  const corners: Record<NodeRole, Spot> = { sun: { x: side, y: 52 * k }, grid: { x: width - side, y: 52 * k }, battery: { x: side, y: 248 * k }, car: { x: width - side, y: 248 * k } };
+  const spots: FlowLayout["spots"] = { house: { x: width / 2, y: 150 * k } };
   for (const role of outer) {
     spots[role] = corners[role];
   }
-  return { kind: "corners", width, height: 300, spots };
+  return { kind: "corners", width, k, height: 300 * k, spots };
 }
 
 /** How far out from its centre each node's drawing reaches: a line ends there. */
@@ -551,7 +581,7 @@ export function lineEnds(from: Spot, to: Spot, fromOuter: number, toOuter: numbe
 
 /** Where a line's kW stands (see the module): half its width and 10 px off its middle, above a horizontal line and on
  * the outer side of a diagonal (away from the drawing's middle). */
-export function labelPlace(a: Spot, b: Spot, kw: number, centreX: number): { x: number; y: number; anchor: "start" | "middle" | "end"; side: "above" | "outer" } {
+export function labelPlace(a: Spot, b: Spot, kw: number, centreX: number, k = 1): { x: number; y: number; anchor: "start" | "middle" | "end"; side: "above" | "outer" } {
   const d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
   const ux = (b.x - a.x) / d;
   const uy = (b.y - a.y) / d;
@@ -569,17 +599,17 @@ export function labelPlace(a: Spot, b: Spot, kw: number, centreX: number): { x: 
     nx = -nx;
     ny = -ny;
   }
-  const off = lineWidth(kw) / 2 + 10;
-  return { x: mx + nx * off, y: my + ny * off + 4, anchor: nx < -0.2 ? "end" : nx > 0.2 ? "start" : "middle", side: horizontal ? "above" : "outer" };
+  const off = lineWidth(kw, k) / 2 + 10 * k;
+  return { x: mx + nx * off, y: my + ny * off + 4 * k, anchor: nx < -0.2 ? "end" : nx > 0.2 ? "start" : "middle", side: horizontal ? "above" : "outer" };
 }
 
 /** Where a node's captions start (see the module): anchored inward near an edge, centred in the middle. */
-export function captionAnchor(x: number, width: number): { x: number; anchor: "start" | "middle" | "end" } {
+export function captionAnchor(x: number, width: number, k = 1): { x: number; anchor: "start" | "middle" | "end" } {
   if (x < width / 3) {
-    return { x: Math.max(4, x - 26), anchor: "start" };
+    return { x: Math.max(4, x - 26 * k), anchor: "start" };
   }
   if (x > (width * 2) / 3) {
-    return { x: Math.min(width - 4, x + 26), anchor: "end" };
+    return { x: Math.min(width - 4, x + 26 * k), anchor: "end" };
   }
   return { x, anchor: "middle" };
 }
@@ -688,13 +718,40 @@ function nodeCaptions(language: Language, role: NodeRole, answer: HouseAnswer, l
   return { state, today: t("today.car", { kwh: today === null ? "–" : kwhText(language, today) }) };
 }
 
+/** A caption's width estimate per character, in em (generous, so the words never meet). */
+export const CAPTION_EM = 0.55;
+
+/** The captions' font size: `wanted`, or smaller (not below 9 px) where the captions on one line (the top corners,
+ * the bottom corners, or a row's) would not fit the width beside each other. */
+export function captionSize(wanted: number, width: number, layout: FlowLayout, words: Map<NodeRole, Captions>): number {
+  const house = layout.spots.house!;
+  const groups: NodeRole[][] =
+    layout.kind === "row"
+      ? [Array.from(words.keys())]
+      : [Array.from(words.keys()).filter((role) => layout.spots[role]!.y < house.y), Array.from(words.keys()).filter((role) => layout.spots[role]!.y >= house.y)];
+  let size = wanted;
+  for (const group of groups) {
+    for (const kind of ["state", "today"] as const) {
+      const chars = group.reduce((sum, role) => sum + words.get(role)![kind].length, 0);
+      if (chars === 0) {
+        continue;
+      }
+      // From the left caption's start to the right one's end (`captionAnchor`), a gap between them.
+      const left = Math.min(...group.map((role) => layout.spots[role]!.x));
+      const room = group.length > 1 ? width - 2 * Math.max(4, left - 26 * layout.k) - 16 : width - 8;
+      size = Math.min(size, Math.floor(room / (CAPTION_EM * chars)));
+    }
+  }
+  return Math.max(9, size);
+}
+
 /** What makes two drawings the same drawing (the layout, each line's way and chevrons, the ring's parts): a patch
  * keeps it. */
 function signature(layout: FlowLayout, figures: NowFigures): string {
   return [
     layout.kind,
     layout.width,
-    ...figures.lines.map((line) => `${line.role}:${line.way}:${line.kw !== null && line.way !== "still" && chevronScale(line.kw) !== null ? "c" : ""}`),
+    ...figures.lines.map((line) => `${line.role}:${line.way}:${line.kw !== null && line.way !== "still" && chevronScale(line.kw, layout.k) !== null ? "c" : ""}`),
     ...figures.parts.filter((part) => part.kw > 0).map((part) => part.role),
   ].join("|");
 }
@@ -707,13 +764,21 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     figures.lines.map((line) => line.role),
     width,
   );
-  const top = -20;
-  const total = layout.height + 50;
+  const k = layout.k;
+  // The captions' size: the scale's, smaller only where the captions sharing a line would not fit beside each other.
+  const captionWords = new Map(figures.lines.map((line) => [line.role, nodeCaptions(language, line.role, answer, live, line)]));
+  const fonts = { ...nowFontSizes(k), caption: captionSize(nowFontSizes(k).caption, width, layout, captionWords) };
+  const top = Math.round(-20 * k);
+  const total = Math.round(layout.height + 50 * k);
   const root = svg(doc, "svg", { viewBox: `0 ${top} ${width} ${total}`, class: "spotnav-now-schematic", role: "img", "data-layout": layout.kind });
   root.dataset["sig"] = signature(layout, figures);
   root.style.width = "100%";
   root.style.maxWidth = `${width}px`;
   root.style.height = input.height === null || input.height === undefined ? "auto" : `${Math.round(input.height)}px`;
+  root.style.setProperty("--spotnav-now-k", String(Number(k.toFixed(3))));
+  root.style.setProperty("--spotnav-now-caption", `${fonts.caption}px`);
+  root.style.setProperty("--spotnav-now-label", `${fonts.label}px`);
+  root.style.setProperty("--spotnav-now-big", `${fonts.big}px`);
   const title = svg(doc, "title", { id: `${input.idPrefix}-now-title` });
   root.append(title);
   root.setAttribute("aria-labelledby", title.id);
@@ -740,7 +805,7 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     const spot = layout.spots[line.role]!;
     const flowing = line.kw !== null && line.way !== "still";
     // Drawn from the source to the target, so the chevrons run the way the power flows.
-    const ends = line.way === "out" ? lineEnds(house, spot, NODE_OUTER.house, NODE_OUTER[line.role]) : lineEnds(spot, house, NODE_OUTER[line.role], NODE_OUTER.house);
+    const ends = line.way === "out" ? lineEnds(house, spot, NODE_OUTER.house * k, NODE_OUTER[line.role] * k) : lineEnds(spot, house, NODE_OUTER[line.role] * k, NODE_OUTER.house * k);
     const d = `M${f1(ends.a.x)} ${f1(ends.a.y)}L${f1(ends.b.x)} ${f1(ends.b.y)}`;
     if (!flowing) {
       const idle = svg(doc, "path", { d, class: "spotnav-now-idle" });
@@ -749,7 +814,7 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
       continue;
     }
     const kw = line.kw!;
-    const w = lineWidth(kw);
+    const w = lineWidth(kw, k);
     const wire = svg(doc, "path", { d, class: "spotnav-now-line", "stroke-width": f1(w), filter: `url(#${lineShadow.id})` });
     wire.dataset["role"] = line.role;
     wire.dataset["tone"] = line.tone;
@@ -770,28 +835,28 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     });
     stripe.dataset["k"] = `stripe-${line.role}`;
     wires.append(stripe);
-    const scale = chevronScale(kw);
+    const scale = chevronScale(kw, k);
     if (scale !== null) {
       // Evenly spaced chevrons in the line's own frame, one spacing more than fit, the run moving one spacing per lap
       // and the frame clipped to the line, so they flow on without a jump.
-      const count = Math.max(2, Math.min(7, Math.round(ends.length / 14)));
+      const count = Math.max(2, Math.min(7, Math.round(ends.length / (14 * k))));
       const step = ends.length / count;
       const angle = (Math.atan2(ends.uy, ends.ux) * 180) / Math.PI;
       const clip = svg(doc, "clipPath", { id: `${input.idPrefix}-now-clip-${line.role}`, clipPathUnits: "userSpaceOnUse" });
-      clip.append(svg(doc, "rect", { x: 0, y: -12, width: f1(ends.length), height: 24 }));
+      clip.append(svg(doc, "rect", { x: 0, y: f1(-12 * k), width: f1(ends.length), height: f1(24 * k) }));
       defs.append(clip);
       const frame = svg(doc, "g", { class: "spotnav-now-chevrons", transform: `translate(${f1(ends.a.x)} ${f1(ends.a.y)}) rotate(${angle.toFixed(1)})`, "clip-path": `url(#${clip.id})` });
       frame.dataset["role"] = line.role;
       const run = svg(doc, "g", { class: "spotnav-now-run" });
       run.dataset["k"] = `run-${line.role}`;
       run.style.setProperty("--spotnav-now-step", `${f1(step)}px`);
-      run.style.animationDuration = `${(step / chevronSpeed(kw)).toFixed(2)}s`;
+      run.style.animationDuration = `${(step / chevronSpeed(kw, k)).toFixed(2)}s`;
       for (let index = -1; index < count; index += 1) {
         const chevron = svg(doc, "path", {
           d: "M-3,-4 L2,0 L-3,4",
           class: "spotnav-now-chevron",
           transform: `translate(${f1((index + 0.5) * step)} 0) scale(${scale.toFixed(2)})`,
-          "stroke-width": ((2 / scale) * Math.min(1, scale * 1.4)).toFixed(2),
+          "stroke-width": ((2 / scale) * Math.min(1, (scale / k) * 1.4) * k).toFixed(2),
         });
         chevron.dataset["k"] = `chevron-${line.role}-${index + 1}`;
         run.append(chevron);
@@ -799,7 +864,7 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
       frame.append(run);
       wires.append(frame);
     }
-    const place = labelPlace(ends.a, ends.b, kw, house.x);
+    const place = labelPlace(ends.a, ends.b, kw, house.x, k);
     const label = Object.assign(svg(doc, "text", { x: f1(place.x), y: f1(place.y), "text-anchor": place.anchor, class: "spotnav-now-kw" }), { textContent: kwText(language, kw, line.estimated) });
     label.dataset["role"] = line.role;
     label.dataset["side"] = place.side;
@@ -818,25 +883,26 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     group.dataset["k"] = `node-${line.role}`;
     const soc = line.role === "battery" ? (live?.soc_pct ?? answer.battery?.soc_pct ?? null) : null;
     if (line.role === "battery") {
-      const around = 2 * Math.PI * SOC_R;
-      group.append(svg(doc, "circle", { r: SOC_R, class: "spotnav-now-soc-track" }));
-      const arc = svg(doc, "circle", { r: SOC_R, class: "spotnav-now-soc", transform: "rotate(-90)", "stroke-dasharray": `${f1((around * Math.max(0, Math.min(100, soc ?? 0))) / 100)} ${f1(around)}` });
+      const around = 2 * Math.PI * SOC_R * k;
+      group.append(svg(doc, "circle", { r: f1(SOC_R * k), class: "spotnav-now-soc-track" }));
+      const arc = svg(doc, "circle", { r: f1(SOC_R * k), class: "spotnav-now-soc", transform: "rotate(-90)", "stroke-dasharray": `${f1((around * Math.max(0, Math.min(100, soc ?? 0))) / 100)} ${f1(around)}` });
       arc.dataset["k"] = "soc";
       group.append(arc);
     }
-    group.append(svg(doc, "circle", { r: NODE_R, class: "spotnav-now-disc", filter: nodeFilter }), svg(doc, "circle", { r: NODE_R - 1.5, fill: lightFill, class: "spotnav-now-light" }));
+    group.append(svg(doc, "circle", { r: f1(NODE_R * k), class: "spotnav-now-disc", filter: nodeFilter }), svg(doc, "circle", { r: f1((NODE_R - 1.5) * k), fill: lightFill, class: "spotnav-now-light" }));
     const glyph = icon(doc, line.role, soc);
-    glyph.setAttribute("transform", "translate(-12 -12)");
+    glyph.setAttribute("transform", `translate(${f1(-12 * k)} ${f1(-12 * k)}) scale(${k.toFixed(3)})`);
     group.append(glyph);
     root.append(group);
-    const words = nodeCaptions(language, line.role, answer, live, line);
+    const words = captionWords.get(line.role)!;
     const below = spot.y >= house.y;
-    const at = captionAnchor(spot.x, width);
+    const at = captionAnchor(spot.x, width, k);
+    const step = fonts.caption + 3;
     [
       [words.state, "spotnav-now-state", "state"],
       [words.today, "spotnav-now-today", "today"],
     ].forEach(([textValue, className, kind], index) => {
-      const y = below ? spot.y + 42 + index * 14 : spot.y - 31 - (1 - index) * 14;
+      const y = below ? spot.y + 42 * k + index * step : spot.y - 31 * k - (1 - index) * step;
       const caption = Object.assign(svg(doc, "text", { x: f1(at.x), y: f1(y), "text-anchor": at.anchor, class: className! }), { textContent: textValue! });
       caption.dataset["role"] = line.role;
       caption.dataset["tone"] = line.role === "grid" ? "import" : line.tone;
@@ -847,8 +913,9 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
   }
   // The house: the ring of its parts, the whole house in the middle and its day under the ring.
   const home = svg(doc, "g", { class: "spotnav-now-house", transform: `translate(${f1(house.x)} ${f1(house.y)})` });
-  home.append(svg(doc, "circle", { r: RING_R, class: "spotnav-now-ring-track", "stroke-width": RING_W, filter: nodeFilter }));
-  const around = 2 * Math.PI * RING_R;
+  const ringR = RING_R * k;
+  home.append(svg(doc, "circle", { r: f1(ringR), class: "spotnav-now-ring-track", "stroke-width": f1(RING_W * k), filter: nodeFilter }));
+  const around = 2 * Math.PI * ringR;
   const whole = figures.parts.reduce((sum, part) => sum + part.kw, 0);
   let done = 0;
   for (const part of figures.parts) {
@@ -857,9 +924,9 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     }
     const share = part.kw / whole;
     const segment = svg(doc, "circle", {
-      r: RING_R,
+      r: f1(ringR),
       class: "spotnav-now-ring",
-      "stroke-width": RING_W,
+      "stroke-width": f1(RING_W * k),
       transform: "rotate(-90)",
       "stroke-dasharray": `${f1(Math.max(0.5, around * share - (share < 1 ? 2 : 0)))} ${f1(around)}`,
       "stroke-dashoffset": f1(-around * done),
@@ -870,24 +937,24 @@ export function renderSchematic(input: NowInput, figures: NowFigures = nowFigure
     done += share;
   }
   home.append(
-    svg(doc, "circle", { r: INNER_R, class: "spotnav-now-inner" }),
-    svg(doc, "circle", { r: INNER_R, fill: lightFill, class: "spotnav-now-light" }),
-    svg(doc, "circle", { r: RING_R, class: "spotnav-now-sheen", transform: "translate(-1 -1.5)" }),
+    svg(doc, "circle", { r: f1(INNER_R * k), class: "spotnav-now-inner" }),
+    svg(doc, "circle", { r: f1(INNER_R * k), fill: lightFill, class: "spotnav-now-light" }),
+    svg(doc, "circle", { r: f1(ringR), class: "spotnav-now-sheen", transform: "translate(-1 -1.5)" }),
   );
   const houseIcon = icon(doc, "house", null);
-  houseIcon.setAttribute("transform", "translate(-7.4 -24.4) scale(0.62)");
+  houseIcon.setAttribute("transform", `translate(${f1(-7.44 * k)} ${f1(-24.44 * k)}) scale(${(0.62 * k).toFixed(3)})`);
   houseIcon.dataset["tone"] = "house";
   home.append(houseIcon);
   const houseKw = figures.house.kw;
-  const big = Object.assign(svg(doc, "text", { x: 0, y: 8, "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: houseKw === null ? "–" : kwText(language, houseKw, figures.house.estimated) });
+  const big = Object.assign(svg(doc, "text", { x: 0, y: f1(8 * k), "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: houseKw === null ? "–" : kwText(language, houseKw, figures.house.estimated) });
   big.dataset["k"] = "kw-house";
-  const name = Object.assign(svg(doc, "text", { x: 0, y: 22, "text-anchor": "middle", class: "spotnav-now-house-name" }), { textContent: translate(language, "house.nowTab.houseName") });
+  const name = Object.assign(svg(doc, "text", { x: 0, y: f1(8 * k + fonts.caption + 2), "text-anchor": "middle", class: "spotnav-now-house-name" }), { textContent: translate(language, "house.nowTab.houseName") });
   home.append(big, name);
   root.append(home);
   const flow = answer.energy_flow;
   const day = flow === null ? null : (flowKwh(flow, "use", "house") ?? 0) + (flowKwh(flow, "use", "heat") ?? 0);
   // In a row, under the outer nodes' two captions, so the three never meet.
-  const houseTodayY = house.y + RING_R + (layout.kind === "row" ? 30 : 19);
+  const houseTodayY = layout.kind === "row" ? house.y + 42 * k + 2 * (fonts.caption + 3) : house.y + ringR + 19 * k;
   const houseToday = Object.assign(svg(doc, "text", { x: f1(house.x), y: f1(houseTodayY), "text-anchor": "middle", class: "spotnav-now-today" }), {
     textContent: translate(language, "house.nowTab.today.house", { kwh: day === null ? "–" : kwhText(language, day) }),
   });
@@ -1086,7 +1153,7 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
   .spotnav-now-disc {
     fill: var(--ha-card-background, var(--card-background-color, #fff));
     stroke: var(--spotnav-now-tone);
-    stroke-width: 2.5;
+    stroke-width: calc(2.5px * var(--spotnav-now-k, 1));
   }
   .spotnav-now-icon path, .spotnav-now-icon circle, .spotnav-now-icon rect, .spotnav-now-icon line {
     fill: none;
@@ -1105,11 +1172,11 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
     fill: none;
     stroke: var(--spotnav-energy-ring);
   }
-  .spotnav-now-soc-track { stroke-width: 4; }
+  .spotnav-now-soc-track { stroke-width: calc(4px * var(--spotnav-now-k, 1)); }
   .spotnav-now-soc {
     fill: none;
     stroke: var(--spotnav-energy-battery);
-    stroke-width: 4;
+    stroke-width: calc(4px * var(--spotnav-now-k, 1));
     stroke-linecap: round;
   }
   .spotnav-now-ring {
@@ -1132,26 +1199,26 @@ ${TONES.map(([tone, meaning]) => `  .spotnav-now-flow [data-tone="${tone}"], .sp
     font-weight: 600;
   }
   .spotnav-now-kw {
-    font-size: 13px;
+    font-size: var(--spotnav-now-label, 13px);
     stroke: var(--ha-card-background, var(--card-background-color, #fff));
     stroke-width: 5px;
     stroke-linejoin: round;
     paint-order: stroke;
   }
-  .spotnav-now-house-kw { font-size: 16px; font-weight: 700; }
+  .spotnav-now-house-kw { font-size: var(--spotnav-now-big, 16px); font-weight: 700; }
   /* The captions: plain, crisp words, never outlined or shadowed. */
   .spotnav-now-house-name, .spotnav-now-state, .spotnav-now-today, .spotnav-now-house-kw {
     stroke: none;
     filter: none;
   }
   .spotnav-now-house-name, .spotnav-now-state {
-    font-size: 11px;
+    font-size: var(--spotnav-now-caption, 12px);
     font-weight: 400;
     fill: var(--secondary-text-color, #727272);
   }
   /* Today's figures in their node's colour, a third toward the text colour, so they keep 4.5:1 on both cards. */
   .spotnav-now-today {
-    font-size: 11px;
+    font-size: var(--spotnav-now-caption, 12px);
     font-weight: 600;
     fill: color-mix(in srgb, var(--spotnav-now-tone, var(--secondary-text-color, #727272)) 68%, var(--primary-text-color, #212121));
   }

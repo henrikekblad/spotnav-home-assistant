@@ -74,8 +74,8 @@ describe("the Now tab's captions", () => {
         for (const style of [state, today]) {
           expect(unstroked(style.getPropertyValue("stroke")), role).toBe(true);
           expect(style.getPropertyValue("filter"), role).toBe("none");
-          // Whole screen pixels, the drawing at its own width (no scaling to blur them).
-          expect(style.getPropertyValue("font-size"), role).toBe("11px");
+          // Whole screen pixels set on the drawing (`nowFontSizes`), the drawing at its own width (no scaling).
+          expect(style.getPropertyValue("font-size"), role).toBe("var(--spotnav-now-caption, 12px)");
         }
       }
       const house = getComputedStyle(root.querySelector("[data-k='today-house']")!);
@@ -84,6 +84,7 @@ describe("the Now tab's captions", () => {
       const drawing = root.querySelector<SVGSVGElement>(".spotnav-now-schematic")!;
       expect(drawing.getAttribute("viewBox")!.split(" ")[2]).toBe("340");
       expect(drawing.style.maxWidth).toBe("340px");
+      expect(drawing.style.getPropertyValue("--spotnav-now-caption")).toBe("12px");
     });
   }
 });
