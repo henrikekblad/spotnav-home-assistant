@@ -1,0 +1,59 @@
+{
+  "api_version": 1,
+  "banner": true,
+  "review": {
+    "money": {
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre"
+    },
+    "pages": [
+      {
+        "id": "cover"
+      },
+      {
+        "battery": null,
+        "car": 115640,
+        "estimated": true,
+        "heat": null,
+        "id": "saved",
+        "starts": {
+          "battery": null,
+          "car": null,
+          "heat": null
+        },
+        "total": 115640
+      },
+      {
+        "charges": 209,
+        "cheap_share_pct": 86,
+        "cheapest": {
+          "date": "2026-01-01",
+          "price": 50.0
+        },
+        "estimated": false,
+        "id": "car",
+        "kwh": 2438,
+        "since": null
+      },
+      {
+        "bought_kwh": 0.3,
+        "id": "expensive",
+        "price": 793.0,
+        "since": null,
+        "start": "2026-01-28T08:00:00+01:00"
+      },
+      {
+        "id": "thanks"
+      }
+    ],
+    "partial": false,
+    "since": null,
+    "through": "2026-12-14",
+    "year": 2026
+  },
+  "row": true,
+  "site_id": "site_villa",
+  "state": "ready",
+  "year": 2026
+}
