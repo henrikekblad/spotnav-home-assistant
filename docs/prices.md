@@ -58,7 +58,11 @@ source an area uses follows from what you have set up; there is no setting to ch
   checks it once when you save it.
 - **PVPC** reads the prices the PVPC integration already holds. **Octopus Energy** reads your meter's rates
   from the Octopus Energy integration, whatever the tariff, so they are your own tariff's prices; with an export
-  meter there, its rates are what a sold kWh earns. See [Great Britain](supported.md#great-britain-octopus-energy).
+  meter there, its rates are what a sold kWh earns. On a tariff with the same rates every day (Flux, Go, Cosy,
+  fixed), tomorrow's rates reach the integration only in the afternoon, so until then the battery plan repeats
+  today's rates for tomorrow (import and export) and sees tonight's cheap hours; these provisional prices are
+  replaced as soon as the real ones arrive and never count in the day's record or review. Agile and Intelligent
+  Octopus wait for the published rates. See [Great Britain](supported.md#great-britain-octopus-energy).
 - **Zonneplan** reads the tariff the Zonneplan integration already holds, for the area
   *Netherlands – Zonneplan*. That tariff already contains Zonneplan's purchase fee, energy tax and VAT, so
   VAT and tax show as *Included in the price* and nothing is added. The area *Netherlands* stays the spot
@@ -111,11 +115,11 @@ Prices for tomorrow are published once a day, at a time that depends on the sour
 |---|---|
 | Nord Pool through Home Assistant | about 12:45 Brussels time |
 | ENTSO-E day-ahead (your key) | about 13:00 Brussels time |
-| Octopus Energy (Great Britain) | Agile about 16:00 UK time; a tariff known in advance (Flux, Go, fixed) early morning |
+| Octopus Energy (Great Britain) | Agile about 16:00 UK time; a tariff known in advance (Flux, Go, fixed) in the afternoon, planned on today's rates until then |
 | Zonneplan (Netherlands – Zonneplan) | in the afternoon, after the 13:00 Brussels auction |
 | Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
 
-SpotNav knows each source's time, so it knows when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published; see
+SpotNav knows each source's time, so it knows when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published (the one exception is the battery plan on an Octopus tariff with the same rates every day, above); see
 [Waiting for tomorrow's prices](#waiting-for-tomorrows-prices).
 
 ## What you pay
