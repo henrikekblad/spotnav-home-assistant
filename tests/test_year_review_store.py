@@ -56,6 +56,24 @@ def test_a_day_s_price_part_outlives_its_fuse_count_and_a_saving_merge_and_is_ke
     assert again.day_parts[day] == store.day_parts[day]
 
 
+def test_the_merged_days_are_kept_as_runs_round_trip_and_are_trimmed_with_the_parts() -> None:
+    store = YearReviewStore(None, None)  # type: ignore[arg-type]
+    old = TODAY - timedelta(days=KEPT_DAYS + 1)
+    days = [old, date(2026, 11, 1), date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 10)]
+    store.merge_parts({date(2026, 11, 2): DayParts(car=1.0)}, TODAY, merged=days)
+    assert store.merged == set(days[1:])
+    snapshot = store._snapshot()
+    assert snapshot["merged"] == [["2026-11-01", "2026-11-03"], ["2026-11-10", "2026-11-10"]]
+    again = YearReviewStore(None, None)  # type: ignore[arg-type]
+    again.restore(snapshot)
+    assert again.merged == store.merged
+    # A store kept before the merged days were starts with none.
+    del snapshot["merged"]
+    fresh = YearReviewStore(None, None)  # type: ignore[arg-type]
+    fresh.restore(snapshot)
+    assert fresh.merged == set() and fresh.day_parts == store.day_parts
+
+
 def test_each_person_s_seen_state_is_their_own_and_a_new_year_starts_unseen() -> None:
     store = YearReviewStore(None, None)  # type: ignore[arg-type]
     store.mark("anna", 2026, "dismissed")

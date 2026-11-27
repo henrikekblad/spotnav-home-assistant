@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 import yaml
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import ServiceValidationError, Unauthorized
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
 
 from custom_components.spotnav.const import DOMAIN
 from custom_components.spotnav.runtime import site_data
@@ -73,6 +73,65 @@ async def test_a_year_with_no_day_behind_it_is_refused_and_named(hass: HomeAssis
         await _show(hass, {"year": 2027})
     assert raised.value.translation_key == "year_review_no_year"
     assert raised.value.translation_placeholders == {"year": "2027"}
+
+
+async def test_without_a_year_the_refusal_names_the_year_the_rule_chose(
+    hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.year_review.runtime import YearReviewRefusal
+
+    review = await _site(hass, freezer)
+
+    async def refuse(year: int) -> Any:
+        raise YearReviewRefusal("no_year", "The year has no day behind it yet")
+
+    monkeypatch.setattr(review, "async_run", refuse)
+    with pytest.raises(ServiceValidationError) as raised:
+        await _show(hass)
+    assert raised.value.translation_key == "year_review_no_year"
+    assert raised.value.translation_placeholders == {"year": "2026"}
+
+
+async def test_a_site_whose_review_is_not_loaded_or_that_fails_is_refused_by_its_own_words(
+    hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.year_review.runtime import YearReviewRefusal
+
+    review = await _site(hass, freezer)
+
+    async def not_loaded(year: int) -> Any:
+        raise YearReviewRefusal("not_loaded", "The site is not loaded")
+
+    monkeypatch.setattr(review, "async_run", not_loaded)
+    with pytest.raises(ServiceValidationError) as raised:
+        await _show(hass)
+    assert raised.value.translation_key == "year_review_not_loaded"
+
+    async def broken(year: int) -> Any:
+        raise ValueError("a bug")
+
+    monkeypatch.setattr(review, "async_run", broken)
+    with pytest.raises(HomeAssistantError) as failed:
+        await _show(hass, {"year": 2026})
+    assert not isinstance(failed.value, ServiceValidationError)
+    assert failed.value.translation_key == "year_review_failed"
+    assert failed.value.translation_placeholders == {"year": "2026"}
+
+    data = site_data(hass, review.entry_id)
+    monkeypatch.setattr(data, "year_review", None)
+    with pytest.raises(ServiceValidationError) as raised:
+        await _show(hass)
+    assert raised.value.translation_key == "year_review_not_loaded"
+
+
+def test_the_refusals_are_worded_in_every_language() -> None:
+    for language in ("da", "de", "en", "es", "fi", "fr", "nb", "nl", "sv"):
+        exceptions = json.loads((PACKAGE / "translations" / f"{language}.json").read_text(encoding="utf-8"))[
+            "exceptions"
+        ]
+        for key in ("year_review_no_year", "year_review_failed"):
+            assert "{year}" in exceptions[key]["message"], (language, key)
+        assert exceptions["year_review_not_loaded"]["message"], language
 
 
 async def test_only_an_administrator_or_an_automation_may_show_it(

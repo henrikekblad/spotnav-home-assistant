@@ -1099,6 +1099,12 @@
     },
     "year_review_no_year": {
       "message": "Aún no hay resumen de {year}: el año no tiene ningún día detrás."
+    },
+    "year_review_not_loaded": {
+      "message": "La instalación de SpotNav no está cargada, así que no se puede mostrar su resumen del año. Vuelve a cargar la instalación e inténtalo de nuevo."
+    },
+    "year_review_failed": {
+      "message": "No se pudo calcular el resumen de {year}. El registro explica por qué; se conserva el resumen anterior."
     }
   },
   "services": {

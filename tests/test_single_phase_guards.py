@@ -230,6 +230,25 @@ async def test_a_charger_on_several_phases_of_a_single_phase_site_stops_the_site
     assert fixed.site_phases == PHASES and fixed.result.state == "observing"
 
 
+async def test_the_conflict_stands_until_a_setting_it_was_judged_on_changes(hass: HomeAssistant) -> None:
+    """Judged on the settings' values, not the settings object: a change elsewhere (the chargers' order, kept in the
+    same settings) leaves it standing, a corrected charger wiring in the same settings clears it."""
+    _entry, site, clock = await _single_phase_site(hass)
+    _car(hass, 10, 10, 10)
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    clock["now"] += PHASE_CONFLICT_HOLD_S + 1
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site.result.reason == REASON_PHASE_CONFLICT
+    site.config["priority"] = ["car"]
+    clock["now"] += 1
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site.result.reason == REASON_PHASE_CONFLICT
+    site.config["phase_wiring"] = {"car": {"phases": 1, "phase": "L1", "measured_current_source": None}}
+    clock["now"] += 1
+    site._recompute(schedule_apply=False)  # noqa: SLF001
+    assert site.result.reason != REASON_PHASE_CONFLICT and _issue(hass) is None
+
+
 async def test_a_short_reading_on_several_phases_is_no_conflict(hass: HomeAssistant) -> None:
     _entry, site, clock = await _single_phase_site(hass)
     _car(hass, 10, 10, 10)

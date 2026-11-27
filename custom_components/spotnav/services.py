@@ -439,17 +439,31 @@ async def _async_show_year_review(hass: HomeAssistant, call: ServiceCall) -> Ser
     data = site_data(hass, entry.entry_id)
     review = None if data is None else data.year_review
     if review is None:
-        raise _export_refusal("export_no_site", "There is no loaded SpotNav site")
+        raise _export_refusal("year_review_not_loaded", "The SpotNav site's year review is not loaded")
     year = call.data.get("year")
+    if year is None:
+        year = review.default_year()
     try:
         return await review.async_show(year, call.data["reset"])
     except YearReviewRefusal as refusal:
+        if refusal.code == "not_loaded":
+            raise _export_refusal("year_review_not_loaded", f"No year review for {year}: {refusal}") from None
         raise ServiceValidationError(
             f"No year review for {year}: {refusal}",
             translation_domain=DOMAIN,
             translation_key="year_review_no_year",
             translation_placeholders={"year": str(year)},
         ) from None
+    except HomeAssistantError:
+        raise
+    except Exception as err:
+        _LOGGER.exception("SpotNav site %s: the year review of %s could not be worked out", entry.entry_id, year)
+        raise HomeAssistantError(
+            f"The year review of {year} could not be worked out: {err}",
+            translation_domain=DOMAIN,
+            translation_key="year_review_failed",
+            translation_placeholders={"year": str(year)},
+        ) from err
 
 
 #: A field test without unplugging the car: a test push to the paired app, a test message to the

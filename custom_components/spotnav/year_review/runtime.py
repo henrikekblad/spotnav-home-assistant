@@ -26,7 +26,9 @@ missing day is then not taken for one without prices.
   its hours kept; the Energy dashboard's meters and the chargers' registers from the recorder's long-term statistics
   in the recorder's executor, `recorder.get_instance(hass).async_add_executor_job`).
 * What SpotNav saved per day: `api/saving.async_day_savings` (the sessions with their hours from the same statistics,
-  cached once settled; the battery's day money and the heat's reviews in memory).
+  cached once settled; the battery's day money and the heat's reviews in memory), `MERGE_CHUNK` consecutive days a
+  loop turn, yielding between. The review merges only the days the store has not merged yet (`store.merged`, kept
+  across restarts) and the last `MERGE_DAYS` again, so a restart in December does not merge the whole year again.
 * The sessions (the session store, costed with the current settings, its own cache), the year store's day parts (the
   prices among them), the battery's day money and capacity, the site's set-up day and its chargers' first live
   sessions.
@@ -90,6 +92,8 @@ PRICE_DAYS: Final = 366
 PRICE_RETRY_DAYS: Final = 7
 #: The days of price parts worked out in one loop turn.
 PRICE_BATCH: Final = 7
+#: The days of savings merged in one loop turn (a month: the sessions' price slots and hours of that month).
+MERGE_CHUNK: Final = 31
 #: How long the service's showing offers the banner and the Support row.
 FORCED_FOR: Final = timedelta(days=7)
 _LOCK: Final = f"{DOMAIN}_year_review_lock"
@@ -232,17 +236,27 @@ class SiteYearReview:
         return review
 
     async def _async_merge(self, days: list[date], today: date) -> None:
+        """Merge the savings of `days` (in order) into the store, `MERGE_CHUNK` consecutive days a loop turn."""
         from ..api.saving import async_day_savings  # noqa: PLC0415 - the API imports the site
 
         await self._async_merge_prices(today)
-        savings, _since = await async_day_savings(self.hass, self.entry_id, self._controller, days)
-        first, last = min(days), max(days)
-        estimates = {
-            day: value
-            for day, value in estimate_days(self._sessions(), time_zones.require_zone(self._tz)).items()
-            if first <= day <= last
-        }
-        self.store.merge_parts(day_parts_of(savings, estimates), today)
+        if not days:
+            return
+        all_estimates = estimate_days(self._sessions(), time_zones.require_zone(self._tz))
+        for chunk in _batches(days, MERGE_CHUNK):
+            if self._closed:
+                return
+            savings, _since = await async_day_savings(self.hass, self.entry_id, self._controller, chunk)
+            wanted = set(chunk)
+            estimates = {day: value for day, value in all_estimates.items() if day in wanted}
+            self.store.merge_parts(day_parts_of(savings, estimates), today, merged=chunk)
+            await asyncio.sleep(0)
+
+    def _merge_due(self, days: list[date], today: date) -> list[date]:
+        """The days of `days` the review merges: those not merged yet, and the last `MERGE_DAYS` again (their
+        sources may still change)."""
+        merged = self.store.merged
+        return [day for day in days if day not in merged or (today - day).days <= MERGE_DAYS]
 
     async def _async_merge_prices(self, today: date) -> None:
         """Work out the price part of each finished day that is due (see the module), `PRICE_BATCH` days a turn."""
@@ -254,7 +268,7 @@ class SiteYearReview:
             if self._price_due(day, today)
         ]
         # Newest first: yesterday's says whether the prices have settled.
-        for batch in reversed(_batches(due)):
+        for batch in reversed(_batches(due, PRICE_BATCH)):
             if self._closed:
                 return
             slots = self._read_price_slots(batch[0], batch[-1] + timedelta(days=1))
@@ -320,7 +334,8 @@ class SiteYearReview:
         first, through = bounds
         self.running = True
         try:
-            await self._async_merge(Period(PERIOD_YEAR, first, through + timedelta(days=1)).days(), today)
+            days = Period(PERIOD_YEAR, first, through + timedelta(days=1)).days()
+            await self._async_merge(self._merge_due(days, today), today)
             inputs = await self._async_inputs(year, today, first, through)
             review = await self.hass.async_add_executor_job(compute_review, inputs)
         finally:
@@ -413,6 +428,10 @@ class SiteYearReview:
             review=self.store.review if ready else None,
         )
 
+    def default_year(self) -> int:
+        """The year the service reviews when none is named: the year rule's for today."""
+        return review_year(self.today())
+
     async def async_show(self, year: int | None, reset: bool) -> dict[str, Any]:
         """The service: work the review out now, offer it for `FORCED_FOR`, forget who saw it (`reset`)."""
         now = self.now()
@@ -425,11 +444,11 @@ class SiteYearReview:
         return {"site_id": self.entry_id, "year": chosen, "forced_until": until.isoformat(), "review": review}
 
 
-def _batches(days: list[date]) -> list[list[date]]:
-    """`days` (in order) as runs of consecutive days, `PRICE_BATCH` at most each."""
+def _batches(days: list[date], size: int) -> list[list[date]]:
+    """`days` (in order) as runs of consecutive days, `size` at most each."""
     out: list[list[date]] = []
     for day in days:
-        if out and len(out[-1]) < PRICE_BATCH and out[-1][-1] + timedelta(days=1) == day:
+        if out and len(out[-1]) < size and out[-1][-1] + timedelta(days=1) == day:
             out[-1].append(day)
         else:
             out.append([day])

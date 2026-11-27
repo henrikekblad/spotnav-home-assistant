@@ -2,7 +2,7 @@
 (`debug_day.DayStore`, `off_loop`):
 
     {schema, year, computed_at, through, review, day_parts: {date: {battery, car, car_est, heat, fuse, price}},
-     fuse_since, users: {user_id: {year, viewed, dismissed}}, phones: {phone key: {year, viewed, dismissed}},
+     merged: [[first, last], ...], fuse_since, users: {user_id: {year, viewed, dismissed}}, phones: {phone key: {year, viewed, dismissed}},
      forced_until}
 
 * **The review** last worked out (`year`, `through`, `computed_at`, `review`: `year_review/compute.py`'s shape), read
@@ -14,6 +14,9 @@
   `fuse_since`, the day the counter started on this site. Each day's `price` (`compute.PriceDay`, about 500 bytes
   for a day of quarters) is what the review reads of that day's prices, worked out once the day is over with that
   day's fees (`runtime.SiteYearReview._async_merge_prices`).
+* **The merged days** (`merged`, kept as runs of days): the days whose savings have been merged in (`merge_parts`'s
+  `merged`), whether or not they had a part, so the review merges only the days it has not yet (and the recent ones
+  again) after a restart, not the whole year. Trimmed with the parts.
 * **Each person's seen state** (`users`, by Home Assistant user id): whether they opened the review of `year`
   (`viewed`) or closed its banner (`dismissed`); a review of another year starts unseen. `reset_users` forgets all,
   the phones' too.
@@ -28,7 +31,7 @@ A store that cannot be read starts empty. Never raises into the site.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 import logging
@@ -68,6 +71,17 @@ def _year(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and 2000 <= value <= 2200 else None
 
 
+def _runs(days: Iterable[date]) -> list[tuple[date, date]]:
+    """`days` as runs of consecutive days, `(first, last)` each, in order."""
+    out: list[tuple[date, date]] = []
+    for day in sorted(days):
+        if out and out[-1][1] + timedelta(days=1) == day:
+            out[-1] = (out[-1][0], day)
+        else:
+            out.append((day, day))
+    return out
+
+
 def _seen_states(raw: Any) -> dict[str, dict[str, Any]]:
     """The kept seen states (`users` or `phones`), each with a year; anything else is left out."""
     states: dict[str, dict[str, Any]] = {}
@@ -91,6 +105,7 @@ class YearReviewStore:
         self.computed_at: datetime | None = None
         self.review: dict[str, Any] | None = None
         self.day_parts: dict[date, DayParts] = {}
+        self.merged: set[date] = set()
         self.fuse_since: date | None = None
         self.users: dict[str, dict[str, Any]] = {}
         self.phones: dict[str, dict[str, Any]] = {}
@@ -110,6 +125,7 @@ class YearReviewStore:
             "computed_at": None if self.computed_at is None else self.computed_at.isoformat(),
             "review": self.review,
             "day_parts": {day.isoformat(): parts.as_dict() for day, parts in sorted(self.day_parts.items())},
+            "merged": [[first.isoformat(), last.isoformat()] for first, last in _runs(self.merged)],
             "fuse_since": None if self.fuse_since is None else self.fuse_since.isoformat(),
             "users": {user: dict(state) for user, state in self.users.items()},
             "phones": {phone: dict(state) for phone, state in self.phones.items()},
@@ -131,6 +147,14 @@ class YearReviewStore:
             found = DayParts.from_dict(item)
             if day is not None and found is not None:
                 self.day_parts[day] = found
+        merged = raw.get("merged")
+        for run in merged if isinstance(merged, list) else ():
+            if not isinstance(run, list) or len(run) != 2:
+                continue
+            first, last = _date(run[0]), _date(run[1])
+            if first is None or last is None or not 0 <= (last - first).days <= KEPT_DAYS:
+                continue
+            self.merged.update(first + timedelta(days=offset) for offset in range((last - first).days + 1))
         self.fuse_since = _date(raw.get("fuse_since"))
         self.users = _seen_states(raw.get("users"))
         self.phones = _seen_states(raw.get("phones"))
@@ -165,14 +189,17 @@ class YearReviewStore:
     # ------------------------------------------------------------------------------------------------ changes
 
     @callback
-    def merge_parts(self, parts: Mapping[date, DayParts], today: date) -> None:
-        """Lay `parts` over the kept days (`DayParts.merged`: nothing is taken away) and trim to `KEPT_DAYS`."""
+    def merge_parts(self, parts: Mapping[date, DayParts], today: date, merged: Iterable[date] = ()) -> None:
+        """Lay `parts` over the kept days (`DayParts.merged`: nothing is taken away), note the `merged` days' savings
+        as merged in, and trim to `KEPT_DAYS`."""
         for day, newer in parts.items():
             held = self.day_parts.get(day)
             self.day_parts[day] = newer if held is None else held.merged(newer)
+        self.merged.update(merged)
         oldest = today - timedelta(days=KEPT_DAYS)
         for day in [day for day in self.day_parts if day < oldest]:
             del self.day_parts[day]
+        self.merged = {day for day in self.merged if day >= oldest}
         self._changed()
 
     @callback

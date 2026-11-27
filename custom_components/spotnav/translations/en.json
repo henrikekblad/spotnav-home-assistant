@@ -1099,6 +1099,12 @@
     },
     "year_review_no_year": {
       "message": "There is no review of {year} yet: the year has no day behind it."
+    },
+    "year_review_not_loaded": {
+      "message": "The SpotNav site is not loaded, so its year review cannot be shown. Reload the site and try again."
+    },
+    "year_review_failed": {
+      "message": "The review of {year} could not be worked out. The log says why; the review before it is kept."
     }
   },
   "services": {

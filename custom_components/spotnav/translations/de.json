@@ -1099,6 +1099,12 @@
     },
     "year_review_no_year": {
       "message": "Für {year} gibt es noch keinen Rückblick: Das Jahr hat noch keinen Tag hinter sich."
+    },
+    "year_review_not_loaded": {
+      "message": "Der SpotNav-Standort ist nicht geladen, daher kann sein Jahresrückblick nicht gezeigt werden. Lade den Standort neu und versuche es noch einmal."
+    },
+    "year_review_failed": {
+      "message": "Der Rückblick auf {year} konnte nicht erstellt werden. Das Protokoll nennt den Grund; der vorige Rückblick bleibt erhalten."
     }
   },
   "services": {

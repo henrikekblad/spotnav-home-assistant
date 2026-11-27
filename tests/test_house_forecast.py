@@ -854,7 +854,11 @@ async def test_a_battery_site_fills_the_hours_the_tracker_could_not_measure(
     async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
         return ("sensor.pv",), ("sensor.grid_out",)
 
+    read_from: list[datetime] = []
+
     async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        if "sensor.grid_in" in wanted:
+            read_from.append(start)
         out: dict[str, Any] = {}
         for statistic_id in wanted:
             moment, rows = start, []
@@ -888,11 +892,19 @@ async def test_a_battery_site_fills_the_hours_the_tracker_could_not_measure(
     assert measured and not set(filled) & measured
     assert min(filled) >= now.replace(minute=0, second=0, microsecond=0) - timedelta(days=FILL_DAYS)
     assert asked and lacking not in asked[0]
-    # Nothing left to fill: the next refresh reads no car.
+    # Nothing left to fill: the next refresh reads no car, nor the statistics again for the hour they lack.
+    assert read_from and read_from[0] <= lacking
     asked.clear()
+    read_from.clear()
     freezer.tick(timedelta(hours=1))
     await house.async_refresh()
     assert all(lacking not in starts for starts in asked)
+    assert all(start > lacking for start in read_from)
+    # Other meters on the dashboard: the hour is read for once more.
+    prefs["energy_sources"].append({"type": "solar", "stat_energy_from": "sensor.pv2"})
+    freezer.tick(timedelta(hours=1))
+    await house.async_refresh()
+    assert read_from and min(read_from) <= lacking
 
 
 async def test_a_site_whose_cars_energy_is_not_known_fills_nothing(

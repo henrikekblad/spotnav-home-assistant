@@ -725,16 +725,29 @@ def charger_draw_w(
     if drawn is None and _evidently_not_drawing(hass, site, charger_entry_id, controller):
         drawn = 0.0
     source_a = None if drawn is not None else _source_state_current_a(hass, site, charger_entry_id)
-    return _held_idle_draw(controller, drawn, reads_current=source_a is not None and source_a >= ZERO_CURRENT_A)
+    return _held_idle_draw(
+        controller,
+        drawn,
+        reads_current=source_a is not None and source_a >= ZERO_CURRENT_A,
+        grid_w=None if drawn is not None else site_net_grid_w(site),
+    )
 
 
 #: A charger last seen not drawing that then cannot be read at all (its entities unavailable) counts as nothing for
 #: at most this long, where only measuring asks for it (`idle_unread_as_zero`).
 IDLE_UNREAD_HOLD_S: Final = 1800.0
+#: The hold ends early once the site's net grid import has risen this much (W) since the charger was first read
+#: away: about a car on one phase at 6 A, which a charger charging on its own while away from Home Assistant draws.
+IDLE_UNREAD_JUMP_W: Final = 1400.0
 
 
 def _held_idle_draw(
-    controller: Any, drawn: float | None, *, reads_current: bool = False, now: float | None = None
+    controller: Any,
+    drawn: float | None,
+    *,
+    reads_current: bool = False,
+    now: float | None = None,
+    grid_w: float | None = None,
 ) -> float | None:
     """`drawn` (W), else nothing for a charger last seen not drawing within `IDLE_UNREAD_HOLD_S`.
 
@@ -743,17 +756,28 @@ def _held_idle_draw(
     dropout left the hour tracker a gap and the house without a figure for the hour. Its last reading said it drew
     nothing, and a charger away from Home Assistant is not started by SpotNav, so it still counts as nothing. One
     seen drawing (or charging, or a Start on its way) when it dropped stays unknown, as one that has been away for
-    longer than the hold, or one whose current entity reads a current (`reads_current`). The moment it was last seen
-    not drawing is kept on its controller."""
+    longer than the hold, or one whose current entity reads a current (`reads_current`). The hold also ends once the
+    site's net grid power (`grid_w`) has risen by more than `IDLE_UNREAD_JUMP_W` from what it read when the charger
+    was first read away (a charger may start a car on its own, offline): it is then unknown until read again. The
+    moment it was last seen not drawing, and that grid reading, are kept on its controller."""
     moment = time.monotonic() if now is None else now
     if drawn is not None:
         controller.idle_seen_at = moment if drawn <= 0.0 and _charger_idle(controller) else None
+        controller.idle_unread_grid_w = None
         return drawn
     if reads_current or not _charger_idle(controller):
         controller.idle_seen_at = None
+        controller.idle_unread_grid_w = None
         return None
     seen = getattr(controller, "idle_seen_at", None)
     if isinstance(seen, (int, float)) and not isinstance(seen, bool) and 0.0 <= moment - seen <= IDLE_UNREAD_HOLD_S:
+        baseline = getattr(controller, "idle_unread_grid_w", None)
+        if baseline is None:
+            controller.idle_unread_grid_w = grid_w
+        elif grid_w is not None and grid_w - baseline > IDLE_UNREAD_JUMP_W:
+            controller.idle_seen_at = None
+            controller.idle_unread_grid_w = None
+            return None
         return 0.0
     return None
 
