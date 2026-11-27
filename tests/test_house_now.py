@@ -271,6 +271,15 @@ def test_the_pool_draw_is_read_from_the_parts_the_heat_does_not_read(monkeypatch
     assert module.pool_draw(None, controller, None, None) == (False, None, False)
 
 
+def test_an_unread_charger_without_a_car_draws_nothing_so_the_house_is_had() -> None:
+    # Just after a restart a charger may not be read yet; with no car plugged in it draws nothing.
+    unread = house_now(villa(car_kw=None, car_connected=False))
+    assert unread["car_kw"] == 0.0 and unread["house_kw"] == pytest.approx(3.1)
+    # A car plugged in but unread: its draw is not known, nor the house.
+    assert house_now(villa(car_kw=None, car_connected=True))["house_kw"] is None
+    assert house_now(villa(car_kw=None, car_connected=None))["house_kw"] is None
+
+
 def test_a_heat_larger_than_the_house_is_cut_to_it_and_marked() -> None:
     answer = house_now(villa(**HEAT_OVER))
     assert (answer["house_kw"], answer["heat_kw"], answer["rest_kw"]) == (1.3, 1.3, 0.0)

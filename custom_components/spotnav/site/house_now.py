@@ -182,6 +182,9 @@ def balanced(inputs: HouseNowInputs) -> Balanced:
     sun = _c(None if not inputs.has_sun or inputs.sun_kw is None else max(0.0, inputs.sun_kw))
     battery = _c(inputs.battery_kw if inputs.has_battery else None)
     car = _c(None if not inputs.has_car or inputs.car_kw is None else max(0.0, inputs.car_kw))
+    if inputs.has_car and car is None and inputs.car_connected is False:
+        # No car plugged in draws nothing, its charger read or not (one may not be read yet after a restart).
+        car = 0.0
     heat = _c(None if not inputs.has_heat or inputs.heat_kw is None else max(0.0, inputs.heat_kw))
     pool = _c(None if not inputs.has_pool or inputs.pool_kw is None else max(0.0, inputs.pool_kw))
     estimated: set[str] = set()
