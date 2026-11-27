@@ -195,7 +195,7 @@ describe("the pages in words", () => {
   it("show the battery's money from its own count, and its energy before one", () => {
     const battery = find(pagesOf("full_year.json"), "battery");
     expect(battery.big).toMatchObject({ value: 366, unit: "kr" });
-    expect(battery.chips).toEqual(["≈ 104 varv", "köpte för 0,62 kr/kWh", "använde vid 2,00 kr/kWh"]);
+    expect(battery.chips).toEqual(["≈ 18 varv", "köpte för 0,62 kr/kWh", "använde vid 2,00 kr/kWh"]);
     expect(battery.foot).toEqual(["Pengarna räknas från granskade dagar sedan 15 oktober."]);
     const source = review("full_year.json");
     const early = source.pages.map((entry) =>
@@ -203,7 +203,7 @@ describe("the pages in words", () => {
     );
     const kwh = find(storyPages("sv", { ...source, pages: early }, { supportReachable: true }), "battery");
     expect(kwh.big).toMatchObject({ value: 1044, unit: "kWh" });
-    expect(plainAll(kwh.chips)).toEqual(["≈ 104 varv", "laddade 1 044 kWh"]);
+    expect(plainAll(kwh.chips)).toEqual(["≈ 18 varv"]);
     expect(words(kwh)).not.toContain("kr");
     const none = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, earned: null, saved: null, kwh_out: null, kwh_in: null, cycles: null } : entry));
     expect(storyPages("sv", { ...source, pages: none }, { supportReachable: true }).map((entry) => entry.id)).not.toContain("battery");
@@ -213,7 +213,7 @@ describe("the pages in words", () => {
     const battery = find(pagesOf("inverter_battery.json"), "battery");
     expect(battery.big).toEqual({ value: 2175, digits: 0, unit: "kr", approx: true });
     expect(battery.say).toBe("sparade batteriet på elräkningen i år.");
-    expect(plainAll(battery.chips)).toEqual(["≈ 104 varv", "laddade 1 044 kWh", "gav tillbaka 1 044 kWh"]);
+    expect(plainAll(battery.chips)).toEqual(["≈ 104 varv"]);
     expect(battery.foot).toEqual(["≈ Räknat på varje timmes pris, oavsett vem som styrde batteriet."]);
     const source = review("inverter_battery.json");
     const later = source.pages.map((entry) => (entry.id === "battery" ? { ...entry, saved_since: "2026-10-21" } : entry));
@@ -409,9 +409,13 @@ describe("the story", () => {
       expect(panel.children).toHaveLength(1);
       const content = panel.firstElementChild!;
       expect(content.classList.contains("spotnav-yr-content")).toBe(true);
-      expect(content.firstElementChild!.classList.contains("spotnav-yr-art")).toBe(true);
-      expect(content.firstElementChild!.querySelector("svg")).not.toBeNull();
+      // The thanks page puts the SpotNav icon opposite its heart, in one row.
+      const first = content.firstElementChild!;
+      const art = first.classList.contains("spotnav-yr-top") ? first.firstElementChild! : first;
+      expect(art.classList.contains("spotnav-yr-art")).toBe(true);
+      expect(art.querySelector("svg")).not.toBeNull();
       expect(dialog.querySelectorAll(".spotnav-yr-art")).toHaveLength(1);
+      expect(dialog.querySelectorAll(".spotnav-yr-logo")).toHaveLength(story.pageIds[k] === "thanks" ? 1 : 0);
     }
     for (const key of ["back", "close", "next"]) {
       const button = dialog.querySelector<HTMLButtonElement>(`[data-nav='${key}']`)!;
@@ -598,7 +602,7 @@ describe("the picture to share", () => {
     expect(all).toContain("≈ 1 483 kr");
     expect(all).toContain("SpotNav – gratis för Home Assistant");
     expect(all.join(" ")).not.toMatch(/\d{1,2}:\d{2}/);
-    expect(images).toHaveLength(4);
+    expect(images).toHaveLength(5); // the logo and the four tiles' pictures
     const value = texts.find((entry) => plain(entry.text) === "≈ 1 483 kr")!;
     expect(value.font).toContain("Roboto");
     expect(Number(/(\d+)px/.exec(value.font)![1]) * 0.5 * value.text.length).toBeLessThanOrEqual(368);

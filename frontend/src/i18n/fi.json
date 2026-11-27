@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} kierrosta",
   "yearReview.battery.buy": "ostettu hintaan {price}",
   "yearReview.battery.use": "käytetty hintaan {price}",
-  "yearReview.battery.charged": "ladattu {kwh}",
-  "yearReview.battery.gaveBack": "antoi takaisin {kwh}",
   "yearReview.battery.earnedSince": "Rahat lasketaan tarkastelluista päivistä {date} lähtien.",
   "yearReview.battery.savedFoot": "≈ Laskettu kunkin tunnin hinnalla riippumatta siitä, kuka akkua ohjasi.",
   "yearReview.fuse.eyebrow": "Sulake",

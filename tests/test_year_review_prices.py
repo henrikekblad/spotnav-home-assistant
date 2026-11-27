@@ -33,6 +33,15 @@ def _old(name: str) -> dict[str, Any]:
     return json.loads(OLD_PATH.read_text(encoding="utf-8"))[name]
 
 
+def _old_plain(name: str) -> Any:
+    """The whole-year path's answer, its battery cycles (over the whole year, not the money's span) set aside."""
+    old = _old(name)
+    for page in [] if old is None else old["pages"]:
+        if page["id"] == "battery":
+            page["cycles"] = None
+    return old
+
+
 def _plain(review: dict[str, Any] | None) -> Any:
     """The review as JSON, without the battery's `saved` (it came after the whole-year path, which had no buys)."""
     out = json.loads(json.dumps(review))
@@ -40,13 +49,14 @@ def _plain(review: dict[str, Any] | None) -> Any:
         if page["id"] == "battery":
             assert "saved" in page and "saved_since" in page
             del page["saved"], page["saved_since"]
+            page["cycles"] = None  # now counted over the money's own span, not the old path's whole year
     return out
 
 
 @pytest.mark.parametrize("name", sorted(variants()))
 def test_the_review_from_the_day_parts_is_the_whole_year_path_s(name: str) -> None:
     inputs, slots = variants()[name]
-    assert _plain(compute_review(priced(inputs, slots))) == _old(name)
+    assert _plain(compute_review(priced(inputs, slots))) == _old_plain(name)
 
 
 @pytest.mark.parametrize(
@@ -60,7 +70,7 @@ def test_the_review_from_the_day_parts_is_the_whole_year_path_s(name: str) -> No
     ],
 )
 def test_the_site_shapes_are_the_whole_year_path_s(name: str, shape: Any) -> None:
-    assert _plain(compute_review(shape())) == _old(name)
+    assert _plain(compute_review(shape())) == _old_plain(name)
 
 
 def test_a_part_read_back_from_the_store_is_the_same_part_and_small() -> None:

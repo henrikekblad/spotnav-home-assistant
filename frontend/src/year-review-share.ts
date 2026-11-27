@@ -14,6 +14,7 @@ import { ENERGY_PALETTE, type EnergyMeaning } from "./energy-palette";
 import { formatNumber } from "./format";
 import { translate, type Language } from "./i18n";
 import { saveBlobFile } from "./download";
+import { LOGO_DATA_URL } from "./year-review-logo";
 import { artDataUrl, type ArtId } from "./year-review-art";
 import type { YearReview } from "./year-review-model";
 import { moneyText, monthName } from "./year-review-pages";
@@ -31,6 +32,8 @@ const WIDE_W = TILE_W * 2 + TILE_GAP;
 const VALUE_MAX_PX = 84;
 const VALUE_MIN_PX = 48;
 const LABEL_PX = 32;
+/** The logo in the top right corner: its top level with the "SpotNav" line, its right edge at the left margin's distance. */
+export const LOGO_BOX = { size: 160, x: SHARE_WIDTH - 80 - 160, y: 76 } as const;
 
 export type ShareOutcome = { kind: "shared" | "saved"; preview: string } | { kind: "failed" };
 
@@ -214,6 +217,12 @@ export async function drawShare(canvas: HTMLCanvasElement, review: YearReview, l
     context.beginPath();
     context.arc(random() * SHARE_WIDTH, random() * 420, random() * 3 + 1, 0, Math.PI * 2);
     context.fill();
+  }
+  const logo = await image(LOGO_DATA_URL);
+  if (logo !== null) {
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(logo, LOGO_BOX.x, LOGO_BOX.y, LOGO_BOX.size, LOGO_BOX.size);
   }
   context.textBaseline = "alphabetic";
   context.fillStyle = "#ffffff";

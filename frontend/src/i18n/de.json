@@ -2756,8 +2756,6 @@
   "yearReview.battery.cycles.other": "≈ {count} Zyklen",
   "yearReview.battery.buy": "gekauft für {price}",
   "yearReview.battery.use": "genutzt bei {price}",
-  "yearReview.battery.charged": "geladen {kwh}",
-  "yearReview.battery.gaveBack": "abgegeben {kwh}",
   "yearReview.battery.earnedSince": "Das Geld wird aus ausgewerteten Tagen seit dem {date} gezählt.",
   "yearReview.battery.savedFoot": "≈ Mit dem Preis jeder Stunde gerechnet, egal wer die Batterie gesteuert hat.",
   "yearReview.fuse.eyebrow": "Die Sicherung",

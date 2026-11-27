@@ -13,6 +13,7 @@ import { createDialog, type DialogHandle } from "./dialog";
 import { element } from "./dom";
 import { translate, type Language } from "./i18n";
 import { SPONSOR_URL } from "./support-section";
+import { LOGO_DATA_URL } from "./year-review-logo";
 import { ART_PULSE, ART_SPIN, artElement } from "./year-review-art";
 import { countUp, Fireworks, reducedMotion, windowClock, type FrameClock } from "./year-review-fx";
 import type { YearReview } from "./year-review-model";
@@ -28,6 +29,8 @@ export const YR = {
   story: "spotnav-yr-story",
   fx: "spotnav-yr-fx",
   art: "spotnav-yr-art",
+  logo: "spotnav-yr-logo",
+  top: "spotnav-yr-top",
   bars: "spotnav-yr-bars",
   bar: "spotnav-yr-bar",
   panel: "spotnav-yr-panel",
@@ -98,6 +101,8 @@ export const YEAR_REVIEW_STYLES = `
     animation: spotnav-yr-float 5s ease-in-out infinite;
   }
   .${YR.story}[data-page="thanks"] .${YR.art} { width: clamp(72px, min(26vw, 14vh), 104px); height: clamp(72px, min(26vw, 14vh), 104px); margin-bottom: 0; }
+  .${YR.top} { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .${YR.logo} { flex: none; display: block; width: clamp(40px, min(14vw, 8vh), 56px); height: clamp(40px, min(14vw, 8vh), 56px); margin: 4px 0 0; border-radius: 22%; pointer-events: none; }
   .${YR.art} svg { width: 100%; height: 100%; display: block; }
   @keyframes spotnav-yr-float { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-7px) rotate(-2deg); } }
   .${ART_SPIN} { transform-origin: 50% 50%; animation: spotnav-yr-spin 14s linear infinite; }
@@ -416,7 +421,18 @@ export class YearReviewStory {
     if (svg !== null) {
       art.append(svg);
     }
-    const nodes: Node[] = [art, element(doc, "p", YR.eyebrow, entry.eyebrow)];
+    const nodes: Node[] = [art];
+    if (entry.id === "thanks") {
+      // The SpotNav icon opposite the heart, static (so reduced motion has nothing to stop).
+      const logo = element(doc, "img", YR.logo);
+      logo.setAttribute("src", LOGO_DATA_URL);
+      logo.setAttribute("alt", "");
+      logo.setAttribute("aria-hidden", "true");
+      const top = element(doc, "div", YR.top);
+      top.append(art, logo);
+      nodes[0] = top;
+    }
+    nodes.push(element(doc, "p", YR.eyebrow, entry.eyebrow));
     if (typeof entry.big === "string") {
       const big = element(doc, "p", YR.big, entry.big);
       big.dataset["words"] = "";
