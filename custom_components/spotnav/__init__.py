@@ -175,6 +175,7 @@ from .site.site_capacity_controller import (
 from .site.decision_recorder import DecisionRecorder
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.sun_review import SiteSunReview
+from .year_review.runtime import SiteYearReview
 from .site.phase_peaks import SitePhasePeaks
 from .site.demand_tracker import SiteDemand
 from .site.house_forecast import SiteHouseForecast
@@ -965,6 +966,11 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     entry.async_on_unload(partial(forget_cached_loads, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat_history, hass, entry.entry_id))
     await controller.async_initialize()
+    # The year's review (`year_review/runtime.py`): its store, the fuse's episode count and the nightly run.
+    year_review = SiteYearReview(hass, entry.entry_id, controller)
+    entry.async_on_unload(year_review.async_close)
+    await year_review.async_start()
+    entry.runtime_data.year_review = year_review
     # Entry load order is not guaranteed: rebind every member charger's solar coordinator now
     # that this controller exists (also covers this site reloading).
     async_rebind_solar_execution(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
@@ -1081,6 +1087,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
         await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)
         await SiteSunReview.async_remove_stored(hass, entry.entry_id)
+        await SiteYearReview.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         await BatteryShadow.async_remove_stored(hass, entry.entry_id)
         await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))
