@@ -124,8 +124,11 @@ def sell_prices(spot_major_per_kwh: Sequence[float], credit_minor_per_kwh: float
 def refill_price(priced: Sequence[tuple[float, float]], battery: BatteryParams) -> float | None:
     """What a refill costs per kWh bought over [priced] (`(buy, hours)` pairs): the mean buy price of its cheapest
     hours, as many as fill the battery from its floor at the rated charge power. `None` when [priced] covers less
-    than `REFILL_MIN_H` (a part of a day does not show the day's cheap hours)."""
+    than `REFILL_MIN_H` (a part of a day does not show the day's cheap hours), and `None` for a battery that cannot
+    charge (no charge power or efficiency: no refill to price)."""
     if sum(hours for _buy, hours in priced) < REFILL_MIN_H:
+        return None
+    if battery.max_charge_kw <= 0 or battery.charge_efficiency <= 0:
         return None
     need = (battery.max_kwh - battery.min_kwh) / (battery.max_charge_kw * battery.charge_efficiency)
     cost = seen = 0.0
