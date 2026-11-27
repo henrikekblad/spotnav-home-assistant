@@ -106,7 +106,8 @@ and refusals as the charger webhook below. It answers:
 * **The home's own actions**, bound to this home (a `site_id` in the body is never read), for a home with or without
   a charger: `get_site` (below); the actions of [the site over the webhook](#the-site-over-the-webhook) (`get_house`,
   `get_house_now`, `get_house_history`, `get_house_loads`, `get_heat`, `get_heat_history`, `get_plan`,
-  `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`, `pool`, `spa`, `sauna`), each answering
+  `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`, `pool`, `spa`, `sauna`,
+  `get_year_review`, `year_review_seen`), each answering
   exactly what a charger's webhook of the same home answers; `update_site_settings` (as on a charger's webhook, for the home itself; load
   balancing is `spotnav_not_permitted_over_webhook`, 403); `get_power_month`, `suggest_import_target` and
   `get_strings` (as on a charger's webhook).
@@ -252,6 +253,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `sauna` | The heat card's Sauna tab: `{"sauna_action", "value"?}`, the answer of `spotnav/sauna` (`{"api_version", "ok", "error", "sauna"}`, see [pool, spa and sauna over the webhook](#pool-spa-and-sauna-over-the-webhook)). |
 | `battery_control` | The site's battery control status; with `{"changes": {"battery_mode"}}` the battery mode is written first. Nothing else may be named. |
 | `get_site_settings_view` | The settings' site block: `{}`, the answer of `spotnav/get_site_settings_view`. |
+| `get_year_review` | The year review for this phone: `{"app_id"}` (the app's secret id, as `phone_notifications`; without it, a phone that has seen nothing), the answer of `spotnav/get_year_review` (`{"api_version", "site_id", "year", "state", "banner", "row", "review"}`) with `banner` by this phone's own seen state. |
+| `year_review_seen` | This phone opened the review of a year or closed its banner: `{"app_id", "year", "seen_action": "viewed" \| "dismissed"}` (`action` routes the body), answered `{"ok": true, "action"}`; `spotnav_invalid_request` (400) for an `app_id`, year or `seen_action` that is not one. Kept per phone (the hashed `app_id`), apart from the card's users. |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -1015,6 +1018,8 @@ own charger's: a `site_id` or `charger_id` in the body is not read. `api_version
 | `sauna` | `spotnav/sauna` | `sauna_action`, `value` | `sauna_success.json`, `sauna_invalid_value.json`, `sauna_no_later_session.json` |
 | `battery_control` | `spotnav/battery_control` | `changes` (optional) | `battery_control_success.json`, `battery_control_mode.json`, `battery_control_invalid_value.json`, `battery_control_not_permitted.json` |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` | | `get_site_settings_view_success.json` |
+| `get_year_review` | `spotnav/get_year_review` | `app_id` (optional) | `get_year_review_success.json`, `get_year_review_viewed.json`, `get_year_review_no_site.json` |
+| `year_review_seen` | `spotnav/year_review_seen` | `app_id`, `year`, `seen_action` (`viewed`, `dismissed`) | `year_review_seen_success.json`, `year_review_seen_invalid.json` |
 
 Richer examples of each document (a villa with sun, a battery and a heat pump) are the WebSocket shapes in
 `tests/fixtures/house/`, `house_now/`, `house_history/`, `house_loads/`, `heat_card/`, `heat_history/`,
