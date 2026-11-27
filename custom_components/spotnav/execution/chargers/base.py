@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, Literal
 
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import ATTR_RESTORED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -178,6 +178,17 @@ def _entity_ready(hass: HomeAssistant, entity_id: str, *, unknown_ok: bool = Fal
     if state is None or state.state == STATE_UNAVAILABLE:
         return False
     return unknown_ok or state.state != STATE_UNKNOWN
+
+
+def entities_offline(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> bool:
+    """Whether one of the entities is there but `unavailable` because its device is: its integration has loaded it
+    (a state of its own, not the `restored` placeholder Home Assistant keeps for an entity whose integration has not
+    loaded yet), as when an OCPP charge point's link is down."""
+    for entity_id in entity_ids:
+        state = hass.states.get(entity_id)
+        if state is not None and state.state == STATE_UNAVAILABLE and not state.attributes.get(ATTR_RESTORED):
+            return True
+    return False
 
 
 def _not_executed(entity_id: str) -> bool:

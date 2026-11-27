@@ -67,6 +67,7 @@ from .base import (
     ASSIGN_WRITE_FAILED,
     CurrentPath,
     end_call_tap,
+    entities_offline,
     IN_EFFECT_OUTCOMES,
     phase_switch_facts,
     PhaseSwitch,
@@ -712,6 +713,11 @@ class ChargerAdapter:
         """Whether a start or a stop could reach the charger now (`StartStopPath.ready`): `False` while the
         charger's integration has not loaded its entities or services, as right after a restart."""
         return self.path.ready()
+
+    def offline(self) -> bool:
+        """Whether a command path's entity is unavailable although its integration has loaded it: the charger is
+        offline (an OCPP charge point whose link is down), not still loading (`entities_offline`)."""
+        return entities_offline(self.hass, self.path.entity_ids())
 
     def current_ready(self) -> bool:
         """Whether a current write could reach the charger now (`CurrentPath.ready`)."""

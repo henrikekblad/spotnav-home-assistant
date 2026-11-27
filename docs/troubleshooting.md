@@ -205,6 +205,12 @@ changes.
   start that does not take is sent again up to three times in its first ten minutes; the charger's
   diagnostics show them under `controller.window_start_retry` (`retries`, and what the last one
   found in `last.result`).
+- **"... was not sent, the charger is offline (its entities are unavailable)."** The charger's integration has
+  loaded, but the charger itself is not reachable (an OCPP charge point whose link is down). SpotNav decides again
+  once it is back. A link that keeps dropping is logged once per outage (until it has stayed up for half an hour);
+  `controller.owed_wait.waits_this_outage` in the diagnostics counts the drops. "... the charger is not ready yet
+  (its integration has not loaded)" is the same right after a restart, before the charger's integration is there.
+  While the charger last said no car is plugged in, an offline moment starts nothing at all.
 - **"This charge control is already used by another SpotNav charger."** A charge control or current
   number can belong to only one SpotNav charger.
 - **"{name} and this charger are the same physical charger."** Two SpotNav chargers share a Home

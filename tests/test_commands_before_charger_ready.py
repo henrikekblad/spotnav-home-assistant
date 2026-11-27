@@ -312,3 +312,59 @@ async def test_paths_are_not_ready_before_their_entities_and_services_exist(hass
 
     hass.states.async_set("number.x", "16", {"unit_of_measurement": "A"})
     assert number.ready()
+
+
+# ------------------------------------------------------------------------------------------ an offline charger
+
+
+def _owed_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING" and "was not sent" in record.getMessage()
+    ]
+
+
+async def test_an_offline_charger_is_logged_as_offline_once_per_outage(
+    hass: HomeAssistant, freezer, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The field case of 2026-11-27: an OCPP HALO whose link drops every two to three minutes. Its integration has
+    loaded, so the log says the charger is offline, and the outage is logged once, not at every drop."""
+    charger = Charger(hass)
+    charger.load("off")
+    controller = await _controller(hass)
+    for _drop in range(5):
+        hass.states.async_set(CONTROL, "unavailable")
+        controller._owe("the window's start")  # noqa: SLF001 - the decision that met the offline charger
+        await _after(hass, freezer, 60)
+        charger.load("off")  # the link is back
+        await _after(hass, freezer, 6)
+        assert not controller.commands_owed
+        await _after(hass, freezer, 90)
+    warnings = _owed_warnings(caplog)
+    assert warnings == [
+        "SpotNav charger entry_a: the window's start was not sent, the charger is offline (its entities are "
+        "unavailable); it is decided again once the charger is ready"
+    ]
+    assert controller.owed_wait["waits_this_outage"] == 5
+    # Half an hour without a drop ends the outage: the next one is logged again.
+    await _after(hass, freezer, 1800)
+    hass.states.async_set(CONTROL, "unavailable")
+    controller._owe("the window's start")  # noqa: SLF001
+    assert len(_owed_warnings(caplog)) == 2
+    assert controller.owed_wait["waits_this_outage"] == 1
+
+
+async def test_a_charger_whose_integration_has_not_loaded_is_logged_so(
+    hass: HomeAssistant, freezer, caplog: pytest.LogCaptureFixture
+) -> None:
+    charger = Charger(hass)
+    charger.load("off")
+    controller = await _controller(hass)
+    # Home Assistant's placeholder for an entity whose integration has not loaded yet.
+    hass.states.async_set(CONTROL, "unavailable", {"restored": True})
+    controller._owe("the window's start")  # noqa: SLF001
+    assert _owed_warnings(caplog) == [
+        "SpotNav charger entry_a: the window's start was not sent, the charger is not ready yet (its integration has "
+        "not loaded); it is decided again once the charger is ready"
+    ]

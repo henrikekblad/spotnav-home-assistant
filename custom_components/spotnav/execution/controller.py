@@ -280,6 +280,9 @@ STOP_RETRY_S: Final = 30.0
 #: still open is not given up until the window ends.
 OWED_CHECK_S: Final = 5.0
 OWED_GIVE_UP_S: Final = 900.0
+#: One outage of a charger is logged once: a wait (`_owe`) that begins within this many seconds of the last one's end
+#: is the same outage (an OCPP link that drops every few minutes), logged at debug level only.
+OWED_OUTAGE_GAP_S: Final = 1800.0
 #: A window's start (its timer, a re-arm, a plug-in, an owed start settled) that leaves the charger not charging is
 #: decided again this many seconds after it, at most once each: a cloud error, a start the charger accepted and did
 #: not act on (Easee's `awaiting_start`). Never while the charger's own scheduler holds the charge, while its enable
@@ -929,6 +932,9 @@ class ChargingController:
         # A command not sent because the charger was not ready (`_owe`): since when, whether a start or stop decision
         # and whether a session's current is owed, and the watch that takes them up again once it is.
         self._owed_since: datetime | None = None
+        # When the last wait ended, and the waits of the outage logged last (`OWED_OUTAGE_GAP_S`).
+        self._owed_ended_at: datetime | None = None
+        self._owed_waits = 0
         self._owed_command = False
         self._owed_current = False
         self._owed_settling = False
@@ -5416,6 +5422,17 @@ class ChargingController:
         self._start_retry_window_end = None
 
     @property
+    def owed_wait(self) -> dict[str, Any]:
+        """A command owed to a charger that is not ready (`_owe`), for the diagnostics: since when it waits, when the
+        last wait ended, and the waits of the outage logged last."""
+        since, ended = self._owed_since, self._owed_ended_at
+        return {
+            "since": None if since is None else since.isoformat(),
+            "last_ended": None if ended is None else ended.isoformat(),
+            "waits_this_outage": self._owed_waits,
+        }
+
+    @property
     def window_start_retry(self) -> dict[str, Any]:
         """A window start's retries, for the diagnostics: whether a sequence runs, since when, how many went out of
         how many, whether another is due, and what the last one found."""
@@ -5704,19 +5721,33 @@ class ChargingController:
     def _owe(self, what: str, *, current: bool = False) -> None:
         """An automatic decision's command (`what`) was not sent because the charger is not ready: it is owed.
         The charger is looked at every `OWED_CHECK_S`; once ready, the decision is taken again (`_async_settle_owed`),
-        and after `OWED_GIVE_UP_S` it is given up on. Logged once per wait."""
+        and after `OWED_GIVE_UP_S` it is given up on. Logged once per outage: a wait that begins within
+        `OWED_OUTAGE_GAP_S` of the last one's end (a link that keeps dropping) is logged at debug level only. The log
+        says whether the charger is offline (its integration has loaded its entities, which are unavailable) or its
+        integration has not loaded yet."""
         if current:
             self._owed_current = True
         else:
             self._owed_command = True
         if self._owed_since is not None or self._shut_down:
             return
-        self._owed_since = dt_util.utcnow()
-        _LOGGER.warning(
-            "SpotNav charger %s: %s was not sent, the charger is not ready yet (its integration has not loaded); "
-            "it is decided again once the charger is ready",
+        now = dt_util.utcnow()
+        self._owed_since = now
+        ended = self._owed_ended_at
+        same_outage = ended is not None and (now - ended).total_seconds() < OWED_OUTAGE_GAP_S
+        self._owed_waits = self._owed_waits + 1 if same_outage else 1
+        why = (
+            "the charger is offline (its entities are unavailable)"
+            if self.adapter.offline()
+            else "the charger is not ready yet (its integration has not loaded)"
+        )
+        _LOGGER.log(
+            logging.DEBUG if same_outage else logging.WARNING,
+            "SpotNav charger %s: %s was not sent, %s; it is decided again once the charger is ready%s",
             self.entry_id,
             what,
+            why,
+            f" (wait {self._owed_waits} of this outage)" if same_outage else "",
         )
         self._owed_cancel = async_track_time_interval(
             self.hass, self._owed_tick, timedelta(seconds=OWED_CHECK_S), cancel_on_shutdown=True
@@ -5725,6 +5756,8 @@ class ChargingController:
     def _cancel_owed(self) -> None:
         cancel = self._owed_cancel
         self._owed_cancel = None
+        if self._owed_since is not None:
+            self._owed_ended_at = dt_util.utcnow()
         self._owed_since = None
         self._owed_settling = False
         self._owed_command = False
