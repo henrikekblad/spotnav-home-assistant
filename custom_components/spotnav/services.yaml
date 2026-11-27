@@ -351,3 +351,40 @@ battery_control_settings:
       required: false
       selector:
         boolean:
+
+show_year_review:
+  name: Show the year's review
+  description: >
+    Work out a site's "Year with SpotNav" now and offer it in the house and
+    charger cards for seven days, whatever the date: the banner and the row
+    under Settings, Support. Answers with the review's figures, so a new
+    installation can see them here. Administrators only.
+  fields:
+    site:
+      name: Site
+      description: >
+        The site. Leave it out when there is only one.
+      required: false
+      selector:
+        config_entry:
+          integration: spotnav
+    year:
+      name: Year
+      description: >
+        The year to review (default: this year in December, last year in
+        January, else the year so far).
+      required: false
+      selector:
+        number:
+          min: 2020
+          max: 2100
+          mode: box
+    reset:
+      name: Show the banner again
+      description: >
+        Show the banner again to everyone who opened or closed it (on by
+        default).
+      required: false
+      default: true
+      selector:
+        boolean:

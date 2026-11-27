@@ -119,6 +119,7 @@ import {
 } from "./value-editors";
 import type { FiscalComponentName } from "./value-writes";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import type { YearReviewRow } from "./year-review-banner";
 import { element } from "./dom";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
@@ -1612,6 +1613,8 @@ export interface SettingsPopoverInput {
   onChanged?: (what: "battery" | "heat" | "site") => void;
   /** Move to one of Home Assistant's own pages (tests replace it). */
   navigate?: (path: string) => void;
+  /** The year's review under Support while the card offers it (`year-review-banner.ts`); `null` outside its window. */
+  yearReviewRow?: () => YearReviewRow | null;
 }
 
 type ViewState = { kind: "loading" } | { kind: "failed" } | { kind: "ready"; view: SiteView };
@@ -2596,6 +2599,16 @@ export class SettingsPopover {
       const phones = supportAction(doc, "disconnect_phones", translate(language, "phones.disconnect.open"), () => this.openDisconnectPhones());
       phones.button.dataset["disconnectPhones"] = "open";
       actions.push(send, phones);
+    }
+    // Last before the sponsor row: the year's review, while the card offers it. The popover closes for the story.
+    const year = this.input.yearReviewRow?.() ?? null;
+    if (year !== null) {
+      const review = supportAction(doc, "year_review", year.label, () => {
+        this.dialog?.hide({ restoreFocus: false });
+        year.open(null);
+      });
+      review.button.dataset["yearReview"] = "open";
+      actions.push(review);
     }
     return supportSection({ doc, language, note, rows, actions });
   }

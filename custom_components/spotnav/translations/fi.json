@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "Akunohjaus kieltäytyi: {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Vuodesta {year} ei ole vielä katsausta: vuodella ei ole yhtään päivää takanaan."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Ei vientiä negatiivisilla hinnoilla",
           "description": "Aseta kohteen vientiraja nollaan, kun myydystä kWh:sta saa alle nollan, ja palauta se sen jälkeen. Kohteelle akulla tai ilman; akun ohjauksen kytkin ei kytke tätä päälle."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Näytä vuosi SpotNavin kanssa",
+      "description": "Laske kohteen \"Vuosi SpotNavin kanssa\" nyt ja näytä se talon ja laturin korteissa seitsemän päivän ajan päivämäärästä riippumatta: banneri ja rivi kohdassa Asetukset, Tuki. Vastaa katsauksen luvuilla, jotta uusi asennus näkee ne täällä. Vain ylläpitäjille.",
+      "fields": {
+        "site": {
+          "name": "Kohde",
+          "description": "Kohde. Jätä pois, kun kohteita on vain yksi."
+        },
+        "year": {
+          "name": "Vuosi",
+          "description": "Näytettävä vuosi (oletus: joulukuussa tämä vuosi, tammikuussa edellinen, muuten vuosi tähän asti)."
+        },
+        "reset": {
+          "name": "Näytä banneri uudelleen",
+          "description": "Näytä banneri uudelleen kaikille, jotka avasivat tai sulkivat sen (oletuksena päällä)."
         }
       }
     }

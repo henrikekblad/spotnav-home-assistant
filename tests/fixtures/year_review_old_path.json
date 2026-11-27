@@ -1,0 +1,888 @@
+{
+ "car_only_no_prices": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": null,
+    "car": 115640,
+    "estimated": true,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": null,
+     "car": null,
+     "heat": null
+    },
+    "total": 115640
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": null,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": null
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "car_only_ties": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": null,
+    "car": 115640,
+    "estimated": true,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": null,
+     "car": null,
+     "heat": null
+    },
+    "total": 115640
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 86,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": null
+   },
+   {
+    "bought_kwh": 0.3,
+    "id": "expensive",
+    "price": 288.2,
+    "since": null,
+    "start": "2026-01-28T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "negative_sell": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": null,
+    "estimated": false,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": null
+    },
+    "total": 30500
+   },
+   {
+    "export_paid": false,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 87,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 127.4,
+    "since": null,
+    "start": "2026-12-12T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "new_years_day": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 39000,
+    "car": 119040,
+    "estimated": true,
+    "heat": 3050,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 161090
+   },
+   {
+    "charges": 222,
+    "cheap_share_pct": 30,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2596,
+    "since": null
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2285,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 110,
+    "earned": 46800,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1095,
+    "kwh_out": 1095,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 127.4,
+    "since": null,
+    "start": "2026-12-12T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-31",
+  "year": 2026
+ },
+ "nord_pool_quarter": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 33,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": "2026-10-22"
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 127.4,
+    "since": "2026-10-21",
+    "start": "2026-12-12T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "quarter_gaps_mixed": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 212,
+    "cheap_share_pct": 30,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2478,
+    "since": null
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 135.7,
+    "since": null,
+    "start": "2026-03-15T11:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "quarter_ties": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 212,
+    "cheap_share_pct": 85,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2478,
+    "since": null
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.3,
+    "id": "expensive",
+    "price": 288.2,
+    "since": null,
+    "start": "2026-01-28T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "quarter_wavy": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 212,
+    "cheap_share_pct": 30,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2478,
+    "since": null
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 127.4,
+    "since": null,
+    "start": "2026-12-12T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "shape_car": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": null,
+    "car": 115640,
+    "estimated": true,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": null,
+     "car": null,
+     "heat": null
+    },
+    "total": 115640
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 86,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": null
+   },
+   {
+    "bought_kwh": 0.3,
+    "id": "expensive",
+    "price": 793.0,
+    "since": null,
+    "start": "2026-01-28T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "shape_fresh": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 12500,
+    "car": 5000,
+    "estimated": false,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-11-20",
+     "car": "2026-11-20",
+     "heat": null
+    },
+    "total": 17500
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 83,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": true,
+    "id": "car",
+    "kwh": 2438,
+    "since": "2026-11-21"
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 15000,
+    "earned_since": "2026-11-20",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": true,
+  "since": "2026-11-20",
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "shape_full": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 86,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": null
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.3,
+    "id": "expensive",
+    "price": 793.0,
+    "since": null,
+    "start": "2026-01-28T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "shape_np": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": 115640,
+    "estimated": true,
+    "heat": 2200,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": "2026-11-01"
+    },
+    "total": 148340
+   },
+   {
+    "charges": 209,
+    "cheap_share_pct": 84,
+    "cheapest": {
+     "date": "2026-01-01",
+     "price": 50.0
+    },
+    "estimated": false,
+    "id": "car",
+    "kwh": 2438,
+    "since": "2026-10-22"
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 104,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "count": 47,
+    "id": "fuse",
+    "since": "2026-02-01"
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 250.0,
+    "since": "2026-10-21",
+    "start": "2026-10-21T17:00:00+02:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "shape_sun": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": null,
+    "estimated": false,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": null
+    },
+    "total": 30500
+   },
+   {
+    "export_paid": true,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 87,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "bought_kwh": 0.3,
+    "id": "expensive",
+    "price": 793.0,
+    "since": null,
+    "start": "2026-01-28T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ },
+ "zero_sell": {
+  "money": {
+   "currency": "SEK",
+   "major_unit": "kr",
+   "minor_unit": "öre"
+  },
+  "pages": [
+   {
+    "id": "cover"
+   },
+   {
+    "battery": 30500,
+    "car": null,
+    "estimated": false,
+    "heat": null,
+    "id": "saved",
+    "starts": {
+     "battery": "2026-10-15",
+     "car": null,
+     "heat": null
+    },
+    "total": 30500
+   },
+   {
+    "export_paid": false,
+    "home_pct": 92,
+    "id": "sun",
+    "kwh": 2242,
+    "since": null
+   },
+   {
+    "buy_price": 62.0,
+    "cycles": 87,
+    "earned": 36600,
+    "earned_since": "2026-10-15",
+    "id": "battery",
+    "kwh_in": 1044,
+    "kwh_out": 1044,
+    "use_price": 200.0
+   },
+   {
+    "bought_kwh": 0.4,
+    "id": "expensive",
+    "price": 127.4,
+    "since": null,
+    "start": "2026-12-12T08:00:00+01:00"
+   },
+   {
+    "id": "thanks"
+   }
+  ],
+  "partial": false,
+  "since": null,
+  "through": "2026-12-14",
+  "year": 2026
+ }
+}

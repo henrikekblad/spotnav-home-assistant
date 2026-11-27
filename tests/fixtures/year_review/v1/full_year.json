@@ -1,0 +1,81 @@
+{
+  "api_version": 1,
+  "banner": true,
+  "review": {
+    "money": {
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre"
+    },
+    "pages": [
+      {
+        "id": "cover"
+      },
+      {
+        "battery": 30500,
+        "car": 115640,
+        "estimated": true,
+        "heat": 2200,
+        "id": "saved",
+        "starts": {
+          "battery": "2026-10-15",
+          "car": null,
+          "heat": "2026-11-01"
+        },
+        "total": 148340
+      },
+      {
+        "charges": 209,
+        "cheap_share_pct": 86,
+        "cheapest": {
+          "date": "2026-01-01",
+          "price": 50.0
+        },
+        "estimated": false,
+        "id": "car",
+        "kwh": 2438,
+        "since": null
+      },
+      {
+        "export_paid": true,
+        "home_pct": 92,
+        "id": "sun",
+        "kwh": 2242,
+        "since": null
+      },
+      {
+        "buy_price": 62.0,
+        "cycles": 104,
+        "earned": 36600,
+        "earned_since": "2026-10-15",
+        "id": "battery",
+        "kwh_in": 1044,
+        "kwh_out": 1044,
+        "use_price": 200.0
+      },
+      {
+        "count": 47,
+        "id": "fuse",
+        "since": "2026-02-01"
+      },
+      {
+        "bought_kwh": 0.3,
+        "id": "expensive",
+        "price": 793.0,
+        "since": null,
+        "start": "2026-01-28T08:00:00+01:00"
+      },
+      {
+        "id": "thanks"
+      }
+    ],
+    "partial": false,
+    "since": null,
+    "through": "2026-12-14",
+    "year": 2026
+  },
+  "row": true,
+  "site_id": "site_villa",
+  "state": "ready",
+  "year": 2026
+}

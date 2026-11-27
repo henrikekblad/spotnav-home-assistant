@@ -76,6 +76,13 @@ export class FakeHass implements HomeAssistantLike {
   readonly phonesMessages: Record<string, unknown>[] = [];
   phonesHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+  /**
+   * The year review's commands (`spotnav/get_year_review`, read once as a card mounts, and `spotnav/year_review_seen`),
+   * on their own line too; the default never answers.
+   */
+  readonly yearReviewMessages: Record<string, unknown>[] = [];
+  yearReviewHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
   }
@@ -121,6 +128,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/notification_phones" || message["type"] === "spotnav/update_notification_phone") {
       this.phonesMessages.push(message);
       return (this.phonesHandler === null ? new Promise<unknown>(() => undefined) : this.phonesHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/get_year_review" || message["type"] === "spotnav/year_review_seen") {
+      this.yearReviewMessages.push(message);
+      return (this.yearReviewHandler === null ? new Promise<unknown>(() => undefined) : this.yearReviewHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

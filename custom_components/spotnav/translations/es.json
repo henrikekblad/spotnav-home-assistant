@@ -1096,6 +1096,9 @@
     },
     "battery_control_refused": {
       "message": "El control de la batería se negó: {reason}."
+    },
+    "year_review_no_year": {
+      "message": "Aún no hay resumen de {year}: el año no tiene ningún día detrás."
     }
   },
   "services": {
@@ -1196,6 +1199,24 @@
         "export_curtail_enabled": {
           "name": "Sin exportación con precios negativos",
           "description": "Pone a cero el límite de exportación de la instalación mientras un kWh vendido rinde menos que nada, y lo restablece después. Para una instalación con o sin batería; el interruptor del control de la batería no lo activa."
+        }
+      }
+    },
+    "show_year_review": {
+      "name": "Mostrar el resumen del año",
+      "description": "Calcula ahora «El año con SpotNav» de una instalación y muéstralo en las tarjetas de la casa y del cargador durante siete días, sea cual sea la fecha: el banner y la fila en Ajustes, Soporte. Responde con las cifras del resumen, para que una instalación nueva pueda verlas aquí. Solo administradores.",
+      "fields": {
+        "site": {
+          "name": "Instalación",
+          "description": "La instalación. Omítela cuando solo hay una."
+        },
+        "year": {
+          "name": "Año",
+          "description": "El año del resumen (por defecto: este año en diciembre, el anterior en enero y, si no, el año hasta hoy)."
+        },
+        "reset": {
+          "name": "Volver a mostrar el banner",
+          "description": "Vuelve a mostrar el banner a todos los que lo abrieron o cerraron (activado por defecto)."
         }
       }
     }

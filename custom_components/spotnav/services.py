@@ -21,6 +21,10 @@ site's battery control is turned on; while "shadow only" or before the battery c
 the second writes the site's `battery_control_*` options until the card
 has the switch. The card's own command is `spotnav/battery_control` (`api/battery_control.py`).
 
+`show_year_review` works a site's year review out now (`year_review/runtime.py`), offers it in the cards for a week
+and answers its figures (so a fresh install can see them in Developer tools); an administrator's, as it changes what
+every person's cards show.
+
 `get_prices` only reads (an electricity price entry's prices, which every user's dashboard can show
 anyway) and changes nothing, so it is open to every user. It answers and does nothing else
 (`SupportsResponse.ONLY`).
@@ -57,7 +61,7 @@ from .repairs import (
     async_sync_resolution_repairs,
 )
 from .pricing.price_points import resolution_minutes, rounded
-from .runtime import charger_data, domain_data, price_data, PriceData, site_controller_for
+from .runtime import charger_data, domain_data, price_data, PriceData, site_controller_for, site_data
 from .vehicles.discovery_decisions import (
     DECISION_DOMAIN_VEHICLE,
     DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT,
@@ -187,6 +191,20 @@ def async_register_services(hass: HomeAssistant) -> None:
             SERVICE_BATTERY_CONTROL_SETTINGS,
             async_battery_control_settings,
             schema=BATTERY_CONTROL_SETTINGS_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SHOW_YEAR_REVIEW):
+
+        async def async_show_year_review(call: ServiceCall) -> ServiceResponse:
+            return await _async_show_year_review(hass, call)
+
+        async_register_admin_service(
+            hass,
+            DOMAIN,
+            SERVICE_SHOW_YEAR_REVIEW,
+            async_show_year_review,
+            schema=SHOW_YEAR_REVIEW_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -398,6 +416,40 @@ async def _async_battery_control_settings(hass: HomeAssistant, call: ServiceCall
     if not changes:
         raise _battery_refusal("no_change")
     return await controller.battery_control.async_update_options(changes)
+
+
+#: The year's review now (`year_review/runtime.py`): worked out, offered in the cards for a week, its figures answered.
+SERVICE_SHOW_YEAR_REVIEW = "show_year_review"
+
+SHOW_YEAR_REVIEW_SCHEMA = vol.Schema(
+    {
+        vol.Optional("site"): cv.string,
+        vol.Optional("year"): vol.All(vol.Coerce(int), vol.Range(min=2000, max=2200)),
+        vol.Optional("reset", default=True): cv.boolean,
+    }
+)
+
+
+async def _async_show_year_review(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Work a site's year review out now (default: the year the cards would show), offer its banner and Support row
+    for a week whatever the date, forget who saw it (`reset`, on by default), and answer the review."""
+    from .year_review.runtime import YearReviewRefusal  # noqa: PLC0415 - it imports the API
+
+    entry = _export_site(hass, call.data.get("site"))
+    data = site_data(hass, entry.entry_id)
+    review = None if data is None else data.year_review
+    if review is None:
+        raise _export_refusal("export_no_site", "There is no loaded SpotNav site")
+    year = call.data.get("year")
+    try:
+        return await review.async_show(year, call.data["reset"])
+    except YearReviewRefusal as refusal:
+        raise ServiceValidationError(
+            f"No year review for {year}: {refusal}",
+            translation_domain=DOMAIN,
+            translation_key="year_review_no_year",
+            translation_placeholders={"year": str(year)},
+        ) from None
 
 
 #: A field test without unplugging the car: a test push to the paired app, a test message to the

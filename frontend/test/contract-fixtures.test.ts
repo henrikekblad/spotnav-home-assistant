@@ -16,10 +16,12 @@ import { decodeDashboard } from "../src/validate";
 import { decodeSettingsAnswer } from "../src/settings";
 import { decodeEntityAnswer, decodeVehicleAnswer, storedMode } from "../src/entity-config";
 import { decodeSiteSettingsAnswer } from "../src/site-settings";
+import { decodeYearReview, PAGE_KEYS } from "../src/year-review-model";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const SETTINGS_DIR = join(__dirname, "..", "..", "tests", "fixtures", "settings", "v1");
 const SITE_SETTINGS_DIR = join(__dirname, "..", "..", "tests", "fixtures", "site_settings", "v1");
+const YEAR_REVIEW_V1_DIR = join(__dirname, "..", "..", "tests", "fixtures", "year_review", "v1");
 const ENTITY_CONFIG_V1_DIR = join(__dirname, "..", "..", "tests", "fixtures", "entity_config", "v1");
 
 /**
@@ -1429,5 +1431,87 @@ describe("the backend's entity_config v1 contract fixtures", () => {
         expect(field.domains.length, `${name} ${field.field}`).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("the backend's year_review v1 contract fixtures", () => {
+  /** Each fixture's pages in order, as the backend wrote them. */
+  const PAGES: Record<string, string[] | null> = {
+    "car_only.json": ["cover", "saved", "car", "expensive", "thanks"],
+    "fresh_install.json": ["cover", "saved", "car", "sun", "battery", "thanks"],
+    "full_year.json": ["cover", "saved", "car", "sun", "battery", "fuse", "expensive", "thanks"],
+    "nord_pool_55_days.json": ["cover", "saved", "car", "sun", "battery", "fuse", "expensive", "thanks"],
+    "state_none.json": null,
+    "sun_battery_no_car.json": ["cover", "saved", "sun", "battery", "expensive", "thanks"],
+  };
+  const read = (name: string): unknown => JSON.parse(readFileSync(join(YEAR_REVIEW_V1_DIR, name), "utf8"));
+
+  it("are read from the backend's own directory, every one of them accounted for", () => {
+    expect(readdirSync(YEAR_REVIEW_V1_DIR).sort()).toEqual(Object.keys(PAGES).sort());
+    expect(YEAR_REVIEW_V1_DIR.split(sep).slice(-4).join(sep)).toBe(join("tests", "fixtures", "year_review", "v1"));
+  });
+
+  it.each(Object.keys(PAGES))("decodes %s strictly, with its pages in the backend's order", (name) => {
+    const decoded = decodeYearReview(read(name));
+    expect(decoded.ok, name).toBe(true);
+    if (!decoded.ok) {
+      return;
+    }
+    const expected = PAGES[name] ?? null;
+    if (expected === null) {
+      expect(decoded.value.state).toBe("none");
+      expect(decoded.value.review).toBeNull();
+      expect(decoded.value.banner).toBe(false);
+      expect(decoded.value.row).toBe(false);
+      return;
+    }
+    expect(decoded.value.state).toBe("ready");
+    expect(decoded.value.review?.pages.map((page) => page.id)).toEqual(expected);
+    expect(decoded.value.review?.pages[0]?.id).toBe("cover");
+    expect(decoded.value.review?.pages.at(-1)?.id).toBe("thanks");
+  });
+
+  it("reads the figures exactly as the backend wrote them", () => {
+    const full = decodeYearReview(read("full_year.json"));
+    const fresh = decodeYearReview(read("fresh_install.json"));
+    if (!full.ok || !fresh.ok) {
+      throw new Error("did not decode");
+    }
+    const pages = full.value.review!.pages;
+    expect(pages.find((page) => page.id === "saved")).toEqual({
+      id: "saved", total: 148340, battery: 30500, car: 115640, heat: 2200, estimated: true,
+      starts: { battery: "2026-10-15", car: null, heat: "2026-11-01" },
+    });
+    expect(pages.find((page) => page.id === "sun")).toEqual({ id: "sun", kwh: 2242, home_pct: 92, export_paid: true, since: null });
+    expect(pages.find((page) => page.id === "expensive")).toEqual({
+      id: "expensive", price: 793, start: "2026-01-28T08:00:00+01:00", bought_kwh: 0.3, since: null,
+    });
+    expect(full.value.review!.money).toEqual({ currency: "SEK", major_unit: "kr", minor_unit: "öre" });
+    expect(fresh.value.review!.since).toBe("2026-11-20");
+    expect(fresh.value.review!.partial).toBe(true);
+    expect(fresh.value.review!.pages.find((page) => page.id === "car")).toMatchObject({ estimated: true, since: "2026-11-21" });
+  });
+
+  it("knows every page the backend writes, each with exactly its keys", () => {
+    for (const name of Object.keys(PAGES)) {
+      const raw = read(name) as { review: { pages: Record<string, unknown>[] } | null };
+      for (const page of raw.review?.pages ?? []) {
+        const keys = PAGE_KEYS[page.id as keyof typeof PAGE_KEYS];
+        expect(keys, `${name}: ${String(page.id)}`).toBeDefined();
+        expect(Object.keys(page).sort()).toEqual([...keys].sort());
+      }
+    }
+  });
+
+  it("refuses an unknown key, a version it does not speak, and a ready answer without a review", () => {
+    const answer = read("full_year.json") as Record<string, unknown>;
+    expect(decodeYearReview({ ...answer, extra: 1 })).toEqual({ ok: false, failure: "malformed" });
+    expect(decodeYearReview({ ...answer, api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
+    expect(decodeYearReview({ ...answer, review: null })).toEqual({ ok: false, failure: "malformed" });
+    const review = answer.review as { pages: Record<string, unknown>[] };
+    const pages = review.pages.map((page) => (page.id === "sun" ? { ...page, extra: true } : page));
+    expect(decodeYearReview({ ...answer, review: { ...review, pages } })).toEqual({ ok: false, failure: "malformed" });
+    const unknown = [...review.pages, { id: "weather" }];
+    expect(decodeYearReview({ ...answer, review: { ...review, pages: unknown } })).toEqual({ ok: false, failure: "malformed" });
   });
 });

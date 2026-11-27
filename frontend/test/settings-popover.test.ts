@@ -179,6 +179,8 @@ describe("the popover from the house card", () => {
     heat?: Record<string, unknown>;
     battery?: string;
     view?: Record<string, unknown>;
+    /** The answer to `spotnav/get_year_review`. */
+    year?: Record<string, unknown>;
     entity?: Record<string, unknown>;
     preheat?: Record<string, unknown>;
     /** Merged into the battery status. */
@@ -239,6 +241,10 @@ describe("the popover from the house card", () => {
             return JSON.parse(
               readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "beta", "on_done_failed.json"), "utf-8"),
             ) as unknown;
+          case "spotnav/get_year_review":
+            return options.year ?? {};
+          case "spotnav/year_review_seen":
+            return { ok: true };
           default:
             return {};
         }
@@ -1040,6 +1046,33 @@ describe("the popover from the house card", () => {
     popover.querySelector<HTMLButtonElement>("button[data-edit='battery_control_enabled']")!.click();
     expect(root.querySelector("form[data-battery-enable]")).toBeNull();
     expect(root.querySelector("form[data-value-editor]")).not.toBeNull();
+  });
+
+  it("carries the year's review under Support, before the sponsor row, and opens it in place of the popover", async () => {
+    const year = read("year_review", "v1", "full_year.json");
+    const { root, messages } = await mount({ year: { ...year, banner: false } });
+    // The band is not shown (this person has seen it), the row is.
+    expect(root.querySelector("[data-year-banner]")).toBeNull();
+    const popover = await open(root);
+    const rows = [...popover.querySelectorAll<HTMLElement>("[data-section='support'] [data-row]")].map((row) => row.dataset["row"]);
+    expect(rows.slice(-2)).toEqual(["year_review", "sponsor"]);
+    const row = popover.querySelector<HTMLElement>("[data-row='year_review']")!;
+    expect(row.textContent).toContain("Året med SpotNav 2026");
+    row.querySelector<HTMLButtonElement>("button")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(popover.closest("[hidden]")).not.toBeNull();
+    const story = root.querySelector<HTMLElement>(".spotnav-yr-story")!;
+    expect(story.closest("[hidden]")).toBeNull();
+    expect(story.textContent).toContain("Ditt 2026");
+    // Seen before: nothing more is written.
+    expect(messages.filter((message) => message["type"] === "spotnav/year_review_seen")).toEqual([]);
+  });
+
+  it("has no year's review row outside its window", async () => {
+    const year = read("year_review", "v1", "state_none.json");
+    const popover = await open((await mount({ year })).root);
+    expect(popover.querySelector("[data-row='year_review']")).toBeNull();
+    expect(popover.querySelector("[data-row='sponsor']")).not.toBeNull();
   });
 
   it("shows heat as one line when nothing is found, which opens the section", async () => {

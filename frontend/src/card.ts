@@ -215,6 +215,7 @@ import type { ChartAxisMode } from "./chart";
 import type { PriceUnit } from "./format";
 import { entityWordsOf } from "./entity-words";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
+import { YEAR_REVIEW_STYLES, YearReviewHost } from "./year-review-banner";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
 export const REFRESH_INTERVAL_MS = 30_000;
@@ -463,11 +464,40 @@ export class SpotnavCard extends HTMLElement {
     }
   };
 
+  /** Where the year review's story lives: kept across renders (each render puts it back after the view). */
+  private readonly yearLayer: HTMLDivElement;
+  /** The view's mount of the last render, made inert behind the story. */
+  private viewHost: HTMLElement | null = null;
+  /** The year's review: its band at the top of the card and its row under Settings → Support. */
+  readonly yearReview: YearReviewHost;
+
   constructor() {
     super();
     this.root = this.attachShadow({ mode: "open" });
     cardInstanceCounter += 1;
     this.idPrefix = `spotnav-card-${cardInstanceCounter}`;
+    this.yearLayer = this.ownerDocument.createElement("div");
+    this.yearLayer.className = VISUAL_CLASSES.shell;
+    this.yearReview = new YearReviewHost({
+      doc: this.ownerDocument,
+      owner: this.yearLayer,
+      background: () => this.viewHost,
+      idPrefix: this.idPrefix,
+      hass: () => this.hassObject,
+      target: () => (this.config === null || this.config.charger === "" ? null : { charger: this.config.charger }),
+      language: () => this.languageOrFallback,
+      supportReachable: () => this.isAdmin,
+      onChange: () => {
+        if (this.connected && this.cardState.kind === "ready") {
+          this.render();
+        }
+      },
+      onClose: () => {
+        if (this.renderPending) {
+          this.render();
+        }
+      },
+    });
   }
 
   setConfig(config: unknown): void {
@@ -490,6 +520,7 @@ export class SpotnavCard extends HTMLElement {
     this.entitySaving = false;
     this.stopMalformedRetry();
     this.closeEditor();
+    this.yearReview.reset();
     this.cardState = this.config.charger === "" ? { kind: "unconfigured" } : { kind: "loading" };
     this.render({ force: true });
     this.startWork();
@@ -583,6 +614,7 @@ export class SpotnavCard extends HTMLElement {
     this.entitySaving = false;
     this.editorOperation += 1;
     this.releaseView();
+    this.yearReview.destroy();
   }
 
   getCardSize(): number {
@@ -643,6 +675,7 @@ export class SpotnavCard extends HTMLElement {
     }
     this.startTimer();
     void this.refresh();
+    void this.yearReview.load();
   }
 
   private startTimer(): void {
@@ -2983,7 +3016,7 @@ export class SpotnavCard extends HTMLElement {
   }
 
   private render(options: { force?: boolean } = {}): void {
-    if (options.force !== true && this.view !== null && this.view.anyDialogOpen()) {
+    if (options.force !== true && ((this.view !== null && this.view.anyDialogOpen()) || this.yearReview.isOpen())) {
       this.renderPending = true;
       return;
     }
@@ -2992,10 +3025,11 @@ export class SpotnavCard extends HTMLElement {
     const doc = this.ownerDocument;
     const language = this.languageOrFallback;
     const style = doc.createElement("style");
-    style.textContent = VISUAL_STYLES;
+    style.textContent = VISUAL_STYLES + YEAR_REVIEW_STYLES;
     const host = doc.createElement("div");
     host.className = VISUAL_CLASSES.shell;
-    this.root.replaceChildren(style, host);
+    this.viewHost = host;
+    this.root.replaceChildren(style, host, this.yearLayer);
 
     if (this.updateNotice && this.cardState.kind !== "ready" && this.cardState.kind !== "unconfigured") {
       host.append(updateNoticeElement(doc, this.noticeLanguage));
@@ -3177,7 +3211,21 @@ export class SpotnavCard extends HTMLElement {
             this.render();
           }
         },
+        yearReviewRow: () => {
+          const row = this.yearReview.row();
+          return row === null
+            ? null
+            : {
+                label: row.label,
+                // Settings closes for the story.
+                open: (opener) => {
+                  this.view?.closeSettingsOverview();
+                  row.open(opener);
+                },
+              };
+        },
       });
+      this.view.setYearBanner(this.yearReview.banner());
       if (this.updateNotice) {
         this.view.setUpdateNotice(updateNoticeElement(doc, this.noticeLanguage));
       }

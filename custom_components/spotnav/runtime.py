@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from .notifications.push import ChargerPush
     from .vehicles.identification import VehicleIdentifier
     from .vehicles.camera_identification import CameraIdentification
+    from .year_review.runtime import SiteYearReview
 
 
 @dataclass
@@ -94,6 +95,8 @@ class SiteData:
     """One site entry's live objects."""
 
     controller: SiteCapacityController
+    #: The year's review (`year_review/runtime.py`), set once the site has started.
+    year_review: SiteYearReview | None = None
 
 
 @dataclass
