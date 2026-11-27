@@ -313,7 +313,8 @@ def migrate_sell_credit(hass: HomeAssistant, site_entry_id: str) -> bool:
 
 def price_days(hass: HomeAssistant, source: Any, now: datetime, days: int = PRICE_DAYS) -> list[Any]:
     """The price documents of today and the next `days - 1` days in the source's area zone, as held now (nothing is
-    fetched); none without a source or an area."""
+    fetched); none without a source or an area. A plan's: a day not published yet is read from its provisional
+    prices where the provider has them (a tariff known in advance, `providers/octopus.py`), marked `provisional`."""
     from ..runtime import domain_data  # noqa: PLC0415
 
     repository = domain_data(hass).price_repository
@@ -322,7 +323,7 @@ def price_days(hass: HomeAssistant, source: Any, now: datetime, days: int = PRIC
     today = now.astimezone(time_zones.require_zone(source.area.tz)).date()
     documents = []
     for offset in range(days):
-        document = repository.day_snapshot(source.area_id, today + timedelta(days=offset)).document
+        document = repository.day_snapshot(source.area_id, today + timedelta(days=offset), provisional=True).document
         if document is not None:
             documents.append(document)
     return documents
@@ -1374,11 +1375,13 @@ class BatteryPlanShadow:
                 _LOGGER.debug("prices_before: ignored failure (prices that cannot be read are no prices)", exc_info=True)
         return slots
 
-    def _export_rates(self, source: Any) -> Any:
-        """The supplier's own export rates for the source's area (`pricing/export_rates.py`), `None` without."""
+    def _export_rates(self, source: Any, *, provisional: bool = False) -> Any:
+        """The supplier's own export rates for the source's area (`pricing/export_rates.py`), `None` without; with
+        [provisional] (the plan's, beside [price_days]), a next day not out yet repeated from today's where it can be.
+        The review reads real rates only."""
         from ..pricing.export_rates import area_export_rates  # noqa: PLC0415
 
-        return None if source is None else area_export_rates(self.hass, source.area_id)
+        return None if source is None else area_export_rates(self.hass, source.area_id, provisional=provisional)
 
     def _prices_after_held(self, day: date) -> bool:
         _start, next_end = self._day_bounds(day + timedelta(days=1))
@@ -1457,10 +1460,13 @@ class BatteryPlanShadow:
         supplier's export rates."""
         source = self._price_source()
         documents = self._price_days(source, now)
-        export = self._export_rates(source)
+        export = self._export_rates(source, provisional=True)
         return (
             None if source is None else (source.area_id, source.revision),
-            tuple((doc.day, doc.interval_count, doc.retrieved, doc.published) for doc in documents),
+            tuple(
+                (doc.day, doc.interval_count, doc.retrieved, doc.published, doc.provisional, hash(doc.prices))
+                for doc in documents
+            ),
             None if export is None else hash(export.key),
         )
 
@@ -1487,7 +1493,9 @@ class BatteryPlanShadow:
             points = price_points(self._price_days(source, now), currency=source.area.currency, fiscal=fiscal)
         except PlannerInputError as err:
             raise _NoPlan(NO_PRICES) from err
-        prices = price_slots(((p.start, p.end, p.spot) for p in points), fiscal, export=self._export_rates(source))
+        prices = price_slots(
+            ((p.start, p.end, p.spot) for p in points), fiscal, export=self._export_rates(source, provisional=True)
+        )
         if not any(price.end > now for price in prices):
             raise _NoPlan(NO_PRICES)
         return source.area_id, prices
