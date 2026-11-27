@@ -16,6 +16,7 @@
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | use | pool | spa | sauna` to show only that tab (no tab row).
 
+import { followTheme } from "./energy-palette";
 import {
   deadlineAction,
   getHeat,
@@ -279,6 +280,7 @@ export class SpotnavHeatCard extends HTMLElement {
   set hass(hass: HomeAssistantLike) {
     const first = this.hassObject === null;
     this.hassObject = hass;
+    followTheme(this, hass);
     this.followLanguage(resolveLanguage(hass.locale?.language ?? hass.language));
     if (first) {
       this.start();

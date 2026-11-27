@@ -386,7 +386,7 @@ describe("the battery app's views, calm", () => {
     expect(card.querySelector("[data-line='earned']")).toBeNull();
     // The level is the schematic's in Now, the mode under it.
     expect(now.querySelector(".spotnav-house-sub")?.textContent).toBe("Läge Balanserad · inga livevärden än");
-    expect(now.querySelector(".spotnav-now-words[data-role='battery']")?.textContent).toBe("Batteri48 %19,5 kWh");
+    expect(now.querySelector("[data-k='state-battery']")?.textContent).toBe("48 % · täcker huset");
   });
 
   it("draw the energy in Energy chart and the price with the battery in Price and battery, no toggle in either", () => {
@@ -1011,7 +1011,8 @@ describe("the heat pump", () => {
     expect(heatLine("sv", answer())).toBe("Värme i dag: 10,6 kWh av husets 20,5 kWh (52 %)");
     const now = body(answer(), { tab: "now" }, "sv");
     expect(now.querySelector("[data-line='heat']")).toBeNull();
-    expect(now.querySelector(".spotnav-now-words[data-role='heat']")?.textContent).toBe("Värme i dag12,6 kWh");
+    // The house's day under its ring holds its heat.
+    expect(now.querySelector("[data-k='today-house']")?.textContent).toBe("29,4 kWh i dag");
     const card = body(answer(), {}, "sv");
     const legend = Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent);
     expect(legend).toContain("Värme");

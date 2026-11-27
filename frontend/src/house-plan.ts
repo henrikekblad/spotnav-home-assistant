@@ -357,7 +357,7 @@ const LAYER_COLOUR: Record<Layer, string> = {
   house: "var(--spotnav-house-colour)",
   heat: "var(--spotnav-heat-colour)",
   water_heater: "var(--spotnav-plan-water-colour)",
-  car: "var(--spotnav-flow-car)",
+  car: "var(--spotnav-car-colour, var(--spotnav-energy-car))",
   ...LOAD_COLOURS,
   battery_in: "var(--spotnav-battery-colour)",
   sun: "var(--spotnav-sun-colour)",
@@ -381,9 +381,9 @@ export const PLAN_STYLES = `
   .${P.panel} {${LOAD_COLOUR_VARS}
     --spotnav-plan-water-colour: var(--spotnav-water-heater, #c8607a);
     --spotnav-plan-ceiling: var(--error-color, #db4437);
-    --spotnav-plan-cheap: color-mix(in srgb, var(--success-color, #43a047) 35%, transparent);
-    --spotnav-plan-mid: color-mix(in srgb, var(--warning-color, #ffa600) 35%, transparent);
-    --spotnav-plan-dear: color-mix(in srgb, var(--error-color, #db4437) 35%, transparent);
+    --spotnav-plan-cheap: color-mix(in srgb, var(--spotnav-energy-cheap, #16a34a) 35%, transparent);
+    --spotnav-plan-mid: color-mix(in srgb, var(--spotnav-energy-mid, #bf8b00) 35%, transparent);
+    --spotnav-plan-dear: color-mix(in srgb, var(--spotnav-energy-expensive, #dc2626) 35%, transparent);
     display: grid;
     gap: 14px;
     min-width: 0;

@@ -13,6 +13,7 @@
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | flow | graph | earn | price` to show only that tab (no tab row).
 
+import { followTheme } from "./energy-palette";
 import {
   deadlineAction,
   getHouse,
@@ -29,7 +30,7 @@ import type { DoesNotFitChoiceCode } from "./does-not-fit";
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
-import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
+import { decodeHouseNow, NOW_STYLES, patchNow, renderNow, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
 import { decodePlan, PLAN_STYLES, planStepDate, type PlanAnswer } from "./house-plan";
 import { NOT_READY_STYLES, openedForNotReady, type NotReadyPress } from "./not-ready-sheet";
@@ -328,6 +329,7 @@ export class SpotnavHouseCard extends HTMLElement {
   set hass(hass: HomeAssistantLike) {
     const first = this.hassObject === null;
     this.hassObject = hass;
+    followTheme(this, hass);
     this.followLanguage(resolveLanguage(hass.locale?.language ?? hass.language));
     if (first) {
       this.start();
@@ -792,22 +794,25 @@ export class SpotnavHouseCard extends HTMLElement {
     }
   }
 
-  /** A live reading into the drawn Now tab, in place (`patchSchematic`): whether it was (else the card is drawn). */
+  /** A live reading into the drawn Now tab, in place (`patchNow`): whether it was (else the card is drawn). */
   private patchLive(): boolean {
-    const drawn = this.root.querySelector<SVGSVGElement>("svg.spotnav-now-schematic");
+    const drawn = this.root.querySelector<HTMLElement>(".spotnav-now-flow");
     if (drawn === null || this.state.kind !== "ready" || this.shownTab() !== "now") {
       return false;
     }
-    const fresh = renderSchematic({
+    const drawing = drawn.querySelector<SVGSVGElement>("svg.spotnav-now-schematic");
+    const fixed = drawing === null || drawing.style.height === "auto" ? null : Number.parseFloat(drawing.style.height) || null;
+    const fresh = renderNow({
       doc: this.ownerDocument,
       language: this.language ?? resolveLanguage(null),
       answer: this.state.answer,
       live: this.live,
       width: this.width,
-      height: Number(drawn.getAttribute("height")) || null,
+      height: fixed,
       idPrefix: this.idPrefix,
+      nowMs: Date.now(),
     });
-    patchSchematic(drawn, fresh);
+    patchNow(drawn, fresh);
     return true;
   }
 

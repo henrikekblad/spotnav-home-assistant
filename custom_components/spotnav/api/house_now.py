@@ -7,7 +7,8 @@ net grid power and the chargers' draw as solar reads them (`execution/solar_exec
 loss the battery plan knows (`battery/conversion_loss.py`), the battery's power read now, the Energy dashboard's solar
 power sensors (`stat_rate`) or else the battery plant's own PV power where the plant is all of the sun
 (`plant_is_all_sun`), else each solar source's PV power sensor on its inverter's device (`solar_live_ids`),
-and the heat meter's and the heat zones' power sensors (`SiteHeatMeter.live_power_ids`). Without
+and the heat meter's and the heat zones' power sensors (`SiteHeatMeter.live_power_ids`), and the pool's, the spa's
+and the sauna's draw as the pool and spa shadow has it (`pool_draw`). Without
 a power sensor the sun and the heat take the last period of today's energy flow (cached per
 5-minute row, `api/house.py:async_cached_day_flow`), so the card polls this every 30 s cheaply.
 
@@ -33,7 +34,7 @@ from ..runtime import site_controller_for
 from ..site.energy_statistics import async_energy_prefs
 from ..site.house_now import FROM_POWER, FROM_RECENT, HOUSE_NOW_API_VERSION, HouseNowInputs, house_now, recent_kw
 from .common import send_unsupported_version
-from .house import async_cached_day_flow, battery_loss
+from .house import async_cached_day_flow, battery_loss, heat_part_ids
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -211,6 +212,27 @@ def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool |
     return plugged, soc
 
 
+def pool_draw(hass: HomeAssistant, controller: Any, meter: Any, zones: Any) -> tuple[bool, float | None, bool]:
+    """Whether the site has a pool, spa or sauna part the heat's meter and zones do not read (`heat_part_ids`), what
+    they draw now (kW) and whether any of it is an estimate (on time at its power, `pool/runtime.live_draws`)."""
+    shadow = getattr(controller, "pool_spa", None)
+    try:
+        parts = [] if shadow is None else heat_part_ids(hass, controller, meter, zones)
+        draws = shadow.live_draws() if parts else {}
+    except Exception:  # noqa: BLE001 - without them the pool stays in the house
+        _LOGGER.debug("SpotNav house now: the pool's draw could not be read", exc_info=True)
+        return False, None, False
+    if not parts:
+        return False, None, False
+    kw = 0.0
+    estimated = False
+    for part, _entity_id in parts:
+        drawn, measured = draws.get(part, (0.0, True))
+        kw += max(0.0, drawn)
+        estimated = estimated or (drawn > 0 and not measured)
+    return True, kw, estimated
+
+
 def _recent(periods: Sequence[Any], role: str, now: datetime) -> float | None:
     """The last period's mean power for `role` (`solar` or `heat`), `None` when it is too old or has none."""
     if not periods:
@@ -249,6 +271,7 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     meter = controller.house_forecast.heat.meter
     zones = await controller.house_forecast.heat.async_current_zones()
     has_heat = bool(meter.found or zones.sources)
+    has_pool, pool_kw, pool_estimated = pool_draw(hass, controller, meter, zones)
     sun_kw = sun_from = heat_kw = heat_from = None
     if has_sun and (power_ids := solar_power_ids(prefs)):
         sun_kw = summed_kw(hass, power_ids)
@@ -279,6 +302,8 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             sun_from = FROM_RECENT
         if has_heat and heat_kw is None and (heat_kw := _recent(periods, "heat", now)) is not None:
             heat_from = FROM_RECENT
+            # The last period's heat holds the pool's parts (`api/house._with_parts`): the pool's own draw off it.
+            heat_kw = max(0.0, heat_kw - (pool_kw or 0.0))
     return house_now(
         HouseNowInputs(
             site_id=site.entry_id,
@@ -298,6 +323,9 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             car_connected=plugged,
             car_soc_pct=car_soc,
             battery_loss=battery_loss(controller) if has_battery else None,
+            pool_kw=pool_kw,
+            has_pool=has_pool,
+            pool_estimated=pool_estimated,
         )
     )
 

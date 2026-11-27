@@ -1,9 +1,9 @@
 // The house card's own classes and styles, on top of the charging card's (`visual-styles.ts`), which the house card
 // loads too: the card's frame, the chart's gridlines, axis text and now line, the muted text and the toggle button
 // are the same. The series have a colour each, as custom properties a theme may set, the same hue as the entity's block
-// in the energy flow (a deeper step, for bars on the card): the house in purple, the heat in coral, the sun in amber,
-// the battery in teal and the grid in blue-violet, selling in raspberry; each keeps 3:1 against a light and a dark
-// card. Red and green stay the price's own (dear and cheap).
+// in the energy flow (a deeper step, for bars on the card): the house in violet, the heat in red, the sun in amber,
+// the battery in teal and the grid in blue, selling in green, the car in magenta: the energy palette's tokens
+// (`energy-palette.ts`), one meaning one colour in every card.
 
 import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
 import { LOAD_COLOUR_VARS } from "./load-colours";
@@ -72,19 +72,22 @@ export const HOUSE_STYLES = `
   /* The colours, also in the history dialog, which lives outside the card. */
   .${H.card},
   .spotnav-history-body {
-    --spotnav-house-colour: var(--spotnav-house, #8f63d8);
-    --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
-    --spotnav-battery-colour: var(--spotnav-battery, #129c90);
-    --spotnav-sell-colour: var(--spotnav-sell, #c2185b);
-    --spotnav-grid-colour: var(--spotnav-grid, #5c6bd6);
-    --spotnav-flow-solar: var(--spotnav-flow-sun, #f2c94c);
-    --spotnav-flow-battery: var(--spotnav-flow-battery-colour, #4fd1c5);
-    --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
-    --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
-    --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
-    --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
-    --spotnav-flow-heat: var(--spotnav-flow-heat-colour, #ff8f87);
-    --spotnav-flow-other: #b0bec5;${LOAD_COLOUR_VARS}
+    --spotnav-house-colour: var(--spotnav-energy-house, #6d5bd0);
+    --spotnav-sun-colour: var(--spotnav-energy-sun, #c18b00);
+    --spotnav-battery-colour: var(--spotnav-energy-battery, #0f9f8f);
+    --spotnav-sell-colour: var(--spotnav-energy-export, #16a34a);
+    --spotnav-grid-colour: var(--spotnav-energy-import, #3b82f6);
+    --spotnav-car-colour: var(--spotnav-energy-car, #c2408f);
+    --spotnav-heat-colour: var(--spotnav-energy-heat, #e2554a);
+    /* The energy flow's blocks: the same tokens a step lighter, for the dark words on them. */
+    --spotnav-flow-solar: var(--spotnav-flow-sun, color-mix(in srgb, var(--spotnav-sun-colour) 78%, #ffffff));
+    --spotnav-flow-battery: var(--spotnav-flow-battery-colour, color-mix(in srgb, var(--spotnav-battery-colour) 72%, #ffffff));
+    --spotnav-flow-grid: var(--spotnav-flow-grid-colour, color-mix(in srgb, var(--spotnav-grid-colour) 72%, #ffffff));
+    --spotnav-flow-export: var(--spotnav-flow-export-colour, color-mix(in srgb, var(--spotnav-sell-colour) 72%, #ffffff));
+    --spotnav-flow-house: var(--spotnav-flow-house-colour, color-mix(in srgb, var(--spotnav-house-colour) 72%, #ffffff));
+    --spotnav-flow-car: var(--spotnav-flow-car-colour, color-mix(in srgb, var(--spotnav-car-colour) 72%, #ffffff));
+    --spotnav-flow-heat: var(--spotnav-flow-heat-colour, color-mix(in srgb, var(--spotnav-heat-colour) 72%, #ffffff));
+    --spotnav-flow-other: color-mix(in srgb, var(--spotnav-energy-other, #8796ab) 72%, #ffffff);${LOAD_COLOUR_VARS}
   }
   .${H.compareRow} {
     display: grid;
@@ -277,7 +280,7 @@ export const HOUSE_STYLES = `
     opacity: 0.55;
   }
   .${H.carBar} {
-    fill: var(--spotnav-flow-car);
+    fill: var(--spotnav-car-colour);
     opacity: 0.9;
   }
   .${H.heatBar} {
@@ -371,7 +374,7 @@ export const HOUSE_STYLES = `
     background: var(--spotnav-heat-colour);
   }
   .${H.swatch}[data-series="car"] {
-    background: var(--spotnav-flow-car);
+    background: var(--spotnav-car-colour);
   }
   .${H.swatch}[data-series="sun"] {
     background: var(--spotnav-sun-colour);

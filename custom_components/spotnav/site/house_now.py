@@ -3,10 +3,11 @@
 Pure: the shell (`api/house_now.py`) reads each figure and hands it over; nothing is read or written here.
 
     {api_version: 1, site_id, at, grid_kw, sun_kw, sun_from, battery_kw, soc_pct, car_kw, car_connected, car_soc_pct,
-     heat_kw, heat_from, house_kw, has: {sun, battery, car, heat}, battery_ac_kw, house_from, rest_kw, estimated}
+     heat_kw, heat_from, house_kw, has: {sun, battery, car, heat, pool}, battery_ac_kw, house_from, rest_kw, estimated,
+     pool_kw, other_kw}
 
 Every figure is in kW to the hundredth and balances as drawn (2026-11-27): `grid + sun = house + car + battery`
-exactly, and the heat is a part of the house (`heat + rest = house`).
+exactly, and the heat and the pool are parts of the house (`heat + rest = house`, `heat + pool + other = house`).
 
 * `grid_kw`: the site's net grid power now (+ import, − export), as load balancing and solar read it; `null` unread.
 * `sun_kw`: the sun's production now: the Energy dashboard's solar power sensors summed (`sun_from: "power"`), else
@@ -40,12 +41,20 @@ exactly, and the heat is a part of the house (`heat + rest = house`).
 * `rest_kw` (added 2026-11-27): the house less its heat, what the card writes in the house's disc: the heat is drawn
   as its own line out of the house, as the energy flow has the heat beside the house (`site/energy_flow.py`), so the
   disc's figure and the lines out of it add up to the lines into it. With a site without heat it is `house_kw`.
-* `estimated` (added 2026-11-27): the roles (`grid`, `sun`, `battery`, `car`, `heat`) whose figure is not a reading
+* `estimated` (added 2026-11-27): the roles (`grid`, `sun`, `battery`, `car`, `heat`, `pool`) whose figure is not a reading
   of this moment, for the card to mark: the sun or the heat from the last period (`"recent"`, up to 20 minutes old),
   and any figure moved to make the lines meet. Meters are read at different moments, so the balance may come out
   below 0 (more going out than in); the deficit is then taken from the car's draw first (a charger's meter lags its
   ramp), then given to the sun, then to the battery, last to the grid, and the house is 0. A heat
   larger than the house is cut to the house. The grid meter is the anchor and is moved only when nothing else can.
+* `pool_kw` (added 2026-11-27): what the pool's heat pump and circulation, the spa and the sauna draw now, those
+  the heat's meter and zones do not already read (`api/house.heat_part_ids`), each by its own trusted power sensor,
+  else while on at its power as it counts (`pool/runtime.live_draws`: an estimate, `pool` in `estimated`); `null`
+  without them (`has.pool` false). A part of the house beside the heat, never larger than what the heat leaves of
+  it (cut, and estimated, where it would be). Where the heat is the last period's it holds the parts, so the shell
+  takes the pool's draw off it.
+* `other_kw` (added 2026-11-27): the house less its heat and its pool, the rest of the house's ring on the card
+  (`heat + pool + other = house`); `rest_kw` without a pool.
 * `has`: which parts the site has, so the card draws only those (a part that is had but unread is drawn without a
   figure).
 """
@@ -79,6 +88,8 @@ NOW_KEYS: Final = (
     "house_from",
     "rest_kw",
     "estimated",
+    "pool_kw",
+    "other_kw",
 )
 #: The last period read stands in for a figure without a power sensor only while it ended this recently.
 RECENT_MAX: Final = timedelta(minutes=20)
@@ -90,8 +101,9 @@ ROLE_SUN: Final = "sun"
 ROLE_BATTERY: Final = "battery"
 ROLE_CAR: Final = "car"
 ROLE_HEAT: Final = "heat"
+ROLE_POOL: Final = "pool"
 #: The roles `estimated` names, in this order.
-ROLES: Final = (ROLE_GRID, ROLE_SUN, ROLE_BATTERY, ROLE_CAR, ROLE_HEAT)
+ROLES: Final = (ROLE_GRID, ROLE_SUN, ROLE_BATTERY, ROLE_CAR, ROLE_HEAT, ROLE_POOL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +127,11 @@ class HouseNowInputs:
     #: The inverter's `(charge, discharge)` loss for a battery read at the battery (`conversion_loss.ConversionLoss
     #: .loss`), `None` for one read on the AC side.
     battery_loss: tuple[float, float] | None = None
+    #: The pool's, the spa's and the sauna's draw now (`pool_kw`), whether the site has them, and whether the draw is
+    #: an estimate (a part without its own trusted power sensor).
+    pool_kw: float | None = None
+    has_pool: bool = False
+    pool_estimated: bool = False
 
 
 def recent_kw(kwh: float | None, minutes: int, end: datetime, now: datetime) -> float | None:
@@ -149,6 +166,8 @@ class Balanced:
     house: float | None
     rest: float | None
     estimated: tuple[str, ...]
+    pool: float | None = None
+    other: float | None = None
 
 
 def _c(value: float | None) -> float | None:
@@ -164,7 +183,10 @@ def balanced(inputs: HouseNowInputs) -> Balanced:
     battery = _c(inputs.battery_kw if inputs.has_battery else None)
     car = _c(None if not inputs.has_car or inputs.car_kw is None else max(0.0, inputs.car_kw))
     heat = _c(None if not inputs.has_heat or inputs.heat_kw is None else max(0.0, inputs.heat_kw))
+    pool = _c(None if not inputs.has_pool or inputs.pool_kw is None else max(0.0, inputs.pool_kw))
     estimated: set[str] = set()
+    if pool is not None and inputs.pool_estimated and pool > 0:
+        estimated.add(ROLE_POOL)
     if sun is not None and inputs.sun_from == FROM_RECENT:
         estimated.add(ROLE_SUN)
     if heat is not None and inputs.heat_from == FROM_RECENT:
@@ -176,7 +198,7 @@ def balanced(inputs: HouseNowInputs) -> Balanced:
         or (inputs.has_battery and battery is None)
     )
     if needed:
-        return Balanced(grid, sun, battery, car, heat, None, None, tuple(r for r in ROLES if r in estimated))
+        return Balanced(grid, sun, battery, car, heat, None, None, tuple(r for r in ROLES if r in estimated), pool, None)
     house = round(grid + (sun or 0.0) - (car or 0.0) - (battery or 0.0), 2)  # type: ignore[operator]
     if house < 0:
         # More goes out than comes in: readings taken at different moments. The deficit is taken from the car's
@@ -208,7 +230,14 @@ def balanced(inputs: HouseNowInputs) -> Balanced:
             heat = house
             estimated.add(ROLE_HEAT)
         rest = round(house - heat, 2)
-    return Balanced(grid, sun, battery, car, heat, house, rest, tuple(r for r in ROLES if r in estimated))
+    other = rest
+    if pool is not None:
+        if pool > rest:
+            # The pool's draw (often an estimate) never more than what the heat leaves of the house.
+            pool = rest
+            estimated.add(ROLE_POOL)
+        other = round(rest - pool, 2)
+    return Balanced(grid, sun, battery, car, heat, house, rest, tuple(r for r in ROLES if r in estimated), pool, other)
 
 
 def figures(inputs: HouseNowInputs) -> tuple[float | None, float | None, str | None]:
@@ -246,9 +275,12 @@ def house_now(inputs: HouseNowInputs) -> dict[str, Any]:
             "battery": inputs.has_battery,
             "car": inputs.has_car,
             "heat": inputs.has_heat,
+            "pool": inputs.has_pool,
         },
         "battery_ac_kw": _r(battery_ac_kw(inputs)),
         "house_from": house_from,
         "rest_kw": shown.rest,
         "estimated": list(shown.estimated),
+        "pool_kw": shown.pool,
+        "other_kw": shown.other,
     }

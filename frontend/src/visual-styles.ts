@@ -12,9 +12,11 @@ import { POPOVER_STYLES } from "./visual-styles-popover";
 import { DIALOG_STYLES } from "./visual-styles-dialog";
 import { PERIOD_CHART_STYLES } from "./visual-styles-period";
 import { NOTICE_STYLES } from "./visual-styles-notices";
+import { ENERGY_PALETTE_STYLES } from "./energy-palette";
 
 /** The whole stylesheet: the areas in cascade order. */
 export const VISUAL_STYLES =
+  ENERGY_PALETTE_STYLES +
   SETTINGS_FORM_STYLES +
   CARD_STYLES +
   CHART_STYLES +
