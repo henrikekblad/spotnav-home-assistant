@@ -11,6 +11,8 @@ exactly, and the heat is a part of the house (`heat + rest = house`).
 * `grid_kw`: the site's net grid power now (+ import, − export), as load balancing and solar read it; `null` unread.
 * `sun_kw`: the sun's production now: the Energy dashboard's solar power sensors summed (`sun_from: "power"`), else
   the battery plant's own PV power where every solar source is the plant's (`"power"` too, `api/house_now.py`), else
+  each solar source's PV power sensor on its energy sensor's device (`"power"`, `api/house_now.solar_live_ids`),
+  else
   the mean of the last period the energy flow read from the recorder's 5-minute statistics (`"recent"`, at most
   `RECENT_MAX` old); `null` (and `sun_from` `null`) without either, or without the sun (`has.sun` false).
 * `battery_kw`: the home battery's power as read (+ charging, − discharging), what the battery's own app shows;

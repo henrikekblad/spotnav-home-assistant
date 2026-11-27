@@ -6,7 +6,8 @@ net grid power and the chargers' draw as solar reads them (`execution/solar_exec
 (`battery/facts.py`: its power and whether it is read on the DC side) with the inverter's
 loss the battery plan knows (`battery/conversion_loss.py`), the battery's power read now, the Energy dashboard's solar
 power sensors (`stat_rate`) or else the battery plant's own PV power where the plant is all of the sun
-(`plant_is_all_sun`), and the heat meter's and the heat zones' power sensors (`SiteHeatMeter.live_power_ids`). Without
+(`plant_is_all_sun`), else each solar source's PV power sensor on its inverter's device (`solar_live_ids`),
+and the heat meter's and the heat zones' power sensors (`SiteHeatMeter.live_power_ids`). Without
 a power sensor the sun and the heat take the last period of today's energy flow (cached per
 5-minute row, `api/house.py:async_cached_day_flow`), so the card polls this every 30 s cheaply.
 
@@ -17,9 +18,10 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -88,6 +90,89 @@ def plant_is_all_sun(hass: HomeAssistant, prefs: Any, battery_entity_id: str | N
     if battery is None or battery.device_id is None:
         return False
     return all((entry := registry.async_get(stat)) is not None and entry.device_id == battery.device_id for stat in stats)
+
+
+#: Words that mark a power sensor as something other than the panels' production (a hybrid's battery, grid, load or
+#: total output, which includes the battery's discharge): never taken as the sun.
+_NOT_PV_WORDS: Final = frozenset(
+    {"battery", "bat", "batt", "grid", "load", "consumption", "house", "home", "import", "export", "meter", "output",
+     "charge", "discharge", "backup", "eps"}
+)
+_PV_WORD = re.compile(r"^(pv\d*|solar|photovoltaic)$")
+#: Words left out when an energy sensor's name is matched to a power sensor's (`sensor.pv_energy` ↔ `sensor.pv_power`).
+_STEM_ENERGY_WORDS: Final = frozenset(
+    {"energy", "yield", "production", "produced", "generation", "kwh", "wh", "today", "daily", "total", "lifetime",
+     "accumulated", "sum"}
+)
+_STEM_POWER_WORDS: Final = frozenset({"power", "w", "kw", "active", "current", "now", "instant", "realtime"})
+#: A PV power below this (kW) is no production read with a little offset but a sensor of the wrong sign.
+_PV_NEGATIVE_KW: Final = -0.05
+
+
+def _words(entry: Any) -> list[str]:
+    text = f"{entry.entity_id.split('.', 1)[-1]} {entry.name or ''} {entry.original_name or ''}".lower()
+    return [word for word in re.split(r"[^a-z0-9]+", text) if word]
+
+
+def _stem(entity_id: str, drop: frozenset[str]) -> tuple[str, ...]:
+    return tuple(w for w in re.split(r"[^a-z0-9]+", entity_id.split(".", 1)[-1].lower()) if w and w not in drop)
+
+
+def solar_live_power_id(hass: HomeAssistant, energy_id: str) -> str | None:
+    """The power sensor that tells a solar energy sensor's production now, from the power sensors on its device
+    (`site/heat_meter.device_power_sensors`): the one whose name pairs with the energy sensor's
+    (`sensor.pv_energy` ↔ `sensor.pv_power`), else the device's only one unless its name says battery, grid, load or
+    output, else the only one named pv or solar. `None` where none or more than one could be it: a hybrid's total
+    output includes its battery, so it is never guessed."""
+    from ..site.heat_meter import device_power_sensors  # noqa: PLC0415 - the site imports this module's neighbours
+
+    found = device_power_sensors(hass, energy_id)
+    if not found:
+        return None
+    stem = _stem(energy_id, _STEM_ENERGY_WORDS)
+    named_stem = any(_PV_WORD.match(word) for word in stem)
+    paired = [entry for entry in found if named_stem and _stem(entry.entity_id, _STEM_POWER_WORDS) == stem]
+    if len(paired) == 1:
+        return paired[0].entity_id
+    plausible = [entry for entry in found if not _NOT_PV_WORDS.intersection(_words(entry))]
+    if len(found) == 1:
+        return plausible[0].entity_id if plausible else None
+    named = [entry for entry in plausible if any(_PV_WORD.match(word) for word in _words(entry))]
+    return named[0].entity_id if len(named) == 1 else None
+
+
+def solar_live_ids(hass: HomeAssistant, prefs: Any) -> tuple[str, ...]:
+    """A power sensor for every solar source: its `stat_rate`, else the one on its energy sensor's device
+    (`solar_live_power_id`); empty when a source has none (a part of the sun is never shown as all of it)."""
+    sources = prefs.get("energy_sources") if isinstance(prefs, Mapping) else None
+    ids: list[str] = []
+    for source in sources if isinstance(sources, list) else []:
+        if not (isinstance(source, Mapping) and source.get("type") == "solar"):
+            continue
+        rate = source.get("stat_rate")
+        stat = source.get("stat_energy_from")
+        found = rate if isinstance(rate, str) and rate else None
+        if found is None and isinstance(stat, str) and stat:
+            found = solar_live_power_id(hass, stat)
+        if found is None:
+            return ()
+        ids.append(found)
+    return tuple(ids)
+
+
+def sun_kw_of(hass: HomeAssistant, entity_ids: Sequence[str]) -> float | None:
+    """The sun now from PV power sensors found on their devices, summed; `None` (the last period is then taken) when
+    one is unread, a total rather than a measurement, or of the wrong sign (below `_PV_NEGATIVE_KW`)."""
+    total = 0.0
+    for entity_id in entity_ids:
+        state = hass.states.get(entity_id)
+        if state is None or state.attributes.get("state_class") not in (None, "measurement"):
+            return None
+        value = state_kw(hass, entity_id)
+        if value is None or value < _PV_NEGATIVE_KW:
+            return None
+        total += max(0.0, value)
+    return total if entity_ids else None
 
 
 def summed_kw(hass: HomeAssistant, entity_ids: Sequence[str]) -> float | None:
@@ -176,6 +261,10 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     ):
         # The plant's own PV power, read with its battery every 10 s: live, where the last period may be 20 min old.
         sun_kw, sun_from = facts.plant_pv_kw, FROM_POWER
+    if has_sun and sun_kw is None and (found_ids := solar_live_ids(hass, prefs)):
+        # Each source's PV power sensor on its inverter's device: live, where the last period may be 20 min old.
+        sun_kw = sun_kw_of(hass, found_ids)
+        sun_from = None if sun_kw is None else FROM_POWER
     if has_heat and (heat_ids := controller.house_forecast.heat.live_power_ids(zones)):
         heat_kw = summed_kw(hass, heat_ids)
         heat_from = None if heat_kw is None else FROM_POWER
